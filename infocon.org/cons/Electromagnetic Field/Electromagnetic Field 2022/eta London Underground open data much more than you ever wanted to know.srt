@@ -1,0 +1,1790 @@
+﻿1
+00:00:01,520 --> 00:00:03,840
+So hey everyone thanks for coming along. I'm going  
+
+2
+00:00:03,840 --> 00:00:07,520
+to be talking about a project of mine 
+called intertube that aims to explore  
+
+3
+00:00:07,520 --> 00:00:11,600
+London Underground open data and ended 
+up getting rather deep into the weeds.
+
+4
+00:00:11,600 --> 00:00:15,440
+So standard "who am I" slide. Hey 
+i'm eta, my pronouns are she/her 
+
+5
+00:00:15,440 --> 00:00:19,600
+I live in London - I have done for all my life, 
+I'm not just incredibly curious about the tube  
+
+6
+00:00:19,600 --> 00:00:24,480
+from afar, although that's cool if you are. I 
+like trains - not as much as some actually but  
+
+7
+00:00:24,480 --> 00:00:28,960
+I do appreciate a good train. And my day 
+job involves rewriting Tor in Rust, so  
+
+8
+00:00:28,960 --> 00:00:32,320
+absolutely nothing related to what i'm going 
+to talk to you about now in case you cared.
+
+9
+00:00:33,360 --> 00:00:37,600
+So, the origin story for intertube starts 
+with one of these. This is one of those  
+
+10
+00:00:37,600 --> 00:00:41,200
+"next train" indicators you see waiting for a 
+train on the platforms. If you're not familiar,  
+
+11
+00:00:41,200 --> 00:00:44,720
+you generally get a list of what trains there 
+are and their destination and estimated time  
+
+12
+00:00:44,720 --> 00:00:48,800
+to arrival. This is not actually the right 
+kind of next train indicator for the story.  
+
+13
+00:00:48,800 --> 00:00:52,800
+This is one for the Northern Line and 
+these generally work with no problems.
+
+14
+00:00:52,800 --> 00:00:57,120
+The experience I was having was more like 
+this. This is Bow Road on the District Line, 
+
+15
+00:00:57,120 --> 00:01:00,800
+and the boards on the district line were 
+frequently complete garbage. Often displaying  
+
+16
+00:01:00,800 --> 00:01:05,600
+nothing, sometimes just displaying the words 
+"District Line" or something. Sometimes only  
+
+17
+00:01:05,600 --> 00:01:10,160
+filling in when the train arrived and so on and 
+so forth. So my experience with poor information  
+
+18
+00:01:10,160 --> 00:01:14,240
+quality at some stations led me to look at what 
+APIs are available to get data on the tube.
+
+19
+00:01:14,240 --> 00:01:18,160
+There are two here: the Unified API and 
+TrackerNet, and from a first glance it  
+
+20
+00:01:18,160 --> 00:01:21,600
+might seem like the Unified API might 
+be a better idea. It uses nice modern  
+
+21
+00:01:21,600 --> 00:01:26,160
+new technologies like JSON and Swagger whereas 
+TrackerNet uses XML. If you go and look at the  
+
+22
+00:01:26,160 --> 00:01:30,240
+PDFs for TrackerNet you have this lovely 
+document with pages and pages of stuff  
+
+23
+00:01:30,240 --> 00:01:38,320
+that is still marked as a draft despite being last 
+updated in 2010. But despite this it turns out the  
+
+24
+00:01:38,320 --> 00:01:42,399
+Unified API gets its data from TrackerNet 
+anyway, and then just gives you less of it.
+
+25
+00:01:43,200 --> 00:01:46,480
+So i ended up using TrackerNet 
+and having to parse lots of XML.  
+
+26
+00:01:47,280 --> 00:01:51,840
+This is what using TrackerNet ends up looking 
+like. You put together a URL that looks like this.  
+
+27
+00:01:51,840 --> 00:01:55,920
+This asks for TrackerNet's view of a particular 
+station in detailed mode - there's also a  
+
+28
+00:01:55,920 --> 00:01:59,920
+summary mode but that is not as useful for my 
+purposes - and you give it a three-letter code  
+
+29
+00:01:59,920 --> 00:02:03,120
+representing the station you want, along 
+with the tube line you're interested in.  
+
+30
+00:02:03,120 --> 00:02:08,080
+These are given in tables inside the massive 
+PDF which you have to copy out yourself.
+
+31
+00:02:08,080 --> 00:02:11,520
+So you put together this URL and you 
+hit it with your HTTP client of choice,  
+
+32
+00:02:11,520 --> 00:02:17,600
+and you get a page of XML that has this massive 
+text disclaimer about how you shouldn't use this  
+
+33
+00:02:17,600 --> 00:02:21,760
+to make safety critical decisions - so if you work 
+for the Underground you shouldn't use TrackerNet  
+
+34
+00:02:21,760 --> 00:02:26,239
+to tell you whether the line is clear - and 
+you get some metadata and train information.  
+
+35
+00:02:26,240 --> 00:02:30,880
+The really interesting parts are these individual 
+little train elements which you get describing all  
+
+36
+00:02:30,880 --> 00:02:35,840
+the trains near the station. I won't make you 
+read XML - this is the sort of plain English  
+
+37
+00:02:36,400 --> 00:02:40,320
+overview of the data you get from TrackerNet. 
+You get some identifiers: destination, time to  
+
+38
+00:02:40,320 --> 00:02:44,480
+arrival, an English language description 
+of where the train is, and a track code.
+
+39
+00:02:44,480 --> 00:02:49,200
+So the destination and time to arrival is really 
+how you are supposed to use this API. This is just  
+
+40
+00:02:49,200 --> 00:02:54,320
+an electronic form of the next train indicator 
+and that's kind of the point, but if you look past  
+
+41
+00:02:54,320 --> 00:02:59,280
+that, there's this extra bit of information called 
+a track code, and i was like "hmm, what's that?"
+
+42
+00:03:00,320 --> 00:03:04,959
+To explain this, let's imagine a hypothetical 
+tube line with five stations - A to E.  
+
+43
+00:03:05,840 --> 00:03:09,200
+So, a signalling system at the London Underground  
+
+44
+00:03:09,200 --> 00:03:13,760
+might represent this by splitting up into nine 
+distinct bits or sections. So you might have  
+
+45
+00:03:13,760 --> 00:03:18,239
+the bit of track at station A and then the 
+bit between A and B and so on and so forth.  
+
+46
+00:03:18,240 --> 00:03:22,240
+If you have a very simple signalling system, 
+we might say that each train can be in any one  
+
+47
+00:03:22,240 --> 00:03:26,160
+of these sections. You can't have two trains in 
+the same one - that would be known as a crash.
+
+48
+00:03:26,720 --> 00:03:31,280
+TrackerNet gives each section its own little 
+track code to identify the bit of track 
+
+49
+00:03:31,280 --> 00:03:36,640
+and that is what you get through the API exported 
+as a track code parameter. If we put some trains  
+
+50
+00:03:36,640 --> 00:03:41,119
+on our line: red, pink, and green for simplicity. 
+We're assuming our line is unidirectional and only  
+
+51
+00:03:41,120 --> 00:03:46,560
+goes from A to E - in the real world, tube 
+lines run both ways. The different colours  
+
+52
+00:03:46,560 --> 00:03:50,880
+here actually correspond to different train 
+identifiers from the API - that's just the way  
+
+53
+00:03:50,880 --> 00:03:55,600
+i'm choosing to represent that here. And if you 
+ask TrackerNet for the predictions for station B,  
+
+54
+00:03:55,600 --> 00:03:59,840
+the bit everyone normally uses is the "how far 
+away is this train from the station?" bit. You  
+
+55
+00:03:59,840 --> 00:04:04,160
+know, the red train arrives in two minutes, 
+the pink train arrives in one minute, etc etc.
+
+56
+00:04:04,720 --> 00:04:09,040
+However it will also tell us that the 
+red train is in track section T001  
+
+57
+00:04:09,040 --> 00:04:12,880
+and the pink one is in T002. You do 
+get an English description of where  
+
+58
+00:04:12,880 --> 00:04:17,839
+the train is as well, so it will return 
+at A (T001) and between A and B (T002).
+
+59
+00:04:19,200 --> 00:04:21,920
+If we ask C for the predictions 
+we get much the same thing  
+
+60
+00:04:21,920 --> 00:04:26,080
+except the green train can be kind of "seen" by 
+C because B couldn't see it because it already  
+
+61
+00:04:26,720 --> 00:04:31,840
+passed by B so we get the same results plus 
+the green train being at track code T004.
+
+62
+00:04:32,880 --> 00:04:36,560
+So i got thinking and I kind of realised 
+this opens up a new possibility for us.  
+
+63
+00:04:37,600 --> 00:04:40,960
+Originally we wouldn't really be able 
+to combine information from multiple  
+
+64
+00:04:40,960 --> 00:04:44,719
+stations' departure boards it's all "it'll 
+be at this station in this amount of time".  
+
+65
+00:04:44,720 --> 00:04:48,080
+You could kind of do some clever stuff to 
+mesh it together but that's difficult and  
+
+66
+00:04:49,200 --> 00:04:54,560
+not very useful. But, if we use the track code 
+information we get the same track codes reported  
+
+67
+00:04:54,560 --> 00:04:59,440
+for each train no matter what station we ask. 
+And because the trains have unique identifiers  
+
+68
+00:04:59,440 --> 00:05:04,480
+that are also the same no matter what station 
+you ask, we can actually go ahead and merge the  
+
+69
+00:05:04,480 --> 00:05:09,840
+information we get from multiple scrapes together 
+into one view of what the line looks like.
+
+70
+00:05:10,480 --> 00:05:14,480
+This is pretty useful. All we need to do is 
+make sure we're looking at enough stations'  
+
+71
+00:05:14,480 --> 00:05:19,040
+departure boards to cover the whole line and then 
+we can get a picture of where all the trains are.
+
+72
+00:05:20,240 --> 00:05:25,600
+We can also keep doing this over time, so if we 
+do one set of scrapes at 9am and zero seconds,  
+
+73
+00:05:26,240 --> 00:05:29,840
+and another three seconds later when you can 
+see things have kind of moved around a bit,  
+
+74
+00:05:30,800 --> 00:05:35,200
+then you can note down what track codes we saw at 
+all the trains at various points in time and build  
+
+75
+00:05:35,200 --> 00:05:40,080
+up this little history of where each individual 
+train has been. So to recap the last sort of  
+
+76
+00:05:40,080 --> 00:05:44,560
+confusing diagram bit, TrackerNet seems to divide 
+the line into track sections which are given track  
+
+77
+00:05:44,560 --> 00:05:49,120
+codes to identify them. Asking any station for its 
+departure board will return, you know, a departure  
+
+78
+00:05:50,240 --> 00:05:54,400
+board, but also each train's current track code. 
+Given that trains share their identifiers and  
+
+79
+00:05:54,400 --> 00:05:59,039
+track codes across stations, we can build up a 
+track code history for each individual train.
+
+80
+00:06:00,320 --> 00:06:03,280
+But, only if we actually know what the codes mean.  
+
+81
+00:06:04,240 --> 00:06:08,880
+We need an idea of how they're connected together 
+and what stations in real life they correspond to.  
+
+82
+00:06:09,600 --> 00:06:13,920
+If you recall this diagram I presented to you a 
+few minutes ago, we need a way to generate this 
+
+83
+00:06:13,920 --> 00:06:16,400
+that showed how each track code 
+mapped onto something useful.  
+
+84
+00:06:17,120 --> 00:06:22,800
+And we don't get this - TrackerNet only 
+literally gives you the stuff I said earlier.
+
+85
+00:06:23,520 --> 00:06:27,599
+Maybe the the English language description 
+of where the train is might be useful? 
+
+86
+00:06:27,600 --> 00:06:31,120
+But it turns out that multiple track codes 
+can actually have the same description, 
+
+87
+00:06:31,680 --> 00:06:36,720
+so we can't just use those. And the descriptions 
+aren't really structured enough to be useful. They  
+
+88
+00:06:36,720 --> 00:06:42,160
+do the nice thing of, if a track code represents a 
+station they'll usually say "at station" and then  
+
+89
+00:06:42,160 --> 00:06:46,800
+maybe the platform number, and actually you can 
+also ask the API if - I kind of lied earlier - you  
+
+90
+00:06:46,800 --> 00:06:50,320
+can ask the API for these. But everything 
+that's not a station, you're kind of screwed.
+
+91
+00:06:51,120 --> 00:06:55,040
+In practical terms it's as if 
+you have a line from A to C,  
+
+92
+00:06:56,320 --> 00:07:00,240
+the information you get lets you kind 
+of correlate "hmm, okay maybe these red  
+
+93
+00:07:00,240 --> 00:07:04,320
+track codes are station A and the blue ones 
+are station B, the pink are station C." But  
+
+94
+00:07:04,320 --> 00:07:08,240
+there's kind of this mess of orange stuff where 
+you don't really know the structure in between.
+
+95
+00:07:09,760 --> 00:07:13,440
+So we've got a vague idea of what track 
+codes correspond to what stations,  
+
+96
+00:07:13,440 --> 00:07:16,960
+but not really what order 
+the stations are in the line,  
+
+97
+00:07:16,960 --> 00:07:20,159
+but also what order are the little 
+track sections between the stations.
+
+98
+00:07:21,040 --> 00:07:24,560
+So to help us model the structure of a tube line 
+we can use this thing from computer science called  
+
+99
+00:07:24,560 --> 00:07:28,800
+a graph. Now this isn't the sort of XY line 
+and axis thing that you might be used to,  
+
+100
+00:07:29,520 --> 00:07:32,960
+but rather just a bunch of blobs with a 
+bunch of lines connecting them. In our  
+
+101
+00:07:32,960 --> 00:07:36,159
+case they have arrows so it's called a 
+directed graph, but they don't always.  
+
+102
+00:07:37,440 --> 00:07:40,560
+We can use graphs to represent the 
+connections between bits of track.  
+
+103
+00:07:40,560 --> 00:07:44,240
+If we make a new blob for each piece of 
+track and label it with its track code,  
+
+104
+00:07:44,240 --> 00:07:48,000
+we can then draw lines between blobs that are 
+connected to each other. Most of the time this  
+
+105
+00:07:48,000 --> 00:07:51,680
+will just result in us drawing things that look 
+like straight lines, which is good, but it should  
+
+106
+00:07:51,680 --> 00:07:56,080
+also let us represent train tracks splitting 
+up and joining and junctions which does happen.
+
+107
+00:07:57,200 --> 00:08:00,240
+A computer together with a bunch 
+of graph algorithms in theory  
+
+108
+00:08:00,240 --> 00:08:02,880
+can use the graph to answer 
+important questions for us like,  
+
+109
+00:08:02,880 --> 00:08:06,400
+"I'm at this track code - which station 
+is this?" or "what stations am I between?"  
+
+110
+00:08:06,400 --> 00:08:09,919
+and "if I want to go to another station from 
+here, what track codes would I cross over?"
+
+111
+00:08:10,800 --> 00:08:13,920
+To build a graph, though, we need to know 
+all the connections between the track codes.  
+
+112
+00:08:14,880 --> 00:08:20,159
+So how do we discover this given we're not really 
+given it? How about collecting a bunch of data  
+
+113
+00:08:20,160 --> 00:08:24,240
+and then using the order we get from that? 
+So to give you an idea of what that means,  
+
+114
+00:08:24,240 --> 00:08:27,360
+if we've recorded our history of 2 
+coming after 1, and 3 coming after 2,  
+
+115
+00:08:28,720 --> 00:08:31,360
+we could just link 1 to 2, and 
+2 to 3, and so on and so forth.
+
+116
+00:08:31,360 --> 00:08:35,600
+So from this amount of data here we could generate 
+a graph like this and build the following links  
+
+117
+00:08:35,600 --> 00:08:41,840
+since 2 came after 1, we link 1 and 2 together and 
+maybe we get some more data, hypothetically. And  
+
+118
+00:08:41,840 --> 00:08:46,800
+then we can even discover the original structure
+which is a straight line from 1 to 5.
+
+119
+00:08:47,360 --> 00:08:53,280
+So i ran something to save logs of each journey 
+on a line for a few months by scraping TrackerNet  
+
+120
+00:08:53,280 --> 00:08:56,640
+as we've discussed before you take the 
+departure boards at various stations and  
+
+121
+00:08:56,640 --> 00:09:00,960
+sort of note it all down and combine it together 
+and then extract all the track codes from each  
+
+122
+00:09:00,960 --> 00:09:06,720
+train in our journey log and link them together 
+based on observation order. In simpler terms,  
+
+123
+00:09:06,720 --> 00:09:11,440
+track code links go into our mythical 
+graph-o-matic and out we get a graph - remember  
+
+124
+00:09:11,440 --> 00:09:15,920
+the fancy computer science version of the graph 
+not the sort of x and y-axis thing, hopefully.
+
+125
+00:09:15,920 --> 00:09:18,240
+So we run it, and we get something like this.
+
+126
+00:09:19,680 --> 00:09:24,160
+Now i don't know about you, but at least to 
+me that this does not look like a tube line  
+
+127
+00:09:24,720 --> 00:09:28,400
+at all. I appreciate that very little 
+of what I'm going to present to you is  
+
+128
+00:09:28,400 --> 00:09:32,640
+going to look like a tube line in a way that 
+you can empathise with, but this isn't it. 
+
+129
+00:09:32,640 --> 00:09:34,720
+This, this is no good.
+We can zoom in  
+
+130
+00:09:35,360 --> 00:09:40,000
+and you can kind of see the mess maybe up close. 
+It has linked together some of these track codes  
+
+131
+00:09:40,000 --> 00:09:44,560
+in a vaguely sensible way. Like, yeah, I guess 
+Paddington is after "approaching Paddington".  
+
+132
+00:09:44,560 --> 00:09:47,599
+But the structure is like horrifically 
+messy. You can't really get much out of it.
+
+133
+00:09:48,560 --> 00:09:51,599
+So yeah it turns out the data quality 
+isn't high enough for you to just  
+
+134
+00:09:51,600 --> 00:09:54,800
+log data and link it together. We 
+do need to be a bit more clever.
+
+135
+00:09:55,920 --> 00:09:59,360
+Now, why does this happen? Well there are lots of 
+issues, but there's one of them that the District  
+
+136
+00:09:59,360 --> 00:10:05,920
+Line specifically really loves doing. So we have 
+a train with a given ID here, red, going along its  
+
+137
+00:10:05,920 --> 00:10:11,040
+merry journey, you know, doing train things.
+dum-de-dum everything's normal
+
+138
+00:10:12,080 --> 00:10:16,720
+It suddenly disappears for a few scrapes and 
+then we mysteriously get another train under  
+
+139
+00:10:16,720 --> 00:10:21,600
+a new identifier conspicuously just where the 
+red train would have been, had it continued.
+
+140
+00:10:22,800 --> 00:10:26,640
+I can only assume this is just the same train 
+and TrackerNet isn't actually good at keeping  
+
+141
+00:10:26,640 --> 00:10:31,840
+track of things, despite its name. Trains don't 
+just appear out of thin air? question marks?
+
+142
+00:10:32,800 --> 00:10:37,120
+And by the way, this probably explains why my 
+experience was so bad with the District Line.  
+
+143
+00:10:37,120 --> 00:10:40,960
+The underlying signalling system turns out 
+to be very disjointed and patchy. This has  
+
+144
+00:10:40,960 --> 00:10:46,560
+now changed by the way, ask me about that later. 
+But yeah there is actually some data issue here,  
+
+145
+00:10:47,280 --> 00:10:51,760
+so this isn't really as simple as i thought. 
+We're going to need slightly better quality data  
+
+146
+00:10:52,560 --> 00:10:54,800
+to feed into our mythical graph-o-matic blob.
+
+147
+00:10:55,360 --> 00:10:59,280
+So one thing we can do - if you read the 
+TrackerNet documentation everywhere it  
+
+148
+00:10:59,280 --> 00:11:03,600
+claims that data is cached in the Microsoft 
+CDN for 30 seconds. You only get a new  
+
+149
+00:11:03,600 --> 00:11:08,320
+departure board every 30 seconds. You look at 
+the TfL open data guide, definitely 30 seconds.
+
+150
+00:11:09,680 --> 00:11:13,839
+Now with the previous information i've given you, 
+can you guess how frequently the feed updates?
+
+151
+00:11:17,520 --> 00:11:22,480
+No, it's two to three seconds. It looks 
+like that layer of caching has been removed 
+
+152
+00:11:22,480 --> 00:11:26,000
+I have no idea whether this is accidental 
+or deliberate. If it's accidental,  
+
+153
+00:11:26,000 --> 00:11:29,920
+TfL if you're watching this, this is 
+really useful please don't remove this  
+
+154
+00:11:29,920 --> 00:11:32,560
+functionality because my entire 
+website kind of depends on it..
+
+155
+00:11:34,000 --> 00:11:38,880
+But there's a problem here because I don't think 
+they know? Like, if you ask them "how frequently  
+
+156
+00:11:38,880 --> 00:11:42,720
+can I hammer your API with requests?" they go 
+"oh well that only updates every 30 seconds,  
+
+157
+00:11:42,720 --> 00:11:44,880
+why would you want to hammer it frequently?"
+and i'm like "uhhhh"
+
+158
+00:11:46,480 --> 00:11:51,200
+So, in their terms of service it says you should 
+limit yourself to 300 requests per minute so I'm  
+
+159
+00:11:51,840 --> 00:11:54,640
+just going to limit myself to 300 requests 
+per minute and hope no-one notices.
+
+160
+00:11:56,320 --> 00:12:00,400
+So yeah, scraping more frequently we can make 
+our track code links a little bit better.  
+
+161
+00:12:00,400 --> 00:12:03,920
+We get more links and the links we get are 
+also more accurate - more on that in a bit.
+
+162
+00:12:05,040 --> 00:12:08,560
+But also we can keep a count of how 
+many times we saw a given pair of track  
+
+163
+00:12:08,560 --> 00:12:12,800
+codes come after one another, and feed that 
+information into our graph-o-matic as well 
+
+164
+00:12:13,360 --> 00:12:16,160
+so basically you can we can 
+exclude links that look like they  
+
+165
+00:12:16,720 --> 00:12:19,840
+don't really happen very often and are 
+likely due to some sort of data issue
+
+166
+00:12:20,480 --> 00:12:24,160
+I won't go into the exact details, mostly 
+for time reasons, and this wasn't really  
+
+167
+00:12:24,160 --> 00:12:28,079
+what I ended up using in the end but it's a 
+bunch of statistics like quartiles and stuff.  
+
+168
+00:12:29,040 --> 00:12:33,520
+And so with this information we can make 
+a hopefully improved graph-o-matic 2.0  
+
+169
+00:12:33,520 --> 00:12:38,319
+that maybe will give us better graphs and so we 
+feed this new information in and we get this.
+
+170
+00:12:40,000 --> 00:12:44,960
+Now this might not look like it, but this does 
+look like a tube line. If you don't believe me  
+
+171
+00:12:44,960 --> 00:12:49,280
+here is a nice pretty annotated version that you 
+might not be able to see. But you can kind of  
+
+172
+00:12:49,280 --> 00:12:54,240
+see on the left hand side there's the eastbound 
+leg and then it comes back up with a westbound  
+
+173
+00:12:54,240 --> 00:12:58,320
+leg. You can see it's kind of figured out you can 
+turn around at Tower Hill, Barking, and Upminster. 
+
+174
+00:12:58,320 --> 00:13:01,200
+There's Earl's Court which is a 
+mess, but it's a mess in real life. 
+
+175
+00:13:01,200 --> 00:13:04,800
+There's Edgware Road, Ealing Broadway, 
+Richmond, you know, surprisingly good!
+
+176
+00:13:04,800 --> 00:13:08,479
+If you zoom in, some parts are 
+perfect - this is a straight  
+
+177
+00:13:08,480 --> 00:13:11,440
+line between Acton Town and Chiswick 
+Park which is how it actually looks.  
+
+178
+00:13:12,720 --> 00:13:16,160
+It's kind of cool how, zooming in, you can see 
+it's kind of figured out some stuff on its own.  
+
+179
+00:13:16,720 --> 00:13:19,600
+If you looked at the tube map you might not 
+think that trains can reverse at Tower Hill,  
+
+180
+00:13:19,600 --> 00:13:23,600
+but they can and it has managed to figure this 
+out. Because you can go from between Monument and  
+
+181
+00:13:23,600 --> 00:13:27,920
+Tower Hill, to reversing in platform 2, to between 
+Tower Hill and Monument - that's kind of cool.
+
+182
+00:13:28,800 --> 00:13:32,800
+But, it's not all great. This was Temple, 
+Mansion House, etc etc - before they  
+
+183
+00:13:32,800 --> 00:13:36,240
+upgraded the signalling system, mind - 
+and it is a bit of a jumbled mess still.
+
+184
+00:13:37,360 --> 00:13:41,360
+This bit might look fine but there's 
+a more insidious kind of problem here  
+
+185
+00:13:41,360 --> 00:13:44,160
+really there should be a straight line 
+between Tower Hill and Aldgate East,  
+
+186
+00:13:44,160 --> 00:13:48,079
+but it's not. It's pointing in the vaguely right 
+direction, but if you were to use some of those  
+
+187
+00:13:48,080 --> 00:13:51,520
+graph algorithm stuff that I sort of 
+discussed earlier you would probably  
+
+188
+00:13:51,520 --> 00:13:54,560
+just go and miss out a whole bunch of 
+track codes which is not really great.
+
+189
+00:13:55,760 --> 00:13:59,680
+So, in summary, our graph is nice to look 
+at and it has broadly the correct structure  
+
+190
+00:13:59,680 --> 00:14:03,680
+but it's not really the quality we need to make 
+a lot of decisions. It still doesn't faithfully  
+
+191
+00:14:03,680 --> 00:14:07,839
+represent the actual order of the track 
+codes, there are extra links about the place  
+
+192
+00:14:07,840 --> 00:14:11,520
+and the extra links mean we can't really 
+use this for routing between two stations.
+
+193
+00:14:12,960 --> 00:14:17,200
+So if you kind of think about why this happens, 
+it's somewhat of a fundamental problem with the  
+
+194
+00:14:17,200 --> 00:14:21,520
+way this works. We are pulling the departure 
+boards every few seconds - currently every  
+
+195
+00:14:21,520 --> 00:14:27,920
+11 seconds for complicated reasons - but 
+because we're not getting every single  
+
+196
+00:14:27,920 --> 00:14:32,319
+movement we're always going to catch the 
+train at sort of snapshots of where it is.  
+
+197
+00:14:32,320 --> 00:14:36,480
+So if the green train moves - well both of these 
+trains move from A to E and stop at every station,  
+
+198
+00:14:36,480 --> 00:14:40,640
+we might only get a snapshot of like A 
+and then "between B and C" and then "at D"  
+
+199
+00:14:41,200 --> 00:14:46,880
+or like "between A and B" and then "C and D" 
+and then E because we're taking snapshots so  
+
+200
+00:14:47,840 --> 00:14:51,040
+if you try and build a graph out of this 
+information we get something jumbled like  
+
+201
+00:14:51,040 --> 00:14:55,280
+so on the right, even though it's supposed to 
+look like what's on the left - a straight line,  
+
+202
+00:14:55,280 --> 00:14:58,800
+you end up with these piecemeal links 
+we get from only polling every now and  
+
+203
+00:14:58,800 --> 00:15:02,400
+then we don't observe every movement and 
+so end up with a jumbled mess of links.
+
+204
+00:15:03,280 --> 00:15:07,760
+So, i looked around for things that might 
+help here. You know, I don't have a degree  
+
+205
+00:15:07,760 --> 00:15:12,720
+so Wikipedia it is. And it turns out this 
+is a problem other people have had. There's  
+
+206
+00:15:12,720 --> 00:15:16,960
+this thing you can do called topological sorting 
+which is basically saying "okay, i have a graph,  
+
+207
+00:15:16,960 --> 00:15:21,840
+let's find a way to list it such that, if A 
+is linked to B then we put A before B in this  
+
+208
+00:15:21,840 --> 00:15:25,680
+list that we're going to make." You can see some 
+examples here on the left - these are both valid  
+
+209
+00:15:25,680 --> 00:15:30,560
+sorts of the graph on the right, hopefull. And you 
+can see, for example, the blue sets of links A, C,  
+
+210
+00:15:30,560 --> 00:15:35,040
+E: A comes before C, C comes before E. Same 
+with the green thing, B comes before E, etc, etc
+
+211
+00:15:35,600 --> 00:15:39,840
+So this is kind of useful right? And there's an 
+algorithm for doing this called Khan's Algorithm.  
+
+212
+00:15:40,640 --> 00:15:43,120
+You can just copy it down and implement 
+it, that's not very interesting.
+
+213
+00:15:43,920 --> 00:15:47,839
+So this is pretty useful - if we know a specific 
+bit of the graph is supposed to be straight,  
+
+214
+00:15:47,840 --> 00:15:52,240
+we can use topological sorting to straighten 
+it out. So for example, station platforms are  
+
+215
+00:15:52,240 --> 00:15:56,240
+generally known as being straight lines. If your 
+station platform splits into two midway through,  
+
+216
+00:15:56,240 --> 00:16:00,560
+you might be in for a fun ride.
+So if we take Tottenham Court  
+
+217
+00:16:00,560 --> 00:16:05,520
+Road platform 3 on the Northern Line and 
+the set of data i collected for this, uh,  
+
+218
+00:16:05,520 --> 00:16:11,199
+well first of all we run into a problem 
+immediately because we have cycles. A cycle means  
+
+219
+00:16:12,080 --> 00:16:16,080
+you can go from A and find a path that goes all 
+the way back to A. So if you've got A linked to B  
+
+220
+00:16:16,080 --> 00:16:20,480
+and B linked to A, you can't really sort that 
+- you can't really have both of those things.  
+
+221
+00:16:21,200 --> 00:16:25,520
+So we need to get rid of the cycles somehow.
+If we go back to our original graph-o-matic  
+
+222
+00:16:25,520 --> 00:16:28,960
+and the data sources we use for that, there's 
+something that could come in handy here. We can  
+
+223
+00:16:28,960 --> 00:16:33,280
+add the number of times we saw each link to 
+our graph and then it kind of becomes clear  
+
+224
+00:16:33,280 --> 00:16:40,560
+which ones we should break. So for example going 
+from TN30061 to the one ending in 63, it goes  
+
+225
+00:16:41,120 --> 00:16:46,960
+in that direction 3066 times we saw that 
+happen, and the inverse direction we saw once,  
+
+226
+00:16:46,960 --> 00:16:50,480
+so I think it is safe to assume here that 
+the one is probably bollocks. And in fact  
+
+227
+00:16:51,360 --> 00:16:55,120
+you can basically make an algorithm that does this 
+and it's like okay well this is a really small one  
+
+228
+00:16:55,120 --> 00:16:59,600
+so let's just get rid of those and see whether 
+we can we can sort it then, and yes you can.
+
+229
+00:16:59,600 --> 00:17:02,560
+So you remove all the links that look 
+like they probably shouldn't exist,  
+
+230
+00:17:02,560 --> 00:17:05,919
+and then you sort it and you get 
+a straight line which is good 
+
+231
+00:17:07,359 --> 00:17:10,639
+so our topological sorting works if we 
+know something should be straight we  
+
+232
+00:17:10,640 --> 00:17:13,840
+can straighten it out, so how do we 
+actually use this to fix our graph?
+
+233
+00:17:15,040 --> 00:17:18,879
+Well, one way that we might do this, that 
+I had an idea for goes something like this: 
+
+234
+00:17:18,880 --> 00:17:21,599
+first we find something to group 
+together bits of track with - like  
+
+235
+00:17:21,599 --> 00:17:24,240
+we need some way to identify bits 
+that should be straight lines,  
+
+236
+00:17:24,240 --> 00:17:27,280
+and then we can turn the bits that should 
+be straight lines into straight lines,  
+
+237
+00:17:27,280 --> 00:17:31,360
+and then link together the groups. And 
+what do i mean by link together the groups? 
+
+238
+00:17:31,360 --> 00:17:35,840
+Well, if we have a graph containing two separate 
+groups, say a bit that's a platform and a bit  
+
+239
+00:17:35,840 --> 00:17:40,320
+that's immediately after the platform, we know 
+that it shouldn't be possible to teleport from  
+
+240
+00:17:40,320 --> 00:17:45,360
+midway through the platform to midway through 
+after platform. You know, generally laws of  
+
+241
+00:17:45,360 --> 00:17:50,080
+physics, so what we can do is we can take all the 
+links between those two groups and just collapse  
+
+242
+00:17:50,080 --> 00:17:55,439
+them into a link between the last item of the 
+first group to the first item of the second group 
+
+243
+00:17:56,560 --> 00:18:00,720
+So we can link together groups and topologically 
+sort. The question remains as to what we should  
+
+244
+00:18:00,720 --> 00:18:06,880
+choose to group by. Well, I was like "okay we 
+could just use the English language descriptions  
+
+245
+00:18:06,880 --> 00:18:11,200
+for now." They have a whole bunch of issues that I 
+laid out earlier but you know, let's give it a go.  
+
+246
+00:18:11,200 --> 00:18:14,560
+You end up with a graph that looks 
+like this. This is the Northern Line.  
+
+247
+00:18:14,560 --> 00:18:20,800
+This is vaguely the right shape...ish...kind of. 
+It's not really that usable - it's very bunched up  
+
+248
+00:18:20,800 --> 00:18:26,639
+in the centre for one. This is the Victoria 
+Line...uh well, maybe...which does an even  
+
+249
+00:18:26,640 --> 00:18:30,560
+better job of showing off what the problem is.
+It's vaguely a circle? Yeah i mean it makes  
+
+250
+00:18:30,560 --> 00:18:36,399
+sense but there's rather too many errors. 
+Everything's a bit bunched up. If we change  
+
+251
+00:18:36,400 --> 00:18:39,760
+our visualisation software to sort of undo 
+the bunching of it, so we can actually read  
+
+252
+00:18:39,760 --> 00:18:44,240
+the text and zoom in, we can see the problem. 
+The descriptions are too broad, as i said. 
+
+253
+00:18:44,240 --> 00:18:47,920
+Seven Sisters has two platforms going two 
+different directions but they're bunched up  
+
+254
+00:18:47,920 --> 00:18:52,560
+into one big "at Seven Sisters" blob for both 
+directions and the same for many other things 
+
+255
+00:18:52,560 --> 00:18:56,560
+So yeah the vague descriptions are kind of 
+hurting us here as you could probably have guessed  
+
+256
+00:18:56,560 --> 00:19:00,159
+they're not the best grouping - quality varies 
+between lines but we're always going to have this  
+
+257
+00:19:00,160 --> 00:19:04,400
+problem with the English language descriptions, 
+so we need to do something different. Solution  
+
+258
+00:19:04,400 --> 00:19:08,240
+is thankfully rather simple, you just split 
+each description into its subgraphs first 
+
+259
+00:19:08,240 --> 00:19:13,280
+So if you say you have this description called 
+"description" you can kind of visualise it,  
+
+260
+00:19:13,280 --> 00:19:16,800
+and you can write some code to do this as well 
+and be like "oh there's actually two separate  
+
+261
+00:19:16,800 --> 00:19:21,120
+graphs inside this, let me just split that up 
+into two separate groupings" and i'm going to  
+
+262
+00:19:21,120 --> 00:19:24,560
+label the first one slash A and slash B and 
+you'll see that in the visualisations later 
+
+263
+00:19:25,280 --> 00:19:28,800
+So, yeah, we can take the English language 
+descriptions but split them up first,  
+
+264
+00:19:29,440 --> 00:19:32,640
+run the same algorithm, and we 
+get this for the Northern Line 
+
+265
+00:19:33,280 --> 00:19:36,800
+This is already a lot better than what we had 
+previously, you can see the graph is mostly  
+
+266
+00:19:36,800 --> 00:19:40,480
+straight lines that only connect to each other 
+at junctions instead of a big bunched up mess 
+
+267
+00:19:41,760 --> 00:19:44,400
+Let's take a closer look at some parts 
+of this to examine the quality again.  
+
+268
+00:19:45,520 --> 00:19:52,800
+Some parts this are beautifully straight, as 
+before. This is mostly good. You can see - you  
+
+269
+00:19:52,800 --> 00:19:57,919
+probably can't see in fact - but at the bottom 
+we've got "approaching South Wimbledon slash A"  
+
+270
+00:19:59,040 --> 00:20:02,560
+so it's identified that they're two bits 
+of track that are called "approaching  
+
+271
+00:20:02,560 --> 00:20:05,760
+South Wimbledon" probably for the two different 
+platforms, and split it up into two different  
+
+272
+00:20:05,760 --> 00:20:10,240
+sections as it should be, so that's good.
+We also have a lot of intermediate blobs,  
+
+273
+00:20:10,240 --> 00:20:14,480
+so for example between Tooting Broadway and 
+Collier's Wood we have "between Tooting Broadway  
+
+274
+00:20:14,480 --> 00:20:18,640
+and Collier's Wood" and "approaching Collier's 
+Wood" - we don't really need that level of detail,  
+
+275
+00:20:18,640 --> 00:20:22,400
+they're just it's just the bits between those two 
+stations. It would be nice to group that together. 
+
+276
+00:20:23,280 --> 00:20:28,320
+Looking at another part of the graph, this is 
+also mostly straight but there is a small issue.  
+
+277
+00:20:29,360 --> 00:20:33,199
+Stockwell and Clapham North are next to 
+each other and there is no junction there,  
+
+278
+00:20:33,200 --> 00:20:37,120
+but somehow it thinks there are multiple ways 
+to get between these two stations. This is not  
+
+279
+00:20:37,120 --> 00:20:42,320
+correct. So in summary the strategy produces 
+pretty nice graphs. In general our strategies  
+
+280
+00:20:42,320 --> 00:20:46,720
+seem to be making things incrementally a bit nicer 
+and cleaner which is, you know, good. Motivating. 
+
+281
+00:20:47,360 --> 00:20:51,840
+There are still problems though, we have too 
+many blobs now - we have to combine them,  
+
+282
+00:20:51,840 --> 00:20:59,760
+and we also have to deal with the multiple paths 
+problem. And actually the "I have multiple ways  
+
+283
+00:20:59,760 --> 00:21:03,200
+to get between these things when there shouldn't 
+be" problem is actually somewhat familiar. This  
+
+284
+00:21:03,200 --> 00:21:06,640
+is the same problem we had earlier with the 
+track codes with a very similar solution.  
+
+285
+00:21:06,640 --> 00:21:09,840
+So here's a sort of slightly crazy 
+thing i came up with to deal with this.
+
+286
+00:21:11,040 --> 00:21:15,840
+So we want to simplify paths between stations. 
+We start by looking at each station in turn  
+
+287
+00:21:15,840 --> 00:21:20,560
+and finding all the paths from that station 
+that end in other stations - here in red. We  
+
+288
+00:21:20,560 --> 00:21:24,320
+consider each path in turn so i'm just going to 
+take this red blob and examine it separately,  
+
+289
+00:21:25,040 --> 00:21:30,560
+and looking at each path - and this is just 
+the red bit - we take all the blobs between the  
+
+290
+00:21:30,560 --> 00:21:35,760
+start and end station blobs and just smush them 
+into one new blob, replicating that whole path.  
+
+291
+00:21:36,400 --> 00:21:39,120
+Now you might think, well there what if there 
+are a lot of them and then what if they're linked  
+
+292
+00:21:39,120 --> 00:21:44,239
+together? This is where we use the topological 
+sorting - we topologically sort the removed blobs  
+
+293
+00:21:44,240 --> 00:21:48,640
+and links and then shove all of their track 
+codes in that sorted order into the new one.  
+
+294
+00:21:49,280 --> 00:21:53,440
+This wasn't a problem in the previous graph, just 
+to make things simple, but it happens in real  
+
+295
+00:21:53,440 --> 00:21:59,040
+world ones so it's nice to have that in there. But 
+basically after applying this process we can go  
+
+296
+00:21:59,040 --> 00:22:05,280
+from a graph like this for the paths between A and 
+B and C, to one like this where the intermediate  
+
+297
+00:22:05,280 --> 00:22:08,879
+nodes represent paths between stations in 
+a much more useful and interpretable way.
+
+298
+00:22:09,600 --> 00:22:14,959
+So we can add "run the graph through our freaky 
+topo sorting machine" to our strategy and rerun  
+
+299
+00:22:14,960 --> 00:22:19,920
+the graph generator one more time and we get out 
+something that actually looks pretty great. This  
+
+300
+00:22:19,920 --> 00:22:25,520
+is the Northern Line again. If we zoom in a bit, 
+we can see that actually this has done a pretty  
+
+301
+00:22:25,520 --> 00:22:31,680
+good job at representing the line faithfully. The 
+intermediate blobs have been have been made from  
+
+302
+00:22:31,680 --> 00:22:36,960
+collapsing things nicely. The green arrows here 
+you can see we've got "inter2835" between Angel  
+
+303
+00:22:36,960 --> 00:22:42,320
+and Kings Cross, and 2842 between Euston 
+and Mornington Crescent. You might think  
+
+304
+00:22:42,320 --> 00:22:46,000
+well there's that pink blob in the centre 
+that looks looks complicated and ugly,  
+
+305
+00:22:46,000 --> 00:22:51,280
+but no actually, this is the the Camden Town 
+junction tunnels. This is actually really  
+
+306
+00:22:51,280 --> 00:22:56,720
+complicated in real life. So actually i think it's 
+pretty cool that it's managed to figure that out  
+
+307
+00:22:56,720 --> 00:23:00,800
+in a way that it can actually use to make 
+decisions without me having to tell it that,  
+
+308
+00:23:00,800 --> 00:23:03,919
+and without me necessarily knowing that 
+this was the thing that existed underground. 
+
+309
+00:23:05,040 --> 00:23:09,200
+So yeah, we've managed to go from just 
+making observations about trains from  
+
+310
+00:23:09,200 --> 00:23:13,760
+scraping the API and noting down everything, to 
+having a mostly complete model of the network with  
+
+311
+00:23:13,760 --> 00:23:18,560
+tricky junctions and everything represented pretty 
+well without having to input any of this manually.  
+
+312
+00:23:18,560 --> 00:23:22,639
+I for one think it's pretty cool that you can 
+just write some code to figure all this out. 
+
+313
+00:23:23,760 --> 00:23:30,000
+And that's pretty cool but it's not all roses. The 
+District Line is still an ongoing issue. We can do  
+
+314
+00:23:30,000 --> 00:23:34,560
+this for all lines except the District and other 
+subsurface lines but the District is really quite  
+
+315
+00:23:34,560 --> 00:23:39,760
+bad. If we try and run our new funky algorithm 
+through that, we get a bit of an ugly mess. 
+
+316
+00:23:41,280 --> 00:23:45,760
+This is not very usable. It probably can 
+be fixed eventually, I just need to do a  
+
+317
+00:23:45,760 --> 00:23:49,840
+bunch more thinking but it's more work 
+that I haven't gotten around to yet. 
+
+318
+00:23:49,840 --> 00:23:52,560
+Talking of stuff that is more work 
+that i haven't gotten around to yet,  
+
+319
+00:23:52,560 --> 00:23:56,560
+the scraping stuff is kind of not great. It 
+would be nice to be able to pull a bit more  
+
+320
+00:23:56,560 --> 00:24:00,320
+frequently than 11 seconds but i have to do 
+a whole bunch of other stuff to enable that,  
+
+321
+00:24:00,320 --> 00:24:04,159
+and there are a whole bunch of other data 
+quality issues like the train destination  
+
+322
+00:24:04,160 --> 00:24:09,200
+that's shown on the website often flaps back and 
+forth which isn't great. It's just a lot of time  
+
+323
+00:24:09,200 --> 00:24:14,320
+and effort to track these down and squash them, I 
+have a day job, this is not what i do full-time,  
+
+324
+00:24:14,320 --> 00:24:20,399
+I don't necessarily always have time and effort. 
+But, this has been packaged up into a nice lovely  
+
+325
+00:24:20,400 --> 00:24:24,560
+website which you can use on your phones which 
+is actually mobile responsive, and on desktop.  
+
+326
+00:24:25,440 --> 00:24:29,600
+You can click on each individual line - if it's 
+not the District Line that is - and you can get  
+
+327
+00:24:29,600 --> 00:24:35,280
+a nice display of the line and all the trains 
+on it which is kind of cool in many different  
+
+328
+00:24:35,280 --> 00:24:40,480
+directions. You can click on each individual train 
+and you get this history of where exactly it has  
+
+329
+00:24:40,480 --> 00:24:45,840
+been, how long it has been there for, and it even 
+updates live with websockets which is pretty cool.
+
+330
+00:24:46,800 --> 00:24:51,120
+Some brief notes on what this is actually built 
+in: the backend and frontend are both written  
+
+331
+00:24:51,120 --> 00:24:55,360
+in common lisp, which is a strange weird esoteric 
+programming language that I actually quite like.  
+
+332
+00:24:55,360 --> 00:25:00,639
+All the live data gets stored in Redis and 
+historical data is archived both on disk and  
+
+333
+00:25:00,640 --> 00:25:04,640
+in ClickHouse more recently. The main goal is, 
+this is something i'm working on in my free time,  
+
+334
+00:25:05,680 --> 00:25:11,680
+make it easy to hack on it without much faff. If 
+you like diagrams, here is a diagram of intertube.  
+
+335
+00:25:11,680 --> 00:25:16,080
+We're getting data from TrackerNet, there is a 
+service called the intertube-scraper that does a  
+
+336
+00:25:16,080 --> 00:25:20,560
+lot of the processing and modeling and stuff, and 
+stores all of its stuff in ClickHouse and Redis  
+
+337
+00:25:20,560 --> 00:25:25,280
+and intertube-web can read out of that to display 
+it to users. There are a bunch of things i still  
+
+338
+00:25:25,280 --> 00:25:32,639
+want to do with this - one idea I had was, you 
+know how TfL gave like "minor delays" - or maybe  
+
+339
+00:25:32,640 --> 00:25:37,440
+you don't - TfL give updates on the state of the 
+lines like "minor delays," "severe delays," etc,  
+
+340
+00:25:37,440 --> 00:25:41,200
+but this is all manually input it would be nice 
+if you can actually - I've got a whole bunch of  
+
+341
+00:25:41,200 --> 00:25:45,280
+historical data, you could figure out the average 
+running time at a particular time of day and then  
+
+342
+00:25:45,280 --> 00:25:49,200
+compare it to that, to figure out whether it's 
+actually delayed. Actually some other people had  
+
+343
+00:25:49,200 --> 00:25:52,880
+this idea and they beat me to it and i'm really 
+mad. But I'll get around to it at some point.
+
+344
+00:25:54,400 --> 00:25:58,880
+In general, it would be nice to do a whole bunch 
+more stuff with the historical data that i have,  
+
+345
+00:26:00,080 --> 00:26:02,960
+like maybe rewinding the whole web 
+page to an arbitrary point in time.  
+
+346
+00:26:03,680 --> 00:26:07,440
+I'd like to build maybe some sort of funky live 
+map visualisation of trains moving around the  
+
+347
+00:26:07,440 --> 00:26:11,360
+network. I know there already are funky live 
+map visualisations of trains moving around  
+
+348
+00:26:11,360 --> 00:26:15,120
+the network but those are mostly lying, and 
+being like "well it said it would arrive in  
+
+349
+00:26:15,120 --> 00:26:18,000
+two minutes so it's probably gonna arrive 
+in two minutes." I have the actual data. I  
+
+350
+00:26:18,000 --> 00:26:20,560
+could build on this more reliable, and 
+there's a whole bunch of other stuff.
+
+351
+00:26:21,440 --> 00:26:26,160
+Talking of having actual data - do you want 
+this? I have months of tube data. Quality  
+
+352
+00:26:26,160 --> 00:26:31,200
+cannot be guaranteed, but if you want to run some 
+sort of cool analysis on historical tube journeys  
+
+353
+00:26:31,200 --> 00:26:35,680
+please do get in touch. I'm more than willing 
+to give this to you. I also have a private beta  
+
+354
+00:26:35,680 --> 00:26:40,160
+realtime API that is much easier to use and 
+hopefully much more cromulent than TrackerNet,  
+
+355
+00:26:40,160 --> 00:26:42,800
+mostly because a friend of mine 
+was like "hey i really want your  
+
+356
+00:26:42,800 --> 00:26:45,280
+data can you build like an api for 
+it?" and i was like "yeah sure." 
+
+357
+00:26:45,280 --> 00:26:50,160
+So yeah, get in touch! So that is 
+basically it. Thanks for listening,  
+
+358
+00:26:50,160 --> 00:26:53,200
+hope you found that interesting and feel free 
+to try it out on your phone or whatever. And  
+
+359
+00:26:53,200 --> 00:27:05,520
+If you want my data please feel free to find 
+me afterwards or contact me using the link.
+

@@ -1,0 +1,2290 @@
+﻿00:00:00.601-->00:00:05.606
+>> Uh, without further adieu,
+please help me welcome James and
+Georgi. [applause] >> Cool. Uh,
+
+00:00:09.910-->00:00:15.515
+thanks everyone, um so I'm James
+and this is Georgi and alright
+let's get started. Uh, so quick
+
+00:00:15.515-->00:00:19.720
+agenda and so we're gonna run
+through our motivation for
+writing a kernel fuzzer. Uh,
+
+00:00:19.720-->00:00:25.158
+we'll go over our architecture.
+Um, some caveats to be aware of
+if you're doing your own kernel
+
+00:00:25.158-->00:00:29.997
+fuzzing. Uh, we'll run through
+Windows as a case study, plus
+the other operating systems
+
+00:00:29.997-->00:00:35.669
+we've looked at. Uh, we'll run
+the results we've got and what
+we're looking to do over the
+
+00:00:35.669-->00:00:41.141
+next few months. So motivation.
+Um, typically now we're
+sandboxing, uh, current exploits
+
+00:00:41.141-->00:00:45.279
+are becoming more of a
+necessity. And it's quite hard
+to break out of sandboxing
+
+00:00:45.279-->00:00:47.915
+environments, particularly if
+you're looking at things like
+chrome. So if you look at the
+
+00:00:47.915-->00:00:52.819
+last Pwn2Own wins over the last
+few years they all used kernel
+exploits to break out the
+
+00:00:52.819-->00:00:58.225
+sandbox process. Uh, so yeah,
+kernel exploits, pretty
+important now a days. Uh, For
+
+00:00:58.225-->00:01:03.096
+things like priv esc. Um, also
+at NWR, we have a bit of a
+friendly internal competition
+
+00:01:03.096-->00:01:07.668
+going on, uh, so Neal's
+presented on his version of his
+Windows kernel fuzzing at T2,
+
+00:01:07.668-->00:01:12.940
+um, obviously we're trying to
+beat the number of bugs we, uh,
+he had but he got with his
+
+00:01:12.940-->00:01:19.212
+version. Um, but obviously we're
+primarily here to try and prove
+general parent system security.
+
+00:01:19.212-->00:01:25.619
+Uh initially and most of our
+research has been focused on
+Windows. Uh, Windows 7, uh, but
+
+00:01:25.619-->00:01:31.224
+we've actually ported the fuzzer
+to run on OSx and QNX. Uh and
+we're looking to start running
+
+00:01:31.224-->00:01:36.730
+it properly over the next few
+months and trying to find some
+bugs in those OS's as well. So,
+
+00:01:36.730-->00:01:41.969
+how hard can it be? If you look
+over at Twitter, it would appear
+everyone has WIN2k oday and and
+
+00:01:41.969-->00:01:46.974
+so do we and so about a month
+ago, uh, we did a run and purely
+a test run to make sure the fuzz
+
+00:01:50.410-->00:01:55.415
+was pretty stable, so as you can
+see, 16 VMs just 48 AS, we got
+65 crashes, 13 of those unique.
+
+00:01:57.417-->00:02:03.423
+Which, yeah, I didn't think was
+too bad. 13 node days in Win7
+ok, cool. Um, as it turns out
+
+00:02:03.423-->00:02:07.060
+though we weren't being
+particularly effective with our
+fuzzings, so for those that
+
+00:02:07.060-->00:02:11.999
+don't know, there's a number of
+syscalls in Win7 that simply
+just sleeps for all intents and
+
+00:02:11.999-->00:02:17.771
+purposes. So we got the one net
+NT delay execution. So we manage
+to find that one black list that
+
+00:02:17.771-->00:02:22.676
+can actually surprise surprise,
+the fuzzer was a lot more
+effective. And so we we ran it
+
+00:02:22.676-->00:02:26.279
+again last week, we haven't
+triaged through the crashes,
+which is why we've not, uh,
+
+00:02:26.279-->00:02:31.952
+spread them in the slides, but
+we ended up with around 150
+crashes and 40 of those were
+
+00:02:31.952-->00:02:36.256
+unique. Um, in the end,
+actually, uh, we we crashed our
+database, we were pushing at
+
+00:02:36.256-->00:02:41.261
+least uh uh crashes too cause it
+ran out of space. But, so that's
+seems pretty cool. Uh, we are
+
+00:02:43.997-->00:02:50.170
+gonna release the framework for
+the fuzzer. Um, so, the core
+will be released, but we're not
+
+00:02:50.170-->00:02:55.175
+going to release any OS specific
+stuff. Uh, but throughout the
+talk, we're gonna go through how
+
+00:02:55.175-->00:02:59.479
+you would write the O- OS
+specific stuff and give you some
+examples you can go away and
+
+00:02:59.479-->00:03:04.851
+fuzz OS's yourself. Um, it's
+worth bearing mind when you look
+at the code, that we're hackers,
+
+00:03:04.851-->00:03:10.691
+not developers, it's pretty
+dirty in places, so yeah, bare
+that in mind. Our sort of test
+
+00:03:10.691-->00:03:15.695
+is does it compile, great, it
+probably works then. So, the
+architecture, um, everything is
+
+00:03:19.433-->00:03:23.503
+nicely decoupled. So you've got
+in there the center the
+framework for, which basically
+
+00:03:23.503-->00:03:28.709
+is what runs everything on the
+outside there, uh, which is the
+OS specific stuff. Uh,
+
+00:03:28.709-->00:03:33.780
+originally we delved this up
+here in Python, but we've
+completely re-written it in C.
+
+00:03:33.780-->00:03:39.719
+Uh, it's much more efficient,
+significantly faster and seems
+to be finding a lot more bugs
+
+00:03:39.719-->00:03:45.625
+for us. So. So the first part is
+the OS API knowledge base, uh
+all this is is the OS specific
+
+00:03:45.625-->00:03:50.430
+API that is used by applications
+to interface through services
+provided by the OS. So this is
+
+00:03:50.430-->00:03:56.269
+the things delves do to you
+know, do things with graphics or
+interact with devices or do
+
+00:03:56.269-->00:04:01.208
+networking etc etc. And many of
+these were app system calls and
+we'll provide examples of how
+
+00:04:03.810-->00:04:08.815
+we've delved these uh for
+Windows and OSx and later on in
+the talk, um, but we won't be
+
+00:04:11.351-->00:04:17.257
+releasing all of our runs. The
+next part. The next major part,
+the OS specific stuff. Is the
+
+00:04:17.257-->00:04:20.894
+system calls. So system calls
+are a low level method for
+userspace to kernel space
+
+00:04:20.894-->00:04:25.432
+communications. Uh, these have
+to be implemented per
+architecture in operating
+
+00:04:25.432-->00:04:30.604
+system. So that's fine for open
+source systems, like you know
+OSx or many Unix based systems
+
+00:04:30.604-->00:04:34.875
+tend to be open source. But
+Windows it's a little bit more
+difficult, you have to reverse
+
+00:04:34.875-->00:04:40.547
+engineer these ones out. Or Or
+rely on other, uh, sources,
+maybe ReactOS or something like
+
+00:04:40.547-->00:04:45.085
+that. Uh, at the bottom there
+you can see what our SYScall
+code looks like in turn to the
+
+00:04:45.085-->00:04:50.824
+fuzzer, so we just have SYScall
+ID at the arguments for that
+SYScall and just the return
+
+00:04:50.824-->00:04:57.764
+dates type if it, if the SYScall
+provides a, uh a return. Also we
+have a number of uh fuzzed
+
+00:04:57.764-->00:05:03.603
+values um so there you can just
+see the the fuzz values you can
+grab internally from from the
+
+00:05:03.603-->00:05:09.409
+fuzzer. (5:00) Um we use the
+word fuzzed but what we we don't
+necessarily mean fuzzed actually
+
+00:05:09.409-->00:05:14.481
+um so really we actually want
+the library calls and SYScalls
+to work uh and to get these to
+
+00:05:14.481-->00:05:18.985
+work we actually have to use the
+term proper values so WASP will
+occasional return a properly
+
+00:05:18.985-->00:05:25.091
+fuzzed value most of the time
+you'll return a normal value
+they're going to ensure that the
+
+00:05:25.091-->00:05:30.096
+library call and SYScall works
+um yeah so next part is the
+object store um the object store
+
+00:05:32.299-->00:05:37.737
+is used to maintain state across
+the fuzzing run uh and it stores
+OS-specific objects of interest
+
+00:05:37.737-->00:05:43.577
+so currently this is handles in
+Windows and file descriptors
+index systems uh it's
+
+00:05:43.577-->00:05:49.482
+implemented as just a global
+array of structures. Um it's
+deterministically populated by a
+
+00:05:49.482-->00:05:53.787
+fuzzer and this is quite
+important for when we want to
+reproduce crashes if this wasn't
+
+00:05:53.787-->00:05:58.058
+deterministic then obviously
+we'd just never be able to
+reproduce any crashes we found
+
+00:05:58.058-->00:06:02.996
+uh it's it's quite easy to
+retrieve, update, and insert new
+objects into object store okay
+
+00:06:05.398-->00:06:11.271
+uh the next bit is the helper
+functions um so helper functions
+we use these for things like
+
+00:06:11.271-->00:06:16.276
+library calls require struct
+work in pretty much the same way
+as a grabbing a fuzzed uh value
+
+00:06:18.478-->00:06:22.182
+so if you want to call for a
+struct for a library call, you
+make the call to the helper
+
+00:06:22.182-->00:06:27.187
+function, and it will return you
+a struct that should be oh
+should work fine in the library
+
+00:06:30.123-->00:06:35.729
+call. So logging um this is
+actually quite difficult in
+kernel fuzzing when you keep
+
+00:06:35.729-->00:06:40.934
+getting crashes um so initially
+we didn't have high hopes for
+the fuzzer uh so all we did was
+
+00:06:40.934-->00:06:46.873
+look build the PRNG seed um as
+you might guess as a fuzzer we
+make heavy use of the rand
+
+00:06:46.873-->00:06:51.878
+function so if we can just see
+this again we'll always get uh
+uh uh a same run again which
+
+00:06:51.878-->00:06:56.182
+makes reproducing quite easy.
+Bit of an issue though is it
+doesn't generate a stand alone
+
+00:06:56.182-->00:07:01.554
+test page which is ultimately
+where we want to get to. Um so
+what we've moved on to doing is
+
+00:07:01.554-->00:07:06.726
+logging C statements so our log
+files are actually complete
+source files uh and all we do is
+
+00:07:06.726-->00:07:13.099
+copy and paste these into a
+template there are some issues
+with this um so occasionally uh
+
+00:07:13.099-->00:07:18.171
+if we get a BSOD we'll find that
+actually the OS hasn't flushed
+the uh the right to the file
+
+00:07:18.171-->00:07:23.944
+before it's BSODded in the
+windows instance uh so we miss
+out on that save the last call.
+
+00:07:23.944-->00:07:28.815
+Uh as a work around what we're
+doing is we're usually able to
+grab the stack trace and the
+
+00:07:28.815-->00:07:33.853
+arguments and everything else
+and figure out what it was doing
+uh what we're looking towards
+
+00:07:33.853-->00:07:38.224
+doing in the future as well is
+maybe using something like
+logging over a socket or
+
+00:07:38.224-->00:07:45.198
+something like that which we're
+hoping will work a little bit
+better. As you might guess this
+
+00:07:45.198-->00:07:51.471
+is incredibly tedious um so this
+is an example of our logging
+from a library call uh what we
+
+00:07:51.471-->00:07:58.144
+do is we grab a uh a variable ID
+to tag on to the end of the
+variable um and then we assign
+
+00:07:58.144-->00:08:02.649
+that variable and call a
+function uh as you can see at
+the bottom um we logged the
+
+00:08:02.649-->00:08:07.287
+function call before calling in
+the function in the father the
+fuzzer to try to and uh ensure
+
+00:08:07.287-->00:08:12.292
+that we log the crash before it
+actually crashes. So crash
+detection um there's actually
+
+00:08:14.661-->00:08:18.832
+two methods we tried with this
+so the first way we tried was
+just attaching a kernel debugger
+
+00:08:18.832-->00:08:24.070
+while we were executing the
+fuzzer uh obviously requires one
+or more debugger processes which
+
+00:08:24.070-->00:08:30.143
+slows execution so you can
+either have uh on the host
+debugging the VM or VM debugging
+
+00:08:30.143-->00:08:36.549
+another VM uh but the plus point
+is we instantly analyze any
+crashes we find. The other
+
+00:08:36.549-->00:08:40.754
+option is unattended execution
+which is what we're working on
+at the moment uh and this is
+
+00:08:40.754-->00:08:46.493
+just the OS handle the crash on
+it's own um much faster
+execution and we can run more
+
+00:08:46.493-->00:08:52.399
+VMs as well and we have less uh
+wasted CPUs on calls. Um we
+recover and analyze the crashes
+
+00:08:52.399-->00:08:57.203
+uh upon reboot. Another way
+we've been looking at it
+actually is um using call file
+
+00:08:57.203-->00:09:02.642
+as a log so for example VMware
+will actually log when a ca-
+when a a host has crashed and
+
+00:09:02.642-->00:09:07.280
+there's some information in
+there that is actually quite
+useful. So this is the way the
+
+00:09:07.280-->00:09:12.018
+logging uh the crash detection
+sorry works um when we reboot
+the box the first thing we will
+
+00:09:12.018-->00:09:16.389
+do is try and search for a
+memory dump files uh this is
+quite specific to Windows um if
+
+00:09:16.389-->00:09:20.894
+we find a memory dump file we'll
+match that up with a log file so
+there should only be one log
+
+00:09:20.894-->00:09:26.533
+file on the disk which is the
+one that caused the crash um if
+we get that memory dump file
+
+00:09:26.533-->00:09:31.938
+what we do at the moment is uh
+under win-bang bang analyze and
+just grab those uh details out
+
+00:09:31.938-->00:09:36.943
+and then the three of them we
+timestamp and just archive them
+all off. So we've got a number
+
+00:09:39.712-->00:09:44.384
+of VMs so our ultimate goal is
+to run this across hundreds of
+VMs is we need some form of like
+
+00:09:44.384-->00:09:50.156
+of the fuzzer's fuzzer to push
+this into a central database um
+so those three files I just
+
+00:09:50.156-->00:09:55.395
+described are actually pushed
+into a couchDB database so we
+just have sign AWS Uh this is
+
+00:09:55.395-->00:09:59.532
+really useful for us because it
+means we can actually do
+deduplication across all the VMs
+
+00:09:59.532-->00:10:04.370
+so all we do is hash just that
+um if we've seen that uh hash
+before we just drop the files
+
+00:10:04.370-->00:10:09.542
+and increment a counter if we
+haven't then we push the files
+up into a couchdb. That also
+
+00:10:09.542-->00:10:14.447
+means we can do us some other
+categorization stuff so doing
+stuff like type of AV, Faulting
+
+00:10:14.447-->00:10:19.452
+IP, bug check ID, eccetera.
+Closer to the mic, okay Okay so
+that's the overall architecture
+
+00:10:33.433-->00:10:38.438
+for the fuzzer uh [long pause]
+oh [long pause] uh right yes so
+that was the overall
+
+00:10:49.182-->00:10:53.887
+architecture so this is what a
+fuzzing one looks like um the
+first thing we do is we have a
+
+00:10:53.887-->00:10:58.858
+little bootstrap uh script that
+we run to prepare a VM for
+fuzzing uh it's just a really
+
+00:10:58.858-->00:11:03.263
+simple Python script and it
+stores everything that's
+required um and just fine tunes
+
+00:11:03.263-->00:11:08.434
+the system um so we'll go
+through what the Windows one of
+that looks like later on in the
+
+00:11:08.434-->00:11:13.373
+talk. Um we then launch a second
+Python script which is a wrap
+around the core fuzzer but what
+
+00:11:13.373-->00:11:17.710
+that one does is go in, collects
+the memory dumps uh and submits
+it to the page the scripts finds
+
+00:11:17.710-->00:11:22.715
+and then eccetera eccetera as I
+just said. We then launch the
+fuzzer binary um and the first
+
+00:11:25.084-->00:11:30.223
+thing we do is populate that
+object store um so we generate a
+bunch of valid handles or file
+
+00:11:30.223-->00:11:35.228
+descriptors that we can then use
+for library and system calls
+straightaway. Uh okay so then
+
+00:11:38.364-->00:11:42.802
+for predefined number of
+iterations, we pick up either a
+library or system call uh so
+
+00:11:42.802-->00:11:47.607
+we'll go away figure out what
+the arguments are and then grab
+either the fuzzed value, fuzz
+
+00:11:47.607-->00:11:52.178
+structs, or an object from the
+object store uh and then we
+invoke that call, we check to
+
+00:11:52.178-->00:11:56.382
+make sure it's succeeded and if
+it gives us uh a value back
+that's useful later on, we'll
+
+00:11:56.382-->00:12:00.086
+pop that back into the object
+store so you know library calls
+or system calls may return a
+
+00:12:00.086-->00:12:04.190
+handle or or or a file
+descriptor or something similar
+and we want to keep hold of that
+
+00:12:04.190-->00:12:10.830
+value and use it uh later on. Uh
+at the end if we didn't get
+crash uh all we do is just clean
+
+00:12:10.830-->00:12:14.767
+up all our temporary files,
+remove the logs, and just try
+and revert back to a clean
+
+00:12:14.767-->00:12:20.306
+state, now currently all we do
+is reboot the box. So this
+should mostly give us uh a clean
+
+00:12:20.306-->00:12:24.310
+state to work from for the next
+fuzzing run uh obviously we
+can't even start the fuzzer
+
+00:12:24.310-->00:12:28.548
+again because if we have done
+something in a previous fuzzer
+run that we haven't logged it's
+
+00:12:28.548-->00:12:34.988
+impossible to reproduce that
+test crash and test crash uh and
+it's useless to ask. We're
+
+00:12:34.988-->00:12:40.026
+actually also looking at how we
+can possibly revert back to a a
+VM snapshot as this will
+
+00:12:40.026-->00:12:46.733
+guarantee a clean slate to start
+from. A few caveats to be aware
+of uh if you're going to take
+
+00:12:46.733-->00:12:50.603
+this framework and use it
+yourselves uh we found a number
+of bug eh bugs in the
+
+00:12:50.603-->00:12:56.409
+hypervisors um which has meant
+we haven't pu- placed this up in
+the cloud, I'm pretty sure
+
+00:12:56.409-->00:13:01.280
+people at Amazon will get really
+annoyed with us if we start
+crashing their hypervisors uh so
+
+00:13:01.280-->00:13:06.586
+what we're looking at doing is
+running it under GMU which is a
+bit of an inception which should
+
+00:13:06.586-->00:13:11.691
+hopefully work um we also need
+to look into things like we're
+also looking into things on how
+
+00:13:11.691-->00:13:15.662
+to protect the fuzzer from
+itself. So on a number of
+occasions somehow the fuzzer is
+
+00:13:15.662-->00:13:22.669
+managed to get a handle to
+itself and kill itself which is
+kind of irritating [laughter] um
+
+00:13:22.669-->00:13:29.409
+so what we're trying to move on
+to is a method of how we monitor
+the host that's fuzzing uh
+
+00:13:29.409-->00:13:34.180
+monitor the guest sorry from the
+host so if the fuzzer's killed
+itself or we've you know hit
+
+00:13:34.180-->00:13:39.819
+another sleep or done something
+else stupid, we can detect that
+and then ki- uh start the fuzzer
+
+00:13:39.819-->00:13:44.824
+off again. Cool uh so I'm
+actually going to hand it over
+to Georgi who's going to go
+
+00:13:51.030-->00:13:56.035
+through uh Windows case study.
+>>Um so [applause] Uh as James
+already mentioned we initially
+
+00:13:58.571-->00:14:02.675
+started with the idea of
+developing windows kernel fuzzer
+uh and this actually remained
+
+00:14:02.675-->00:14:09.315
+our focus despite of repurposing
+the fuzzer for uh OS signals
+cooperation so the second half
+
+00:14:09.315-->00:14:14.987
+of the talk is dedicated on um
+getting the fuzzer working
+efficiently on windows and
+
+00:14:14.987-->00:14:19.325
+basically writing all of these
+custom modules for Windows
+operating systems. So all of
+
+00:14:19.325-->00:14:25.465
+these operating system tweaks
+and object store um
+implementation details uh that
+
+00:14:25.465-->00:14:29.769
+you need to consider when you
+take the framework and you want
+to basically use it for fuzzing
+
+00:14:29.769-->00:14:36.409
+windows. I'll be going through
+several examples um for each one
+of these uh bullet ah points so
+
+00:14:36.409-->00:14:42.749
+basically examples on uh how we
+implemented uh our object store,
+some examples on what uh our
+
+00:14:42.749-->00:14:48.221
+collection of system calls uh
+looks like in Windows and
+basically some examples on uh
+
+00:14:48.221-->00:14:53.459
+the wrappers for the library
+calls that we have developed Um
+I'll be ending this with
+
+00:14:53.459-->00:14:58.898
+basically what's the process of
+bootstrapping the windows VM um
+before we actually start
+
+00:14:58.898-->00:15:04.270
+fuzzing. So the attack surface
+we decided to focus on is uh the
+WIN32K system pretty uh pretty
+
+00:15:04.270-->00:15:09.275
+well known uh attack surface uh
+in in Windows operations system
+ah the st- the subsystem
+
+00:15:11.344-->00:15:16.816
+implements uh many free
+components uh the windows
+manager responsible for uh
+
+00:15:16.816-->00:15:23.456
+desktops windows, menus,
+toolbars, but general we use the
+interface element and the uh
+
+00:15:23.456-->00:15:28.995
+graphic device interface is also
+known as GDI which is in charge
+of uh visualization on the
+
+00:15:28.995-->00:15:35.134
+screen, changing colors, and uh
+basically just general graphics,
+um WIN32K dot SYS also
+
+00:15:35.134-->00:15:41.107
+implements um some wrappers for
+directx calls and this is not
+something we have looked at um
+
+00:15:41.107-->00:15:46.445
+until now and this isn't
+probably not something we'll
+consider in the future um there
+
+00:15:46.445-->00:15:51.450
+is counter components in user
+land in terms of uh user mode
+libraries um a bunch of DLLs um
+
+00:15:53.719-->00:15:58.624
+provide it for application
+developers to actually ah
+interface with the sub system so
+
+00:15:58.624-->00:16:03.796
+uh if you're an application
+develope- developer you wouldn't
+uh issue a SYSCALL to the WIN32K
+
+00:16:03.796-->00:16:08.668
+dot SYS kernel mode driver you
+would be going on ISDN and
+looking at how you interface
+
+00:16:08.668-->00:16:12.939
+with this kernel mode driver
+using some library calls that
+we'll eventually wrap uh into
+
+00:16:12.939-->00:16:17.944
+into a system call Um in the
+windows operating system uh an
+object is basically a data
+
+00:16:20.947-->00:16:26.586
+structure representing some sort
+of uh system resource and this
+can be anything from uh file
+
+00:16:26.586-->00:16:31.591
+process window um menu eccetera
+um there is roughly three types
+main types of objects in the
+
+00:16:35.328-->00:16:41.667
+windows operating system, user
+objects, GDI objects, and kernel
+objects, user objects are uh
+
+00:16:41.667-->00:16:47.273
+implemented to support the
+window manager uh obviously GDI
+objects implement it to um
+
+00:16:47.273-->00:16:52.078
+basically manage the graphic
+device interface and kernel
+objects kernel objects are
+
+00:16:52.078-->00:16:57.316
+basically there to implement
+basic operations in the uh
+kernel space it just process
+
+00:16:57.316-->00:17:02.255
+management memory management um
+ICP communication eccetera um.
+One important thing to uh
+
+00:17:04.457-->00:17:09.328
+realize when we talk about
+object is that when an
+application uh wants to
+
+00:17:09.328-->00:17:15.635
+manipulate an object uh when an
+application wants to access an
+object it needs to acquire a
+
+00:17:15.635-->00:17:21.774
+handle to that object so um if
+you want to do something with
+any of the system resources you
+
+00:17:21.774-->00:17:26.812
+need a handle to each one of
+them in order to basically
+interface with them. Um and this
+
+00:17:26.812-->00:17:31.817
+is how uh handles are defined
+object handles are uh defined in
+the uh windows SDK on a really
+
+00:17:34.253-->00:17:40.526
+really low level um they're just
+basically void point as managed
+by the operating system now the
+
+00:17:40.526-->00:17:44.697
+implementation details are
+hidden from the application
+developer and the application
+
+00:17:44.697-->00:17:49.368
+developer shouldn't really care
+about how these handles are
+implemented and this is just
+
+00:17:49.368-->00:17:56.042
+here for um for a reference um
+furthermore numerous aliases
+aliases defined for um more or
+
+00:17:56.042-->00:18:02.048
+less any system resource
+available on the operating
+system so um this is a snippet
+
+00:18:02.048-->00:18:07.320
+from uh WinNT.h uh metafile from
+the windows STK where a bunch of
+these declarations es-
+
+00:18:07.320-->00:18:13.492
+declarations actually happen um
+there is declarations for a
+handle for a handle to uh to a
+
+00:18:13.492-->00:18:19.632
+window declaration for a handle
+to a bitmap etcetera so each one
+of these system resources will
+
+00:18:19.632-->00:18:26.606
+have a sort of specific uh
+handle um associated uh handle
+type associated with it. Um so
+
+00:18:26.606-->00:18:33.145
+knowing and realizing how
+fundamental um object handles
+are in uh in the windows world
+
+00:18:33.145-->00:18:38.985
+it comes as no surprise that we
+actually decided to preserve
+object handles in our uh object
+
+00:18:38.985-->00:18:45.791
+store um the object store
+implementation itself is um
+really straightforward at the
+
+00:18:45.791-->00:18:51.297
+moment it's just a a globally
+accessible array of hundred
+twenty elements where we just
+
+00:18:51.297-->00:18:58.137
+preserve a bunch of handles to
+uh numerous system resources um
+handles are retrieved uh from
+
+00:18:58.137-->00:19:03.209
+base um object store when we
+need uh handle to be passed as
+an argument or system or library
+
+00:19:03.209-->00:19:08.647
+call and ensure the system or
+library library call returns
+successfully and how to handle
+
+00:19:08.647-->00:19:13.653
+we can see there uh this handle
+uh and we push it back to the
+object store. Sorry um if we
+
+00:19:18.891-->00:19:24.397
+start running out of um let's
+say uh space in our object store
+um in in this case it's a fixed
+
+00:19:24.397-->00:19:28.701
+value of hundred and twenty
+eight let's say we start running
+out of um slots in this array we
+
+00:19:28.701-->00:19:33.873
+basically start overwriting some
+of the handles um um from the
+object store we basically throw
+
+00:19:33.873-->00:19:39.945
+out the oldest handles and we
+repopulate the object store with
+some new ones. Um one more thing
+
+00:19:39.945-->00:19:44.950
+uh to um basically uh note is
+the BH Handle struct, uh the BH
+Handle struct is our internal
+
+00:19:47.453-->00:19:52.458
+representation of uh of a handle
+um it has two fields um which is
+the handle itself um as well as
+
+00:19:55.828-->00:20:00.833
+um the index of the handle in
+the object store so handles will
+be changing values um per run um
+
+00:20:04.236-->00:20:09.475
+so basically if we drop a handle
+to a a particular window in one
+run this handle will have one
+
+00:20:09.475-->00:20:15.948
+value if we drop the if we drop
+a handle to a a se- an identical
+window in a second run this
+
+00:20:15.948-->00:20:21.787
+handle will have a different
+value so how we drop the same
+value twice while basically
+
+00:20:21.787-->00:20:28.060
+referring to the handle not by
+it's value but by it's index in
+the in the object store. [cough]
+
+00:20:28.060-->00:20:34.667
+excuse me. Um we have
+implemented a number of
+functions to interface with uh
+
+00:20:34.667-->00:20:39.939
+with the object store I'm
+talking about um the first one
+is basically there to bootstrap
+
+00:20:39.939-->00:20:44.043
+the object store, uh populate
+the object store with some
+handles before we even start
+
+00:20:44.043-->00:20:49.482
+fuzzing so we can actually use
+some handles as arguments for
+library and system calls and the
+
+00:20:49.482-->00:20:55.087
+second one is uh the function
+getrandom handle this function
+will basically look up the store
+
+00:20:55.087-->00:21:00.826
+and randomly pick up a handle
+from it and it will then drop
+the handle in a BH handle struct
+
+00:21:00.826-->00:21:06.432
+uh which uh helps us
+successfully log the location of
+the handle in the object store
+
+00:21:06.432-->00:21:11.770
+when we uh issue logging
+statement. Um we have another
+function for querying the uh
+
+00:21:11.770-->00:21:16.976
+object store, this one is
+getspecific handle, uh this one
+takes one argument which is
+
+00:21:16.976-->00:21:21.680
+basically the index of the
+handle we want to extract uh
+retrieve from the from the
+
+00:21:21.680-->00:21:27.186
+object store um we also have a
+function for uh inserting
+handles back to the object store
+
+00:21:27.186-->00:21:32.691
+again should the library call
+return successfully a handle
+we'll just push it back to the
+
+00:21:32.691-->00:21:38.130
+object store um for populating
+the knowledge base of system
+calls well basically for the
+
+00:21:38.130-->00:21:43.169
+majority of them we had to
+reverse engineer them um we
+started with uh mainly system
+
+00:21:43.169-->00:21:49.808
+calls implemented in in the
+WIN32K sub system um but um
+there's one thing when I say
+
+00:21:49.808-->00:21:55.648
+reverse engineering I don't
+really mean reversing the logic
+of the system call itself or how
+
+00:21:55.648-->00:22:00.152
+the system call is implemented
+[inaudible] the only details
+we're interested in are
+
+00:22:00.152-->00:22:06.559
+basically the system call ID, uh
+the number of arguments for the
+system call a and a data type
+
+00:22:06.559-->00:22:12.198
+for each one of these arguments
+um optionally again uh the
+return type for for the system
+
+00:22:12.198-->00:22:18.003
+call um so for the majority of
+the system calls you'll have to
+do some reverse engineering for
+
+00:22:18.003-->00:22:24.910
+some of them you may also refer
+to ReactOS um but um this is not
+necessarily identical to the
+
+00:22:24.910-->00:22:30.749
+Windows revision you're working
+on. Um to implement the Syscall
+implication itself we had to
+
+00:22:30.749-->00:22:37.389
+write some assembly snippets and
+these are um specific to both
+the operating system and the and
+
+00:22:37.389-->00:22:42.328
+the architecture a little bit
+more about the assembly snippets
+in uh in just a second. Uh this
+
+00:22:42.328-->00:22:47.333
+is what um uh an extract from uh
+our collection of system call
+looks like um James already
+
+00:22:49.935-->00:22:56.008
+mentioned uh what a system what
+our internal uh representation
+of a system call looks like, the
+
+00:22:56.008-->00:23:02.114
+syscall struct um the syscall
+struct has got uh three fields
+the first one is the system call
+
+00:23:02.114-->00:23:07.753
+ID, the second one is an array
+of uh data types for each one of
+the arguments consumed by the
+
+00:23:07.753-->00:23:12.691
+system call and the third and
+optional field is basically
+whatever the system call
+
+00:23:12.691-->00:23:17.696
+returns, any data type we may be
+potentially interested in. Um
+the system call invocation again
+
+00:23:19.865-->00:23:25.771
+is um implemented per
+architecture and per operating
+system uh we have what we call
+
+00:23:25.771-->00:23:31.510
+system call invocation template
+um the proper type for the
+template is the same across the
+
+00:23:31.510-->00:23:36.515
+architectures um and this is the
+cork uh with the name
+bughunt_SYSCALL uh this
+
+00:23:38.651-->00:23:45.024
+function, this template function
+takes, 33 arguments at the
+moment uh the first one being
+
+00:23:45.024-->00:23:51.430
+the syscall ID and the second
+basically the rest of these 32
+arguments are uh arguments for
+
+00:23:51.430-->00:23:58.237
+the system call itself. Now
+obviously not every system call
+would be taking 32 arguments or
+
+00:23:58.237-->00:24:03.208
+I don't even know if there's any
+system calls taking 32 arguments
+at all but the reason we gave a
+
+00:24:03.208-->00:24:09.081
+fixed number of arguments is
+because we didn't want to um
+implement function with a
+
+00:24:09.081-->00:24:14.186
+variable number of arguments a
+sort of print test lifestyle. So
+what we do at the moment is we
+
+00:24:14.186-->00:24:19.091
+uh set the system call ID as the
+first argument for this uh
+function but we uh populate the
+
+00:24:19.091-->00:24:23.929
+first argument um with the
+actual data that should be
+passed to the system call and we
+
+00:24:23.929-->00:24:30.235
+just pad the rest of the 32 uh
+arguments with some dummy data
+and then bughunt_syscall is in
+
+00:24:30.235-->00:24:36.075
+charge of um setting the
+registers for the invocation of
+the system call um pushing the
+
+00:24:36.075-->00:24:41.313
+pushing each one of these 32
+arguments on the stack and then
+um making transition in
+
+00:24:41.313-->00:24:46.518
+kerneling, um once we are in
+kerneling the system call is in
+charge of basically dispatching
+
+00:24:46.518-->00:24:50.889
+the request, uh taking care of
+each one and processing each one
+of the arguments that are
+
+00:24:50.889-->00:24:55.627
+actually expected by the system
+call uh the system call will
+then simply ignore uh the rest
+
+00:24:55.627-->00:24:59.965
+of the 32 arguments on the
+stack, the system call will
+eventually return back to the
+
+00:24:59.965-->00:25:04.136
+bughunt_syscall wrapper,
+bughunt_syscall wrapper will
+clean up the stack and return to
+
+00:25:04.136-->00:25:09.141
+the main fuzzing. Um this is
+just a general reminder on how
+system call invocation works on
+
+00:25:11.677-->00:25:18.083
+windows uh for x86 platforms we
+have um arguments pushed on the
+stack in a reverse order we have
+
+00:25:18.083-->00:25:24.356
+EAX set to the system call ID
+and uh then a call is made to
+the Kifast system call function
+
+00:25:24.356-->00:25:30.062
+and now there is a caveat this
+is basically until this is the
+case until windows seven uh
+
+00:25:30.062-->00:25:34.833
+which is the operating system we
+have been we have been mostly
+focused on um I think in windows
+
+00:25:34.833-->00:25:39.838
+eight and win10 uh the Kifast
+system call has been basically
+in line in the code. For x64 um
+
+00:25:42.408-->00:25:49.381
+the first four arguments are set
+in registers uh these are RCX,
+RDX, R8 and R9 uh if there's any
+
+00:25:49.381-->00:25:54.720
+additional arguments they're
+pushed on the stack then RAX is
+set to the system call ID and uh
+
+00:25:54.720-->00:25:59.725
+the the CP instructions syscall
+is made to uh basically uh force
+transitioning to go on space. Um
+
+00:26:02.428-->00:26:07.433
+so much for uh system calls now
+um several um examples on how to
+implement the os API knowledge
+
+00:26:10.502-->00:26:15.874
+base um the OS API knowledge
+base, the information that we
+need for it is um publically
+
+00:26:15.874-->00:26:20.946
+available on MSDN um this is
+bas- these are basically the
+library calls that again
+
+00:26:20.946-->00:26:25.984
+application developers are
+expected to be using um when
+making uh request with the
+
+00:26:25.984-->00:26:30.989
+operating system um the uh
+objects uh the um OS API calls
+knowledge base is uh implemented
+
+00:26:33.826-->00:26:39.798
+as um one huge array of function
+pointers to each one of the
+library call wrappers that we
+
+00:26:39.798-->00:26:45.471
+have implemented um I think
+until a few days ago we had
+about five hundred library call
+
+00:26:45.471-->00:26:51.009
+wrappers so basically five
+hundred functions from uh GDI
+thirty to lock DLL uh user
+
+00:26:51.009-->00:26:56.014
+32.DLL and some other user mode
+components um as you can imagine
+this is a really tedious process
+
+00:26:59.117-->00:27:05.624
+of implementing wrappers for
+each one of these uh we looked
+at automating this by basically
+
+00:27:05.624-->00:27:11.330
+crawling MSDN, collecting
+function prototypes, and uh
+turning these prototypes into
+
+00:27:11.330-->00:27:15.801
+library call wrappers in uh more
+or less automated way but
+unfortunately we failed
+
+00:27:15.801-->00:27:19.771
+miserably with that and we're
+looking forward to basically
+improving our approach but at
+
+00:27:19.771-->00:27:26.311
+the moment again each one of
+these are ah implemented um
+strictly manually. Um this is um
+
+00:27:26.311-->00:27:31.316
+I'm going to give a few examples
+now, this is the uh destroycaret
+function from MSDN this function
+
+00:27:34.486-->00:27:40.125
+takes no arguments and returns
+uh boolean value uh and the
+wrapper for this call is really
+
+00:27:40.125-->00:27:45.130
+simple really straightforward um
+basically we look at the um the
+call that we're about to make
+
+00:27:47.366-->00:27:52.170
+and we make the actual call
+that's that's literally it so in
+the log file we basically end up
+
+00:27:52.170-->00:27:56.975
+with the exactly same uh C
+statement that we're making in
+uh in our fuzzer. Ah something a
+
+00:27:56.975-->00:27:58.977
+bit more interesting is uh the
+following one destroycursor um
+on the top you have the
+
+00:27:58.977-->00:28:00.913
+prototype from MSDN, this one
+takes a single argument, this
+argument is um basically a
+
+00:28:00.913-->00:28:04.449
+handle to a cursor object um and
+this function returns a boolean
+again so uh what we're doing now
+
+00:28:04.449-->00:28:09.454
+wrapper and we declare it the
+handle uh but not as a handle as
+a we declare it as a BH Handle
+
+00:28:16.194-->00:28:21.199
+struct that wraps the handle
+itself as well as the index um
+we generate a unique global
+
+00:28:26.505-->00:28:31.510
+unique variable ID that will be
+appended to the variable name
+when we uh make a logging
+
+00:28:36.815-->00:28:43.522
+statement um we then load the
+declaration for the handle and
+while appending the uh variable
+
+00:28:43.522-->00:28:49.928
+ID to the end of the uh name of
+the function we proceed by uh
+grabbing a random handle from
+
+00:28:49.928-->00:28:53.732
+the object store and assigning
+it to the uh handle that we're
+going to pass through the
+
+00:28:53.732-->00:28:58.737
+library call function ah then we
+log the handle uh but um we log
+the handle by it's index rather
+
+00:29:00.839-->00:29:07.846
+than by uh by it's uh actual
+value uh and James mentioned
+this but the object store at any
+
+00:29:07.846-->00:29:14.586
+point of the fuzz around is
+populated in uh deterministic
+way at least in theory so um if
+
+00:29:14.586-->00:29:19.591
+we're up to a point where we
+know the object store has
+certain handles we can um refer
+
+00:29:21.927-->00:29:25.397
+to these each one of these
+handles by it's index and it
+should be the case of getting
+
+00:29:25.397-->00:29:30.402
+the same handles that we got the
+last time we run with the same
+seed. Um so uh we uh the last
+
+00:29:32.537-->00:29:37.909
+thing we do is basically log the
+final uh call that we're about
+to make this is the actual call
+
+00:29:37.909-->00:29:44.483
+the the actual library call um
+and uh yeah we log this with the
+um uh with the respective
+
+00:29:44.483-->00:29:50.022
+variables and while again
+appending the variable ID at the
+end of them um and then again
+
+00:29:50.022-->00:29:56.695
+the last the last thing here is
+just simply make the call. Um
+something a bit more interesting
+
+00:29:56.695-->00:30:02.000
+so for example this um example
+demonstrating how to use the
+helper functions uh the helper
+
+00:30:02.000-->00:30:07.005
+functions are um uh functions uh
+that will generate a vali-
+struct a windows speci- windows
+
+00:30:10.208-->00:30:15.280
+specific struct that is uh
+consumed by a library or a
+system call um uh and I'll be
+
+00:30:15.280-->00:30:20.686
+talking about the help functions
+in just a bit. Um but basically
+this is a function taking two
+
+00:30:20.686-->00:30:25.691
+arguments, a handle to a device
+context and a colorref uh
+windows type um so um we start
+
+00:30:28.994-->00:30:34.099
+with this same thing again, with
+declaring variables we're going
+to use uh within the wrapper, we
+
+00:30:34.099-->00:30:40.372
+generate the variable ID, again
+this will be globally unique
+across the run, um we um log the
+
+00:30:40.372-->00:30:46.712
+handle, um again notice that we
+log the handle as a handle not
+as a BH handle, um we basically
+
+00:30:46.712-->00:30:53.085
+hide the implementation details
+for BH handle when it comes to
+the retributer test case um we
+
+00:30:53.085-->00:30:58.590
+um drop a random handle assign
+it to our to our variable ah the
+last the next thing is log the
+
+00:30:58.590-->00:31:02.327
+handle by it's index and the
+next thing is the interesting
+bit where we actually make a
+
+00:31:02.327-->00:31:07.566
+call to a helper function ah
+this one is get colorref and it
+each one of the helper functions
+
+00:31:07.566-->00:31:13.038
+takes a single argument which is
+the variable ID and so get
+colorref will uh basically hide
+
+00:31:13.038-->00:31:18.744
+the details for us but it will
+populate uh with mostly valid
+data it can this struct that can
+
+00:31:18.744-->00:31:24.883
+later from be used by uh by our
+library call um and again the
+last thing is log the statement
+
+00:31:24.883-->00:31:31.556
+log the uh call that we're about
+to make and make the actual call
+Um and now a a bit more about
+
+00:31:31.556-->00:31:38.230
+the help functions um there is
+just a endless number of ah
+custom struct in the windows
+
+00:31:38.230-->00:31:44.636
+operating system and they're
+expected by a number of library
+calls and system calls um and
+
+00:31:44.636-->00:31:49.207
+this is where the helper
+functions come uh basically for
+each one of these well obviously
+
+00:31:49.207-->00:31:53.445
+we can not implement for each
+one of them but for the most
+common ones consumed by the
+
+00:31:53.445-->00:31:58.850
+Win32K um system and library
+calls we have implemented helper
+functions so basically we have
+
+00:31:58.850-->00:32:03.789
+helper functions for um
+returning rectangles, points,
+sizes, uh windows eccetera. Um
+
+00:32:06.057-->00:32:08.860
+and again um this these are
+mostly valid and they shouldn't
+really be uh way too uh
+
+00:32:08.860-->00:32:10.862
+malformed. Um at the bottom of
+the slide you can basically see
+a snippet from the list of
+
+00:32:10.862-->00:32:12.864
+helper functions we have
+implemented um again the helper
+function will return a valid
+
+00:32:12.864-->00:32:14.866
+struct uh the naming convention
+is get underscore name for the
+help uh for the um for the
+
+00:32:14.866-->00:32:19.871
+struct and the single argument
+that will be consumed is the
+globally unique variable ID. Um
+
+00:32:35.520-->00:32:40.625
+this one is really um obvious
+and really easy to implement
+because it this is just typedef
+
+00:32:40.625-->00:32:46.097
+WORD in in Windows and so
+basically we start by uh
+declaring uh the colorref
+
+00:32:46.097-->00:32:52.604
+variable uh we uh log the
+declaration by appending the
+variable ID to the name of the
+
+00:32:52.604-->00:32:57.075
+variable uh we initialize the
+variable by calling get
+underscore fuzzed underscore
+
+00:32:57.075-->00:33:03.782
+unit 32 this will basically grab
+uh uh an an unsigned integer
+from the first value ah store
+
+00:33:03.782-->00:33:09.955
+assign it to CR and then we log
+this value as it was assigned
+and return the ah the struct to
+
+00:33:09.955-->00:33:16.862
+the caller which will be then
+passing the struct to the
+library call. Um something a bit
+
+00:33:16.862-->00:33:23.835
+more interesting so for example
+this one is help function for
+returning a rectangle, rectangle
+
+00:33:23.835-->00:33:30.575
+is a struct with four fields
+each one of them of type long so
+what we do is basically pretty
+
+00:33:30.575-->00:33:35.213
+much the same apart from
+initializing each one of the
+fields separately and for each
+
+00:33:35.213-->00:33:40.218
+one of these initializations we
+uh look in our log file. Um case
+study um uh fuzzing the Windows
+
+00:33:43.889-->00:33:49.861
+uh VM what do we need to do in
+order to basically get a a a
+decent a VM a basi- the VM in a
+
+00:33:49.861-->00:33:56.434
+decent state for our fuzzer to
+run o- uh in um in in an optimal
+way um we start by installing
+
+00:33:56.434-->00:34:02.874
+Python 3.5 and then we have a
+bootstrap script that will set
+up the VM and do some general OS
+
+00:34:02.874-->00:34:08.280
+tweaks um this includes
+installing win debugger, uh
+installing the Python module for
+
+00:34:08.280-->00:34:12.984
+CouchDB communication in order
+to submit our crasher to the
+centralized database, um it
+
+00:34:12.984-->00:34:18.790
+performs some minor uh tweaks in
+the registry including disabling
+error reporting, disabling
+
+00:34:18.790-->00:34:24.362
+updates, eccetera, uh we enable
+a kernel memory dumps basically
+this is where we get the
+
+00:34:24.362-->00:34:30.368
+information about the crash um
+uh we enable special pool for
+the module uh that we're uh
+
+00:34:30.368-->00:34:35.507
+fuzzing for the kernel uh mount
+driver that we're fuzzing which
+in this case is WIN32k.SYS a
+
+00:34:35.507-->00:34:40.512
+special pool is basically the
+equivalent of batch heap in in
+kernel land and uh special pool
+
+00:34:40.512-->00:34:45.984
+will make it a lot easier to
+detect uh use after free vulns
+that will free uh and some
+
+00:34:45.984-->00:34:50.889
+general pool corruptions as
+well. So it's very important to
+enable this. Um and the last
+
+00:34:50.889-->00:34:55.260
+thing and obvious thing is to
+schedule the fuzzer control
+script to start on logon um and
+
+00:34:55.260-->00:35:01.066
+um reboot the system upon
+rebooting the system uh the
+fuzzer kicks in the first thing
+
+00:35:01.066-->00:35:08.039
+to do is lookup the uh location
+uh for where we store uh the
+that memory dumps um so if there
+
+00:35:08.039-->00:35:13.044
+is a memory dumps we run bang
+analyze using kd.exe um uh we
+store this in a log file that
+
+00:35:15.347-->00:35:20.352
+will later on be submitted we
+check for a left tor um leftover
+fuzzer log from from a previous
+
+00:35:22.587-->00:35:27.592
+run and we basically assume that
+fact that um the this is the log
+file that caused the last BSOD
+
+00:35:29.627-->00:35:34.666
+we bundle everything up we
+bundle everything together which
+is basically the fuzzer log, the
+
+00:35:34.666-->00:35:41.006
+memory dump file and the outlog
+from bang analyze and we submit
+all of these together to CouchDB
+
+00:35:41.006-->00:35:45.877
+where uh CouchDB will uh
+basically uh in CouchDB we will
+be able to do um do some
+
+00:35:45.877-->00:35:50.882
+triaging and um querying based
+on the uh based on the crash. Um
+that was pretty much about it
+
+00:35:53.284-->00:35:59.491
+when it comes to Windows, again
+we have done some stuff on Mac
+OS X and QNX, QNX just approved
+
+00:35:59.491-->00:36:04.863
+the the the concept that that it
+actually works and the fuzzer
+more more less is black for
+
+00:36:04.863-->00:36:11.403
+agnostic. Um we haven't really
+spent much time fuzzing Mac OS X
+and QNX but we've got some um
+
+00:36:11.403-->00:36:16.775
+some uh again prototypes but um
+when it comes to system calls um
+in our operating calling systems
+
+00:36:16.775-->00:36:22.080
+they basically follow the same
+calling convention which is uh
+system VM to 64 application
+
+00:36:22.080-->00:36:27.085
+binary interface um and the
+object store for Aposis and Unix
+operating systems uh we'll uh
+
+00:36:30.288-->00:36:35.193
+store uh file descriptors most
+of the time as opposed to
+handles ah file descriptors are
+
+00:36:35.193-->00:36:40.398
+more or less similar to handles
+wi- wi- which is basically the
+most similar thing we can get to
+
+00:36:40.398-->00:36:45.503
+handles um for the crash
+detection we have both uh the
+same choices either attach a
+
+00:36:45.503-->00:36:50.608
+kernel debugger or rely on the
+operating system to get some
+useful information for us in the
+
+00:36:50.608-->00:36:55.613
+sys log. Um this is just an
+example for a single function um
+wrapping an IOB library call um
+
+00:36:58.550-->00:37:02.487
+it's very much similar to what
+we do for windows, the only
+difference is that we don't have
+
+00:37:02.487-->00:37:07.826
+handles, we don't have uh or
+windows specific helper
+functions we have IO kit helper
+
+00:37:07.826-->00:37:14.399
+functions that will return an IO
+kit object when it's needed.
+Again, very much similar uh when
+
+00:37:14.399-->00:37:19.370
+it comes to syscalls on Mac Os X
+we're kind of lucky because the
+XNU system calls are all stored
+
+00:37:19.370-->00:37:25.276
+in a single file called uh
+syscalls dot master uh and this
+file can uh even be processed in
+
+00:37:25.276-->00:37:30.715
+an automated way to extract all
+of this uh system calls with
+their IDs and their arguments
+
+00:37:30.715-->00:37:34.886
+and basically turn this file
+into a collection of system
+calls that can later on be
+
+00:37:34.886-->00:37:40.525
+consumed by the framework. Um
+some of the results, James
+already mentioned uh we're
+
+00:37:40.525-->00:37:45.530
+getting some interesting crashes
+in WIN32K.SYS primarily in
+Windows 7 um why Windows 7? Well
+
+00:37:47.532-->00:37:52.036
+probably because most of our
+users are on Windows 7
+unfortunately um as it when it
+
+00:37:52.036-->00:37:57.242
+comes to other operating systems
+um again we're looking forward
+to uh basically spending more
+
+00:37:57.242-->00:38:02.213
+time on that uh the current
+implementation um for a Mac Os x
+specific and QNX specific
+
+00:38:02.213-->00:38:07.685
+modules is just the prototype to
+look at um we have some crashes
+in hypervisors which is
+
+00:38:07.685-->00:38:12.824
+something that we never intended
+to find so this is basically
+just an annoying thing happening
+
+00:38:12.824-->00:38:17.996
+at a moment rather than
+something we can brag about um
+we also found some interesting
+
+00:38:17.996-->00:38:24.002
+bugs in VMWare tools and
+VirtualBox Guest Additions um
+basically these are um runs that
+
+00:38:24.002-->00:38:28.473
+may potentially be used for
+escalated privileges because
+VMware tools is obviously
+
+00:38:28.473-->00:38:33.478
+running with um es- within with
+an escalated concepts. Um the
+setup that we're uh using and
+
+00:38:35.947-->00:38:41.519
+this is just the setup for just
+the bata t runs we haven't even
+um thought about scaling it at
+
+00:38:41.519-->00:38:47.025
+the moment um because mostly
+because we are satisfied with
+the results uh is Host operating
+
+00:38:47.025-->00:38:52.030
+systems Win10, hypervisor VMWare
+Workstation, Guests operating
+system win7 64 bit um and the VM
+
+00:39:00.038-->00:39:02.040
+specs is pretty modest to be
+fair just uh two gigs of ram and
+a single CPU per VM. Um this is
+
+00:39:02.040-->00:39:06.678
+just to recap the uh results
+from um what James mentioned uh
+number of VM 16 stability run
+
+00:39:06.678-->00:39:11.482
+for forty eight hours, sixty
+five crashes, thirteen of them
+unique, and this is before we
+
+00:39:11.482-->00:39:18.356
+started blacklisting all of the
+uh sys calls causing a lot of
+problems. Um breakdown on the
+
+00:39:18.356-->00:39:22.560
+type of crashes, we have four
+null pointer dereference
+potentially exploitable in Win7,
+
+00:39:22.560-->00:39:26.164
+uh fortunately for Windows, not
+exploitable on Win8 and Win10,
+we have some uh Use-After-Frees,
+
+00:39:26.164-->00:39:28.266
+two of them, we have uh four bo-
+pool buffer overflows uh
+basically pool ah pool
+
+00:39:28.266-->00:39:33.271
+corruptions and uh we have three
+under the uh category of mi-
+miscellaneous basically free um
+
+00:39:40.178-->00:39:45.783
+invale free dexus reduxes
+violations we haven't properly
+triaged by now um this is a
+
+00:39:45.783-->00:39:52.390
+breakdown on the crashes, of the
+crashes based on uh the bugcheck
+ID uh the interesting thing here
+
+00:39:52.390-->00:39:58.263
+is to note is that a number of
+these crashes have been caught
+only thanks to uh special pool
+
+00:39:58.263-->00:40:03.268
+being enabled for the WIN32K.SYS
+kernel mode driver so should you
+run without special pool, you'll
+
+00:40:05.503-->00:40:10.508
+run up with at least ha- half of
+these crashes um Further work,
+what we can do to improve the
+
+00:40:12.810-->00:40:18.816
+framework and to improve the um
+the Window specific modules for
+example, um obviously we want to
+
+00:40:18.816-->00:40:24.155
+increase the coverage um how can
+we increase the coverage, the
+the easiest thing and what I
+
+00:40:24.155-->00:40:27.325
+think is a very efficient way of
+increasing the coverage
+considering the current
+
+00:40:27.325-->00:40:29.627
+architecture is object tagging
+so if you remember in the object
+store we preserve a bunch of
+
+00:40:29.627-->00:40:31.763
+handles but these are handles to
+any kind of object so object
+tagging would basically involve
+
+00:40:31.763-->00:40:36.734
+adding a another field in the BH
+handle struct and this field
+will specify the object type for
+
+00:40:36.734-->00:40:42.740
+the handle where this handle is
+pointing to um so when we make a
+request to the object store uh
+
+00:40:42.740-->00:40:47.745
+we will be uh specifying the
+type of object that we are
+expecting to find on the other
+
+00:40:49.947-->00:40:54.953
+hand on the other side of the
+handle. Um we have um well
+obviously we can implement more
+
+00:41:01.392-->00:41:06.197
+uh more of these uh library
+calls um five hundred is a big
+number but uh there's so many of
+
+00:41:06.197-->00:41:10.568
+them we can um uh we can
+implement. Uh we have
+experimental implementation for
+
+00:41:10.568-->00:41:16.207
+user mode callbacks uh based in
+uh based fuzzing uh this
+basically works at the moment
+
+00:41:16.207-->00:41:20.912
+but we have some problems with
+the logging so none of the none
+of these uh results that I was
+
+00:41:20.912-->00:41:27.085
+talking about are uh with uh
+user mode callbacks enabled in
+our framework um so once we get
+
+00:41:27.085-->00:41:33.024
+this working I expect even more
+crashes Another thing is
+multithreading um if you um can
+
+00:41:33.024-->00:41:38.730
+imagine the log file that we
+currently- uh currently produce
+is a huge log file of sys
+
+00:41:38.730-->00:41:45.336
+statements that are plugged into
+a main function and executed in
+a a sequention basically um so
+
+00:41:45.336-->00:41:49.807
+this is a problem with
+multithreading all of these runs
+have been from a single threaded
+
+00:41:49.807-->00:41:56.247
+um run of the fuzzer um uh
+obviously we have to work on
+work out how to implement proper
+
+00:41:56.247-->00:42:01.185
+logging with multithreading uh
+at the same time. Um and um we
+can we can also look at some uh
+
+00:42:03.488-->00:42:08.626
+coverage feedback based on uh
+CPU features um so if you know
+about NCCs triforce
+
+00:42:08.626-->00:42:12.897
+implementation well would it be
+possible to basically get
+something similar for uh for
+
+00:42:12.897-->00:42:19.070
+Windows. Uh under miscellaneous
+um we're always looking forward
+to improving the logging because
+
+00:42:19.070-->00:42:23.808
+basically it's it's just a
+really tedious and and slow
+process of implementing each one
+
+00:42:23.808-->00:42:28.012
+of these library calls with the
+log statements for each one of
+the C statements that we have in
+
+00:42:28.012-->00:42:33.951
+the file. Um we haven't looked
+at handling uh hypervisor
+crashes at all, so basically if
+
+00:42:33.951-->00:42:40.892
+a hypervisor uh crash occurs uh
+these days um we're just gonna
+have to um monitor the database
+
+00:42:40.892-->00:42:43.694
+and see that the number of
+crashes is dropping and then
+we'll realize that the
+
+00:42:43.694-->00:42:48.699
+hypervisor has been down for a
+few days um test case reducer,
+we have considered uh looking at
+
+00:42:50.902-->00:42:56.140
+uh C reduce, this is a program
+which is basically a test case
+reducer, language were a test
+
+00:42:56.140-->00:43:02.580
+code reducer that can
+successfully uh reduce C files,
+um we haven't really implemented
+
+00:43:02.580-->00:43:07.285
+anything on top of that but the
+basic idea is that one VM will
+be reducing the test case will
+
+00:43:07.285-->00:43:12.957
+be feeding the te this test case
+while another VM this second VM
+will be compiling and executing
+
+00:43:12.957-->00:43:17.061
+and will providing feedback back
+to the first VM which is
+constantly reducing the test
+
+00:43:17.061-->00:43:22.667
+case. Uh and just in general we
+definitely need to implement a
+decent logging for uh for the VM
+
+00:43:22.667-->00:43:27.472
+and ideally this logging should
+be uh hypervisor agnostic so
+basically this monitoring should
+
+00:43:27.472-->00:43:32.477
+be working on um VMWare, Virtual
+Box, KMUs and eccetera Um these
+are the people we want to thank
+
+00:43:34.579-->00:43:40.017
+these are all of the people who
+provided really valuable
+feedback and uh some useful
+
+00:43:40.017-->00:43:45.356
+ideas and information when uh we
+implemented the fuzzer um and
+basically the core of the
+
+00:43:45.356-->00:43:50.595
+framework will be available
+online later I think next week
+um as soon as we get back to the
+
+00:43:50.595-->00:43:55.600
+UK basically. Um and yeah keep
+an eye on Twitter um we'll be
+bragging about releasing the
+
+00:43:58.936-->00:44:04.041
+framework I guess. Um uh if
+there's any questions I'm happy
+to take them at the cafe area
+
+00:44:04.041-->00:44:09.046
+because I'm being told uh we're
+running out of time uh but yeah
+thanks guys. [applause]
+

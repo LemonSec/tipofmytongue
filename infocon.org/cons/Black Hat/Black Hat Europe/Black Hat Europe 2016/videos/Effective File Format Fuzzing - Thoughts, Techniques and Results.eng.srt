@@ -1,0 +1,4360 @@
+﻿1
+00:00:00,000 --> 00:00:03,570
+ok so I think it's time welcome everyone
+
+2
+00:00:03,570 --> 00:00:06,240
+I am at Utrecht and today I will be
+
+3
+00:00:06,240 --> 00:00:08,370
+talking about effective effective file
+
+4
+00:00:08,370 --> 00:00:11,370
+format fuzzing specifically some of the
+
+5
+00:00:11,370 --> 00:00:13,349
+techniques methods and the results that
+
+6
+00:00:13,349 --> 00:00:16,199
+I've had during the few years of passing
+
+7
+00:00:16,199 --> 00:00:19,650
+that I've been doing at Google so a few
+
+8
+00:00:19,650 --> 00:00:22,170
+words about myself I work at project
+
+9
+00:00:22,170 --> 00:00:24,689
+zero what is relevant to the talk is
+
+10
+00:00:24,689 --> 00:00:26,760
+that I am a part-time developer and the
+
+11
+00:00:26,760 --> 00:00:27,930
+frequent user of the fuzzing
+
+12
+00:00:27,930 --> 00:00:29,099
+infrastructure that we have their
+
+13
+00:00:29,099 --> 00:00:32,430
+internally and it is very related to
+
+14
+00:00:32,430 --> 00:00:34,200
+what I will be discussing here today I
+
+15
+00:00:34,200 --> 00:00:36,870
+also play CD f's and generally
+
+16
+00:00:36,870 --> 00:00:38,760
+interested in all sorts of vulnerability
+
+17
+00:00:38,760 --> 00:00:41,610
+research and software exploitation so
+
+18
+00:00:41,610 --> 00:00:44,070
+today I will be talking about what
+
+19
+00:00:44,070 --> 00:00:47,129
+continues real-life offensive buzzing so
+
+20
+00:00:47,129 --> 00:00:49,289
+fuzzing for actually finding bugs that
+
+21
+00:00:49,289 --> 00:00:52,170
+you can probably exploit or in my case
+
+22
+00:00:52,170 --> 00:00:55,680
+report to the vendors and I would like
+
+23
+00:00:55,680 --> 00:00:57,809
+to talk about how each of the stages
+
+24
+00:00:57,809 --> 00:01:00,149
+that is part of fuzzing is typically
+
+25
+00:01:00,149 --> 00:01:02,340
+implemented and what you can do better
+
+26
+00:01:02,340 --> 00:01:05,099
+to actually improve your results and not
+
+27
+00:01:05,099 --> 00:01:07,680
+find more bugs and so this is going to
+
+28
+00:01:07,680 --> 00:01:10,049
+be all shown on the example of several
+
+29
+00:01:10,049 --> 00:01:11,549
+different pieces of software that I have
+
+30
+00:01:11,549 --> 00:01:13,740
+passed in the past including Adobe
+
+31
+00:01:13,740 --> 00:01:15,750
+Reader Adobe Flash Windows kernel and
+
+32
+00:01:15,750 --> 00:01:20,189
+some other open source software so let's
+
+33
+00:01:20,189 --> 00:01:22,799
+start with some very very soft basics we
+
+34
+00:01:22,799 --> 00:01:24,869
+probably know what fuzzing is so it's
+
+35
+00:01:24,869 --> 00:01:26,460
+just the software testing technique
+
+36
+00:01:26,460 --> 00:01:29,729
+which is most often automated and it's
+
+37
+00:01:29,729 --> 00:01:31,740
+all about the speeding in valid data to
+
+38
+00:01:31,740 --> 00:01:34,500
+the software that we are testing so in
+
+39
+00:01:34,500 --> 00:01:36,900
+the case of my talk now the software
+
+40
+00:01:36,900 --> 00:01:39,930
+part is just commonly used programs in
+
+41
+00:01:39,930 --> 00:01:41,909
+libraries which can be both open and
+
+42
+00:01:41,909 --> 00:01:44,009
+closed source the important thing is
+
+43
+00:01:44,009 --> 00:01:45,090
+that they are written in native
+
+44
+00:01:45,090 --> 00:01:47,970
+languages and this means that they can
+
+45
+00:01:47,970 --> 00:01:49,920
+be used for memory corruption style all
+
+46
+00:01:49,920 --> 00:01:52,049
+zero-day attacks and on the other hand
+
+47
+00:01:52,049 --> 00:01:54,869
+the inputs are just we assume that they
+
+48
+00:01:54,869 --> 00:01:57,780
+are files of different structure which
+
+49
+00:01:57,780 --> 00:02:00,390
+may be documented or undocumented and
+
+50
+00:02:00,390 --> 00:02:03,479
+their process by the software so it that
+
+51
+00:02:03,479 --> 00:02:05,610
+they can be websites outlets images
+
+52
+00:02:05,610 --> 00:02:10,489
+videos and stuff like that so
+
+53
+00:02:11,340 --> 00:02:13,260
+in general the scheme of fuzzing is very
+
+54
+00:02:13,260 --> 00:02:15,300
+simple we just have a loop inside of
+
+55
+00:02:15,300 --> 00:02:17,790
+which we choose an input mutated fit it
+
+56
+00:02:17,790 --> 00:02:19,770
+to the target and then see the target
+
+57
+00:02:19,770 --> 00:02:21,870
+has actually crashed or not if it has we
+
+58
+00:02:21,870 --> 00:02:24,450
+save the input and if it hasn't then we
+
+59
+00:02:24,450 --> 00:02:25,830
+just proceed of course this is still
+
+60
+00:02:25,830 --> 00:02:28,350
+very simple but while the general scheme
+
+61
+00:02:28,350 --> 00:02:31,590
+is very very easy it's that the thing
+
+62
+00:02:31,590 --> 00:02:34,620
+that is easy to learn but it's it's more
+
+63
+00:02:34,620 --> 00:02:39,330
+hard to master so if we try to dig deep
+
+64
+00:02:39,330 --> 00:02:42,150
+into how to pass effectively we have
+
+65
+00:02:42,150 --> 00:02:44,360
+several questions that we have to answer
+
+66
+00:02:44,360 --> 00:02:47,100
+so you have to think about how we choose
+
+67
+00:02:47,100 --> 00:02:48,870
+the defaulting target in the first place
+
+68
+00:02:48,870 --> 00:02:51,720
+how we generate the inputs where do we
+
+69
+00:02:51,720 --> 00:02:53,519
+take them from weak we have some base
+
+70
+00:02:53,519 --> 00:02:55,920
+corpus how do you how do we mutate them
+
+71
+00:02:55,920 --> 00:02:57,930
+and there is like a huge list of things
+
+72
+00:02:57,930 --> 00:03:00,450
+that we actually have to consider some
+
+73
+00:03:00,450 --> 00:03:02,250
+of these things are taken care of by the
+
+74
+00:03:02,250 --> 00:03:05,670
+buzzer that we are using if we are you
+
+75
+00:03:05,670 --> 00:03:08,489
+use an optical phone but if we are
+
+76
+00:03:08,489 --> 00:03:10,680
+trying to create a filing system on our
+
+77
+00:03:10,680 --> 00:03:12,810
+own for whatever reason then we actually
+
+78
+00:03:12,810 --> 00:03:14,600
+have to think about all of those things
+
+79
+00:03:14,600 --> 00:03:18,420
+so I will I will discuss some of those
+
+80
+00:03:18,420 --> 00:03:21,239
+things and try to answer to the best of
+
+81
+00:03:21,239 --> 00:03:23,700
+my knowledge how to how to make them as
+
+82
+00:03:23,700 --> 00:03:26,459
+effective as possible so let's start
+
+83
+00:03:26,459 --> 00:03:28,709
+with gathering the initial culprit of
+
+84
+00:03:28,709 --> 00:03:32,040
+input files probably most people doing
+
+85
+00:03:32,040 --> 00:03:33,660
+fuzzing actually go through this step
+
+86
+00:03:33,660 --> 00:03:35,579
+because it is a desired step in a
+
+87
+00:03:35,579 --> 00:03:38,100
+majority of cases for several reasons of
+
+88
+00:03:38,100 --> 00:03:40,620
+course it makes it possible to reach
+
+89
+00:03:40,620 --> 00:03:43,650
+some code paths immediately after
+
+90
+00:03:43,650 --> 00:03:46,340
+starting the passing so we don't have to
+
+91
+00:03:46,340 --> 00:03:48,989
+recover all of this file structure by
+
+92
+00:03:48,989 --> 00:03:50,489
+ourselves we already have a good
+
+93
+00:03:50,489 --> 00:03:53,880
+starting point we have we may have some
+
+94
+00:03:53,880 --> 00:03:55,799
+complex data structure inside of those
+
+95
+00:03:55,799 --> 00:03:57,630
+files which could be either very
+
+96
+00:03:57,630 --> 00:04:00,180
+difficult or impossible to generate even
+
+97
+00:04:00,180 --> 00:04:02,010
+if we have code coverage information
+
+98
+00:04:02,010 --> 00:04:05,010
+available and even if these constructs
+
+99
+00:04:05,010 --> 00:04:07,109
+could be created by for example using
+
+100
+00:04:07,109 --> 00:04:09,660
+code coverage based passing we are still
+
+101
+00:04:09,660 --> 00:04:11,730
+saving a lot of time by doing a the
+
+102
+00:04:11,730 --> 00:04:15,870
+initial corpus generation and of course
+
+103
+00:04:15,870 --> 00:04:17,579
+if we have a specific purpose of of
+
+104
+00:04:17,579 --> 00:04:20,459
+files in a in a format status for
+
+105
+00:04:20,459 --> 00:04:22,750
+example PDF we can reuse the same
+
+106
+00:04:22,750 --> 00:04:24,870
+because 2fast different projects
+
+107
+00:04:24,870 --> 00:04:27,640
+afterwards so this contact methods of
+
+108
+00:04:27,640 --> 00:04:31,200
+doing this is as follows first of all
+
+109
+00:04:31,200 --> 00:04:33,400
+many open-source projects actually
+
+110
+00:04:33,400 --> 00:04:36,070
+already include extensive sets of input
+
+111
+00:04:36,070 --> 00:04:37,810
+data for testing that we can use for
+
+112
+00:04:37,810 --> 00:04:40,480
+example we add a ten-pack project which
+
+113
+00:04:40,480 --> 00:04:42,940
+is a video and media processing library
+
+114
+00:04:42,940 --> 00:04:46,170
+has something called ffmpeg faith and
+
+115
+00:04:46,170 --> 00:04:48,970
+it's a system for regression testing in
+
+116
+00:04:48,970 --> 00:04:51,370
+ffmpeg and it already has like hundreds
+
+117
+00:04:51,370 --> 00:04:53,340
+of interesting files that you can use
+
+118
+00:04:53,340 --> 00:04:55,960
+sometimes these files are not publicly
+
+119
+00:04:55,960 --> 00:05:00,550
+for everyone but if you reach out to the
+
+120
+00:05:00,550 --> 00:05:01,990
+developers and let them know that you
+
+121
+00:05:01,990 --> 00:05:03,430
+want to test the software they might be
+
+122
+00:05:03,430 --> 00:05:04,900
+happy to share some of the private
+
+123
+00:05:04,900 --> 00:05:07,960
+private samples with you and also many
+
+124
+00:05:07,960 --> 00:05:09,250
+of the projects especially the
+
+125
+00:05:09,250 --> 00:05:11,230
+open-source one actually include
+
+126
+00:05:11,230 --> 00:05:13,150
+converters from format X to their own
+
+127
+00:05:13,150 --> 00:05:15,640
+format Y and the example here would be
+
+128
+00:05:15,640 --> 00:05:17,530
+the WebP image format which set the
+
+129
+00:05:17,530 --> 00:05:20,200
+convertor called CFP which can convert
+
+130
+00:05:20,200 --> 00:05:23,830
+from PNG JPEG and TIFF another thing
+
+131
+00:05:23,830 --> 00:05:26,979
+that we could do is internet crawling so
+
+132
+00:05:26,979 --> 00:05:28,570
+it all of course depends on the
+
+133
+00:05:28,570 --> 00:05:30,729
+popularity of the fast file format but
+
+134
+00:05:30,729 --> 00:05:33,640
+it's quite an intuitive approach so we
+
+135
+00:05:33,640 --> 00:05:35,140
+could either just download files through
+
+136
+00:05:35,140 --> 00:05:37,419
+the specific file extension or with a
+
+137
+00:05:37,419 --> 00:05:39,490
+specific magic bite or some other way of
+
+138
+00:05:39,490 --> 00:05:43,300
+of recognizing those files the problem
+
+139
+00:05:43,300 --> 00:05:44,919
+is that if we are targeting a very
+
+140
+00:05:44,919 --> 00:05:47,320
+popular file format we turn it up with
+
+141
+00:05:47,320 --> 00:05:49,960
+terabytes of data but it's not really a
+
+142
+00:05:49,960 --> 00:05:51,910
+problem if we can distill it to a
+
+143
+00:05:51,910 --> 00:05:55,960
+reasonable corpus somehow but another
+
+144
+00:05:55,960 --> 00:05:57,820
+interesting idea is that we could
+
+145
+00:05:57,820 --> 00:06:00,640
+actually try to ask the actual target
+
+146
+00:06:00,640 --> 00:06:03,040
+what it thinks whether it thinks that it
+
+147
+00:06:03,040 --> 00:06:06,880
+supports the specific file or not so
+
+148
+00:06:06,880 --> 00:06:08,919
+this would be either achieved by using
+
+149
+00:06:08,919 --> 00:06:12,070
+code coverage again but this tends to
+
+150
+00:06:12,070 --> 00:06:14,470
+slow down the process very much but in
+
+151
+00:06:14,470 --> 00:06:16,450
+some cases you can just directly ask the
+
+152
+00:06:16,450 --> 00:06:18,340
+question to the program itself and the
+
+153
+00:06:18,340 --> 00:06:21,400
+case study here would be either pro so
+
+154
+00:06:21,400 --> 00:06:23,800
+as you probably know ida pro has a long
+
+155
+00:06:23,800 --> 00:06:25,960
+list of supported format this is not a
+
+156
+00:06:25,960 --> 00:06:28,660
+complete list but it's already a lot of
+
+157
+00:06:28,660 --> 00:06:31,990
+items here probably several thousands of
+
+158
+00:06:31,990 --> 00:06:35,650
+them and so when you try to load a file
+
+159
+00:06:35,650 --> 00:06:36,520
+in either
+
+160
+00:06:36,520 --> 00:06:38,050
+what happens first if you see this
+
+161
+00:06:38,050 --> 00:06:41,050
+window which lists all of the format
+
+162
+00:06:41,050 --> 00:06:42,819
+that it has recognized inside of the
+
+163
+00:06:42,819 --> 00:06:44,830
+file and you can choose how to load this
+
+164
+00:06:44,830 --> 00:06:47,560
+file but the real question is how does
+
+165
+00:06:47,560 --> 00:06:49,629
+this really work
+
+166
+00:06:49,629 --> 00:06:53,349
+and to find out about it you have to
+
+167
+00:06:53,349 --> 00:06:55,389
+look into the loader architecture in Ida
+
+168
+00:06:55,389 --> 00:06:58,030
+and it turns out after a few minutes
+
+169
+00:06:58,030 --> 00:07:00,669
+that they have a modular design with
+
+170
+00:07:00,669 --> 00:07:03,250
+with each loader being inside of a
+
+171
+00:07:03,250 --> 00:07:05,560
+separate file so inside of your
+
+172
+00:07:05,560 --> 00:07:07,659
+installation directory you have a long
+
+173
+00:07:07,659 --> 00:07:09,909
+list of files which are basically just
+
+174
+00:07:09,909 --> 00:07:13,690
+DLL or shared objects or some other file
+
+175
+00:07:13,690 --> 00:07:15,250
+depending on the architecture which
+
+176
+00:07:15,250 --> 00:07:17,199
+exports to functions except file and
+
+177
+00:07:17,199 --> 00:07:20,500
+load file and you have two versions of
+
+178
+00:07:20,500 --> 00:07:22,690
+each of those files for 32-bit and
+
+179
+00:07:22,690 --> 00:07:27,220
+64-bit version of Ida so the definitions
+
+180
+00:07:27,220 --> 00:07:29,289
+of those two functions you can see here
+
+181
+00:07:29,289 --> 00:07:31,599
+they are also documented in the Ida SDK
+
+182
+00:07:31,599 --> 00:07:34,120
+they are very simple they just take some
+
+183
+00:07:34,120 --> 00:07:36,219
+input stream and output some information
+
+184
+00:07:36,219 --> 00:07:38,560
+about the file so except file is
+
+185
+00:07:38,560 --> 00:07:40,599
+basically a function which performs some
+
+186
+00:07:40,599 --> 00:07:43,030
+very preliminary processing and it
+
+187
+00:07:43,030 --> 00:07:45,099
+returns zero on one depending on whether
+
+188
+00:07:45,099 --> 00:07:46,780
+either can actually handle this file or
+
+189
+00:07:46,780 --> 00:07:49,240
+not and the load file is the more
+
+190
+00:07:49,240 --> 00:07:50,919
+complicated function which actually
+
+191
+00:07:50,919 --> 00:07:53,020
+takes takes care of the regular
+
+192
+00:07:53,020 --> 00:07:55,029
+processing of the file when you decide
+
+193
+00:07:55,029 --> 00:07:57,669
+to load the file and yeah as I said both
+
+194
+00:07:57,669 --> 00:08:00,190
+functions are very well-documented and
+
+195
+00:08:00,190 --> 00:08:03,550
+this is very convenient for us so when I
+
+196
+00:08:03,550 --> 00:08:06,310
+was passing either myself I decided that
+
+197
+00:08:06,310 --> 00:08:08,319
+I could just write a simple loader which
+
+198
+00:08:08,319 --> 00:08:09,639
+will iterate through all of those
+
+199
+00:08:09,639 --> 00:08:12,639
+loaders called the accept file function
+
+200
+00:08:12,639 --> 00:08:17,319
+and see which file it would recognize so
+
+201
+00:08:17,319 --> 00:08:19,569
+here you can see an example of running
+
+202
+00:08:19,569 --> 00:08:22,990
+the loader against itself and you can
+
+203
+00:08:22,990 --> 00:08:25,300
+see that elf dot l LX actually
+
+204
+00:08:25,300 --> 00:08:27,490
+recognized the file as else which is
+
+205
+00:08:27,490 --> 00:08:29,500
+correct so this was very helpful to
+
+206
+00:08:29,500 --> 00:08:31,810
+actually from a large corpus of files
+
+207
+00:08:31,810 --> 00:08:34,299
+see which files would be handled by Ida
+
+208
+00:08:34,299 --> 00:08:36,610
+correctly without doing all those code
+
+209
+00:08:36,610 --> 00:08:38,950
+coverage information extraction or
+
+210
+00:08:38,950 --> 00:08:42,760
+anything more complicated like that so
+
+211
+00:08:42,760 --> 00:08:45,600
+this was very good because it was it
+
+212
+00:08:45,600 --> 00:08:47,620
+worked with a very high degree of
+
+213
+00:08:47,620 --> 00:08:50,140
+confidence because the exit file
+
+214
+00:08:50,140 --> 00:08:51,730
+function actually has some extensive
+
+215
+00:08:51,730 --> 00:08:53,500
+logic to determine whether the file
+
+216
+00:08:53,500 --> 00:08:56,530
+should be accepted or not thanks to this
+
+217
+00:08:56,530 --> 00:09:00,070
+we also knew that which loader exactly
+
+218
+00:09:00,070 --> 00:09:01,900
+would be able to load so you would know
+
+219
+00:09:01,900 --> 00:09:04,270
+which louder we would be able to find
+
+220
+00:09:04,270 --> 00:09:06,580
+bugs in using the specific file we
+
+221
+00:09:06,580 --> 00:09:08,380
+didn't really have to even start either
+
+222
+00:09:08,380 --> 00:09:09,850
+because we would just call a simple
+
+223
+00:09:09,850 --> 00:09:12,040
+function from from a single dll or
+
+224
+00:09:12,040 --> 00:09:14,530
+shared object and we didn't have to use
+
+225
+00:09:14,530 --> 00:09:16,630
+any instrumentation so similar
+
+226
+00:09:16,630 --> 00:09:18,340
+techniques could probably be used for
+
+227
+00:09:18,340 --> 00:09:19,990
+software which makes it possible to
+
+228
+00:09:19,990 --> 00:09:21,940
+quickly determine whether it supports
+
+229
+00:09:21,940 --> 00:09:24,490
+the specific file or not which can be
+
+230
+00:09:24,490 --> 00:09:26,070
+useful sometimes
+
+231
+00:09:26,070 --> 00:09:29,290
+so the other thing is after we already
+
+232
+00:09:29,290 --> 00:09:34,000
+try to get get like the initial large
+
+233
+00:09:34,000 --> 00:09:35,890
+set of files is that we could try to
+
+234
+00:09:35,890 --> 00:09:39,430
+distill it and I believe that in passing
+
+235
+00:09:39,430 --> 00:09:41,620
+it is quite important to get rid of most
+
+236
+00:09:41,620 --> 00:09:43,600
+of the redundancy into input corpus and
+
+237
+00:09:43,600 --> 00:09:46,120
+this means both the first one that we
+
+238
+00:09:46,120 --> 00:09:48,010
+actually start fuzzing with and also the
+
+239
+00:09:48,010 --> 00:09:50,530
+living one which is being used while we
+
+240
+00:09:50,530 --> 00:09:52,720
+do the fuzzing and evolve the corpus to
+
+241
+00:09:52,720 --> 00:09:55,090
+get a better one so in the context of a
+
+242
+00:09:55,090 --> 00:09:58,660
+single test case we want to maximize the
+
+243
+00:09:58,660 --> 00:10:00,760
+program States Explorer divided by the
+
+244
+00:10:00,760 --> 00:10:03,460
+input size which means that we want to
+
+245
+00:10:03,460 --> 00:10:05,800
+have the highest ratio of bytes to
+
+246
+00:10:05,800 --> 00:10:08,170
+program feature basically so that the
+
+247
+00:10:08,170 --> 00:10:10,360
+highest number of functionalities
+
+248
+00:10:10,360 --> 00:10:11,980
+touched by the smallest number of bytes
+
+249
+00:10:11,980 --> 00:10:14,650
+and likewise in terms of the whole
+
+250
+00:10:14,650 --> 00:10:16,720
+corpus we also want to maximize the
+
+251
+00:10:16,720 --> 00:10:19,600
+whole set of program states divided by
+
+252
+00:10:19,600 --> 00:10:21,370
+the number of input samples because we
+
+253
+00:10:21,370 --> 00:10:23,400
+don't want to have too many of them
+
+254
+00:10:23,400 --> 00:10:28,810
+exercising the same functionality so if
+
+255
+00:10:28,810 --> 00:10:31,270
+if there is too much data to actually
+
+256
+00:10:31,270 --> 00:10:33,880
+process using corpus distillation with
+
+257
+00:10:33,880 --> 00:10:36,070
+code coverage information we may also
+
+258
+00:10:36,070 --> 00:10:39,670
+try to write some kind of minimizer on
+
+259
+00:10:39,670 --> 00:10:42,340
+our own based on the basic structure of
+
+260
+00:10:42,340 --> 00:10:45,490
+the file some sub some file formats have
+
+261
+00:10:45,490 --> 00:10:48,040
+some basic structure which is for
+
+262
+00:10:48,040 --> 00:10:50,710
+example being divided into chunks that
+
+263
+00:10:50,710 --> 00:10:53,380
+have tags or some names this is the case
+
+264
+00:10:53,380 --> 00:10:56,620
+for sweet files PDF PNG s and many other
+
+265
+00:10:56,620 --> 00:10:59,650
+files that you can see out there so such
+
+266
+00:10:59,650 --> 00:11:01,660
+turn rich person can already be used to
+
+267
+00:11:01,660 --> 00:11:03,160
+do some very quick
+
+268
+00:11:03,160 --> 00:11:06,700
+before we do anything more complex but
+
+269
+00:11:06,700 --> 00:11:08,290
+you have to be careful not to build too
+
+270
+00:11:08,290 --> 00:11:09,910
+deep into the specifications because
+
+271
+00:11:09,910 --> 00:11:13,150
+then it gets harder and the result is
+
+272
+00:11:13,150 --> 00:11:15,820
+not as cost-effective as it is where we
+
+273
+00:11:15,820 --> 00:11:19,990
+just do very basic processing so now the
+
+274
+00:11:19,990 --> 00:11:21,670
+question is how do we actually define
+
+275
+00:11:21,670 --> 00:11:24,280
+the program state because the file sizes
+
+276
+00:11:24,280 --> 00:11:26,590
+and the cardinality which was part of
+
+277
+00:11:26,590 --> 00:11:28,750
+the expression are both people to
+
+278
+00:11:28,750 --> 00:11:30,820
+measure but a program state is more
+
+279
+00:11:30,820 --> 00:11:33,490
+difficult so we don't really have any
+
+280
+00:11:33,490 --> 00:11:36,300
+good metric for measuring program States
+
+281
+00:11:36,300 --> 00:11:38,860
+especially with the characteristics that
+
+282
+00:11:38,860 --> 00:11:40,570
+we would like to have while doing
+
+283
+00:11:40,570 --> 00:11:43,060
+fasting so we would like then the the
+
+284
+00:11:43,060 --> 00:11:44,500
+program state to be defined such that
+
+285
+00:11:44,500 --> 00:11:46,690
+the number of them should be within a
+
+286
+00:11:46,690 --> 00:11:48,730
+sane range so we cannot really count out
+
+287
+00:11:48,730 --> 00:11:51,700
+combinations of based in memory it
+
+288
+00:11:51,700 --> 00:11:53,110
+should be meaningful in the context of
+
+289
+00:11:53,110 --> 00:11:56,560
+memory safety and they should be we
+
+290
+00:11:56,560 --> 00:11:58,240
+should be able to easily determine them
+
+291
+00:11:58,240 --> 00:12:02,050
+during program run time so the most
+
+292
+00:12:02,050 --> 00:12:03,850
+approximations used today are just
+
+293
+00:12:03,850 --> 00:12:06,400
+assuming that code coverage is somewhat
+
+294
+00:12:06,400 --> 00:12:09,340
+equal to program states and of course
+
+295
+00:12:09,340 --> 00:12:12,520
+this has many advantages because first
+
+296
+00:12:12,520 --> 00:12:13,960
+of all increased code coverage is
+
+297
+00:12:13,960 --> 00:12:15,940
+representative of new program state
+
+298
+00:12:15,940 --> 00:12:19,630
+which is good for us the same range
+
+299
+00:12:19,630 --> 00:12:21,730
+requirement is met of course because
+
+300
+00:12:21,730 --> 00:12:23,740
+code copy information is typically
+
+301
+00:12:23,740 --> 00:12:26,440
+linear in size to the overall program
+
+302
+00:12:26,440 --> 00:12:29,260
+size and we can usually easily measure
+
+303
+00:12:29,260 --> 00:12:31,690
+it using compiled and external
+
+304
+00:12:31,690 --> 00:12:33,190
+instrumentation but this is it
+
+305
+00:12:33,190 --> 00:12:36,640
+disadvantages is that constant code
+
+306
+00:12:36,640 --> 00:12:38,410
+coverage doesn't really indicate that
+
+307
+00:12:38,410 --> 00:12:41,080
+the program state is the program state
+
+308
+00:12:41,080 --> 00:12:43,150
+set is also constant so we could be
+
+309
+00:12:43,150 --> 00:12:44,830
+missing some information using this
+
+310
+00:12:44,830 --> 00:12:49,420
+method so yes the current state of arts
+
+311
+00:12:49,420 --> 00:12:52,180
+is just counting basic blocks and it's a
+
+312
+00:12:52,180 --> 00:12:54,900
+it's a reasonably good approximation
+
+313
+00:12:54,900 --> 00:12:58,260
+because they have quite good granularity
+
+314
+00:12:58,260 --> 00:13:00,750
+we shouldn't really measure instructions
+
+315
+00:13:00,750 --> 00:13:04,150
+typically because this is redundant
+
+316
+00:13:04,150 --> 00:13:06,880
+information so we can measure the code
+
+317
+00:13:06,880 --> 00:13:08,290
+coverage of basic blocks using a
+
+318
+00:13:08,290 --> 00:13:10,600
+compiler instrumentation such as G cough
+
+319
+00:13:10,600 --> 00:13:13,270
+or external instrumentation such as
+
+320
+00:13:13,270 --> 00:13:15,550
+Intel pin and annamaria and just
+
+321
+00:13:15,550 --> 00:13:16,990
+identify those basic
+
+322
+00:13:16,990 --> 00:13:18,880
+books by the others of the first
+
+323
+00:13:18,880 --> 00:13:21,820
+instruction but the problem with this
+
+324
+00:13:21,820 --> 00:13:23,230
+approach is that we could be still
+
+325
+00:13:23,230 --> 00:13:26,050
+missing some information so here we have
+
+326
+00:13:26,050 --> 00:13:28,060
+a very simple program with a full
+
+327
+00:13:28,060 --> 00:13:31,570
+function which has a very very simple if
+
+328
+00:13:31,570 --> 00:13:34,209
+statement so we have three calls of this
+
+329
+00:13:34,209 --> 00:13:37,060
+function and when we perform the first
+
+330
+00:13:37,060 --> 00:13:38,920
+call we actually go through all of the
+
+331
+00:13:38,920 --> 00:13:41,970
+basic blocks through some of the edges
+
+332
+00:13:41,970 --> 00:13:44,860
+so we could think that we have the
+
+333
+00:13:44,860 --> 00:13:46,690
+maximum coverage of this function as of
+
+334
+00:13:46,690 --> 00:13:49,899
+now but if we see this second call we
+
+335
+00:13:49,899 --> 00:13:51,700
+can see that a new path is actually
+
+336
+00:13:51,700 --> 00:13:54,310
+being taken a new branch here and the
+
+337
+00:13:54,310 --> 00:13:56,649
+same goes for the second call as well so
+
+338
+00:13:56,649 --> 00:13:58,990
+if we just measuring the the basic
+
+339
+00:13:58,990 --> 00:14:00,130
+blocks we could be missing this
+
+340
+00:14:00,130 --> 00:14:03,959
+information so another idea to
+
+341
+00:14:03,959 --> 00:14:06,339
+approaching a measuring code coverage
+
+342
+00:14:06,339 --> 00:14:08,680
+would be to not measure basic blocks so
+
+343
+00:14:08,680 --> 00:14:12,839
+not the vertices of the graph of the
+
+344
+00:14:12,839 --> 00:14:17,709
+code execution but the edges and this is
+
+345
+00:14:17,709 --> 00:14:20,230
+of course what IFL is trying to do so
+
+346
+00:14:20,230 --> 00:14:22,029
+they were the first to introduce this
+
+347
+00:14:22,029 --> 00:14:24,610
+and shift at large and you can write you
+
+348
+00:14:24,610 --> 00:14:26,079
+can read in the technical void volume
+
+349
+00:14:26,079 --> 00:14:29,800
+white paper of AFL that they are noting
+
+350
+00:14:29,800 --> 00:14:32,110
+the combination of the current location
+
+351
+00:14:32,110 --> 00:14:33,640
+that is reading the code and the
+
+352
+00:14:33,640 --> 00:14:36,070
+previous location inside of the bitmap
+
+353
+00:14:36,070 --> 00:14:42,339
+of all basic blocks so yes but we could
+
+354
+00:14:42,339 --> 00:14:45,130
+also extend this idea even further so in
+
+355
+00:14:45,130 --> 00:14:47,529
+a more abstract sense recording edges is
+
+356
+00:14:47,529 --> 00:14:49,540
+recording the current block and the one
+
+357
+00:14:49,540 --> 00:14:51,910
+previous but we could also record even
+
+358
+00:14:51,910 --> 00:14:54,040
+more information but by tracking out the
+
+359
+00:14:54,040 --> 00:14:56,980
+only previous block but also more of
+
+360
+00:14:56,980 --> 00:14:59,020
+them so for example n previous blocks
+
+361
+00:14:59,020 --> 00:15:00,970
+and the current one which would provide
+
+362
+00:15:00,970 --> 00:15:03,130
+even more context as of how the program
+
+363
+00:15:03,130 --> 00:15:05,550
+actually arrived at the current state
+
+364
+00:15:05,550 --> 00:15:09,339
+but in my experience the diode edges are
+
+365
+00:15:09,339 --> 00:15:10,899
+quite a good approximation
+
+366
+00:15:10,899 --> 00:15:14,130
+because they are fast to determine and
+
+367
+00:15:14,130 --> 00:15:18,450
+they also they they don't have too much
+
+368
+00:15:18,450 --> 00:15:22,390
+redundancy but yes so you can also have
+
+369
+00:15:22,390 --> 00:15:24,550
+even more granular information such as
+
+370
+00:15:24,550 --> 00:15:28,029
+counters and bit sets so instead of just
+
+371
+00:15:28,029 --> 00:15:29,890
+recording whether it's specific basic
+
+372
+00:15:29,890 --> 00:15:30,640
+block or edge
+
+373
+00:15:30,640 --> 00:15:32,770
+has been reached or not we can count how
+
+374
+00:15:32,770 --> 00:15:34,650
+many times it has been reached or not
+
+375
+00:15:34,650 --> 00:15:38,680
+and this can be useful for example when
+
+376
+00:15:38,680 --> 00:15:40,630
+we try to determine how many times a
+
+377
+00:15:40,630 --> 00:15:43,240
+specific group has been has iterated
+
+378
+00:15:43,240 --> 00:15:45,580
+over which could be helpful for example
+
+379
+00:15:45,580 --> 00:15:49,570
+in a case where we want to go to a
+
+380
+00:15:49,570 --> 00:15:52,720
+string comparison or some other logic of
+
+381
+00:15:52,720 --> 00:15:56,890
+that kind so we have all these different
+
+382
+00:15:56,890 --> 00:15:58,660
+kinds of coverage information that we
+
+383
+00:15:58,660 --> 00:16:01,510
+would like to extract of course we can
+
+384
+00:16:01,510 --> 00:16:03,730
+do it using enthalpy nordyne number E or
+
+385
+00:16:03,730 --> 00:16:07,210
+some other dbi for example AFL uses a
+
+386
+00:16:07,210 --> 00:16:10,060
+modified version of QM user for open
+
+387
+00:16:10,060 --> 00:16:11,890
+source we can use the built-in compiler
+
+388
+00:16:11,890 --> 00:16:14,890
+of compiler instrumentation such as G
+
+389
+00:16:14,890 --> 00:16:18,430
+cough and VM Co but what I have been
+
+390
+00:16:18,430 --> 00:16:20,740
+using personally and all the recommend
+
+391
+00:16:20,740 --> 00:16:23,830
+to to use is sanitizer coverage so
+
+392
+00:16:23,830 --> 00:16:26,110
+sanitizer coverage is just an option of
+
+393
+00:16:26,110 --> 00:16:28,090
+other sanitizer which you are probably
+
+394
+00:16:28,090 --> 00:16:31,380
+familiar with which is a fast reliable
+
+395
+00:16:31,380 --> 00:16:33,280
+instrumentation for detecting memory
+
+396
+00:16:33,280 --> 00:16:35,500
+safety issues so it's very useful for
+
+397
+00:16:35,500 --> 00:16:39,100
+passing it by itself there are also many
+
+398
+00:16:39,100 --> 00:16:40,960
+other variants such as memory sanitizer
+
+399
+00:16:40,960 --> 00:16:43,510
+or thread sanitizer etc and one thing
+
+400
+00:16:43,510 --> 00:16:47,080
+you can also enable whether enabling
+
+401
+00:16:47,080 --> 00:16:49,330
+other sanitizer is the sanitizer
+
+402
+00:16:49,330 --> 00:16:51,220
+coverage which at the same time as
+
+403
+00:16:51,220 --> 00:16:53,530
+validating the runtime of the right
+
+404
+00:16:53,530 --> 00:16:56,110
+library or program also provides
+
+405
+00:16:56,110 --> 00:17:00,700
+information about the code coverage so I
+
+406
+00:17:00,700 --> 00:17:03,220
+am using it personally also the lid
+
+407
+00:17:03,220 --> 00:17:06,160
+puzzle project which is the project of
+
+408
+00:17:06,160 --> 00:17:08,829
+costia which will be creator of of other
+
+409
+00:17:08,829 --> 00:17:12,910
+sanitizer uses sanitizer coverage here
+
+410
+00:17:12,910 --> 00:17:14,770
+we have an example of sanitizer coverage
+
+411
+00:17:14,770 --> 00:17:16,510
+usage so we have a very short program
+
+412
+00:17:16,510 --> 00:17:18,819
+which has some full function which is
+
+413
+00:17:18,819 --> 00:17:20,170
+only calls if the number of parameters
+
+414
+00:17:20,170 --> 00:17:24,400
+is 2 so you can just use two simple
+
+415
+00:17:24,400 --> 00:17:26,500
+compile time options to enable it and
+
+416
+00:17:26,500 --> 00:17:28,810
+then you can see that after we call the
+
+417
+00:17:28,810 --> 00:17:30,760
+program with zero with one and two
+
+418
+00:17:30,760 --> 00:17:35,080
+parameters the size of the output output
+
+419
+00:17:35,080 --> 00:17:36,790
+files with the coverage information is
+
+420
+00:17:36,790 --> 00:17:38,650
+different it has either four or eight
+
+421
+00:17:38,650 --> 00:17:41,650
+bytes so now that we can measure code
+
+422
+00:17:41,650 --> 00:17:44,520
+coverage easily the question is
+
+423
+00:17:44,520 --> 00:17:47,790
+what do we do now first of all we have
+
+424
+00:17:47,790 --> 00:17:49,860
+to remember that just measuring code
+
+425
+00:17:49,860 --> 00:17:51,330
+coverage by itself is not really a
+
+426
+00:17:51,330 --> 00:17:54,930
+silver bullet and there are still many
+
+427
+00:17:54,930 --> 00:17:57,180
+code constructs which are impossible to
+
+428
+00:17:57,180 --> 00:17:59,250
+cross with just dump you mutation based
+
+429
+00:17:59,250 --> 00:18:02,300
+filing examples of this would be
+
+430
+00:18:02,300 --> 00:18:04,830
+comparisons of types that are larger
+
+431
+00:18:04,830 --> 00:18:09,110
+than a single byte for example or
+
+432
+00:18:09,470 --> 00:18:12,870
+comparisons of memory blobs or ASCII
+
+433
+00:18:12,870 --> 00:18:15,420
+strings so you can see those examples
+
+434
+00:18:15,420 --> 00:18:19,830
+here a comparison with a 32-bit value of
+
+435
+00:18:19,830 --> 00:18:22,410
+course it's a very difficult to cross
+
+436
+00:18:22,410 --> 00:18:24,300
+with just a dump buzzer because we would
+
+437
+00:18:24,300 --> 00:18:26,460
+have to get this this specific 32-bit
+
+438
+00:18:26,460 --> 00:18:29,010
+value and the same thing goes with the
+
+439
+00:18:29,010 --> 00:18:30,510
+string comparison which would be even
+
+440
+00:18:30,510 --> 00:18:33,900
+harder to guess so that problems are
+
+441
+00:18:33,900 --> 00:18:35,490
+actually somewhat approachable if you
+
+442
+00:18:35,490 --> 00:18:40,560
+think about it now because you can for
+
+443
+00:18:40,560 --> 00:18:42,090
+example use approaches such as
+
+444
+00:18:42,090 --> 00:18:44,550
+dictionaries which are supported in both
+
+445
+00:18:44,550 --> 00:18:48,450
+AFL and lead buzzer which could be use
+
+446
+00:18:48,450 --> 00:18:51,270
+to find those specific values that are
+
+447
+00:18:51,270 --> 00:18:55,020
+being searched for in the code and you
+
+448
+00:18:55,020 --> 00:18:57,090
+can also get some help from compiler
+
+449
+00:18:57,090 --> 00:18:59,850
+flags but this is this is someone
+
+450
+00:18:59,850 --> 00:19:02,490
+complicated to think about because the
+
+451
+00:19:02,490 --> 00:19:04,530
+somewhat unintuitive approach would be
+
+452
+00:19:04,530 --> 00:19:07,350
+to disable all code optimization which
+
+453
+00:19:07,350 --> 00:19:09,870
+would result in fewer hockey expressions
+
+454
+00:19:09,870 --> 00:19:12,060
+in assembly compressed code constructs
+
+455
+00:19:12,060 --> 00:19:13,890
+for the basic blocks and stuff like that
+
+456
+00:19:13,890 --> 00:19:16,350
+so we'd get more granular code coverage
+
+457
+00:19:16,350 --> 00:19:18,780
+information to analyze but on the
+
+458
+00:19:18,780 --> 00:19:20,520
+contrary I'll come to have also found
+
+459
+00:19:20,520 --> 00:19:22,200
+that if you use the oh three
+
+460
+00:19:22,200 --> 00:19:25,200
+optimization with unroll loops then some
+
+461
+00:19:25,200 --> 00:19:27,930
+of the short string comparisons or
+
+462
+00:19:27,930 --> 00:19:31,500
+string signatures are being unrolled to
+
+463
+00:19:31,500 --> 00:19:35,040
+to just very simple by the granular
+
+464
+00:19:35,040 --> 00:19:38,010
+comparisons so it's quite unclear which
+
+465
+00:19:38,010 --> 00:19:40,380
+compilations flags should really be used
+
+466
+00:19:40,380 --> 00:19:43,020
+for coverage guided passing and it's
+
+467
+00:19:43,020 --> 00:19:44,100
+probably something that you should
+
+468
+00:19:44,100 --> 00:19:46,470
+adjust based on us the specific project
+
+469
+00:19:46,470 --> 00:19:49,560
+that you are trying to pass mmm so in
+
+470
+00:19:49,560 --> 00:19:51,600
+the past also tablets or monday-- tried
+
+471
+00:19:51,600 --> 00:19:54,720
+to approach this problem somehow with
+
+472
+00:19:54,720 --> 00:19:57,210
+another DDI of his that you call deep
+
+473
+00:19:57,210 --> 00:19:58,090
+cover another
+
+474
+00:19:58,090 --> 00:20:00,520
+so he tried to extract a more granular
+
+475
+00:20:00,520 --> 00:20:03,310
+information about the specific
+
+476
+00:20:03,310 --> 00:20:05,020
+instructions that are used for string
+
+477
+00:20:05,020 --> 00:20:07,510
+comparisons for example so he
+
+478
+00:20:07,510 --> 00:20:11,260
+implemented this to measure how far the
+
+479
+00:20:11,260 --> 00:20:14,440
+execution of the Red Sea MPB instruction
+
+480
+00:20:14,440 --> 00:20:17,470
+went before bailing out or how many
+
+481
+00:20:17,470 --> 00:20:19,990
+beads were successfully compared by the
+
+482
+00:20:19,990 --> 00:20:23,530
+CMP instruction and he was able to use
+
+483
+00:20:23,530 --> 00:20:25,630
+this approach to be able to actually
+
+484
+00:20:25,630 --> 00:20:28,630
+recover crc32 checksum required by the
+
+485
+00:20:28,630 --> 00:20:31,870
+PNG decoders and when I was first
+
+486
+00:20:31,870 --> 00:20:34,660
+creating this slide a few months ago I
+
+487
+00:20:34,660 --> 00:20:37,660
+also thought did the idea of Peter would
+
+488
+00:20:37,660 --> 00:20:40,030
+be to have a compass Pacific compiler
+
+489
+00:20:40,030 --> 00:20:42,250
+design profiling which would be able to
+
+490
+00:20:42,250 --> 00:20:45,340
+create very D optimized code with all of
+
+491
+00:20:45,340 --> 00:20:47,290
+the assembly being maximally simplified
+
+492
+00:20:47,290 --> 00:20:51,100
+with all of those 32 million 16 bits and
+
+493
+00:20:51,100 --> 00:20:52,810
+comparisons being unrolled to byte
+
+494
+00:20:52,810 --> 00:20:56,140
+comparisons and stuff like that so for
+
+495
+00:20:56,140 --> 00:20:58,570
+example the construct on the Left would
+
+496
+00:20:58,570 --> 00:21:00,370
+be contained to the construct on the
+
+497
+00:21:00,370 --> 00:21:03,100
+right and it turns out that this has
+
+498
+00:21:03,100 --> 00:21:04,630
+actually been achieved in the meanwhile
+
+499
+00:21:04,630 --> 00:21:07,090
+so in August a research has been
+
+500
+00:21:07,090 --> 00:21:11,920
+presented resulting in in a LLVM
+
+501
+00:21:11,920 --> 00:21:14,830
+compiler plugin that was actually able
+
+502
+00:21:14,830 --> 00:21:17,380
+to perform these the optimizations and
+
+503
+00:21:17,380 --> 00:21:21,130
+this health ASL to discover several new
+
+504
+00:21:21,130 --> 00:21:23,680
+bugs and the other part of the ideal
+
+505
+00:21:23,680 --> 00:21:25,360
+feature would be that the standard
+
+506
+00:21:25,360 --> 00:21:28,210
+comparisons functions which are very
+
+507
+00:21:28,210 --> 00:21:31,390
+annoying we could have a compiler based
+
+508
+00:21:31,390 --> 00:21:34,450
+solution for just having a separate
+
+509
+00:21:34,450 --> 00:21:37,390
+version a separate piece of code in the
+
+510
+00:21:37,390 --> 00:21:40,660
+assembly for each of calls of those
+
+511
+00:21:40,660 --> 00:21:43,270
+functions in the code which would help
+
+512
+00:21:43,270 --> 00:21:46,090
+us get some more granular information as
+
+513
+00:21:46,090 --> 00:21:48,610
+well but we still had some unsolvable
+
+514
+00:21:48,610 --> 00:21:51,370
+problems such as when the value that are
+
+515
+00:21:51,370 --> 00:21:53,560
+being loaded from the input is actually
+
+516
+00:21:53,560 --> 00:21:55,720
+processed somehow before being compared
+
+517
+00:21:55,720 --> 00:21:58,690
+with some signatures and this we cannot
+
+518
+00:21:58,690 --> 00:22:01,620
+really approach with any of the dump
+
+519
+00:22:01,620 --> 00:22:04,840
+ideas that I presented before but this
+
+520
+00:22:04,840 --> 00:22:07,540
+is about damn pausing so we have to we
+
+521
+00:22:07,540 --> 00:22:11,460
+have to just agree with that so now
+
+522
+00:22:11,460 --> 00:22:13,260
+we have lots of input files we have the
+
+523
+00:22:13,260 --> 00:22:15,690
+compiled target and the ability to
+
+524
+00:22:15,690 --> 00:22:17,340
+measure code coverage the question is
+
+525
+00:22:17,340 --> 00:22:22,140
+how do we proceed from here and this is
+
+526
+00:22:22,140 --> 00:22:23,789
+assuming that we would like to create
+
+527
+00:22:23,789 --> 00:22:25,710
+some corpus management system I would
+
+528
+00:22:25,710 --> 00:22:27,720
+like to present some algorithm of how I
+
+529
+00:22:27,720 --> 00:22:31,440
+do it myself so let's assume that we
+
+530
+00:22:31,440 --> 00:22:33,740
+would like to have the system for
+
+531
+00:22:33,740 --> 00:22:37,080
+coverage guided corpus management which
+
+532
+00:22:37,080 --> 00:22:38,520
+would have the following properties
+
+533
+00:22:38,520 --> 00:22:40,320
+first of all it would be able to
+
+534
+00:22:40,320 --> 00:22:42,090
+minimize an initial corpus of
+
+535
+00:22:42,090 --> 00:22:45,659
+potentially gigantic sizes to a smaller
+
+536
+00:22:45,659 --> 00:22:48,840
+one that is equally useful so on input
+
+537
+00:22:48,840 --> 00:22:51,090
+we would have any input files and on
+
+538
+00:22:51,090 --> 00:22:53,820
+output you would have M input files and
+
+539
+00:22:53,820 --> 00:22:56,070
+information about their code coverage
+
+540
+00:22:56,070 --> 00:22:59,480
+and of course this should be scalable
+
+541
+00:22:59,480 --> 00:23:01,710
+this is the first property and the
+
+542
+00:23:01,710 --> 00:23:03,360
+second one is that you would also like
+
+543
+00:23:03,360 --> 00:23:05,520
+it would like to use it during fuzzing
+
+544
+00:23:05,520 --> 00:23:07,529
+first of all to decide if a specific
+
+545
+00:23:07,529 --> 00:23:09,570
+mutated sample should be added to the
+
+546
+00:23:09,570 --> 00:23:12,390
+corpus at runtime and to recalculate all
+
+547
+00:23:12,390 --> 00:23:15,450
+of this coverage information in if
+
+548
+00:23:15,450 --> 00:23:17,370
+needed so the input here would be just
+
+549
+00:23:17,370 --> 00:23:20,100
+the current corpus and its coverage and
+
+550
+00:23:20,100 --> 00:23:22,020
+the candidate sample and its coverage
+
+551
+00:23:22,020 --> 00:23:24,510
+and on output we just should have the
+
+552
+00:23:24,510 --> 00:23:29,039
+new corpus and its coverage so yes the
+
+553
+00:23:29,039 --> 00:23:32,549
+pure work for this is that the set cover
+
+554
+00:23:32,549 --> 00:23:34,980
+problem so this is the set cover problem
+
+555
+00:23:34,980 --> 00:23:39,029
+or just a specific version of it which
+
+556
+00:23:39,029 --> 00:23:42,510
+in itself is just np-hard so we cannot
+
+557
+00:23:42,510 --> 00:23:44,640
+really calculate the optimal solution in
+
+558
+00:23:44,640 --> 00:23:47,070
+result reasonable time but we don't
+
+559
+00:23:47,070 --> 00:23:49,289
+really have to do it and in fact it's
+
+560
+00:23:49,289 --> 00:23:52,080
+probably better if we just don't find
+
+561
+00:23:52,080 --> 00:23:53,820
+the optimal solution but someone
+
+562
+00:23:53,820 --> 00:23:57,659
+somewhat optimal one and there are
+
+563
+00:23:57,659 --> 00:23:59,850
+actually greedy algorithms which can
+
+564
+00:23:59,850 --> 00:24:04,520
+find approximate in some reasonable time
+
+565
+00:24:04,520 --> 00:24:07,200
+an example of such an algorithm would be
+
+566
+00:24:07,200 --> 00:24:09,779
+that we store the current corpus and the
+
+567
+00:24:09,779 --> 00:24:11,760
+current coverage and for every new
+
+568
+00:24:11,760 --> 00:24:14,429
+sample we just check if it adds some you
+
+569
+00:24:14,429 --> 00:24:17,190
+trace to the current code coverage so if
+
+570
+00:24:17,190 --> 00:24:19,260
+it does then we add it to the corpus
+
+571
+00:24:19,260 --> 00:24:22,380
+otherwise we discard it and periodically
+
+572
+00:24:22,380 --> 00:24:25,140
+we could also optionally check if the
+
+573
+00:24:25,140 --> 00:24:27,000
+of the samples are redundant inside of
+
+574
+00:24:27,000 --> 00:24:29,520
+the corpus and remove them too to keep
+
+575
+00:24:29,520 --> 00:24:34,340
+the general size small but this has some
+
+576
+00:24:34,340 --> 00:24:37,710
+some significant drawbacks so for
+
+577
+00:24:37,710 --> 00:24:39,840
+example it doesn't scale very well
+
+578
+00:24:39,840 --> 00:24:42,060
+because we have to process all of the
+
+579
+00:24:42,060 --> 00:24:45,990
+samples sequentially and also the size
+
+580
+00:24:45,990 --> 00:24:47,670
+and form of the corpus depends on the
+
+581
+00:24:47,670 --> 00:24:49,440
+order in which the samples are processed
+
+582
+00:24:49,440 --> 00:24:52,620
+so if we start processing the big files
+
+583
+00:24:52,620 --> 00:24:54,900
+at the beginning and then the smaller
+
+584
+00:24:54,900 --> 00:24:57,480
+ones later then we would end up with a
+
+585
+00:24:57,480 --> 00:24:59,670
+very large corpus which is not necessary
+
+586
+00:24:59,670 --> 00:25:01,800
+so we have very little control over the
+
+587
+00:25:01,800 --> 00:25:05,190
+over the trade-off between volume and
+
+588
+00:25:05,190 --> 00:25:07,830
+redundancy in the output corpus so what
+
+589
+00:25:07,830 --> 00:25:09,810
+I would like to propose is another
+
+590
+00:25:09,810 --> 00:25:13,110
+design which is as follows for each
+
+591
+00:25:13,110 --> 00:25:16,140
+execution trace we know we saw the end
+
+592
+00:25:16,140 --> 00:25:18,330
+smallest samples which reach that trace
+
+593
+00:25:18,330 --> 00:25:21,150
+and the overall corpus consists of all
+
+594
+00:25:21,150 --> 00:25:23,580
+the files present in the structure and
+
+595
+00:25:23,580 --> 00:25:25,440
+the structure can be represented as a
+
+596
+00:25:25,440 --> 00:25:30,570
+C++ STL object map which Maps a string
+
+597
+00:25:30,570 --> 00:25:33,060
+which is the name of the sample sorry
+
+598
+00:25:33,060 --> 00:25:35,430
+the name of the trace into a set of
+
+599
+00:25:35,430 --> 00:25:37,890
+pairs consisting of the names of the
+
+600
+00:25:37,890 --> 00:25:40,410
+samples and its sizes so here is an
+
+601
+00:25:40,410 --> 00:25:43,920
+example on an illustration we have for
+
+602
+00:25:43,920 --> 00:25:46,080
+some 4 input samples which have some
+
+603
+00:25:46,080 --> 00:25:48,180
+coverage and then we transform it into a
+
+604
+00:25:48,180 --> 00:25:51,420
+list of traces which map to a maximum of
+
+605
+00:25:51,420 --> 00:25:55,950
+2 files per that trace and they are of
+
+606
+00:25:55,950 --> 00:25:58,950
+course the smallest one here so the
+
+607
+00:25:58,950 --> 00:26:00,510
+advantages of this approach would be
+
+608
+00:26:00,510 --> 00:26:02,160
+that this of course can be very
+
+609
+00:26:02,160 --> 00:26:05,070
+trivially paralyzed with any number of
+
+610
+00:26:05,070 --> 00:26:08,100
+machines using the MapReduce model the
+
+611
+00:26:08,100 --> 00:26:10,230
+extent of redundancy can be controlled
+
+612
+00:26:10,230 --> 00:26:13,770
+via the N parameter with during fasting
+
+613
+00:26:13,770 --> 00:26:16,590
+the corpus will evolve to minimize the
+
+614
+00:26:16,590 --> 00:26:18,600
+average sample size by design because we
+
+615
+00:26:18,600 --> 00:26:22,260
+are storing the end smallest samples we
+
+616
+00:26:22,260 --> 00:26:25,100
+have at least n samples for each trace
+
+617
+00:26:25,100 --> 00:26:28,500
+which results in a very uniform code
+
+618
+00:26:28,500 --> 00:26:30,360
+coverage distribution across the entire
+
+619
+00:26:30,360 --> 00:26:34,110
+set as compared to just having like one
+
+620
+00:26:34,110 --> 00:26:37,080
+samples per each trace and the upper
+
+621
+00:26:37,080 --> 00:26:38,940
+limit for the number of input
+
+622
+00:26:38,940 --> 00:26:41,580
+is limited but in practice it's much
+
+623
+00:26:41,580 --> 00:26:43,380
+less than actually the number of
+
+624
+00:26:43,380 --> 00:26:47,730
+coverage traces times M this approach
+
+625
+00:26:47,730 --> 00:26:50,700
+also has some shortcomings so due to the
+
+626
+00:26:50,700 --> 00:26:52,410
+fact that each trace has the smallest
+
+627
+00:26:52,410 --> 00:26:54,930
+examples in the corpus for some basic
+
+628
+00:26:54,930 --> 00:26:57,120
+traces we will end up with some
+
+629
+00:26:57,120 --> 00:26:59,280
+redundant short files which don't really
+
+630
+00:26:59,280 --> 00:27:01,050
+exercise an interesting functionality
+
+631
+00:27:01,050 --> 00:27:04,080
+for example for PNG we have we have some
+
+632
+00:27:04,080 --> 00:27:07,050
+files we just have the basic headers and
+
+633
+00:27:07,050 --> 00:27:09,300
+stuff like that or just basic headers
+
+634
+00:27:09,300 --> 00:27:12,570
+and then a single chunk so very short
+
+635
+00:27:12,570 --> 00:27:14,220
+files which are really useful for
+
+636
+00:27:14,220 --> 00:27:16,890
+fuzzing but I still think this this is
+
+637
+00:27:16,890 --> 00:27:19,410
+an acceptable trade-off especially given
+
+638
+00:27:19,410 --> 00:27:21,930
+that having a such short input may also
+
+639
+00:27:21,930 --> 00:27:24,510
+enable us to find some unexpected
+
+640
+00:27:24,510 --> 00:27:27,420
+behavior for example also handling some
+
+641
+00:27:27,420 --> 00:27:30,810
+other types of MAGIX by the target that
+
+642
+00:27:30,810 --> 00:27:34,020
+we didn't initially expect so here is
+
+643
+00:27:34,020 --> 00:27:37,080
+the algorithm in a kind of pseudocode so
+
+644
+00:27:37,080 --> 00:27:39,210
+the map face is really simple we just
+
+645
+00:27:39,210 --> 00:27:40,740
+get the code coverage provided by the
+
+646
+00:27:40,740 --> 00:27:43,380
+input data and for each trace ID we
+
+647
+00:27:43,380 --> 00:27:45,960
+output the trace ID and a pair of sample
+
+648
+00:27:45,960 --> 00:27:48,990
+ID and the size of the file so here you
+
+649
+00:27:48,990 --> 00:27:51,950
+can see it we transform the list of the
+
+650
+00:27:51,950 --> 00:27:57,570
+input files into a map of traces mapping
+
+651
+00:27:57,570 --> 00:28:00,930
+to to the samples it first looks like
+
+652
+00:28:00,930 --> 00:28:04,020
+this and then there it does for the redo
+
+653
+00:28:04,020 --> 00:28:06,810
+space we just sort for each of the
+
+654
+00:28:06,810 --> 00:28:10,080
+traces we just sort the list by the size
+
+655
+00:28:10,080 --> 00:28:12,240
+of the samples and then choose the end
+
+656
+00:28:12,240 --> 00:28:15,750
+smallest one and output them so here we
+
+657
+00:28:15,750 --> 00:28:19,080
+start with this input we just sort the
+
+658
+00:28:19,080 --> 00:28:21,750
+files by size and then we choose the and
+
+659
+00:28:21,750 --> 00:28:24,630
+smallest ones which in this case is two
+
+660
+00:28:24,630 --> 00:28:27,720
+and this is our output so at the end we
+
+661
+00:28:27,720 --> 00:28:31,830
+end up with this list of files at the at
+
+662
+00:28:31,830 --> 00:28:36,030
+the top and then we just sort it and get
+
+663
+00:28:36,030 --> 00:28:38,310
+a new unique list and we end up with a
+
+664
+00:28:38,310 --> 00:28:41,340
+total of three out of four files in the
+
+665
+00:28:41,340 --> 00:28:45,750
+initial corpus so when it comes to
+
+666
+00:28:45,750 --> 00:28:47,820
+actual track record for using this
+
+667
+00:28:47,820 --> 00:28:49,800
+algorithm in my infrastructure I've
+
+668
+00:28:49,800 --> 00:28:52,200
+successfully used it to distill
+
+669
+00:28:52,200 --> 00:28:56,070
+but datasets of terabytes to distill it
+
+670
+00:28:56,070 --> 00:28:58,440
+into somewhat reasonable corpuses and
+
+671
+00:28:58,440 --> 00:29:02,610
+the examples are our PDF format based on
+
+672
+00:29:02,610 --> 00:29:05,279
+instrumented PDF you so I generated
+
+673
+00:29:05,279 --> 00:29:08,250
+three purposes based on N equals one ten
+
+674
+00:29:08,250 --> 00:29:11,399
+and a hundred two to get some nice
+
+675
+00:29:11,399 --> 00:29:13,200
+corpus is profiling with different
+
+676
+00:29:13,200 --> 00:29:15,840
+degree of redundancy and I've done the
+
+677
+00:29:15,840 --> 00:29:19,409
+same for for free type too
+
+678
+00:29:19,409 --> 00:29:21,809
+so when it comes to the to the algorithm
+
+679
+00:29:21,809 --> 00:29:25,230
+of determining whether a new candidate
+
+680
+00:29:25,230 --> 00:29:27,210
+is good profiling or not the algorithm
+
+681
+00:29:27,210 --> 00:29:30,419
+is a little bit more complex first of
+
+682
+00:29:30,419 --> 00:29:32,130
+all we go through each of the trays
+
+683
+00:29:32,130 --> 00:29:34,200
+which is covered by the sample and see
+
+684
+00:29:34,200 --> 00:29:38,309
+if it improves the size the size of one
+
+685
+00:29:38,309 --> 00:29:41,159
+of the traces so is its smallest smaller
+
+686
+00:29:41,159 --> 00:29:43,710
+than the size of the large largest file
+
+687
+00:29:43,710 --> 00:29:47,730
+in the set and if any such improvement
+
+688
+00:29:47,730 --> 00:29:52,139
+is is achieved then we perform a second
+
+689
+00:29:52,139 --> 00:29:55,169
+pass to remove all files from the set we
+
+690
+00:29:55,169 --> 00:29:57,840
+have which have the same size as of this
+
+691
+00:29:57,840 --> 00:30:01,230
+file and that here is an illustration of
+
+692
+00:30:01,230 --> 00:30:03,210
+this approach so we have this candidate
+
+693
+00:30:03,210 --> 00:30:03,809
+called
+
+694
+00:30:03,809 --> 00:30:08,490
+five dot PDF which has size 20 so first
+
+695
+00:30:08,490 --> 00:30:10,889
+thing we do is that we try to improve
+
+696
+00:30:10,889 --> 00:30:14,190
+some of the coverage traces here and it
+
+697
+00:30:14,190 --> 00:30:16,590
+turns out that some of them are improved
+
+698
+00:30:16,590 --> 00:30:19,889
+so we insert the 5 dot PDF file for two
+
+699
+00:30:19,889 --> 00:30:21,389
+of the coverage traces and then we
+
+700
+00:30:21,389 --> 00:30:24,600
+perform the second pass and also replace
+
+701
+00:30:24,600 --> 00:30:27,539
+two other files which also had size 20
+
+702
+00:30:27,539 --> 00:30:30,330
+to reduce the total number of files in
+
+703
+00:30:30,330 --> 00:30:36,269
+the set so this was about distilling the
+
+704
+00:30:36,269 --> 00:30:38,220
+whole corpus and merging in a single
+
+705
+00:30:38,220 --> 00:30:41,389
+file and if we want to merge two corpora
+
+706
+00:30:41,389 --> 00:30:44,159
+then it's also travelled by just
+
+707
+00:30:44,159 --> 00:30:46,529
+choosing the smallest n samples for each
+
+708
+00:30:46,529 --> 00:30:50,210
+of the traces that are covered side and
+
+709
+00:30:50,210 --> 00:30:53,639
+one of the things that I passed and had
+
+710
+00:30:53,639 --> 00:30:55,320
+some success with using this approach
+
+711
+00:30:55,320 --> 00:30:57,659
+was Wireshark which I've been passing
+
+712
+00:30:57,659 --> 00:30:59,970
+since November last year using the
+
+713
+00:30:59,970 --> 00:31:02,580
+teacher command-line utility with built
+
+714
+00:31:02,580 --> 00:31:04,409
+with a fan an awesome coverage
+
+715
+00:31:04,409 --> 00:31:05,730
+I discovered 30
+
+716
+00:31:05,730 --> 00:31:07,980
+vulnerabilities using this approach and
+
+717
+00:31:07,980 --> 00:31:10,320
+the interesting thing is that initially
+
+718
+00:31:10,320 --> 00:31:12,960
+I started with some simple sample files
+
+719
+00:31:12,960 --> 00:31:15,480
+from the page sample captures for
+
+720
+00:31:15,480 --> 00:31:18,960
+Wireshark and it was 300 files which had
+
+721
+00:31:18,960 --> 00:31:23,580
+over 200 megabytes so mostly those files
+
+722
+00:31:23,580 --> 00:31:25,890
+were very big but upon several months of
+
+723
+00:31:25,890 --> 00:31:27,900
+coverage guided passing I actually was
+
+724
+00:31:27,900 --> 00:31:30,420
+able to first create a very good corpus
+
+725
+00:31:30,420 --> 00:31:34,200
+which consisted of almost 80,000 files
+
+726
+00:31:34,200 --> 00:31:38,100
+but medium file size was just 47 bytes
+
+727
+00:31:38,100 --> 00:31:40,530
+so they were really actually optimal for
+
+728
+00:31:40,530 --> 00:31:45,660
+filing and if you want to test out your
+
+729
+00:31:45,660 --> 00:31:47,580
+file infrastructure Wireshark is
+
+730
+00:31:47,580 --> 00:31:49,680
+actually a very good thing to do this on
+
+731
+00:31:49,680 --> 00:31:51,780
+because the nature of the code base
+
+732
+00:31:51,780 --> 00:31:53,100
+makes it extremely well
+
+733
+00:31:53,100 --> 00:31:56,070
+fit for dumb fuzzing because it has a
+
+734
+00:31:56,070 --> 00:31:58,200
+vast number of these sectors for
+
+735
+00:31:58,200 --> 00:32:00,510
+different format it's mostly written in
+
+736
+00:32:00,510 --> 00:32:03,000
+C and operate on very very simple data
+
+737
+00:32:03,000 --> 00:32:05,310
+structurally so it just mostly compares
+
+738
+00:32:05,310 --> 00:32:08,480
+single bytes or or some very very simple
+
+739
+00:32:08,480 --> 00:32:11,700
+constructs in the input file so it's
+
+740
+00:32:11,700 --> 00:32:14,040
+generally a very great best target for
+
+741
+00:32:14,040 --> 00:32:16,350
+your puzzle and this is the trophy case
+
+742
+00:32:16,350 --> 00:32:18,180
+for Wireshark in the project zero
+
+743
+00:32:18,180 --> 00:32:22,440
+tracker also this approach proved to be
+
+744
+00:32:22,440 --> 00:32:24,690
+useful for Adobe Flash so I've been
+
+745
+00:32:24,690 --> 00:32:25,830
+fighting it for many years
+
+746
+00:32:25,830 --> 00:32:29,310
+not not so much with coverage coverage
+
+747
+00:32:29,310 --> 00:32:32,100
+guidance but recently I started
+
+748
+00:32:32,100 --> 00:32:34,500
+targeting the ActionScript loader class
+
+749
+00:32:34,500 --> 00:32:36,930
+and in the official documentation you
+
+750
+00:32:36,930 --> 00:32:38,400
+can see that the loader class is
+
+751
+00:32:38,400 --> 00:32:41,490
+supposed to only support JPEG PNG gif
+
+752
+00:32:41,490 --> 00:32:46,140
+and SWF files but when I was filling
+
+753
+00:32:46,140 --> 00:32:48,720
+this with coverage information after
+
+754
+00:32:48,720 --> 00:32:50,700
+several hours of passing I observed two
+
+755
+00:32:50,700 --> 00:32:52,440
+sudden peaks in the number of coverage
+
+756
+00:32:52,440 --> 00:32:55,920
+coverage traces and when I looked into
+
+757
+00:32:55,920 --> 00:32:58,500
+the input corpus I noticed that the
+
+758
+00:32:58,500 --> 00:33:01,260
+father discovered two new signatures are
+
+759
+00:33:01,260 --> 00:33:04,470
+called ATF and III I would correspond to
+
+760
+00:33:04,470 --> 00:33:06,870
+a format that I didn't know before which
+
+761
+00:33:06,870 --> 00:33:08,910
+is called Adobe texture format for stage
+
+762
+00:33:08,910 --> 00:33:13,440
+3d which can have embedded jxr files so
+
+763
+00:33:13,440 --> 00:33:15,420
+these are two very complex file formats
+
+764
+00:33:15,420 --> 00:33:17,430
+whose support was not documented
+
+765
+00:33:17,430 --> 00:33:19,470
+anywhere and I was able to discover
+
+766
+00:33:19,470 --> 00:33:21,210
+by just using this code coverage
+
+767
+00:33:21,210 --> 00:33:23,820
+algorithm and I found seven
+
+768
+00:33:23,820 --> 00:33:25,559
+vulnerabilities in those formats
+
+769
+00:33:25,559 --> 00:33:30,000
+thanks to this discovery so far so also
+
+770
+00:33:30,000 --> 00:33:32,270
+when it comes to corpus post-processing
+
+771
+00:33:32,270 --> 00:33:34,890
+if the files are stored in a way which
+
+772
+00:33:34,890 --> 00:33:37,470
+makes them difficult to mutate you can
+
+773
+00:33:37,470 --> 00:33:41,100
+do some pre-processing such as the
+
+774
+00:33:41,100 --> 00:33:42,980
+compressing them if they are compressed
+
+775
+00:33:42,980 --> 00:33:47,159
+for example in SWF files you typically
+
+776
+00:33:47,159 --> 00:33:49,320
+typically have them in a LD ma
+
+777
+00:33:49,320 --> 00:33:51,809
+compressed form such as with the CVS
+
+778
+00:33:51,809 --> 00:33:55,289
+signature PDF documents also have most
+
+779
+00:33:55,289 --> 00:33:57,299
+of the binary streams compressed with
+
+780
+00:33:57,299 --> 00:33:59,370
+deflate so we can also decompress them
+
+781
+00:33:59,370 --> 00:34:00,990
+to make sure that the bit sleeping makes
+
+782
+00:34:00,990 --> 00:34:03,659
+sense and also tight bond forms are
+
+783
+00:34:03,659 --> 00:34:07,710
+always encrypted with a simple cipher so
+
+784
+00:34:07,710 --> 00:34:09,418
+as several things about running the
+
+785
+00:34:09,418 --> 00:34:13,230
+target and several trips so we have to
+
+786
+00:34:13,230 --> 00:34:14,849
+distinguish between command line and
+
+787
+00:34:14,849 --> 00:34:17,369
+graphical applications it's generally
+
+788
+00:34:17,369 --> 00:34:19,739
+preferred for at least for me for the
+
+789
+00:34:19,739 --> 00:34:22,050
+target program to be common light only
+
+790
+00:34:22,050 --> 00:34:24,060
+which is quite common on Linux and less
+
+791
+00:34:24,060 --> 00:34:26,909
+so on Windows most open-source drivers
+
+792
+00:34:26,909 --> 00:34:29,010
+actually shape with some already testing
+
+793
+00:34:29,010 --> 00:34:30,750
+tools which are command line which we
+
+794
+00:34:30,750 --> 00:34:33,449
+can use for fuzzing and this is much
+
+795
+00:34:33,449 --> 00:34:35,429
+cleaner in terms of interaction logging
+
+796
+00:34:35,429 --> 00:34:38,510
+and basically everything else in fuzzy
+
+797
+00:34:38,510 --> 00:34:41,339
+but there are also some graphical Linux
+
+798
+00:34:41,339 --> 00:34:44,730
+graphical applications for Linux in
+
+799
+00:34:44,730 --> 00:34:47,190
+which case we can use the X built well
+
+800
+00:34:47,190 --> 00:34:49,879
+frame buffer to to deal with this and
+
+801
+00:34:49,879 --> 00:34:52,530
+the thing is that for some applications
+
+802
+00:34:52,530 --> 00:34:54,510
+the amount of input data processed is
+
+803
+00:34:54,510 --> 00:34:56,460
+actually dependent on the amount of data
+
+804
+00:34:56,460 --> 00:34:58,740
+which is displayed on the screen which
+
+805
+00:34:58,740 --> 00:35:00,780
+is the case for example for Adobe Reader
+
+806
+00:35:00,780 --> 00:35:03,150
+and my solution for that was to just
+
+807
+00:35:03,150 --> 00:35:07,140
+start a beautiful X frame buffer with a
+
+808
+00:35:07,140 --> 00:35:10,440
+very huge resolution and then start
+
+809
+00:35:10,440 --> 00:35:12,270
+Adobe Reader such that it would have a
+
+810
+00:35:12,270 --> 00:35:14,220
+huge window displaying all of the pages
+
+811
+00:35:14,220 --> 00:35:16,650
+at the same time so this is the result
+
+812
+00:35:16,650 --> 00:35:19,080
+it was a very dumb way to make sure that
+
+813
+00:35:19,080 --> 00:35:21,390
+as much PDF data was processed as
+
+814
+00:35:21,390 --> 00:35:24,150
+possible and it really improved the
+
+815
+00:35:24,150 --> 00:35:26,099
+number of bucks that I was able to find
+
+816
+00:35:26,099 --> 00:35:29,940
+in Adobe Reader and it's interesting
+
+817
+00:35:29,940 --> 00:35:31,530
+because that OB reader is supposed to be
+
+818
+00:35:31,530 --> 00:35:33,270
+a graphical only up
+
+819
+00:35:33,270 --> 00:35:35,190
+but if you started from command line
+
+820
+00:35:35,190 --> 00:35:37,680
+with the help common line argument you
+
+821
+00:35:37,680 --> 00:35:39,420
+can see that it actually has a lot of
+
+822
+00:35:39,420 --> 00:35:44,520
+common line arguments and while we're at
+
+823
+00:35:44,520 --> 00:35:47,430
+Adobe Reader I wanted to mention that I
+
+824
+00:35:47,430 --> 00:35:50,100
+perform some fuzzing of it in 2013 12
+
+825
+00:35:50,100 --> 00:35:52,920
+and 13 which with some bugs pass at
+
+826
+00:35:52,920 --> 00:35:57,960
+farms but then in 2014 after the Adobe
+
+827
+00:35:57,960 --> 00:36:00,000
+Reader for Linux was discontinued I
+
+828
+00:36:00,000 --> 00:36:03,030
+still had some very like better method
+
+829
+00:36:03,030 --> 00:36:04,830
+than before so I still wanted to find
+
+830
+00:36:04,830 --> 00:36:07,710
+some bugs in Adobe Reader but I couldn't
+
+831
+00:36:07,710 --> 00:36:09,180
+really use a new version because it was
+
+832
+00:36:09,180 --> 00:36:12,930
+discontinued so my idea was to use the
+
+833
+00:36:12,930 --> 00:36:15,420
+Linux version and fuzz it on Linux and
+
+834
+00:36:15,420 --> 00:36:17,490
+then see if any bugs would actually
+
+835
+00:36:17,490 --> 00:36:19,470
+reproduce on the Windows version and it
+
+836
+00:36:19,470 --> 00:36:22,980
+turned out that I ended up with over 700
+
+837
+00:36:22,980 --> 00:36:24,870
+crashes in total in the linux version
+
+838
+00:36:24,870 --> 00:36:27,570
+out of which 11 reproduced on the
+
+839
+00:36:27,570 --> 00:36:28,620
+Windows version as well
+
+840
+00:36:28,620 --> 00:36:35,670
+and they were fixed in in 2014 and 15 so
+
+841
+00:36:35,670 --> 00:36:37,410
+when the program is behaves there are
+
+842
+00:36:37,410 --> 00:36:40,260
+certain behaviors that are undesired are
+
+843
+00:36:40,260 --> 00:36:42,630
+doing thousand for example we don't want
+
+844
+00:36:42,630 --> 00:36:44,610
+to deal with some generic exception
+
+845
+00:36:44,610 --> 00:36:46,770
+handlers which would mask the exceptions
+
+846
+00:36:46,770 --> 00:36:48,210
+that we want to catch and stuff like
+
+847
+00:36:48,210 --> 00:36:49,950
+that they could attempt to establish
+
+848
+00:36:49,950 --> 00:36:52,740
+some network connections excusal
+
+849
+00:36:52,740 --> 00:36:54,750
+interaction and stuff like that and I
+
+850
+00:36:54,750 --> 00:36:56,280
+have founded on Linux it's very
+
+851
+00:36:56,280 --> 00:36:58,320
+convenient to use the LD preload to
+
+852
+00:36:58,320 --> 00:36:59,970
+actually block off some of the functions
+
+853
+00:36:59,970 --> 00:37:01,920
+that you don't want to be to have cold
+
+854
+00:37:01,920 --> 00:37:04,470
+so for example you can disable custom
+
+855
+00:37:04,470 --> 00:37:07,140
+exception handling by masking out two
+
+856
+00:37:07,140 --> 00:37:09,480
+functions that are signalling cig action
+
+857
+00:37:09,480 --> 00:37:13,440
+just replace them with no operations you
+
+858
+00:37:13,440 --> 00:37:15,330
+can disable network connection by just
+
+859
+00:37:15,330 --> 00:37:17,790
+masking out the socket function and
+
+860
+00:37:17,790 --> 00:37:21,990
+stuff like that and you can also think
+
+861
+00:37:21,990 --> 00:37:23,820
+about passing the command line for some
+
+862
+00:37:23,820 --> 00:37:26,160
+of the targets so some projects have
+
+863
+00:37:26,160 --> 00:37:27,930
+multiple command line flags which might
+
+864
+00:37:27,930 --> 00:37:30,360
+we might want to sleep randomly in order
+
+865
+00:37:30,360 --> 00:37:32,060
+to reach some interesting functionality
+
+866
+00:37:32,060 --> 00:37:35,550
+especially in an open source project and
+
+867
+00:37:35,550 --> 00:37:37,200
+the solution to that would be to have an
+
+868
+00:37:37,200 --> 00:37:39,240
+external target launcher which
+
+869
+00:37:39,240 --> 00:37:41,910
+determines the actual common line to be
+
+870
+00:37:41,910 --> 00:37:44,760
+used based on some some data from the
+
+871
+00:37:44,760 --> 00:37:46,720
+actual input files
+
+872
+00:37:46,720 --> 00:37:49,210
+and I use that information to to peak
+
+873
+00:37:49,210 --> 00:37:51,849
+the command line to be used so for
+
+874
+00:37:51,849 --> 00:37:54,220
+example at the van back where you can
+
+875
+00:37:54,220 --> 00:37:56,230
+specify the output format in which you
+
+876
+00:37:56,230 --> 00:37:58,359
+want the output file to be generated in
+
+877
+00:37:58,359 --> 00:38:01,540
+and if you list this format it turns out
+
+878
+00:38:01,540 --> 00:38:03,849
+that there is over 300 of them so it
+
+879
+00:38:03,849 --> 00:38:06,250
+makes sense to try to test all of them
+
+880
+00:38:06,250 --> 00:38:09,580
+and the logic for the wrapper would be
+
+881
+00:38:09,580 --> 00:38:12,369
+to just choose the encoder based on a
+
+882
+00:38:12,369 --> 00:38:15,130
+hash which is generated out of the four
+
+883
+00:38:15,130 --> 00:38:17,740
+thousand bytes the first byte in the
+
+884
+00:38:17,740 --> 00:38:20,530
+input file and then execute such such a
+
+885
+00:38:20,530 --> 00:38:24,190
+command line and another funny thing is
+
+886
+00:38:24,190 --> 00:38:25,570
+that you should always make sure that
+
+887
+00:38:25,570 --> 00:38:27,490
+you're not actually losing cycles which
+
+888
+00:38:27,490 --> 00:38:30,280
+was what I did so this is an example of
+
+889
+00:38:30,280 --> 00:38:31,810
+free type which is a very convenient
+
+890
+00:38:31,810 --> 00:38:34,599
+command-line utility called FG bench and
+
+891
+00:38:34,599 --> 00:38:37,720
+it runs through 12 tests exorcising
+
+892
+00:38:37,720 --> 00:38:40,900
+values a PA library calls and when you
+
+893
+00:38:40,900 --> 00:38:42,730
+run it with no special parameters it
+
+894
+00:38:42,730 --> 00:38:45,130
+takes 25 seconds for example to just
+
+895
+00:38:45,130 --> 00:38:47,980
+process the file and the important thing
+
+896
+00:38:47,980 --> 00:38:50,619
+is is the reason for this you can see
+
+897
+00:38:50,619 --> 00:38:52,420
+that it says number of seconds for each
+
+898
+00:38:52,420 --> 00:38:55,000
+test equals 2 which I didn't realize it
+
+899
+00:38:55,000 --> 00:38:57,400
+first I didn't really strike me for a
+
+900
+00:38:57,400 --> 00:39:00,520
+long time and it turns out that you can
+
+901
+00:39:00,520 --> 00:39:02,530
+use a special track to actually just use
+
+902
+00:39:02,530 --> 00:39:06,910
+run every test just once instead of for
+
+903
+00:39:06,910 --> 00:39:11,290
+2 seconds and this this sped up the
+
+904
+00:39:11,290 --> 00:39:14,050
+passing by at least a hundred times for
+
+905
+00:39:14,050 --> 00:39:15,790
+me but I was still able to find some
+
+906
+00:39:15,790 --> 00:39:19,450
+bugs using this very slow problem so I'm
+
+907
+00:39:19,450 --> 00:39:21,940
+afraid I had to skip out through some of
+
+908
+00:39:21,940 --> 00:39:23,950
+the slides here I wanted to also talk
+
+909
+00:39:23,950 --> 00:39:26,109
+about mutating inputs you will be able
+
+910
+00:39:26,109 --> 00:39:28,869
+to check out the slides later on there
+
+911
+00:39:28,869 --> 00:39:31,170
+were some interesting thoughts about
+
+912
+00:39:31,170 --> 00:39:33,849
+first of all how to mutate the data and
+
+913
+00:39:33,849 --> 00:39:36,520
+also what ratios to use for those data
+
+914
+00:39:36,520 --> 00:39:38,490
+because you don't always want to flip a
+
+915
+00:39:38,490 --> 00:39:40,869
+specific number of bytes but you want to
+
+916
+00:39:40,869 --> 00:39:43,450
+adjust it based on the nature of the
+
+917
+00:39:43,450 --> 00:39:47,440
+input data and then I also wanted to
+
+918
+00:39:47,440 --> 00:39:49,420
+quickly talk about the Windows kernel
+
+919
+00:39:49,420 --> 00:39:52,210
+for passing effort maybe I'll try to
+
+920
+00:39:52,210 --> 00:39:54,220
+talk about it really quickly so I
+
+921
+00:39:54,220 --> 00:39:56,680
+decided to do inbox because I'm a very
+
+922
+00:39:56,680 --> 00:39:58,810
+huge fan of it it's a software emulator
+
+923
+00:39:58,810 --> 00:40:00,400
+and I've already used it for
+
+924
+00:40:00,400 --> 00:40:02,890
+some projects it's not very fast but we
+
+925
+00:40:02,890 --> 00:40:04,839
+can still scale against that if we use
+
+926
+00:40:04,839 --> 00:40:07,809
+some more machines that just one so it
+
+927
+00:40:07,809 --> 00:40:09,700
+has some very useful properties it can
+
+928
+00:40:09,700 --> 00:40:12,069
+be run on a Linux system it provides a
+
+929
+00:40:12,069 --> 00:40:15,190
+documented instrumentation API so it
+
+930
+00:40:15,190 --> 00:40:17,079
+makes it possible for you to interact
+
+931
+00:40:17,079 --> 00:40:20,470
+with the guests it runs Windows out of
+
+932
+00:40:20,470 --> 00:40:22,839
+the box which is very simple and you can
+
+933
+00:40:22,839 --> 00:40:26,589
+easily configure it so let's do it when
+
+934
+00:40:26,589 --> 00:40:28,960
+it comes to input to the input data this
+
+935
+00:40:28,960 --> 00:40:30,430
+part was the easiest one because I
+
+936
+00:40:30,430 --> 00:40:32,230
+already had a input corpus of files
+
+937
+00:40:32,230 --> 00:40:33,430
+based on pre type
+
+938
+00:40:33,430 --> 00:40:36,039
+2000 so what I only had to do is to
+
+939
+00:40:36,039 --> 00:40:38,039
+extract TrueType and OpenType files
+
+940
+00:40:38,039 --> 00:40:40,420
+because the other one that free type
+
+941
+00:40:40,420 --> 00:40:42,250
+supports and supported by the Windows
+
+942
+00:40:42,250 --> 00:40:47,980
+kernel yeah so then part of mutating TGF
+
+943
+00:40:47,980 --> 00:40:51,240
+in the OTS was the more interesting I
+
+944
+00:40:51,240 --> 00:40:53,619
+decided that the mutations would be
+
+945
+00:40:53,619 --> 00:40:55,420
+applied in box instrumentation inside
+
+946
+00:40:55,420 --> 00:40:58,119
+instead of the gas system itself because
+
+947
+00:40:58,119 --> 00:41:01,240
+it would be much faster that way the
+
+948
+00:41:01,240 --> 00:41:03,099
+question is how to mutate them properly
+
+949
+00:41:03,099 --> 00:41:05,680
+to get the best result because both TTFN
+
+950
+00:41:05,680 --> 00:41:07,720
+and OTS follow a common chunk structure
+
+951
+00:41:07,720 --> 00:41:10,480
+called a certainty in which each file
+
+952
+00:41:10,480 --> 00:41:12,789
+comes it's a number of tables which are
+
+953
+00:41:12,789 --> 00:41:17,380
+public documented so there are a total
+
+954
+00:41:17,380 --> 00:41:20,950
+of about 50 tables in existence in total
+
+955
+00:41:20,950 --> 00:41:24,880
+but only 20 or so are actually important
+
+956
+00:41:24,880 --> 00:41:27,039
+and one thing they have in common is
+
+957
+00:41:27,039 --> 00:41:28,750
+that they all are different so they have
+
+958
+00:41:28,750 --> 00:41:30,430
+a different length different structure
+
+959
+00:41:30,430 --> 00:41:32,380
+different kind of importance for the
+
+960
+00:41:32,380 --> 00:41:34,119
+operating system and the parser and
+
+961
+00:41:34,119 --> 00:41:35,680
+stuff like that so it only seems
+
+962
+00:41:35,680 --> 00:41:37,569
+reasonable to treat each of them
+
+963
+00:41:37,569 --> 00:41:39,760
+individually instead of pass the file as
+
+964
+00:41:39,760 --> 00:41:40,740
+a whole
+
+965
+00:41:40,740 --> 00:41:43,329
+so the typical scheme I've seen in
+
+966
+00:41:43,329 --> 00:41:45,339
+nearly every fund from fuzzing
+
+967
+00:41:45,339 --> 00:41:47,410
+presentation would be that we just took
+
+968
+00:41:47,410 --> 00:41:49,390
+the whole font and we would flip
+
+969
+00:41:49,390 --> 00:41:53,170
+somebody's in the whole file and we will
+
+970
+00:41:53,170 --> 00:41:55,510
+just fix up that the table checks arms
+
+971
+00:41:55,510 --> 00:41:57,160
+in the header so that windows would
+
+972
+00:41:57,160 --> 00:41:59,829
+actually accept it but I decided to go a
+
+973
+00:41:59,829 --> 00:42:00,460
+different way
+
+974
+00:42:00,460 --> 00:42:02,890
+and instead of passing or mutating a
+
+975
+00:42:02,890 --> 00:42:05,890
+whole form file I would be passing each
+
+976
+00:42:05,890 --> 00:42:09,400
+of those tables individually such that I
+
+977
+00:42:09,400 --> 00:42:13,539
+would get the success to failure ratio
+
+978
+00:42:13,539 --> 00:42:14,289
+at
+
+979
+00:42:14,289 --> 00:42:18,339
+50 % so 50% of the time windows would
+
+980
+00:42:18,339 --> 00:42:20,199
+actually be able to process that mutated
+
+981
+00:42:20,199 --> 00:42:22,869
+file correctly and 50% of time it would
+
+982
+00:42:22,869 --> 00:42:24,880
+fail which would mean that we would be
+
+983
+00:42:24,880 --> 00:42:27,519
+kind of at a verge of the mutated file
+
+984
+00:42:27,519 --> 00:42:30,339
+being correct so I just wrote a very
+
+985
+00:42:30,339 --> 00:42:32,140
+simple program to actually determine
+
+986
+00:42:32,140 --> 00:42:35,589
+what mutation Rachel would be best fit
+
+987
+00:42:35,589 --> 00:42:37,539
+for each of the tables and either each
+
+988
+00:42:37,539 --> 00:42:39,549
+of the mutation algorithm to maintain
+
+989
+00:42:39,549 --> 00:42:43,390
+the 93% correctness and this resulted in
+
+990
+00:42:43,390 --> 00:42:45,279
+the following table of mutation ratios
+
+991
+00:42:45,279 --> 00:42:47,529
+for each of the algorithms and each of
+
+992
+00:42:47,529 --> 00:42:52,059
+the s sng tables so I also didn't set
+
+993
+00:42:52,059 --> 00:42:54,099
+the mutation ratios to be fixed as shown
+
+994
+00:42:54,099 --> 00:42:55,989
+in the previous table but I also allowed
+
+995
+00:42:55,989 --> 00:43:00,369
+some some freedom in that so I set a
+
+996
+00:43:00,369 --> 00:43:03,069
+range between zero and two times the the
+
+997
+00:43:03,069 --> 00:43:05,309
+mutation ratio that I determined and
+
+998
+00:43:05,309 --> 00:43:07,599
+with a trivial piece of code to
+
+999
+00:43:07,599 --> 00:43:09,369
+disassemble modified and reassemble
+
+1000
+00:43:09,369 --> 00:43:11,140
+assessing T files I was now able to
+
+1001
+00:43:11,140 --> 00:43:13,299
+mutate them in a very meaningful way
+
+1002
+00:43:13,299 --> 00:43:15,699
+being able to control how they behave in
+
+1003
+00:43:15,699 --> 00:43:18,909
+Windows I also wrote a very simple TDF
+
+1004
+00:43:18,909 --> 00:43:22,479
+generator with TTFN instructions which
+
+1005
+00:43:22,479 --> 00:43:25,059
+consisted of the disassembling the PDF
+
+1006
+00:43:25,059 --> 00:43:27,939
+files inserting new instructions with a
+
+1007
+00:43:27,939 --> 00:43:30,249
+python generator and then reassembling
+
+1008
+00:43:30,249 --> 00:43:33,729
+it back and I managed to find find one
+
+1009
+00:43:33,729 --> 00:43:35,890
+extra back with this generator so quite
+
+1010
+00:43:35,890 --> 00:43:38,949
+quite a quite less than with does the
+
+1011
+00:43:38,949 --> 00:43:42,640
+damn puzzle itself and when it comes to
+
+1012
+00:43:42,640 --> 00:43:44,529
+the communication channel between the
+
+1013
+00:43:44,529 --> 00:43:46,119
+ghost host and the guest
+
+1014
+00:43:46,119 --> 00:43:49,599
+I used the Box instrumentation to detect
+
+1015
+00:43:49,599 --> 00:43:52,539
+a specific instruction in this case it
+
+1016
+00:43:52,539 --> 00:43:53,319
+was Elton's
+
+1017
+00:43:53,319 --> 00:43:57,549
+and I used this instruction to implement
+
+1018
+00:43:57,549 --> 00:43:59,739
+operations such as request data which
+
+1019
+00:43:59,739 --> 00:44:02,049
+would allowed the harness in the guest
+
+1020
+00:44:02,049 --> 00:44:04,209
+to request mutated phone data from the
+
+1021
+00:44:04,209 --> 00:44:07,769
+host send status to send status whether
+
+1022
+00:44:07,769 --> 00:44:10,749
+the loading of the phone succeeded or
+
+1023
+00:44:10,749 --> 00:44:14,739
+not and the simple debug print so of
+
+1024
+00:44:14,739 --> 00:44:17,049
+course I had to be very careful to to be
+
+1025
+00:44:17,049 --> 00:44:18,729
+to be sure that all of the memory
+
+1026
+00:44:18,729 --> 00:44:21,999
+regions passed back to box were mapped
+
+1027
+00:44:21,999 --> 00:44:23,799
+in physical memory so I would be done
+
+1028
+00:44:23,799 --> 00:44:27,219
+able to write to each directly I also
+
+1029
+00:44:27,219 --> 00:44:28,210
+implemented
+
+1030
+00:44:28,210 --> 00:44:31,450
+- to harness to be able to get the best
+
+1031
+00:44:31,450 --> 00:44:33,609
+code coverage in the Windows kernel so I
+
+1032
+00:44:33,609 --> 00:44:35,500
+would call all of the available API
+
+1033
+00:44:35,500 --> 00:44:37,390
+functions which were operating on the
+
+1034
+00:44:37,390 --> 00:44:39,910
+fonts and I would list and display all
+
+1035
+00:44:39,910 --> 00:44:42,339
+of the glyphs in the font to be to make
+
+1036
+00:44:42,339 --> 00:44:44,710
+sure that all of the mutations would
+
+1037
+00:44:44,710 --> 00:44:46,240
+actually be triggered in the Windows
+
+1038
+00:44:46,240 --> 00:44:49,270
+kernel I also operate optimize the
+
+1039
+00:44:49,270 --> 00:44:51,160
+operating system to the maximum extent
+
+1040
+00:44:51,160 --> 00:44:54,609
+so I disabled all of the themes disabled
+
+1041
+00:44:54,609 --> 00:44:56,380
+services that were not necessarily
+
+1042
+00:44:56,380 --> 00:44:59,529
+removed most of the system files removed
+
+1043
+00:44:59,529 --> 00:45:01,900
+all our items from outer start disabled
+
+1044
+00:45:01,900 --> 00:45:03,880
+paging and stuff like that to make sure
+
+1045
+00:45:03,880 --> 00:45:06,250
+that the guest system was actually very
+
+1046
+00:45:06,250 --> 00:45:08,529
+quick and we wouldn't be losing any
+
+1047
+00:45:08,529 --> 00:45:12,160
+cycles inside of the box and of course I
+
+1048
+00:45:12,160 --> 00:45:13,900
+also had to make sure that the system
+
+1049
+00:45:13,900 --> 00:45:16,089
+would actually restart when the crash
+
+1050
+00:45:16,089 --> 00:45:16,690
+happened
+
+1051
+00:45:16,690 --> 00:45:19,539
+so I could detect a system reset as an
+
+1052
+00:45:19,539 --> 00:45:22,150
+indicator for a crash in the Windows
+
+1053
+00:45:22,150 --> 00:45:24,250
+kernel and then when I wanted to
+
+1054
+00:45:24,250 --> 00:45:26,260
+reproduce the crashes I would do it in a
+
+1055
+00:45:26,260 --> 00:45:29,799
+separate beautiful box VM and I would
+
+1056
+00:45:29,799 --> 00:45:32,349
+just load the font in the same way as
+
+1057
+00:45:32,349 --> 00:45:34,809
+doing the fuzzing and then check if
+
+1058
+00:45:34,809 --> 00:45:36,460
+there is a crash dump in the windows
+
+1059
+00:45:36,460 --> 00:45:39,099
+directory if so I would generate a
+
+1060
+00:45:39,099 --> 00:45:44,049
+report from that and save it I also did
+
+1061
+00:45:44,049 --> 00:45:46,119
+some minimization but I won't really
+
+1062
+00:45:46,119 --> 00:45:48,670
+talk talk about it anymore but the
+
+1063
+00:45:48,670 --> 00:45:50,529
+general result from this research is
+
+1064
+00:45:50,529 --> 00:45:53,349
+that I found all classes of bugs
+
+1065
+00:45:53,349 --> 00:45:55,150
+basically mostly pull based buffer
+
+1066
+00:45:55,150 --> 00:45:57,460
+overflows but also sum over each user to
+
+1067
+00:45:57,460 --> 00:46:01,299
+fries and other interesting things this
+
+1068
+00:46:01,299 --> 00:46:04,180
+was done in four iterations and this is
+
+1069
+00:46:04,180 --> 00:46:06,490
+not necessarily the end there could be
+
+1070
+00:46:06,490 --> 00:46:09,520
+more more bugs discovered let's see in
+
+1071
+00:46:09,520 --> 00:46:11,069
+the future
+
+1072
+00:46:11,069 --> 00:46:13,650
+so the closing thoughts is that
+
+1073
+00:46:13,650 --> 00:46:15,819
+hopefully after this effort
+
+1074
+00:46:15,819 --> 00:46:17,950
+no more bites are looking the Windows
+
+1075
+00:46:17,950 --> 00:46:21,640
+kernel from processing let's see that is
+
+1076
+00:46:21,640 --> 00:46:23,650
+the case or not either either way
+
+1077
+00:46:23,650 --> 00:46:25,960
+Microsoft has moved from processing into
+
+1078
+00:46:25,960 --> 00:46:28,960
+a user space process which is good for
+
+1079
+00:46:28,960 --> 00:46:30,730
+security but it could also make fuzzing
+
+1080
+00:46:30,730 --> 00:46:33,760
+easier for us and yeah we can still
+
+1081
+00:46:33,760 --> 00:46:37,150
+think about using it as an RCA II vector
+
+1082
+00:46:37,150 --> 00:46:38,890
+because even though it's not anymore in
+
+1083
+00:46:38,890 --> 00:46:40,980
+the kernel but in user space
+
+1084
+00:46:40,980 --> 00:46:43,560
+we can still use it to get some kind of
+
+1085
+00:46:43,560 --> 00:46:46,260
+remote code execution so with that I
+
+1086
+00:46:46,260 --> 00:46:47,940
+thank you for your attention and I'm
+
+1087
+00:46:47,940 --> 00:46:49,859
+happy to answer questions probably after
+
+1088
+00:46:49,859 --> 00:46:52,730
+the talk
+
+1089
+00:46:54,570 --> 00:46:54,950
+[Applause]
+
+1090
+00:46:54,950 --> 00:46:58,029
+[Music]
+

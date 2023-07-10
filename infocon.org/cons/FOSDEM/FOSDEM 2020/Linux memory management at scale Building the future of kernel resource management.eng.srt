@@ -1,0 +1,4076 @@
+﻿1
+00:00:06,879 --> 00:00:09,200
+all right
+
+2
+00:00:07,440 --> 00:00:10,559
+next one is going to be chris down is
+
+3
+00:00:09,200 --> 00:00:13,678
+going to be talking to us about
+
+4
+00:00:10,559 --> 00:00:15,440
+linux memory management at scale hello
+
+5
+00:00:13,679 --> 00:00:17,199
+there you lovely people
+
+6
+00:00:15,440 --> 00:00:19,198
+uh hope you've had a good lunch i'm
+
+7
+00:00:17,199 --> 00:00:20,240
+chris down i work at facebook on the
+
+8
+00:00:19,199 --> 00:00:22,800
+kernel team
+
+9
+00:00:20,240 --> 00:00:24,799
+i mostly work on improving memory
+
+10
+00:00:22,800 --> 00:00:26,400
+management within the linux kernel
+
+11
+00:00:24,800 --> 00:00:28,720
+i'm also a maintainer of the systemd
+
+12
+00:00:26,400 --> 00:00:30,880
+project so you can hack on me later
+
+13
+00:00:28,720 --> 00:00:32,879
+mostly i spend time thinking about how
+
+14
+00:00:30,880 --> 00:00:35,200
+we can make linux more reliable
+
+15
+00:00:32,880 --> 00:00:36,800
+and usable at scale and that kind of
+
+16
+00:00:35,200 --> 00:00:37,520
+feeds into what i want to talk about
+
+17
+00:00:36,800 --> 00:00:39,440
+today
+
+18
+00:00:37,520 --> 00:00:41,360
+i want to help you get more uh more of
+
+19
+00:00:39,440 --> 00:00:43,599
+the tools and information that you need
+
+20
+00:00:41,360 --> 00:00:46,000
+to manage memory at scale
+
+21
+00:00:43,600 --> 00:00:47,039
+there are many misconceptions among even
+
+22
+00:00:46,000 --> 00:00:49,440
+senior engineers
+
+23
+00:00:47,039 --> 00:00:50,879
+about the primitives that we provide
+
+24
+00:00:49,440 --> 00:00:51,519
+around memory in the kernel and what
+
+25
+00:00:50,879 --> 00:00:53,760
+they are good
+
+26
+00:00:51,520 --> 00:00:55,920
+and what they are not good for memory
+
+27
+00:00:53,760 --> 00:00:57,199
+management in general is a really really
+
+28
+00:00:55,920 --> 00:00:58,399
+inexact science
+
+29
+00:00:57,199 --> 00:01:00,239
+where basically everything is a
+
+30
+00:00:58,399 --> 00:01:00,640
+trade-off so i want to help try and give
+
+31
+00:01:00,239 --> 00:01:01,919
+you
+
+32
+00:01:00,640 --> 00:01:03,600
+some information that might help you
+
+33
+00:01:01,920 --> 00:01:05,040
+make the right trade-offs for your
+
+34
+00:01:03,600 --> 00:01:06,400
+services and your workloads
+
+35
+00:01:05,040 --> 00:01:08,560
+hopefully you'll come out of this talk
+
+36
+00:01:06,400 --> 00:01:10,159
+with a little bit a better understanding
+
+37
+00:01:08,560 --> 00:01:11,600
+of how you might be able to make your
+
+38
+00:01:10,159 --> 00:01:14,000
+memory management more efficient for
+
+39
+00:01:11,600 --> 00:01:16,320
+your specific case
+
+40
+00:01:14,000 --> 00:01:17,680
+so uh here's a talk with another talk uh
+
+41
+00:01:16,320 --> 00:01:19,439
+first before we go go into that how
+
+42
+00:01:17,680 --> 00:01:21,920
+about we go back to 2017
+
+43
+00:01:19,439 --> 00:01:23,279
+i came here at this uh containers dev
+
+44
+00:01:21,920 --> 00:01:23,840
+room with exactly the same people
+
+45
+00:01:23,280 --> 00:01:26,000
+running it
+
+46
+00:01:23,840 --> 00:01:27,439
+although this one is from cucumb qcon
+
+47
+00:01:26,000 --> 00:01:28,400
+and i gave a talk about a thing called
+
+48
+00:01:27,439 --> 00:01:30,320
+secret v2
+
+49
+00:01:28,400 --> 00:01:31,439
+secret v2 has been for the last few
+
+50
+00:01:30,320 --> 00:01:34,158
+years our big bet
+
+51
+00:01:31,439 --> 00:01:35,919
+for uh resource control and management
+
+52
+00:01:34,159 --> 00:01:37,600
+and c groups are a kernel mechanism that
+
+53
+00:01:35,920 --> 00:01:40,400
+we're essentially building to
+
+54
+00:01:37,600 --> 00:01:41,199
+balance and limit things like memory cpu
+
+55
+00:01:40,400 --> 00:01:42,640
+io
+
+56
+00:01:41,200 --> 00:01:44,560
+some shared resource which you have
+
+57
+00:01:42,640 --> 00:01:45,759
+across a machine we have pretty good
+
+58
+00:01:44,560 --> 00:01:47,200
+problems with facebook and as an
+
+59
+00:01:45,759 --> 00:01:48,640
+industry as a whole
+
+60
+00:01:47,200 --> 00:01:50,320
+our user base is increasing more people
+
+61
+00:01:48,640 --> 00:01:52,320
+are on the internet our product range is
+
+62
+00:01:50,320 --> 00:01:54,240
+diversifying but with that growth
+
+63
+00:01:52,320 --> 00:01:55,520
+comes scaling problems that we've never
+
+64
+00:01:54,240 --> 00:01:57,520
+really had
+
+65
+00:01:55,520 --> 00:01:59,039
+to deal with as an industry before and
+
+66
+00:01:57,520 --> 00:02:00,158
+in the next few years especially at
+
+67
+00:01:59,040 --> 00:02:02,000
+facebook we're going to fill this
+
+68
+00:02:00,159 --> 00:02:04,399
+massive crunch for capacity
+
+69
+00:02:02,000 --> 00:02:06,320
+and we simply can't solve this problem
+
+70
+00:02:04,399 --> 00:02:09,440
+by throwing more and more computers at
+
+71
+00:02:06,320 --> 00:02:10,720
+the problem or more ram at the problem
+
+72
+00:02:09,440 --> 00:02:12,959
+we have hundreds of thousands of
+
+73
+00:02:10,720 --> 00:02:15,280
+machines um any small
+
+74
+00:02:12,959 --> 00:02:17,360
+loss in one of those machines represents
+
+75
+00:02:15,280 --> 00:02:19,120
+a huge absolute loss in resources for
+
+76
+00:02:17,360 --> 00:02:20,959
+the company so we need to use more
+
+77
+00:02:19,120 --> 00:02:22,879
+resources more efficiently and secrets
+
+78
+00:02:20,959 --> 00:02:24,480
+are a huge part of that
+
+79
+00:02:22,879 --> 00:02:26,560
+it's also really important because a lot
+
+80
+00:02:24,480 --> 00:02:27,840
+of huge site incidents and outages not
+
+81
+00:02:26,560 --> 00:02:29,440
+just for facebook but for
+
+82
+00:02:27,840 --> 00:02:31,200
+people like google linkedin all the big
+
+83
+00:02:29,440 --> 00:02:31,920
+sites are caused by lacking resource
+
+84
+00:02:31,200 --> 00:02:33,839
+control
+
+85
+00:02:31,920 --> 00:02:36,799
+not being able to readily control things
+
+86
+00:02:33,840 --> 00:02:37,519
+like memory cpu io can either cause
+
+87
+00:02:36,800 --> 00:02:39,280
+problems
+
+88
+00:02:37,519 --> 00:02:41,280
+or it can make existing problems
+
+89
+00:02:39,280 --> 00:02:42,800
+significantly worse or longer
+
+90
+00:02:41,280 --> 00:02:44,480
+so resource control issues of course
+
+91
+00:02:42,800 --> 00:02:46,080
+some of the most pervasive problems in
+
+92
+00:02:44,480 --> 00:02:48,720
+our industry and we need to start an
+
+93
+00:02:46,080 --> 00:02:52,720
+initiative industry-wide to solve this
+
+94
+00:02:48,720 --> 00:02:54,160
+and that's largely why c groups exist
+
+95
+00:02:52,720 --> 00:02:55,280
+two years ago it was kind of well i
+
+96
+00:02:54,160 --> 00:02:56,640
+think we're in europe so this is an
+
+97
+00:02:55,280 --> 00:02:58,319
+appropriate thing to show but
+
+98
+00:02:56,640 --> 00:02:59,679
+uh two years ago it was a totally
+
+99
+00:02:58,319 --> 00:03:02,079
+different story though right we
+
+100
+00:02:59,680 --> 00:03:04,319
+we really only had one user of super v2
+
+101
+00:03:02,080 --> 00:03:05,599
+which was with us like not even google
+
+102
+00:03:04,319 --> 00:03:06,480
+was using it and they like to use
+
+103
+00:03:05,599 --> 00:03:08,959
+everything but
+
+104
+00:03:06,480 --> 00:03:10,000
+we we were really the only people using
+
+105
+00:03:08,959 --> 00:03:12,080
+it um
+
+106
+00:03:10,000 --> 00:03:14,080
+we had a bunch of different primitives
+
+107
+00:03:12,080 --> 00:03:16,000
+that we had just found uh
+
+108
+00:03:14,080 --> 00:03:18,000
+found out about and were using and
+
+109
+00:03:16,000 --> 00:03:18,720
+invented but when we actually came to
+
+110
+00:03:18,000 --> 00:03:20,400
+use them
+
+111
+00:03:18,720 --> 00:03:22,400
+it it kind of went a little bit like
+
+112
+00:03:20,400 --> 00:03:24,640
+this it's not completely wrong
+
+113
+00:03:22,400 --> 00:03:26,560
+like what we got is like somewhat there
+
+114
+00:03:24,640 --> 00:03:28,079
+um but we got to work out in what cases
+
+115
+00:03:26,560 --> 00:03:29,200
+do we want to make the primitives a
+
+116
+00:03:28,080 --> 00:03:30,720
+little bit more round
+
+117
+00:03:29,200 --> 00:03:32,399
+and in what cases do we want to make the
+
+118
+00:03:30,720 --> 00:03:33,120
+operating system you know a little bit
+
+119
+00:03:32,400 --> 00:03:35,040
+more square
+
+120
+00:03:33,120 --> 00:03:36,560
+so finding the right trade-off takes a
+
+121
+00:03:35,040 --> 00:03:38,480
+lot of production experience and a lot
+
+122
+00:03:36,560 --> 00:03:40,879
+of production experimentation
+
+123
+00:03:38,480 --> 00:03:42,720
+another problem is that c groups
+
+124
+00:03:40,879 --> 00:03:44,159
+literally one of their jobs is to limit
+
+125
+00:03:42,720 --> 00:03:45,280
+resources artificially within the
+
+126
+00:03:44,159 --> 00:03:46,798
+machine
+
+127
+00:03:45,280 --> 00:03:48,720
+and one of the things that happens is
+
+128
+00:03:46,799 --> 00:03:50,400
+that that can cause another resource to
+
+129
+00:03:48,720 --> 00:03:51,120
+then become oversubscribed as a result
+
+130
+00:03:50,400 --> 00:03:52,959
+for example
+
+131
+00:03:51,120 --> 00:03:54,879
+if you artificially limit memory so you
+
+132
+00:03:52,959 --> 00:03:56,480
+limit something very tightly an
+
+133
+00:03:54,879 --> 00:03:57,200
+application that should use one gigabyte
+
+134
+00:03:56,480 --> 00:03:59,119
+and you put it in
+
+135
+00:03:57,200 --> 00:04:00,319
+say 200 megabytes all that's going to
+
+136
+00:03:59,120 --> 00:04:02,319
+happen is you start
+
+137
+00:04:00,319 --> 00:04:03,760
+hitting the disk a lot because you're
+
+138
+00:04:02,319 --> 00:04:04,159
+going to start to have to swap things
+
+139
+00:04:03,760 --> 00:04:05,599
+out
+
+140
+00:04:04,159 --> 00:04:07,200
+even if you don't use swap you're going
+
+141
+00:04:05,599 --> 00:04:08,480
+to have to end up taking stuff out of
+
+142
+00:04:07,200 --> 00:04:10,079
+the page cast so you're going to end up
+
+143
+00:04:08,480 --> 00:04:10,480
+hitting the disk more often to do these
+
+144
+00:04:10,080 --> 00:04:12,000
+things
+
+145
+00:04:10,480 --> 00:04:14,079
+so you end up just with essentially the
+
+146
+00:04:12,000 --> 00:04:15,599
+shittiest memory that money can buy in
+
+147
+00:04:14,080 --> 00:04:17,280
+the form of a disk
+
+148
+00:04:15,599 --> 00:04:19,759
+so as such we need an underlying
+
+149
+00:04:17,279 --> 00:04:21,279
+operating system uh that mitigates these
+
+150
+00:04:19,759 --> 00:04:22,880
+problems and allows us to limit these
+
+151
+00:04:21,279 --> 00:04:24,159
+things without affecting other parts of
+
+152
+00:04:22,880 --> 00:04:26,400
+the system
+
+153
+00:04:24,160 --> 00:04:28,479
+this is also why in a talk about memory
+
+154
+00:04:26,400 --> 00:04:29,120
+you'll hear me talking a lot about io in
+
+155
+00:04:28,479 --> 00:04:31,919
+this talk
+
+156
+00:04:29,120 --> 00:04:33,120
+disc i o is is something you really need
+
+157
+00:04:31,919 --> 00:04:35,440
+to have control over if you're going to
+
+158
+00:04:33,120 --> 00:04:37,680
+limit memory without i o control
+
+159
+00:04:35,440 --> 00:04:39,680
+memory control is really just an
+
+160
+00:04:37,680 --> 00:04:41,199
+academic concept it doesn't if it's an
+
+161
+00:04:39,680 --> 00:04:42,000
+effective memory control you don't have
+
+162
+00:04:41,199 --> 00:04:43,520
+any i o control
+
+163
+00:04:42,000 --> 00:04:45,360
+at all you're just going to destroy the
+
+164
+00:04:43,520 --> 00:04:46,719
+machine and the existing solutions we
+
+165
+00:04:45,360 --> 00:04:48,400
+have in i o control which
+
+166
+00:04:46,720 --> 00:04:50,320
+don't in memory control which don't
+
+167
+00:04:48,400 --> 00:04:52,479
+affect i o it's mostly because they
+
+168
+00:04:50,320 --> 00:04:54,080
+don't work
+
+169
+00:04:52,479 --> 00:04:56,080
+another problem is that while we've had
+
+170
+00:04:54,080 --> 00:04:57,280
+secret v2 kind of academically working
+
+171
+00:04:56,080 --> 00:04:59,039
+like this for a while
+
+172
+00:04:57,280 --> 00:05:00,400
+uh for the past few years a major focus
+
+173
+00:04:59,040 --> 00:05:01,600
+has been issues that it brought up
+
+174
+00:05:00,400 --> 00:05:04,719
+elsewhere in the kernel
+
+175
+00:05:01,600 --> 00:05:06,160
+um because secretary 2 actively limits
+
+176
+00:05:04,720 --> 00:05:07,360
+things effectively in a way that we've
+
+177
+00:05:06,160 --> 00:05:09,840
+never really had
+
+178
+00:05:07,360 --> 00:05:11,360
+before it's brought up a lot of issues
+
+179
+00:05:09,840 --> 00:05:13,119
+in the kernel and limitations
+
+180
+00:05:11,360 --> 00:05:15,280
+that we've had to either fix or work
+
+181
+00:05:13,120 --> 00:05:17,280
+around um there's not really enough time
+
+182
+00:05:15,280 --> 00:05:18,638
+in these 30 minutes to go over the cases
+
+183
+00:05:17,280 --> 00:05:20,159
+that we've had
+
+184
+00:05:18,639 --> 00:05:21,680
+but if you're interested i do go into
+
+185
+00:05:20,160 --> 00:05:22,960
+them in detail in my talk at sr econ
+
+186
+00:05:21,680 --> 00:05:24,800
+from last year
+
+187
+00:05:22,960 --> 00:05:26,638
+we found in fixed issues all across the
+
+188
+00:05:24,800 --> 00:05:27,919
+kernel from kind of the io stack to file
+
+189
+00:05:26,639 --> 00:05:29,680
+systems to memory
+
+190
+00:05:27,919 --> 00:05:31,359
+just to make this work and make resource
+
+191
+00:05:29,680 --> 00:05:32,800
+control not break down under scrutiny
+
+192
+00:05:31,360 --> 00:05:35,840
+and a huge amount of our time has been
+
+193
+00:05:32,800 --> 00:05:37,199
+invested in that kind of stuff
+
+194
+00:05:35,840 --> 00:05:38,560
+so how about we kick off kind of the
+
+195
+00:05:37,199 --> 00:05:39,759
+main part of the talk now i've got all
+
+196
+00:05:38,560 --> 00:05:41,759
+the disclaimers out the way
+
+197
+00:05:39,759 --> 00:05:43,680
+um with by discussing some of the
+
+198
+00:05:41,759 --> 00:05:44,560
+fundamentals of linux memory management
+
+199
+00:05:43,680 --> 00:05:46,160
+so
+
+200
+00:05:44,560 --> 00:05:47,840
+these are pretty important to go over
+
+201
+00:05:46,160 --> 00:05:49,520
+even though some of you may already know
+
+202
+00:05:47,840 --> 00:05:51,359
+most of this um because if we if we
+
+203
+00:05:49,520 --> 00:05:53,120
+don't agree about this the whole rest of
+
+204
+00:05:51,360 --> 00:05:54,400
+the the talk is going to absolutely be
+
+205
+00:05:53,120 --> 00:05:55,759
+completely useless
+
+206
+00:05:54,400 --> 00:05:57,198
+so one thing that's really critical to
+
+207
+00:05:55,759 --> 00:05:58,720
+understanding linux memory management is
+
+208
+00:05:57,199 --> 00:06:00,400
+that linux has these different types of
+
+209
+00:05:58,720 --> 00:06:01,840
+memory from the cpu's perspective
+
+210
+00:06:00,400 --> 00:06:03,440
+there's really not much difference it
+
+211
+00:06:01,840 --> 00:06:04,719
+knows a little bit maybe it knows
+
+212
+00:06:03,440 --> 00:06:06,800
+something about permissions it knows
+
+213
+00:06:04,720 --> 00:06:10,080
+something in the lmu but it doesn't
+
+214
+00:06:06,800 --> 00:06:13,520
+really know uh what the semantic intent
+
+215
+00:06:10,080 --> 00:06:15,120
+of your memory is for example for linux
+
+216
+00:06:13,520 --> 00:06:17,359
+anonymous memory is as the
+
+217
+00:06:15,120 --> 00:06:19,520
+as the name would imply memory which has
+
+218
+00:06:17,360 --> 00:06:20,960
+no backing storage it has no name
+
+219
+00:06:19,520 --> 00:06:23,198
+usually things which you allocate with
+
+220
+00:06:20,960 --> 00:06:24,159
+malloc or m up map anonymous stuff like
+
+221
+00:06:23,199 --> 00:06:26,080
+that
+
+222
+00:06:24,160 --> 00:06:27,759
+uh most people also know about cash and
+
+223
+00:06:26,080 --> 00:06:30,400
+buffers two sides of the same coin
+
+224
+00:06:27,759 --> 00:06:32,160
+um but if you ask most linux users what
+
+225
+00:06:30,400 --> 00:06:34,880
+they think about like buffers and caches
+
+226
+00:06:32,160 --> 00:06:36,720
+they will say it's reclaimable
+
+227
+00:06:34,880 --> 00:06:37,759
+and i'm sure most of you would agree
+
+228
+00:06:36,720 --> 00:06:38,800
+with that but the problem is most
+
+229
+00:06:37,759 --> 00:06:40,160
+people's understanding of what
+
+230
+00:06:38,800 --> 00:06:42,560
+reclaimable means is
+
+231
+00:06:40,160 --> 00:06:44,080
+is a little bit off it doesn't mean that
+
+232
+00:06:42,560 --> 00:06:45,520
+you can reclaim it right now
+
+233
+00:06:44,080 --> 00:06:48,159
+it means that you might be able to
+
+234
+00:06:45,520 --> 00:06:49,198
+reclaim it if you ask nicely in about
+
+235
+00:06:48,160 --> 00:06:51,759
+five minutes maybe
+
+236
+00:06:49,199 --> 00:06:53,759
+uh for example if some application is
+
+237
+00:06:51,759 --> 00:06:55,520
+like hammering the out of some file
+
+238
+00:06:53,759 --> 00:06:57,039
+we're very unlikely to evict that from
+
+239
+00:06:55,520 --> 00:06:58,560
+the cache and the colonel knows this
+
+240
+00:06:57,039 --> 00:06:59,680
+it's not going to keep on evicting that
+
+241
+00:06:58,560 --> 00:07:01,520
+from the cache when
+
+242
+00:06:59,680 --> 00:07:03,039
+it your system won't be able to make any
+
+243
+00:07:01,520 --> 00:07:04,880
+forward progress
+
+244
+00:07:03,039 --> 00:07:07,280
+uh this can cause some confusion when
+
+245
+00:07:04,880 --> 00:07:09,039
+people inevitably ask and do ask a lot
+
+246
+00:07:07,280 --> 00:07:10,880
+why did my system run out of memory when
+
+247
+00:07:09,039 --> 00:07:12,560
+i got so much free memory available
+
+248
+00:07:10,880 --> 00:07:14,240
+and the answer is well you know it's not
+
+249
+00:07:12,560 --> 00:07:15,280
+actually free these things do serve a
+
+250
+00:07:14,240 --> 00:07:17,840
+purpose
+
+251
+00:07:15,280 --> 00:07:19,198
+and we can't always trivially free them
+
+252
+00:07:17,840 --> 00:07:20,799
+so we'll come back to more of these kind
+
+253
+00:07:19,199 --> 00:07:21,759
+of cases which are non-intuitive in a
+
+254
+00:07:20,800 --> 00:07:24,240
+moment
+
+255
+00:07:21,759 --> 00:07:25,440
+the fact that caches can be essential is
+
+256
+00:07:24,240 --> 00:07:27,919
+another example of why
+
+257
+00:07:25,440 --> 00:07:30,400
+rss the resident set size a metric that
+
+258
+00:07:27,919 --> 00:07:31,120
+we love to measure is pretty much
+
+259
+00:07:30,400 --> 00:07:33,840
+
+
+260
+00:07:31,120 --> 00:07:35,199
+uh and we measure rss because it's
+
+261
+00:07:33,840 --> 00:07:36,638
+really easy to measure
+
+262
+00:07:35,199 --> 00:07:38,240
+not because it represents anything
+
+263
+00:07:36,639 --> 00:07:39,440
+useful which is just i don't
+
+264
+00:07:38,240 --> 00:07:41,360
+know what the that's about but as
+
+265
+00:07:39,440 --> 00:07:44,560
+an industry we gotta stop this
+
+266
+00:07:41,360 --> 00:07:47,759
+um rss often skews
+
+267
+00:07:44,560 --> 00:07:48,720
+a lot of attention to very very specific
+
+268
+00:07:47,759 --> 00:07:50,479
+types of memory
+
+269
+00:07:48,720 --> 00:07:52,080
+it skews a lot of it to fall map memory
+
+270
+00:07:50,479 --> 00:07:53,840
+and anonymous memory um
+
+271
+00:07:52,080 --> 00:07:55,680
+we forget though that many workloads
+
+272
+00:07:53,840 --> 00:07:58,080
+simply cannot operate
+
+273
+00:07:55,680 --> 00:07:59,440
+without these disk caches without these
+
+274
+00:07:58,080 --> 00:08:00,878
+page caches
+
+275
+00:07:59,440 --> 00:08:02,800
+and if you take them away they wouldn't
+
+276
+00:08:00,879 --> 00:08:04,800
+be able to run in one case inside
+
+277
+00:08:02,800 --> 00:08:06,240
+facebook a team which for years
+
+278
+00:08:04,800 --> 00:08:09,360
+had thought that their operating
+
+279
+00:08:06,240 --> 00:08:10,720
+footprint was like 100 to 200 megabytes
+
+280
+00:08:09,360 --> 00:08:12,479
+discovered through the metrics which i'm
+
+281
+00:08:10,720 --> 00:08:14,000
+introducing in this talk that the actual
+
+282
+00:08:12,479 --> 00:08:15,359
+footprint was on the order of more like
+
+283
+00:08:14,000 --> 00:08:17,280
+two gigabytes
+
+284
+00:08:15,360 --> 00:08:19,120
+uh and this is one of the reasons why
+
+285
+00:08:17,280 --> 00:08:21,919
+rss as a metric just doesn't make a
+
+286
+00:08:19,120 --> 00:08:21,919
+whole lot of sense
+
+287
+00:08:22,479 --> 00:08:25,599
+so this brings us somewhat neatly onto
+
+288
+00:08:25,120 --> 00:08:27,599
+swap
+
+289
+00:08:25,599 --> 00:08:29,599
+a completely uncontroversial topic which
+
+290
+00:08:27,599 --> 00:08:32,640
+no one has any strong opinions on
+
+291
+00:08:29,599 --> 00:08:34,958
+uh swap is really widely
+
+292
+00:08:32,640 --> 00:08:36,799
+misunderstood a lot of people think that
+
+293
+00:08:34,958 --> 00:08:38,640
+swap is kind of pretty much irrelevant
+
+294
+00:08:36,799 --> 00:08:40,559
+nowadays
+
+295
+00:08:38,640 --> 00:08:42,080
+with gigabytes of memory but this is
+
+296
+00:08:40,559 --> 00:08:43,760
+kind of a strange opinion because
+
+297
+00:08:42,080 --> 00:08:45,279
+swaps still does a lot of good stuff and
+
+298
+00:08:43,760 --> 00:08:47,200
+most of the things that it does well you
+
+299
+00:08:45,279 --> 00:08:48,800
+really can't get them any other way
+
+300
+00:08:47,200 --> 00:08:50,240
+and for the stuff which it does poorly
+
+301
+00:08:48,800 --> 00:08:51,839
+and it does do some stuff poorly
+
+302
+00:08:50,240 --> 00:08:53,600
+you can mitigate it like there are ways
+
+303
+00:08:51,839 --> 00:08:55,519
+to get around that
+
+304
+00:08:53,600 --> 00:08:57,120
+usually these discussions kind of hinge
+
+305
+00:08:55,519 --> 00:08:58,080
+on misunderstandings about swap is
+
+306
+00:08:57,120 --> 00:09:00,000
+actually for
+
+307
+00:08:58,080 --> 00:09:02,080
+using swap is almost all about promoting
+
+308
+00:09:00,000 --> 00:09:03,519
+this positive memory pressure
+
+309
+00:09:02,080 --> 00:09:05,839
+using as much memory as possible and it
+
+310
+00:09:03,519 --> 00:09:09,200
+almost has absolutely nothing at all
+
+311
+00:09:05,839 --> 00:09:11,040
+to do with being a slower ram or like
+
+312
+00:09:09,200 --> 00:09:12,800
+emergency memory which is what people
+
+313
+00:09:11,040 --> 00:09:14,319
+tend to codify it as
+
+314
+00:09:12,800 --> 00:09:15,920
+people also have this really really
+
+315
+00:09:14,320 --> 00:09:17,760
+strange idea that
+
+316
+00:09:15,920 --> 00:09:19,760
+if you run without swap when you
+
+317
+00:09:17,760 --> 00:09:21,839
+encounter memory contention
+
+318
+00:09:19,760 --> 00:09:23,279
+disguise don't happen i don't know how
+
+319
+00:09:21,839 --> 00:09:25,200
+people got this idea but obviously
+
+320
+00:09:23,279 --> 00:09:26,800
+that's not true right we have to evict
+
+321
+00:09:25,200 --> 00:09:27,279
+something and what we're gonna evict is
+
+322
+00:09:26,800 --> 00:09:29,839
+really
+
+323
+00:09:27,279 --> 00:09:31,600
+hot page cash pages so you're gonna end
+
+324
+00:09:29,839 --> 00:09:32,959
+up hitting the disc for those instead
+
+325
+00:09:31,600 --> 00:09:36,240
+you just end up
+
+326
+00:09:32,959 --> 00:09:36,959
+making the reclaim less efficient even
+
+327
+00:09:36,240 --> 00:09:38,959
+worse like
+
+328
+00:09:36,959 --> 00:09:40,640
+we end up reclaiming things which we
+
+329
+00:09:38,959 --> 00:09:42,239
+otherwise wouldn't want to reclaim
+
+330
+00:09:40,640 --> 00:09:43,920
+you're reducing the amount of things
+
+331
+00:09:42,240 --> 00:09:45,839
+which we can reclaim
+
+332
+00:09:43,920 --> 00:09:47,680
+so these kind of misunderstandings have
+
+333
+00:09:45,839 --> 00:09:48,240
+really hobbled swops reputation and led
+
+334
+00:09:47,680 --> 00:09:50,239
+to this
+
+335
+00:09:48,240 --> 00:09:52,399
+belief that it's not useful in 2020
+
+336
+00:09:50,240 --> 00:09:54,320
+which is not really true
+
+337
+00:09:52,399 --> 00:09:55,680
+so a swap isn't a mechanism to expand
+
+338
+00:09:54,320 --> 00:09:57,360
+your ram then what is it
+
+339
+00:09:55,680 --> 00:09:58,959
+well swap allows reclaim on types of
+
+340
+00:09:57,360 --> 00:10:01,120
+memory which otherwise would be
+
+341
+00:09:58,959 --> 00:10:02,479
+locked in memory uh that is it provides
+
+342
+00:10:01,120 --> 00:10:04,399
+the backing store for things like
+
+343
+00:10:02,480 --> 00:10:06,079
+anonymous memory where we simply don't
+
+344
+00:10:04,399 --> 00:10:07,760
+have anywhere else to really store them
+
+345
+00:10:06,079 --> 00:10:09,680
+except for physical ram
+
+346
+00:10:07,760 --> 00:10:11,360
+without swap it's really really hard to
+
+347
+00:10:09,680 --> 00:10:12,640
+run hot on memory it's hard to run
+
+348
+00:10:11,360 --> 00:10:14,480
+memory bound workloads
+
+349
+00:10:12,640 --> 00:10:16,160
+because we almost immediately go from
+
+350
+00:10:14,480 --> 00:10:16,800
+this state of the system being totally
+
+351
+00:10:16,160 --> 00:10:19,439
+fine
+
+352
+00:10:16,800 --> 00:10:20,959
+running at the maximum capacity to oops
+
+353
+00:10:19,440 --> 00:10:23,120
+you've gone one page over and now the
+
+354
+00:10:20,959 --> 00:10:25,199
+system is kind of in the ground
+
+355
+00:10:23,120 --> 00:10:27,519
+and that's not really how anyone wants
+
+356
+00:10:25,200 --> 00:10:29,279
+to run a system
+
+357
+00:10:27,519 --> 00:10:30,560
+another thing is that if you if you've
+
+358
+00:10:29,279 --> 00:10:31,760
+been compiling things you've probably
+
+359
+00:10:30,560 --> 00:10:33,439
+seen like this make j
+
+360
+00:10:31,760 --> 00:10:35,200
+cause plus one stuff it's pretty much
+
+361
+00:10:33,440 --> 00:10:36,720
+what everyone compiles like why do we
+
+362
+00:10:35,200 --> 00:10:38,320
+run with cause plus run
+
+363
+00:10:36,720 --> 00:10:39,920
+why don't we run with calls well the
+
+364
+00:10:38,320 --> 00:10:42,000
+reason is because we want to promote
+
+365
+00:10:39,920 --> 00:10:43,519
+a little bit of positive pressure right
+
+366
+00:10:42,000 --> 00:10:44,880
+in case one of the threads starts doing
+
+367
+00:10:43,519 --> 00:10:46,079
+a little bit less we want to make sure
+
+368
+00:10:44,880 --> 00:10:47,360
+that the cores are being totally
+
+369
+00:10:46,079 --> 00:10:49,120
+utilized all the time
+
+370
+00:10:47,360 --> 00:10:50,720
+and swap allows us to do the same thing
+
+371
+00:10:49,120 --> 00:10:52,320
+with memory
+
+372
+00:10:50,720 --> 00:10:53,760
+this this comes back to kind of what i
+
+373
+00:10:52,320 --> 00:10:55,120
+was saying about as the operating system
+
+374
+00:10:53,760 --> 00:10:56,240
+we want to make the most efficient use
+
+375
+00:10:55,120 --> 00:10:58,160
+of memory possible
+
+376
+00:10:56,240 --> 00:10:59,760
+and we want to do this without impacting
+
+377
+00:10:58,160 --> 00:11:01,360
+system latency too much
+
+378
+00:10:59,760 --> 00:11:03,439
+which is kind of impossible if you don't
+
+379
+00:11:01,360 --> 00:11:05,200
+have swap without swap these memory
+
+380
+00:11:03,440 --> 00:11:06,240
+contention increases happen really
+
+381
+00:11:05,200 --> 00:11:08,240
+really suddenly
+
+382
+00:11:06,240 --> 00:11:10,320
+and often there's no way for your system
+
+383
+00:11:08,240 --> 00:11:12,000
+to recover from that state
+
+384
+00:11:10,320 --> 00:11:13,519
+that is when we go over the edge we go
+
+385
+00:11:12,000 --> 00:11:15,200
+really over the edge and often your
+
+386
+00:11:13,519 --> 00:11:17,040
+system can enter some pathological
+
+387
+00:11:15,200 --> 00:11:18,800
+outcome as a result
+
+388
+00:11:17,040 --> 00:11:20,000
+uh swap does come with some trade-offs i
+
+389
+00:11:18,800 --> 00:11:21,920
+mentioned there was kind of some
+
+390
+00:11:20,000 --> 00:11:22,399
+downsides this is a really really long
+
+391
+00:11:21,920 --> 00:11:24,959
+post
+
+392
+00:11:22,399 --> 00:11:26,640
+if you have the perception that you know
+
+393
+00:11:24,959 --> 00:11:27,279
+swap is not useful i really recommend
+
+394
+00:11:26,640 --> 00:11:28,480
+reading it
+
+395
+00:11:27,279 --> 00:11:32,240
+and feel free to send me an email or
+
+396
+00:11:28,480 --> 00:11:34,640
+whatever if you have some comments
+
+397
+00:11:32,240 --> 00:11:36,480
+one reason why people don't like swap is
+
+398
+00:11:34,640 --> 00:11:37,279
+because they think the um killer will
+
+399
+00:11:36,480 --> 00:11:39,519
+come to their
+
+400
+00:11:37,279 --> 00:11:40,800
+rescue uh the oom killer is the out of
+
+401
+00:11:39,519 --> 00:11:43,839
+memory uh
+
+402
+00:11:40,800 --> 00:11:44,479
+it handles out of memory situations in
+
+403
+00:11:43,839 --> 00:11:46,720
+linux
+
+404
+00:11:44,480 --> 00:11:47,839
+and it's essentially a massive massive
+
+405
+00:11:46,720 --> 00:11:50,160
+ cannon
+
+406
+00:11:47,839 --> 00:11:50,959
+that you point in the direction of some
+
+407
+00:11:50,160 --> 00:11:52,959
+process
+
+408
+00:11:50,959 --> 00:11:55,119
+and you pray that it was facing the
+
+409
+00:11:52,959 --> 00:11:56,319
+right way uh
+
+410
+00:11:55,120 --> 00:11:57,600
+and usually you know it was kind of
+
+411
+00:11:56,320 --> 00:11:58,560
+facing up instead of down or some
+
+412
+00:11:57,600 --> 00:12:02,240
+ like this
+
+413
+00:11:58,560 --> 00:12:04,399
+um it it just it really doesn't really
+
+414
+00:12:02,240 --> 00:12:05,519
+do what what it says on the tin usually
+
+415
+00:12:04,399 --> 00:12:07,680
+if you're running uh
+
+416
+00:12:05,519 --> 00:12:09,279
+a web server for example well the web
+
+417
+00:12:07,680 --> 00:12:10,800
+server itself is like the largest thing
+
+418
+00:12:09,279 --> 00:12:11,839
+on the system so it will just kill the
+
+419
+00:12:10,800 --> 00:12:14,800
+web server
+
+420
+00:12:11,839 --> 00:12:17,040
+ genius um however the um killer
+
+421
+00:12:14,800 --> 00:12:18,959
+kind of has this constraint right like
+
+422
+00:12:17,040 --> 00:12:20,480
+one is when you when you use it you
+
+423
+00:12:18,959 --> 00:12:22,479
+pretty much already lost
+
+424
+00:12:20,480 --> 00:12:24,240
+um usually by the point the own killer
+
+425
+00:12:22,480 --> 00:12:25,279
+is invoked all of your applications on
+
+426
+00:12:24,240 --> 00:12:28,880
+the system have kind of become
+
+427
+00:12:25,279 --> 00:12:29,839
+queued up to hell um and this is because
+
+428
+00:12:28,880 --> 00:12:32,160
+due to the fact that
+
+429
+00:12:29,839 --> 00:12:33,920
+uh memory hotness is hidden behind the
+
+430
+00:12:32,160 --> 00:12:35,519
+cpu's memory management unit
+
+431
+00:12:33,920 --> 00:12:37,199
+we actually have no idea when
+
+432
+00:12:35,519 --> 00:12:38,720
+you're out of memory right like this is
+
+433
+00:12:37,200 --> 00:12:39,920
+not a linux thing this is this is the
+
+434
+00:12:38,720 --> 00:12:41,519
+same for basically every modern
+
+435
+00:12:39,920 --> 00:12:42,399
+operating system and every modern cpu
+
+436
+00:12:41,519 --> 00:12:44,399
+and every modern
+
+437
+00:12:42,399 --> 00:12:45,920
+management unit we have no clue when
+
+438
+00:12:44,399 --> 00:12:46,720
+we're out of memory this might come to a
+
+439
+00:12:45,920 --> 00:12:49,360
+shock
+
+440
+00:12:46,720 --> 00:12:50,000
+as a shock to you but the reality is um
+
+441
+00:12:49,360 --> 00:12:52,320
+we just
+
+442
+00:12:50,000 --> 00:12:53,200
+have to eventually work out that we
+
+443
+00:12:52,320 --> 00:12:55,120
+didn't get
+
+444
+00:12:53,200 --> 00:12:58,079
+pages for a while and probably that
+
+445
+00:12:55,120 --> 00:13:00,160
+means we're out of memory
+
+446
+00:12:58,079 --> 00:13:01,680
+generally as i said only the cpu's
+
+447
+00:13:00,160 --> 00:13:03,040
+memory management unit propagates this
+
+448
+00:13:01,680 --> 00:13:04,638
+information which means we have to pull
+
+449
+00:13:03,040 --> 00:13:05,680
+for it we have to walk the page tables
+
+450
+00:13:04,639 --> 00:13:08,959
+to find out
+
+451
+00:13:05,680 --> 00:13:10,800
+if this thing uh actually is hot or not
+
+452
+00:13:08,959 --> 00:13:12,319
+and so we have to periodically pull
+
+453
+00:13:10,800 --> 00:13:13,760
+which is really really expensive so we
+
+454
+00:13:12,320 --> 00:13:14,720
+can only do it when we're already doing
+
+455
+00:13:13,760 --> 00:13:16,319
+reclaim
+
+456
+00:13:14,720 --> 00:13:17,920
+so the problem here isn't really knowing
+
+457
+00:13:16,320 --> 00:13:19,440
+when our memory is full because that is
+
+458
+00:13:17,920 --> 00:13:21,760
+the state we want to be in
+
+459
+00:13:19,440 --> 00:13:23,600
+most of the time but what we want to
+
+460
+00:13:21,760 --> 00:13:24,160
+know is not what's resident but what we
+
+461
+00:13:23,600 --> 00:13:26,959
+could take
+
+462
+00:13:24,160 --> 00:13:28,719
+out of memory if we had to and that's
+
+463
+00:13:26,959 --> 00:13:30,000
+something which is hard to know ahead of
+
+464
+00:13:28,720 --> 00:13:31,440
+time
+
+465
+00:13:30,000 --> 00:13:33,040
+as you'd imagine as well we only really
+
+466
+00:13:31,440 --> 00:13:35,279
+want to invoke the um killer when we
+
+467
+00:13:33,040 --> 00:13:36,719
+really are out of memory
+
+468
+00:13:35,279 --> 00:13:38,399
+this means that there can be a really
+
+469
+00:13:36,720 --> 00:13:39,120
+really long delay from you running out
+
+470
+00:13:38,399 --> 00:13:42,079
+of memory
+
+471
+00:13:39,120 --> 00:13:43,440
+to the um killer actually being invoked
+
+472
+00:13:42,079 --> 00:13:44,880
+so we have to already go through a lot
+
+473
+00:13:43,440 --> 00:13:47,040
+of reclaim attempts already
+
+474
+00:13:44,880 --> 00:13:48,480
+through a lot of iterations to for the
+
+475
+00:13:47,040 --> 00:13:49,680
+system to finally decide
+
+476
+00:13:48,480 --> 00:13:51,199
+we're out of memory and i should
+
+477
+00:13:49,680 --> 00:13:53,120
+actually kill something so relying on
+
+478
+00:13:51,199 --> 00:13:54,959
+the um killer to do this reliably
+
+479
+00:13:53,120 --> 00:13:56,639
+just because you don't have swap is
+
+480
+00:13:54,959 --> 00:13:58,959
+really not true and i'll show some
+
+481
+00:13:56,639 --> 00:14:00,720
+graphs at the end to show that
+
+482
+00:13:58,959 --> 00:14:03,199
+um our goal in general should be to
+
+483
+00:14:00,720 --> 00:14:04,880
+avoid to invoke the oom killer at all
+
+484
+00:14:03,199 --> 00:14:07,680
+and i'll go over how we
+
+485
+00:14:04,880 --> 00:14:09,360
+achieve that in a slide or two the
+
+486
+00:14:07,680 --> 00:14:10,959
+second problem with with young killer is
+
+487
+00:14:09,360 --> 00:14:14,000
+that it's not really configurable
+
+488
+00:14:10,959 --> 00:14:16,959
+um we have this amazing uh amazing
+
+489
+00:14:14,000 --> 00:14:18,720
+proc file called um score and um score
+
+490
+00:14:16,959 --> 00:14:20,079
+adj for um score adjust
+
+491
+00:14:18,720 --> 00:14:21,839
+i love anything in the kernel which is
+
+492
+00:14:20,079 --> 00:14:23,599
+called a score because it means nobody
+
+493
+00:14:21,839 --> 00:14:26,000
+knows what the the numbers mean
+
+494
+00:14:23,600 --> 00:14:27,760
+uh and this is kind of true like you
+
+495
+00:14:26,000 --> 00:14:29,680
+kind of set it to like a thousand or
+
+496
+00:14:27,760 --> 00:14:30,000
+like minus a thousand or like some value
+
+497
+00:14:29,680 --> 00:14:32,239
+and you
+
+498
+00:14:30,000 --> 00:14:33,600
+pray that it's bigger or lower or
+
+499
+00:14:32,240 --> 00:14:35,040
+something than another one but you
+
+500
+00:14:33,600 --> 00:14:36,560
+really don't know like
+
+501
+00:14:35,040 --> 00:14:38,880
+how the um killer will react or what it
+
+502
+00:14:36,560 --> 00:14:40,800
+will kill um so it often
+
+503
+00:14:38,880 --> 00:14:42,959
+results in the own killer completing
+
+504
+00:14:40,800 --> 00:14:45,279
+completely killing the wrong thing
+
+505
+00:14:42,959 --> 00:14:46,959
+um and then kind of only eventually
+
+506
+00:14:45,279 --> 00:14:48,880
+randomly getting the real thing which is
+
+507
+00:14:46,959 --> 00:14:50,880
+causing the problem on the system
+
+508
+00:14:48,880 --> 00:14:52,320
+so i mentioned this whole um shenanigans
+
+509
+00:14:50,880 --> 00:14:53,120
+works based on reclaim well how does
+
+510
+00:14:52,320 --> 00:14:55,360
+reclaim work
+
+511
+00:14:53,120 --> 00:14:56,800
+so reclaim is this process of trying to
+
+512
+00:14:55,360 --> 00:14:57,839
+free pages
+
+513
+00:14:56,800 --> 00:15:00,000
+there are multiple different ways
+
+514
+00:14:57,839 --> 00:15:00,399
+reclaim can happen two common ways are
+
+515
+00:15:00,000 --> 00:15:02,000
+this
+
+516
+00:15:00,399 --> 00:15:03,920
+uh k swap theory claim and another one
+
+517
+00:15:02,000 --> 00:15:05,600
+is called direct reclaim k swap d
+
+518
+00:15:03,920 --> 00:15:07,279
+reclaim is done in a background kernel
+
+519
+00:15:05,600 --> 00:15:09,199
+thread it's kind of not in part of
+
+520
+00:15:07,279 --> 00:15:10,399
+any part of the application life cycle
+
+521
+00:15:09,199 --> 00:15:12,399
+and essentially we're trying to
+
+522
+00:15:10,399 --> 00:15:14,000
+proactively free memory when we go over
+
+523
+00:15:12,399 --> 00:15:15,519
+some threshold of used memory on the
+
+524
+00:15:14,000 --> 00:15:18,480
+system
+
+525
+00:15:15,519 --> 00:15:20,399
+this happens impressive this happens uh
+
+526
+00:15:18,480 --> 00:15:23,760
+passively when like you're past say
+
+527
+00:15:20,399 --> 00:15:25,440
+97 or whatever of your memory and we try
+
+528
+00:15:23,760 --> 00:15:27,439
+and prune it back down a bit
+
+529
+00:15:25,440 --> 00:15:28,560
+having this happen prevents going into
+
+530
+00:15:27,440 --> 00:15:30,399
+this next and kind of
+
+531
+00:15:28,560 --> 00:15:32,399
+scary phase of reclaim called directory
+
+532
+00:15:30,399 --> 00:15:34,240
+claim uh direct reclaim requires
+
+533
+00:15:32,399 --> 00:15:36,399
+suspending the application
+
+534
+00:15:34,240 --> 00:15:37,839
+which is requesting memory uh which is
+
+535
+00:15:36,399 --> 00:15:38,880
+really bad for latency because we've now
+
+536
+00:15:37,839 --> 00:15:40,480
+tried to request
+
+537
+00:15:38,880 --> 00:15:42,000
+and there's no free pages available so
+
+538
+00:15:40,480 --> 00:15:44,320
+you your application has to wait and be
+
+539
+00:15:42,000 --> 00:15:46,720
+suspended while we try and go get some
+
+540
+00:15:44,320 --> 00:15:48,399
+this can result in your services having
+
+541
+00:15:46,720 --> 00:15:50,320
+actually measurable freezes or if you're
+
+542
+00:15:48,399 --> 00:15:51,839
+an android user you click like buy now
+
+543
+00:15:50,320 --> 00:15:53,759
+and your whole phone freezes that's not
+
+544
+00:15:51,839 --> 00:15:55,600
+a good experience right
+
+545
+00:15:53,759 --> 00:15:57,040
+so you want to avoid that where possible
+
+546
+00:15:55,600 --> 00:15:58,399
+and that's what the k-swap d thread is
+
+547
+00:15:57,040 --> 00:16:00,480
+for
+
+548
+00:15:58,399 --> 00:16:02,000
+reclaiming some pages may also be easier
+
+549
+00:16:00,480 --> 00:16:03,440
+or harder than others so when we talk
+
+550
+00:16:02,000 --> 00:16:04,800
+about reclaimable memory like i
+
+551
+00:16:03,440 --> 00:16:08,000
+mentioned
+
+552
+00:16:04,800 --> 00:16:10,160
+some page tape types may be reclaimable
+
+553
+00:16:08,000 --> 00:16:11,920
+just not quite right now for example
+
+554
+00:16:10,160 --> 00:16:13,360
+some cache pages may be so hot
+
+555
+00:16:11,920 --> 00:16:15,599
+that we don't want to evict them because
+
+556
+00:16:13,360 --> 00:16:17,839
+we know the system performance will tank
+
+557
+00:16:15,600 --> 00:16:19,040
+um the same goes for anonymous pages
+
+558
+00:16:17,839 --> 00:16:20,880
+which if you have no swap
+
+559
+00:16:19,040 --> 00:16:22,560
+free they have no place to go so they're
+
+560
+00:16:20,880 --> 00:16:24,240
+essentially locked in memory unless the
+
+561
+00:16:22,560 --> 00:16:25,040
+application itself does something about
+
+562
+00:16:24,240 --> 00:16:26,399
+them
+
+563
+00:16:25,040 --> 00:16:28,160
+some page types might also be
+
+564
+00:16:26,399 --> 00:16:29,920
+reclaimable right now
+
+565
+00:16:28,160 --> 00:16:31,360
+but we can't just reclaim them we have
+
+566
+00:16:29,920 --> 00:16:32,719
+to do something else for example if you
+
+567
+00:16:31,360 --> 00:16:35,279
+have dirty pages
+
+568
+00:16:32,720 --> 00:16:37,120
+we have to flush out the modified data
+
+569
+00:16:35,279 --> 00:16:38,240
+to the disk before we can reliably
+
+570
+00:16:37,120 --> 00:16:40,240
+reclaim the page
+
+571
+00:16:38,240 --> 00:16:41,440
+uh otherwise we'd lose the modifications
+
+572
+00:16:40,240 --> 00:16:43,199
+in the kernel
+
+573
+00:16:41,440 --> 00:16:44,639
+and then we would kind of have data loss
+
+574
+00:16:43,199 --> 00:16:46,719
+which is not great so sometimes it's not
+
+575
+00:16:44,639 --> 00:16:49,360
+as easy as just reclaiming pages it kind
+
+576
+00:16:46,720 --> 00:16:51,120
+of gets a little bit complicated
+
+577
+00:16:49,360 --> 00:16:52,560
+in practice this variance and
+
+578
+00:16:51,120 --> 00:16:54,160
+unpredictability and reclaiming is
+
+579
+00:16:52,560 --> 00:16:55,599
+typically really hard to tell ahead of
+
+580
+00:16:54,160 --> 00:16:56,160
+time that we are running out of physical
+
+581
+00:16:55,600 --> 00:16:58,639
+memory
+
+582
+00:16:56,160 --> 00:16:59,199
+but if we wanted to know now how would
+
+583
+00:16:58,639 --> 00:17:02,240
+we go
+
+584
+00:16:59,199 --> 00:17:03,040
+about it um if i were to ask you if your
+
+585
+00:17:02,240 --> 00:17:04,799
+machine
+
+586
+00:17:03,040 --> 00:17:05,918
+was overloaded typically the kind of
+
+587
+00:17:04,799 --> 00:17:07,359
+things depending on your level of
+
+588
+00:17:05,919 --> 00:17:08,640
+seniority and experience with linux you
+
+589
+00:17:07,359 --> 00:17:10,319
+would say to look at are like
+
+590
+00:17:08,640 --> 00:17:12,160
+you know the most basic one is free
+
+591
+00:17:10,319 --> 00:17:14,000
+memory but free memory is kind of a lie
+
+592
+00:17:12,160 --> 00:17:15,360
+because we don't really know how much of
+
+593
+00:17:14,000 --> 00:17:17,039
+that we can take away we don't know how
+
+594
+00:17:15,359 --> 00:17:19,839
+much of that we could reclaim
+
+595
+00:17:17,039 --> 00:17:21,760
+the same goes for the slightly more
+
+596
+00:17:19,839 --> 00:17:25,198
+correct but also incorrect
+
+597
+00:17:21,760 --> 00:17:26,799
+mem available in proc vm info
+
+598
+00:17:25,199 --> 00:17:30,000
+because that is kind of basically an
+
+599
+00:17:26,799 --> 00:17:31,200
+estimation just based on page type
+
+600
+00:17:30,000 --> 00:17:32,799
+if you're a bit more senior you might
+
+601
+00:17:31,200 --> 00:17:34,400
+talk about something like page scans the
+
+602
+00:17:32,799 --> 00:17:36,160
+problem with page scanning which is how
+
+603
+00:17:34,400 --> 00:17:36,799
+often we're iterating to try and free
+
+604
+00:17:36,160 --> 00:17:39,280
+pages
+
+605
+00:17:36,799 --> 00:17:40,960
+is you can't really distinguish from
+
+606
+00:17:39,280 --> 00:17:42,399
+some pathological behavior where the
+
+607
+00:17:40,960 --> 00:17:44,160
+system is about to fall over
+
+608
+00:17:42,400 --> 00:17:45,600
+from fairly efficient use of the system
+
+609
+00:17:44,160 --> 00:17:46,799
+if you were efficiently using the memory
+
+610
+00:17:45,600 --> 00:17:48,320
+on the system you will also have a
+
+611
+00:17:46,799 --> 00:17:50,320
+really high page scan number
+
+612
+00:17:48,320 --> 00:17:51,760
+um so it's really hard to tell what the
+
+613
+00:17:50,320 --> 00:17:53,520
+outcome of that is
+
+614
+00:17:51,760 --> 00:17:55,120
+but usually all of these metrics we come
+
+615
+00:17:53,520 --> 00:17:56,160
+up with are just approximations of
+
+616
+00:17:55,120 --> 00:17:58,080
+memory pressure
+
+617
+00:17:56,160 --> 00:17:59,520
+um so so what is memory pressure what do
+
+618
+00:17:58,080 --> 00:18:00,960
+we really mean by that
+
+619
+00:17:59,520 --> 00:18:03,280
+well we've never really had a metric
+
+620
+00:18:00,960 --> 00:18:04,880
+like this in the kernel before
+
+621
+00:18:03,280 --> 00:18:06,720
+we have many related metrics like the
+
+622
+00:18:04,880 --> 00:18:08,160
+ones i've just gone over but even with
+
+623
+00:18:06,720 --> 00:18:09,039
+all of these it's really hard to tell
+
+624
+00:18:08,160 --> 00:18:11,679
+real pressure
+
+625
+00:18:09,039 --> 00:18:13,440
+from efficient use of the system so psi
+
+626
+00:18:11,679 --> 00:18:15,520
+uses a matrix which is specific to a
+
+627
+00:18:13,440 --> 00:18:17,200
+particular resource to tell you
+
+628
+00:18:15,520 --> 00:18:18,799
+if that resource is becoming
+
+629
+00:18:17,200 --> 00:18:20,559
+oversubscribed
+
+630
+00:18:18,799 --> 00:18:21,918
+for example in memory we use the amount
+
+631
+00:18:20,559 --> 00:18:23,360
+of time which we were stuck doing this
+
+632
+00:18:21,919 --> 00:18:26,480
+pure memory work
+
+633
+00:18:23,360 --> 00:18:28,080
+to work out for example if i had more
+
+634
+00:18:26,480 --> 00:18:31,440
+memory i could probably
+
+635
+00:18:28,080 --> 00:18:32,080
+have done 0.21 more work in the last 10
+
+636
+00:18:31,440 --> 00:18:33,760
+seconds
+
+637
+00:18:32,080 --> 00:18:36,000
+and this is a lot more easy to reason
+
+638
+00:18:33,760 --> 00:18:37,039
+about than something like page scans or
+
+639
+00:18:36,000 --> 00:18:39,120
+or whatever
+
+640
+00:18:37,039 --> 00:18:40,720
+because it tells us this thing is
+
+641
+00:18:39,120 --> 00:18:43,918
+actively becoming the bottleneck
+
+642
+00:18:40,720 --> 00:18:44,960
+for the system um mostly like these kind
+
+643
+00:18:43,919 --> 00:18:46,240
+of things tend to be things like
+
+644
+00:18:44,960 --> 00:18:48,559
+refaulting like
+
+645
+00:18:46,240 --> 00:18:49,520
+doing io as a result of having to
+
+646
+00:18:48,559 --> 00:18:52,399
+re-page
+
+647
+00:18:49,520 --> 00:18:54,160
+pages uh sorry refold pages which we've
+
+648
+00:18:52,400 --> 00:18:55,600
+just paid out because the system is
+
+649
+00:18:54,160 --> 00:18:56,880
+churning over and over again
+
+650
+00:18:55,600 --> 00:18:59,120
+but it's not only for memory we also
+
+651
+00:18:56,880 --> 00:19:00,720
+have it for cpu and for i o as well
+
+652
+00:18:59,120 --> 00:19:02,799
+and these can also be really useful to
+
+653
+00:19:00,720 --> 00:19:04,480
+you in developing high reliability and
+
+654
+00:19:02,799 --> 00:19:06,320
+high availability applications
+
+655
+00:19:04,480 --> 00:19:08,000
+for example if you want to know in
+
+656
+00:19:06,320 --> 00:19:09,360
+advance whether your system is about to
+
+657
+00:19:08,000 --> 00:19:09,760
+run out of memory and you might want to
+
+658
+00:19:09,360 --> 00:19:12,399
+do
+
+659
+00:19:09,760 --> 00:19:13,840
+load shedding or blocking new requests
+
+660
+00:19:12,400 --> 00:19:16,240
+from coming in
+
+661
+00:19:13,840 --> 00:19:17,678
+without having to pause the process of
+
+662
+00:19:16,240 --> 00:19:19,600
+your uh
+
+663
+00:19:17,679 --> 00:19:22,080
+pause the progress of your application
+
+664
+00:19:19,600 --> 00:19:23,520
+entirely so it can be really useful to
+
+665
+00:19:22,080 --> 00:19:25,360
+do that and you can't just do this by
+
+666
+00:19:23,520 --> 00:19:27,360
+looking at free memory or page scans or
+
+667
+00:19:25,360 --> 00:19:29,439
+stuff like that
+
+668
+00:19:27,360 --> 00:19:31,039
+these psi metrics are also what powers
+
+669
+00:19:29,440 --> 00:19:33,200
+are pre ohm detection
+
+670
+00:19:31,039 --> 00:19:34,879
+um we do this as part of a project which
+
+671
+00:19:33,200 --> 00:19:36,480
+we've open source called umd
+
+672
+00:19:34,880 --> 00:19:38,480
+umd is a user space oom killer with a
+
+673
+00:19:36,480 --> 00:19:40,559
+really fine grained policy engine so no
+
+674
+00:19:38,480 --> 00:19:42,559
+more of this kind of um scores stuff
+
+675
+00:19:40,559 --> 00:19:44,480
+this allows you to encode policies about
+
+676
+00:19:42,559 --> 00:19:46,399
+what to do in certain situations
+
+677
+00:19:44,480 --> 00:19:47,840
+for example we run chef on our machines
+
+678
+00:19:46,400 --> 00:19:49,840
+to ensure that
+
+679
+00:19:47,840 --> 00:19:51,840
+we have an up-to-date system but while
+
+680
+00:19:49,840 --> 00:19:52,879
+chef is important if my web server is
+
+681
+00:19:51,840 --> 00:19:53,918
+tanking because
+
+682
+00:19:52,880 --> 00:19:56,640
+you know we are running out of
+
+683
+00:19:53,919 --> 00:19:56,960
+system-wide memory i am okay if we don't
+
+684
+00:19:56,640 --> 00:19:58,880
+run
+
+685
+00:19:56,960 --> 00:20:00,960
+chef for like five minutes that's fine
+
+686
+00:19:58,880 --> 00:20:02,400
+that's not gonna really be a problem
+
+687
+00:20:00,960 --> 00:20:04,960
+and the same goes for other background
+
+688
+00:20:02,400 --> 00:20:07,039
+work which isn't in the critical path
+
+689
+00:20:04,960 --> 00:20:09,360
+so umd allows you to encode these kind
+
+690
+00:20:07,039 --> 00:20:10,960
+of rules about what to do
+
+691
+00:20:09,360 --> 00:20:12,799
+based on these pressure metrics for
+
+692
+00:20:10,960 --> 00:20:14,080
+example we can monitor a best effort
+
+693
+00:20:12,799 --> 00:20:15,679
+applications memory pressure
+
+694
+00:20:14,080 --> 00:20:17,199
+and if it starts to cause contention for
+
+695
+00:20:15,679 --> 00:20:18,720
+others on the machine we can dial it
+
+696
+00:20:17,200 --> 00:20:20,400
+back or kill us completely before
+
+697
+00:20:18,720 --> 00:20:22,159
+performance degrades elsewhere
+
+698
+00:20:20,400 --> 00:20:24,640
+and using these metrics we can prevent
+
+699
+00:20:22,159 --> 00:20:26,960
+oom and avoid invoking the um killer
+
+700
+00:20:24,640 --> 00:20:27,919
+uh entirely and we have a lot more
+
+701
+00:20:26,960 --> 00:20:29,440
+reliable
+
+702
+00:20:27,919 --> 00:20:32,320
+behavior of the system when the system
+
+703
+00:20:29,440 --> 00:20:33,679
+is at the peak of memory
+
+704
+00:20:32,320 --> 00:20:35,678
+another thing which you'll have seen me
+
+705
+00:20:33,679 --> 00:20:36,960
+talking about if you saw my early
+
+706
+00:20:35,679 --> 00:20:39,200
+secretary to talks was
+
+707
+00:20:36,960 --> 00:20:40,640
+our limits that's this memory.hi and
+
+708
+00:20:39,200 --> 00:20:42,880
+memory.mac stuff
+
+709
+00:20:40,640 --> 00:20:44,559
+our initial proposal for secret v2 was
+
+710
+00:20:42,880 --> 00:20:45,120
+to limit non-essential work on the
+
+711
+00:20:44,559 --> 00:20:47,600
+machine
+
+712
+00:20:45,120 --> 00:20:48,399
+but this has a few fairly fundamental
+
+713
+00:20:47,600 --> 00:20:50,399
+problems
+
+714
+00:20:48,400 --> 00:20:52,480
+one is that you have some applications
+
+715
+00:20:50,400 --> 00:20:54,799
+which have really highly variable
+
+716
+00:20:52,480 --> 00:20:56,400
+resource usage and sometimes that's okay
+
+717
+00:20:54,799 --> 00:20:58,240
+sometimes those applications do you know
+
+718
+00:20:56,400 --> 00:21:00,320
+genuinely for some genuine reason
+
+719
+00:20:58,240 --> 00:21:02,159
+have variable resource usage but it's
+
+720
+00:21:00,320 --> 00:21:04,080
+hard to set a limit for those because
+
+721
+00:21:02,159 --> 00:21:05,200
+if you set it too high most of the time
+
+722
+00:21:04,080 --> 00:21:06,000
+the application is essentially
+
+723
+00:21:05,200 --> 00:21:08,080
+unprotected
+
+724
+00:21:06,000 --> 00:21:09,760
+and if you set it too low once the
+
+725
+00:21:08,080 --> 00:21:11,439
+memory spikes you'll end up killing the
+
+726
+00:21:09,760 --> 00:21:12,640
+application so it's really hard to work
+
+727
+00:21:11,440 --> 00:21:14,400
+out what to do there
+
+728
+00:21:12,640 --> 00:21:16,320
+another similar problem is that the
+
+729
+00:21:14,400 --> 00:21:18,400
+resource uses of some processes
+
+730
+00:21:16,320 --> 00:21:19,520
+is really heavily tied to some other
+
+731
+00:21:18,400 --> 00:21:21,120
+process on the machine
+
+732
+00:21:19,520 --> 00:21:22,799
+for example if you have an application
+
+733
+00:21:21,120 --> 00:21:24,239
+which has a dedicated cache
+
+734
+00:21:22,799 --> 00:21:26,080
+say it's like a something which does
+
+735
+00:21:24,240 --> 00:21:27,520
+service lookups and it has a cache of
+
+736
+00:21:26,080 --> 00:21:29,280
+the lookups it's done recently
+
+737
+00:21:27,520 --> 00:21:30,879
+how much memory it uses is probably a
+
+738
+00:21:29,280 --> 00:21:31,520
+factor of what it was actually asked to
+
+739
+00:21:30,880 --> 00:21:34,799
+do
+
+740
+00:21:31,520 --> 00:21:36,480
+by something else on the machine so it
+
+741
+00:21:34,799 --> 00:21:38,320
+it's kind of hard for those service
+
+742
+00:21:36,480 --> 00:21:39,679
+owners who own a service which is so
+
+743
+00:21:38,320 --> 00:21:40,158
+dependent on another process on the
+
+744
+00:21:39,679 --> 00:21:41,840
+machine
+
+745
+00:21:40,159 --> 00:21:43,360
+to reason about how much memory should
+
+746
+00:21:41,840 --> 00:21:45,520
+my application use
+
+747
+00:21:43,360 --> 00:21:47,120
+what people really know is how much
+
+748
+00:21:45,520 --> 00:21:48,559
+memory does the thing which i want to
+
+749
+00:21:47,120 --> 00:21:49,760
+run on the server use how much memory
+
+750
+00:21:48,559 --> 00:21:51,600
+does a web server need
+
+751
+00:21:49,760 --> 00:21:53,200
+how much memory does a database need
+
+752
+00:21:51,600 --> 00:21:55,439
+those are things we know we don't
+
+753
+00:21:53,200 --> 00:21:57,440
+really know how much does this service
+
+754
+00:21:55,440 --> 00:21:58,000
+lookup demon need if i do this query and
+
+755
+00:21:57,440 --> 00:21:59,600
+so on and so
+
+756
+00:21:58,000 --> 00:22:01,120
+forth so for that reason we've been
+
+757
+00:21:59,600 --> 00:22:03,120
+moving more and more towards these
+
+758
+00:22:01,120 --> 00:22:05,439
+protections that's this memory.low and
+
+759
+00:22:03,120 --> 00:22:07,600
+memory.min stuff
+
+760
+00:22:05,440 --> 00:22:09,360
+usually these are kind of more uniform
+
+761
+00:22:07,600 --> 00:22:11,360
+and a little bit more static
+
+762
+00:22:09,360 --> 00:22:13,918
+the way these work is that you define a
+
+763
+00:22:11,360 --> 00:22:17,039
+threshold say like 28g say you want to
+
+764
+00:22:13,919 --> 00:22:20,400
+protect 28g for your main workload um
+
+765
+00:22:17,039 --> 00:22:22,400
+so say h3am or webserver needs that much
+
+766
+00:22:20,400 --> 00:22:25,120
+memory you set memory.low in there
+
+767
+00:22:22,400 --> 00:22:27,039
+and we will if hfm request it
+
+768
+00:22:25,120 --> 00:22:29,199
+aggressively take memory away from other
+
+769
+00:22:27,039 --> 00:22:30,720
+things on the system until hhvm gets
+
+770
+00:22:29,200 --> 00:22:32,320
+that amount of memory we don't prohibit
+
+771
+00:22:30,720 --> 00:22:33,760
+other applications from using it it's
+
+772
+00:22:32,320 --> 00:22:36,000
+not a hard reservation
+
+773
+00:22:33,760 --> 00:22:37,840
+but if it turned out that hvm does start
+
+774
+00:22:36,000 --> 00:22:39,840
+to need them we will aggressively start
+
+775
+00:22:37,840 --> 00:22:41,520
+to give it back memory from other people
+
+776
+00:22:39,840 --> 00:22:42,399
+and this allows significantly more work
+
+777
+00:22:41,520 --> 00:22:44,080
+conservation
+
+778
+00:22:42,400 --> 00:22:46,159
+demons can use as much memory as they
+
+779
+00:22:44,080 --> 00:22:47,840
+like as long as they don't intrude on
+
+780
+00:22:46,159 --> 00:22:50,159
+the needs of the main workload which is
+
+781
+00:22:47,840 --> 00:22:52,320
+running on the system
+
+782
+00:22:50,159 --> 00:22:55,360
+so this is all well and good i i've gone
+
+783
+00:22:52,320 --> 00:22:57,120
+through a whole lot of primitives
+
+784
+00:22:55,360 --> 00:22:59,120
+but how do we actually intend to use
+
+785
+00:22:57,120 --> 00:23:01,678
+them to build a coherent system well
+
+786
+00:22:59,120 --> 00:23:02,639
+this is where this fb tax 2 asterisk we
+
+787
+00:23:01,679 --> 00:23:03,679
+don't really know what we're going to
+
+788
+00:23:02,640 --> 00:23:06,320
+call it
+
+789
+00:23:03,679 --> 00:23:07,840
+this is where fb text 2 comes in fe tax
+
+790
+00:23:06,320 --> 00:23:08,960
+2 is our overall project for resource
+
+791
+00:23:07,840 --> 00:23:10,559
+control at facebook
+
+792
+00:23:08,960 --> 00:23:12,640
+um secretly 2 is certainly one of the
+
+793
+00:23:10,559 --> 00:23:14,158
+things which we need to do that
+
+794
+00:23:12,640 --> 00:23:17,120
+but it needs to come with an operating
+
+795
+00:23:14,159 --> 00:23:19,600
+system which supports its goals right
+
+796
+00:23:17,120 --> 00:23:20,959
+one concern in f3 tax 2 is to stop
+
+797
+00:23:19,600 --> 00:23:22,639
+background services that the main
+
+798
+00:23:20,960 --> 00:23:24,000
+workload doesn't rely on from affecting
+
+799
+00:23:22,640 --> 00:23:25,840
+the workload running
+
+800
+00:23:24,000 --> 00:23:27,600
+for example if metric collection or chef
+
+801
+00:23:25,840 --> 00:23:29,280
+go crazy we want to make sure that we
+
+802
+00:23:27,600 --> 00:23:30,080
+have them dial back and we can deal with
+
+803
+00:23:29,280 --> 00:23:31,760
+that
+
+804
+00:23:30,080 --> 00:23:33,360
+we also want to have reasonable behavior
+
+805
+00:23:31,760 --> 00:23:34,000
+if we start to exceed the capacity of
+
+806
+00:23:33,360 --> 00:23:35,520
+the host
+
+807
+00:23:34,000 --> 00:23:37,600
+i mentioned we want to run as hot on
+
+808
+00:23:35,520 --> 00:23:39,520
+memory as possible right so that comes
+
+809
+00:23:37,600 --> 00:23:41,520
+with the risk of going over the edge of
+
+810
+00:23:39,520 --> 00:23:43,279
+of uh going a little bit too far and
+
+811
+00:23:41,520 --> 00:23:45,039
+taking taking too much memory
+
+812
+00:23:43,279 --> 00:23:46,960
+so we need to have reliable behavior
+
+813
+00:23:45,039 --> 00:23:49,200
+when we do that
+
+814
+00:23:46,960 --> 00:23:50,720
+it's also really important that we keep
+
+815
+00:23:49,200 --> 00:23:52,240
+our efforts usable and lightweight it's
+
+816
+00:23:50,720 --> 00:23:53,840
+no good if i can now give you
+
+817
+00:23:52,240 --> 00:23:56,400
+10 percent more ability to load your
+
+818
+00:23:53,840 --> 00:23:58,240
+machine if our solution also takes 10
+
+819
+00:23:56,400 --> 00:24:00,080
+of load to do that and it's also no good
+
+820
+00:23:58,240 --> 00:24:00,720
+if i produce a technically amazing
+
+821
+00:24:00,080 --> 00:24:02,480
+solution
+
+822
+00:24:00,720 --> 00:24:03,760
+but nobody wants to use it because it's
+
+823
+00:24:02,480 --> 00:24:05,600
+garbage um
+
+824
+00:24:03,760 --> 00:24:06,879
+so i think these are the main three
+
+825
+00:24:05,600 --> 00:24:09,199
+things we got to think about when
+
+826
+00:24:06,880 --> 00:24:11,360
+implementing a system
+
+827
+00:24:09,200 --> 00:24:13,200
+so every tax 2 comprises this wide range
+
+828
+00:24:11,360 --> 00:24:14,799
+of solutions to compose a usable system
+
+829
+00:24:13,200 --> 00:24:16,559
+we do need to be opinionated about the
+
+830
+00:24:14,799 --> 00:24:17,679
+base os and make sure it's capable of
+
+831
+00:24:16,559 --> 00:24:19,360
+isolating resources
+
+832
+00:24:17,679 --> 00:24:21,520
+if we're not sure about that we might
+
+833
+00:24:19,360 --> 00:24:24,080
+actually end up with a worse situation
+
+834
+00:24:21,520 --> 00:24:26,158
+than the one we started out with we also
+
+835
+00:24:24,080 --> 00:24:27,360
+have this early oom killer umd running
+
+836
+00:24:26,159 --> 00:24:28,799
+on fe tax 2 machines
+
+837
+00:24:27,360 --> 00:24:30,559
+on these machines it monitors the
+
+838
+00:24:28,799 --> 00:24:32,158
+threats to the workload and prevents
+
+839
+00:24:30,559 --> 00:24:34,080
+misbehaving workloads from affecting
+
+840
+00:24:32,159 --> 00:24:35,279
+each other or the rest of the machine
+
+841
+00:24:34,080 --> 00:24:36,960
+and it also prevents obviously
+
+842
+00:24:35,279 --> 00:24:38,640
+misbehaving system applications from
+
+843
+00:24:36,960 --> 00:24:41,039
+affecting the performance of the main
+
+844
+00:24:38,640 --> 00:24:42,080
+thing which is running
+
+845
+00:24:41,039 --> 00:24:43,679
+so let's take a look at how this
+
+846
+00:24:42,080 --> 00:24:44,720
+actually looks at the base os layer so
+
+847
+00:24:43,679 --> 00:24:46,640
+we use butter fs
+
+848
+00:24:44,720 --> 00:24:48,320
+as the root file system um this is
+
+849
+00:24:46,640 --> 00:24:50,960
+needed because as mentioned
+
+850
+00:24:48,320 --> 00:24:51,918
+uh in the in the srecon talk which we
+
+851
+00:24:50,960 --> 00:24:53,919
+didn't quite go over
+
+852
+00:24:51,919 --> 00:24:55,120
+ext4 has some fairly insurmountable
+
+853
+00:24:53,919 --> 00:24:56,720
+priority inversions
+
+854
+00:24:55,120 --> 00:24:58,479
+and the butter fs developers have been
+
+855
+00:24:56,720 --> 00:24:59,840
+very receptive to fixing these
+
+856
+00:24:58,480 --> 00:25:01,840
+it's not a coincidence that a lot of
+
+857
+00:24:59,840 --> 00:25:03,678
+them work at the facebook uh
+
+858
+00:25:01,840 --> 00:25:05,039
+but we had a lot of problems getting
+
+859
+00:25:03,679 --> 00:25:06,320
+these fixed in the xt4
+
+860
+00:25:05,039 --> 00:25:08,559
+um so that's one of the reasons why
+
+861
+00:25:06,320 --> 00:25:10,080
+we're on with butterfs
+
+862
+00:25:08,559 --> 00:25:12,158
+i also mentioned earlier about the
+
+863
+00:25:10,080 --> 00:25:13,600
+importance of swap usually we do disable
+
+864
+00:25:12,159 --> 00:25:15,039
+swapping on the main workload on the
+
+865
+00:25:13,600 --> 00:25:16,719
+machine but it really kind of depends on
+
+866
+00:25:15,039 --> 00:25:18,480
+what it does if it can tolerate it then
+
+867
+00:25:16,720 --> 00:25:19,279
+it's it's reasonable to have it on as
+
+868
+00:25:18,480 --> 00:25:21,120
+well
+
+869
+00:25:19,279 --> 00:25:23,120
+we do need swap to make sure that we're
+
+870
+00:25:21,120 --> 00:25:26,000
+efficiently able to reclaim all types of
+
+871
+00:25:23,120 --> 00:25:27,600
+memory not only page caches
+
+872
+00:25:26,000 --> 00:25:29,520
+we're also opinionated about some kernel
+
+873
+00:25:27,600 --> 00:25:31,600
+tunables um a big one is right back
+
+874
+00:25:29,520 --> 00:25:33,679
+throttling also known as wbt
+
+875
+00:25:31,600 --> 00:25:35,678
+um a lot of you probably use dessert
+
+876
+00:25:33,679 --> 00:25:37,919
+linux in like the early 2000s right
+
+877
+00:25:35,679 --> 00:25:39,039
+um do you remember the situation when
+
+878
+00:25:37,919 --> 00:25:40,960
+you would plug a usb
+
+879
+00:25:39,039 --> 00:25:42,559
+drive in copy some stuff over and like
+
+880
+00:25:40,960 --> 00:25:44,799
+your whole system would grind
+
+881
+00:25:42,559 --> 00:25:45,600
+to a halt yeah i think we all went
+
+882
+00:25:44,799 --> 00:25:47,600
+through that right
+
+883
+00:25:45,600 --> 00:25:48,959
+and that's a result of right back right
+
+884
+00:25:47,600 --> 00:25:50,959
+back uh is is
+
+885
+00:25:48,960 --> 00:25:52,320
+a kind of i o which you can't really
+
+886
+00:25:50,960 --> 00:25:54,159
+slow down um
+
+887
+00:25:52,320 --> 00:25:56,480
+so what happens when you're doing that
+
+888
+00:25:54,159 --> 00:25:57,760
+is like um this this i o becomes the
+
+889
+00:25:56,480 --> 00:25:58,960
+most critical thing on the system
+
+890
+00:25:57,760 --> 00:26:00,720
+blocking everything from
+
+891
+00:25:58,960 --> 00:26:02,080
+else from operating um so right back
+
+892
+00:26:00,720 --> 00:26:04,400
+throttling is something that
+
+893
+00:26:02,080 --> 00:26:05,120
+enables uh stopping those aisles before
+
+894
+00:26:04,400 --> 00:26:08,960
+they even
+
+895
+00:26:05,120 --> 00:26:10,799
+go in progress secrets are the bread and
+
+896
+00:26:08,960 --> 00:26:12,159
+butter of resource control as such it
+
+897
+00:26:10,799 --> 00:26:14,000
+also makes sense to go into our default
+
+898
+00:26:12,159 --> 00:26:15,600
+choices in terms of configuration there
+
+899
+00:26:14,000 --> 00:26:17,520
+um so to get sensible resource control
+
+900
+00:26:15,600 --> 00:26:19,039
+it's important to have clearly defined
+
+901
+00:26:17,520 --> 00:26:19,760
+roles from the top level so that you can
+
+902
+00:26:19,039 --> 00:26:21,600
+delegate
+
+903
+00:26:19,760 --> 00:26:23,120
+resources effectively for example we
+
+904
+00:26:21,600 --> 00:26:26,000
+have system.slice which is
+
+905
+00:26:23,120 --> 00:26:27,439
+a result a c group for best effort
+
+906
+00:26:26,000 --> 00:26:28,880
+services things which are nice to have
+
+907
+00:26:27,440 --> 00:26:30,640
+but which we could dial back at any
+
+908
+00:26:28,880 --> 00:26:32,240
+moment if the machine needs it
+
+909
+00:26:30,640 --> 00:26:33,600
+we also have host critical dot slice
+
+910
+00:26:32,240 --> 00:26:34,159
+these are things which the host needs to
+
+911
+00:26:33,600 --> 00:26:36,559
+operate
+
+912
+00:26:34,159 --> 00:26:37,919
+also things which we might need if we
+
+913
+00:26:36,559 --> 00:26:39,918
+need to go and debug something in an
+
+914
+00:26:37,919 --> 00:26:40,960
+emergency even if the machine is overall
+
+915
+00:26:39,919 --> 00:26:42,960
+unhealthy
+
+916
+00:26:40,960 --> 00:26:44,559
+and then we have workload.slice
+
+917
+00:26:42,960 --> 00:26:45,919
+workload.slice is where the main thing
+
+918
+00:26:44,559 --> 00:26:49,360
+which you're running on the machine
+
+919
+00:26:45,919 --> 00:26:50,720
+lives for example hvm for a web server
+
+920
+00:26:49,360 --> 00:26:52,158
+and it's the thing we really want to
+
+921
+00:26:50,720 --> 00:26:54,320
+prioritize the running up on this
+
+922
+00:26:52,159 --> 00:26:55,840
+machine
+
+923
+00:26:54,320 --> 00:26:57,279
+this is actually how this used to look
+
+924
+00:26:55,840 --> 00:26:58,720
+um you might notice this memory high and
+
+925
+00:26:57,279 --> 00:27:00,640
+memory.mac stuff is back here
+
+926
+00:26:58,720 --> 00:27:02,880
+um this so we're only punitively
+
+927
+00:27:00,640 --> 00:27:04,799
+limiting work however this is fairly
+
+928
+00:27:02,880 --> 00:27:07,200
+brittle like system.slice memory could
+
+929
+00:27:04,799 --> 00:27:08,960
+legitimately spike at any point
+
+930
+00:27:07,200 --> 00:27:10,559
+and we might end up slowing down or
+
+931
+00:27:08,960 --> 00:27:11,919
+killing things in system but slice even
+
+932
+00:27:10,559 --> 00:27:13,600
+when we didn't really need to even when
+
+933
+00:27:11,919 --> 00:27:16,240
+the workload didn't need that
+
+934
+00:27:13,600 --> 00:27:18,240
+it's also really absolute um it doesn't
+
+935
+00:27:16,240 --> 00:27:18,559
+allow ballparking any configuration you
+
+936
+00:27:18,240 --> 00:27:20,880
+say
+
+937
+00:27:18,559 --> 00:27:22,399
+like you don't say well my work my thing
+
+938
+00:27:20,880 --> 00:27:23,039
+needs about four gigabytes of memory to
+
+939
+00:27:22,399 --> 00:27:24,559
+run you say
+
+940
+00:27:23,039 --> 00:27:26,080
+my thing needs four gigabytes of memory
+
+941
+00:27:24,559 --> 00:27:27,600
+to run or i die
+
+942
+00:27:26,080 --> 00:27:29,760
+that's not usually how anyone wants to
+
+943
+00:27:27,600 --> 00:27:31,360
+live their life right i mean
+
+944
+00:27:29,760 --> 00:27:33,360
+you need to be able to have some wiggle
+
+945
+00:27:31,360 --> 00:27:34,479
+room and some amount of configurability
+
+946
+00:27:33,360 --> 00:27:36,399
+there
+
+947
+00:27:34,480 --> 00:27:38,240
+so this is why we've changed towards
+
+948
+00:27:36,399 --> 00:27:40,080
+using protections instead of this
+
+949
+00:27:38,240 --> 00:27:42,000
+these artificial limits so that's this
+
+950
+00:27:40,080 --> 00:27:43,760
+memory.lower memory document stuff
+
+951
+00:27:42,000 --> 00:27:45,520
+this is kind of a guarantee that we have
+
+952
+00:27:43,760 --> 00:27:47,600
+this memory available for the system we
+
+953
+00:27:45,520 --> 00:27:49,360
+don't prohibit others from using it
+
+954
+00:27:47,600 --> 00:27:51,199
+but if the workload were to then need
+
+955
+00:27:49,360 --> 00:27:52,959
+that memory we will aggressively take it
+
+956
+00:27:51,200 --> 00:27:54,360
+away from others
+
+957
+00:27:52,960 --> 00:27:56,559
+you'll also notice the addition of
+
+958
+00:27:54,360 --> 00:27:58,320
+io.latency i didn't really have time to
+
+959
+00:27:56,559 --> 00:28:01,760
+go into it in this talk but i mentioned
+
+960
+00:27:58,320 --> 00:28:03,360
+you need i o control as a corollary to
+
+961
+00:28:01,760 --> 00:28:05,679
+memory control if you don't have it
+
+962
+00:28:03,360 --> 00:28:07,039
+your memory will just turn into i o and
+
+963
+00:28:05,679 --> 00:28:08,240
+then the whole system kind of just
+
+964
+00:28:07,039 --> 00:28:09,919
+grinds to hold
+
+965
+00:28:08,240 --> 00:28:12,399
+so having these completion latency
+
+966
+00:28:09,919 --> 00:28:14,320
+guarantees right back throttling and umd
+
+967
+00:28:12,399 --> 00:28:17,840
+kind of prevents these bad applications
+
+968
+00:28:14,320 --> 00:28:17,840
+from overrunning the machine
+
+969
+00:28:18,000 --> 00:28:21,200
+uh as the final thing i mentioned i
+
+970
+00:28:19,760 --> 00:28:21,840
+wanted to talk about production success
+
+971
+00:28:21,200 --> 00:28:23,679
+stories
+
+972
+00:28:21,840 --> 00:28:25,120
+in this case we uh this is a little bit
+
+973
+00:28:23,679 --> 00:28:25,679
+of a scary graph but i'll go over it
+
+974
+00:28:25,120 --> 00:28:28,000
+with you
+
+975
+00:28:25,679 --> 00:28:30,080
+um this purple line is without fb tax
+
+976
+00:28:28,000 --> 00:28:32,399
+and the green line is with fptax
+
+977
+00:28:30,080 --> 00:28:33,120
+um the essential point is this with a
+
+978
+00:28:32,399 --> 00:28:35,120
+normal os
+
+979
+00:28:33,120 --> 00:28:37,279
+setup with no swap and just using the um
+
+980
+00:28:35,120 --> 00:28:38,239
+color the system stops working for
+
+981
+00:28:37,279 --> 00:28:40,480
+literally like
+
+982
+00:28:38,240 --> 00:28:42,960
+on the order of 20 minutes um this is
+
+983
+00:28:40,480 --> 00:28:45,520
+not even like a weird or strange
+
+984
+00:28:42,960 --> 00:28:47,760
+uh this is just just a web server um
+
+985
+00:28:45,520 --> 00:28:50,000
+with fb tax 2 we actually launch a leak
+
+986
+00:28:47,760 --> 00:28:53,360
+a memory leak repeatedly
+
+987
+00:28:50,000 --> 00:28:54,960
+and the system is not affected at all
+
+988
+00:28:53,360 --> 00:28:57,199
+what we're doing here is launching a
+
+989
+00:28:54,960 --> 00:28:59,039
+this uh this memory leak inside
+
+990
+00:28:57,200 --> 00:29:00,399
+system.slice repeatedly
+
+991
+00:28:59,039 --> 00:29:01,760
+and trying to get it to take down the
+
+992
+00:29:00,399 --> 00:29:03,279
+main workload but it cannot do so
+
+993
+00:29:01,760 --> 00:29:04,480
+because umd just keeps on killing it
+
+994
+00:29:03,279 --> 00:29:05,360
+over and over based on the pressure
+
+995
+00:29:04,480 --> 00:29:06,880
+metrics
+
+996
+00:29:05,360 --> 00:29:08,639
+in the other case the um killer thinks
+
+997
+00:29:06,880 --> 00:29:10,399
+the system is making forward progress
+
+998
+00:29:08,640 --> 00:29:12,080
+because it is killing something but it's
+
+999
+00:29:10,399 --> 00:29:13,918
+killing the wrong things repeatedly and
+
+1000
+00:29:12,080 --> 00:29:17,439
+even with using oomscore adjust this
+
+1001
+00:29:13,919 --> 00:29:18,880
+thing doesn't really get any better
+
+1002
+00:29:17,440 --> 00:29:20,559
+one thing i'm pretty excited about is
+
+1003
+00:29:18,880 --> 00:29:20,960
+that the tools and techniques in this
+
+1004
+00:29:20,559 --> 00:29:22,960
+talk
+
+1005
+00:29:20,960 --> 00:29:25,360
+are things that we've never really had
+
+1006
+00:29:22,960 --> 00:29:26,880
+in linux or unix before
+
+1007
+00:29:25,360 --> 00:29:28,479
+and i'm hoping that some people in the
+
+1008
+00:29:26,880 --> 00:29:30,159
+audience here will be able to build
+
+1009
+00:29:28,480 --> 00:29:32,240
+some of the container engine stuff and
+
+1010
+00:29:30,159 --> 00:29:33,279
+some of the process management stuff
+
+1011
+00:29:32,240 --> 00:29:35,440
+which we need
+
+1012
+00:29:33,279 --> 00:29:37,520
+based on them this is one of the first
+
+1013
+00:29:35,440 --> 00:29:39,919
+places where we've presented this work
+
+1014
+00:29:37,520 --> 00:29:41,520
+cohesively like this so i'm really
+
+1015
+00:29:39,919 --> 00:29:43,360
+looking forward to seeing
+
+1016
+00:29:41,520 --> 00:29:45,360
+what we can build in the future based on
+
+1017
+00:29:43,360 --> 00:29:55,840
+these i've been chris down and this has
+
+1018
+00:29:45,360 --> 00:29:55,840
+been limits memory management at scale
+
+1019
+00:30:00,159 --> 00:30:02,240
+you
+

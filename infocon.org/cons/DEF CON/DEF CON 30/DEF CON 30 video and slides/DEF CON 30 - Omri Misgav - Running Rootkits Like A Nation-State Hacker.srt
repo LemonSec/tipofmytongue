@@ -1,0 +1,1853 @@
+﻿1
+00:00:00,060 --> 00:00:01,240
+- Alright, so this is
+
+2
+00:00:02,460 --> 00:00:03,990
+Omri Misgav.
+
+3
+00:00:03,990 --> 00:00:06,690
+And he is going to talk about
+
+4
+00:00:06,690 --> 00:00:07,830
+'Running Root Kits
+
+5
+00:00:07,830 --> 00:00:09,230
+Like a Nation-State Hacker'.
+
+6
+00:00:11,530 --> 00:00:13,800
+(audience applause)
+
+7
+00:00:13,800 --> 00:00:14,633
+- Hi everyone.
+
+8
+00:00:15,660 --> 00:00:16,493
+Good morning.
+
+9
+00:00:17,610 --> 00:00:19,800
+As I was introduced, my name is Omri.
+
+10
+00:00:19,800 --> 00:00:22,410
+I work in Fortinet in Israel.
+
+11
+00:00:22,410 --> 00:00:27,410
+Most of my work is around the
+OS security and OS internals.
+
+12
+00:00:27,540 --> 00:00:29,160
+Today, I'm gonna talk about
+
+13
+00:00:29,160 --> 00:00:31,923
+a bit about driver signing enforcement.
+
+14
+00:00:34,020 --> 00:00:37,023
+And, basically how it works.
+
+15
+00:00:39,570 --> 00:00:40,403
+How it works,
+
+16
+00:00:40,403 --> 00:00:43,503
+the internals of it,
+how attackers abuse it,
+
+17
+00:00:44,460 --> 00:00:47,880
+what Microsoft tried to
+do in order to prevent it.
+
+18
+00:00:47,880 --> 00:00:51,480
+And then we'll talk about
+some new trade craft.
+
+19
+00:00:51,480 --> 00:00:54,060
+Hopefully that will
+also run some live demos
+
+20
+00:00:54,060 --> 00:00:55,833
+and everything will go as planned.
+
+21
+00:00:57,750 --> 00:00:59,733
+So what is DSE?
+
+22
+00:01:00,570 --> 00:01:02,940
+Basically, there is a feature in windows
+
+23
+00:01:02,940 --> 00:01:05,850
+that is called code integrity.
+
+24
+00:01:05,850 --> 00:01:08,253
+It is used for threat protection.
+
+25
+00:01:10,410 --> 00:01:13,350
+Basically, it's used to sign code,
+
+26
+00:01:13,350 --> 00:01:18,300
+and some aspects of it
+means that in order to sign,
+
+27
+00:01:18,300 --> 00:01:20,070
+in order to run drivers in the Kernel
+
+28
+00:01:20,070 --> 00:01:22,200
+now you have to sign them;
+
+29
+00:01:22,200 --> 00:01:24,150
+to digitally sign them.
+
+30
+00:01:24,150 --> 00:01:26,940
+And every time you want
+to execute a driver,
+
+31
+00:01:26,940 --> 00:01:28,890
+basically the operating system
+
+32
+00:01:28,890 --> 00:01:31,800
+will check its signature, will verify it.
+
+33
+00:01:31,800 --> 00:01:35,250
+And by that we can improve
+the security of the OS.
+
+34
+00:01:35,250 --> 00:01:40,250
+We can know from where drivers originated,
+
+35
+00:01:40,590 --> 00:01:43,080
+who are the authors, and if we trust them.
+
+36
+00:01:43,080 --> 00:01:46,680
+And make sure that they were
+not modified on the way,
+
+37
+00:01:46,680 --> 00:01:48,243
+sometime after they were built.
+
+38
+00:01:51,360 --> 00:01:53,220
+Moreover,
+
+39
+00:01:53,220 --> 00:01:54,480
+the signing is
+
+40
+00:01:54,480 --> 00:01:57,660
+not something that just everybody can do.
+
+41
+00:01:57,660 --> 00:02:02,130
+You used to need specific
+code signing certificate
+
+42
+00:02:02,130 --> 00:02:06,420
+that came only from a
+handful of approved sources.
+
+43
+00:02:06,420 --> 00:02:08,430
+And, over the years,
+
+44
+00:02:08,430 --> 00:02:11,280
+there was another limitation
+that was added by Microsoft,
+
+45
+00:02:11,280 --> 00:02:15,033
+that you had to give them your
+driver for them to sign it.
+
+46
+00:02:16,080 --> 00:02:18,840
+And without their
+signature, it won't work.
+
+47
+00:02:18,840 --> 00:02:20,240
+You won't be able to run it.
+
+48
+00:02:21,930 --> 00:02:23,370
+Which, if you think about it
+
+49
+00:02:23,370 --> 00:02:26,190
+for attackers is not really ideal.
+
+50
+00:02:26,190 --> 00:02:28,770
+You just hand over your
+payload to the defenders.
+
+51
+00:02:28,770 --> 00:02:30,770
+It's not really a place you wanna be in.
+
+52
+00:02:32,640 --> 00:02:34,030
+So how does it work
+
+53
+00:02:36,214 --> 00:02:37,380
+in practice?
+
+54
+00:02:37,380 --> 00:02:39,663
+Basically when the system boots up,
+
+55
+00:02:41,040 --> 00:02:44,910
+if you can see the call stuck on the left
+
+56
+00:02:44,910 --> 00:02:48,850
+at a certain point the Kernel will mark
+
+57
+00:02:49,779 --> 00:02:51,870
+the CI Enable flag
+
+58
+00:02:51,870 --> 00:02:54,240
+as set to true.
+
+59
+00:02:54,240 --> 00:02:56,910
+And it will call another
+
+60
+00:02:56,910 --> 00:03:00,540
+library in the Kernel
+that is called C-I-D-L-L.
+
+61
+00:03:00,540 --> 00:03:01,447
+And it will give
+
+62
+00:03:03,758 --> 00:03:06,453
+this initialization function
+
+63
+00:03:06,453 --> 00:03:09,237
+that is exported by the DLL.
+
+64
+00:03:09,237 --> 00:03:10,800
+It will give it a callback structure
+
+65
+00:03:10,800 --> 00:03:12,003
+that it will fill,
+
+66
+00:03:13,530 --> 00:03:15,090
+that the DLL itself
+
+67
+00:03:15,090 --> 00:03:18,744
+will fill with callbacks for
+the Kernel to use later on.
+
+68
+00:03:18,744 --> 00:03:22,410
+And, the DLL will also
+set its internal state
+
+69
+00:03:22,410 --> 00:03:23,763
+to be setIZone.
+
+70
+00:03:26,190 --> 00:03:28,680
+Next up, when a driver will be loaded.
+
+71
+00:03:28,680 --> 00:03:32,340
+You can see the call stuck on the middle.
+
+72
+00:03:32,340 --> 00:03:36,570
+Basically, when it's gonna
+be mapped into memory,
+
+73
+00:03:36,570 --> 00:03:40,563
+the couple of wrapper
+functions that will be called.
+
+74
+00:03:41,610 --> 00:03:45,630
+Basically those are just
+very simple wrappers
+
+75
+00:03:45,630 --> 00:03:48,010
+for the callbacks that CIDLL provides
+
+76
+00:03:48,870 --> 00:03:50,280
+and what they do, we can see
+
+77
+00:03:50,280 --> 00:03:54,030
+on the right side on the disassembly.
+
+78
+00:03:54,030 --> 00:03:56,820
+Basically they check the flags,
+
+79
+00:03:56,820 --> 00:03:58,370
+they check the global flags
+
+80
+00:03:58,370 --> 00:04:02,010
+to see if the code target is enabled.
+
+81
+00:04:02,010 --> 00:04:05,310
+And then they just check
+that the callback is valid;
+
+82
+00:04:05,310 --> 00:04:07,590
+that it's not a null pointer.
+
+83
+00:04:07,590 --> 00:04:08,890
+And that's pretty much it.
+
+84
+00:04:10,322 --> 00:04:13,920
+Both functions, both call
+backs that will be called
+
+85
+00:04:13,920 --> 00:04:17,733
+is the Validate Image Header
+and Validate Image Data.
+
+86
+00:04:19,170 --> 00:04:21,333
+And that's pretty much how it works.
+
+87
+00:04:22,650 --> 00:04:25,560
+There have been a few
+changes along the years.
+
+88
+00:04:25,560 --> 00:04:28,773
+What I just described was
+mainly for windows seven.
+
+89
+00:04:29,790 --> 00:04:32,760
+The changes are really, really small.
+
+90
+00:04:32,760 --> 00:04:35,130
+So from windows eight basically
+
+91
+00:04:35,130 --> 00:04:38,760
+the Enable flag was removed.
+
+92
+00:04:38,760 --> 00:04:42,510
+So right now the state of the
+driver signing enforcement
+
+93
+00:04:42,510 --> 00:04:44,040
+is only
+
+94
+00:04:44,040 --> 00:04:46,950
+set in the CIDLL.
+
+95
+00:04:46,950 --> 00:04:51,270
+And there are more callbacks
+that CIDLL now provides,
+
+96
+00:04:51,270 --> 00:04:56,133
+but they are not really
+important for our case.
+
+97
+00:04:57,300 --> 00:05:01,770
+And because there are more
+callbacks that are used then,
+
+98
+00:05:01,770 --> 00:05:04,350
+some offset in the structural change,
+
+99
+00:05:04,350 --> 00:05:08,880
+but basically from
+windows eight, till today
+
+100
+00:05:08,880 --> 00:05:12,513
+there wasn't any critical change for us.
+
+101
+00:05:13,500 --> 00:05:15,850
+One other thing that is
+important here is that
+
+102
+00:05:17,550 --> 00:05:18,600
+right now,
+
+103
+00:05:18,600 --> 00:05:21,030
+there is only a single function
+
+104
+00:05:21,030 --> 00:05:21,863
+that will be called,
+
+105
+00:05:21,863 --> 00:05:23,850
+single callback that will be called
+
+106
+00:05:23,850 --> 00:05:26,103
+when the driver will be loaded.
+
+107
+00:05:29,940 --> 00:05:32,850
+How it's been abused in the wild.
+
+108
+00:05:32,850 --> 00:05:35,400
+Basically we go,
+
+109
+00:05:35,400 --> 00:05:40,050
+or mainly attackers go in
+order to load their driver,
+
+110
+00:05:40,050 --> 00:05:42,540
+which is usually unsigned or untrusted.
+
+111
+00:05:42,540 --> 00:05:45,690
+And they just go and
+flip the bit of the flag,
+
+112
+00:05:45,690 --> 00:05:48,273
+depends on the operating system build.
+
+113
+00:05:49,260 --> 00:05:51,540
+They'll just write to it
+
+114
+00:05:51,540 --> 00:05:53,250
+value that will disable it.
+
+115
+00:05:53,250 --> 00:05:54,083
+And then,
+
+116
+00:05:55,590 --> 00:05:57,720
+they gonna load the driver,
+
+117
+00:05:57,720 --> 00:05:59,410
+and restore
+
+118
+00:06:00,870 --> 00:06:02,670
+the original state.
+
+119
+00:06:02,670 --> 00:06:04,600
+The way it's being done is that
+
+120
+00:06:05,490 --> 00:06:07,650
+all of those variables,
+all of those callbacks
+
+121
+00:06:07,650 --> 00:06:10,350
+are basically internal structures,
+
+122
+00:06:10,350 --> 00:06:14,010
+they are private, they are
+not exported in any way.
+
+123
+00:06:14,010 --> 00:06:15,510
+But, they can be easily found
+
+124
+00:06:15,510 --> 00:06:17,583
+with the simple pattern matching.
+
+125
+00:06:19,230 --> 00:06:21,060
+Again, with barely any change
+
+126
+00:06:21,060 --> 00:06:23,520
+between all the windows builds.
+
+127
+00:06:23,520 --> 00:06:26,673
+And in order to be able
+to write to the Kernel.
+
+128
+00:06:27,810 --> 00:06:30,270
+Basically they bring their own driver,
+
+129
+00:06:30,270 --> 00:06:32,580
+or bring their own vulnerable driver
+
+130
+00:06:32,580 --> 00:06:34,350
+and they just leverage it
+
+131
+00:06:34,350 --> 00:06:37,833
+in order to gain right
+permissions to the Kernel.
+
+132
+00:06:39,150 --> 00:06:40,000
+It has a lot of
+
+133
+00:06:45,720 --> 00:06:46,590
+pros to it
+
+134
+00:06:46,590 --> 00:06:51,480
+because it means that we can
+just reuse this capability
+
+135
+00:06:51,480 --> 00:06:52,923
+no matter when we want to.
+
+136
+00:06:54,560 --> 00:06:59,220
+So a few steps that Microsoft tried to
+
+137
+00:06:59,220 --> 00:07:01,230
+implement in order to fight this thing.
+
+138
+00:07:01,230 --> 00:07:05,130
+Is basically, first
+apply patch guard to it
+
+139
+00:07:05,130 --> 00:07:07,320
+from windows eight and windows 8.1.
+
+140
+00:07:07,320 --> 00:07:08,470
+There were improvements
+
+141
+00:07:10,140 --> 00:07:11,910
+they try to block.
+
+142
+00:07:11,910 --> 00:07:15,270
+Now they try to block attackers
+
+143
+00:07:15,270 --> 00:07:17,400
+from gaining the right primitive.
+
+144
+00:07:17,400 --> 00:07:21,303
+Basically, they deploy driver block lists.
+
+145
+00:07:23,250 --> 00:07:27,510
+Which is effective, but
+there is a problem with it.
+
+146
+00:07:27,510 --> 00:07:29,910
+Because it doesn't cover
+what we don't know.
+
+147
+00:07:29,910 --> 00:07:32,823
+If we find a new driver
+that is vulnerable,
+
+148
+00:07:33,780 --> 00:07:35,070
+if the attackers find it
+
+149
+00:07:35,070 --> 00:07:37,893
+so they can use it and
+everything will just go on.
+
+150
+00:07:38,820 --> 00:07:41,850
+And the major change that
+they tried to introduce
+
+151
+00:07:41,850 --> 00:07:45,120
+with Windows 11 was basically using
+
+152
+00:07:45,120 --> 00:07:46,173
+KDP,
+
+153
+00:07:47,130 --> 00:07:48,300
+Kernel Data Protection.
+
+154
+00:07:48,300 --> 00:07:52,323
+It's a new feature based on the VBS,
+
+155
+00:07:53,460 --> 00:07:55,470
+on the VBS architecture.
+
+156
+00:07:55,470 --> 00:07:59,230
+Basically leverages the
+hypervisor in order to enforce
+
+157
+00:08:01,500 --> 00:08:04,140
+read only permissions on specific pages.
+
+158
+00:08:04,140 --> 00:08:08,043
+And they let drivers, other
+drivers use it as well,
+
+159
+00:08:09,780 --> 00:08:12,690
+and all other Kernel components.
+
+160
+00:08:12,690 --> 00:08:15,603
+And that's pretty much what
+they did with windows 11.
+
+161
+00:08:16,560 --> 00:08:17,393
+Now,
+
+162
+00:08:17,393 --> 00:08:20,313
+CIDLL was tweaked a bit.
+
+163
+00:08:21,750 --> 00:08:26,750
+Basically, we can see that CI
+options is now being provided
+
+164
+00:08:26,940 --> 00:08:29,313
+as a parameter to the KDP API.
+
+165
+00:08:30,450 --> 00:08:33,190
+And the global variable
+
+166
+00:08:34,320 --> 00:08:35,430
+was moved
+
+167
+00:08:35,430 --> 00:08:37,020
+to its own
+
+168
+00:08:37,020 --> 00:08:37,853
+page.
+
+169
+00:08:38,820 --> 00:08:40,563
+Which is called now CI policy.
+
+170
+00:08:41,520 --> 00:08:45,183
+It's like a unique section
+that KDP that it's found in.
+
+171
+00:08:47,580 --> 00:08:50,490
+So, just to recap for a second
+
+172
+00:08:50,490 --> 00:08:52,623
+before we get into the new stuff.
+
+173
+00:08:54,480 --> 00:08:58,620
+Basically, how the DSE tampering works is:
+
+174
+00:08:58,620 --> 00:09:02,640
+we locate something
+that we need to change,
+
+175
+00:09:02,640 --> 00:09:06,273
+then we override it, we load
+the driver and revert back.
+
+176
+00:09:07,980 --> 00:09:12,963
+We gonna focus on the main
+first two points here.
+
+177
+00:09:14,430 --> 00:09:19,320
+With our main goal is basically
+be able to change some data
+
+178
+00:09:19,320 --> 00:09:21,960
+and not touch any code pages,
+
+179
+00:09:21,960 --> 00:09:25,563
+or modify any executable pages whatsoever.
+
+180
+00:09:27,420 --> 00:09:29,340
+The first technique.
+
+181
+00:09:29,340 --> 00:09:31,830
+It has a very creative name for it.
+
+182
+00:09:31,830 --> 00:09:33,243
+It's called Page Swapping.
+
+183
+00:09:34,710 --> 00:09:35,703
+Basically,
+
+184
+00:09:36,570 --> 00:09:37,403
+because
+
+185
+00:09:38,370 --> 00:09:40,443
+the protected page,
+
+186
+00:09:41,370 --> 00:09:42,420
+we cannot write to it
+
+187
+00:09:42,420 --> 00:09:45,090
+because there is another
+set of permissions
+
+188
+00:09:45,090 --> 00:09:46,420
+that is being enforced on
+
+189
+00:09:47,670 --> 00:09:48,963
+in the slot PT.
+
+190
+00:09:50,640 --> 00:09:54,540
+Basically we can't write to
+it no matter what we'll do.
+
+191
+00:09:54,540 --> 00:09:57,900
+We can see the illustration
+here of the mapping,
+
+192
+00:09:57,900 --> 00:09:59,460
+but
+
+193
+00:09:59,460 --> 00:10:03,180
+still KDP doesn't really
+enforce the way that
+
+194
+00:10:03,180 --> 00:10:05,020
+the virtual memory is being mapped
+
+195
+00:10:06,390 --> 00:10:08,430
+to the physical memory at the end.
+
+196
+00:10:08,430 --> 00:10:10,380
+It try to do something like Patch Guard,
+
+197
+00:10:10,380 --> 00:10:13,980
+that it goes on periodically
+and try to verify it.
+
+198
+00:10:13,980 --> 00:10:15,780
+But since it's periodically,
+
+199
+00:10:15,780 --> 00:10:18,663
+we can still make some
+short-lived changes.
+
+200
+00:10:19,860 --> 00:10:22,353
+So instead we are gonna create our own,
+
+201
+00:10:23,340 --> 00:10:26,613
+our own page, our own copy of the page,
+
+202
+00:10:27,930 --> 00:10:29,520
+and we'll make it writeable.
+
+203
+00:10:29,520 --> 00:10:32,640
+So we can set whatever
+value we want to it.
+
+204
+00:10:32,640 --> 00:10:33,960
+And then,
+
+205
+00:10:33,960 --> 00:10:35,970
+we'll set DSEs off
+
+206
+00:10:35,970 --> 00:10:36,873
+in this page.
+
+207
+00:10:38,580 --> 00:10:41,280
+And then we just need to somehow
+
+208
+00:10:41,280 --> 00:10:44,130
+make the same mutual address
+
+209
+00:10:44,130 --> 00:10:45,190
+for the original
+
+210
+00:10:46,470 --> 00:10:48,000
+variable
+
+211
+00:10:48,000 --> 00:10:50,100
+to change its value to it.
+
+212
+00:10:50,100 --> 00:10:52,980
+For that we just need to
+change the page table.
+
+213
+00:10:52,980 --> 00:10:54,213
+And basically,
+
+214
+00:10:55,170 --> 00:10:56,250
+we only write
+
+215
+00:10:56,250 --> 00:10:59,880
+the address of the PT of the P offender.
+
+216
+00:10:59,880 --> 00:11:03,330
+And then, the next time the
+virtual address will be used,
+
+217
+00:11:03,330 --> 00:11:07,593
+It will go to the page that
+we control and set the value.
+
+218
+00:11:09,480 --> 00:11:13,620
+So just to go through
+the steps by steps here.
+
+219
+00:11:13,620 --> 00:11:15,093
+We allocate a new page.
+
+220
+00:11:16,050 --> 00:11:20,850
+We need to find the ...
+reallocate is in the Kernel.
+
+221
+00:11:20,850 --> 00:11:23,940
+We need to find the CI options flags,
+
+222
+00:11:23,940 --> 00:11:26,430
+just as is currently done in the wild.
+
+223
+00:11:26,430 --> 00:11:28,920
+There's nothing new about it here.
+
+224
+00:11:28,920 --> 00:11:31,023
+We need to read the PT base.
+
+225
+00:11:31,920 --> 00:11:34,530
+Just a short explanation on this.
+
+226
+00:11:34,530 --> 00:11:37,770
+Basically the page tables are also found
+
+227
+00:11:37,770 --> 00:11:39,933
+in the Virtual Header
+space, in the Kernel.
+
+228
+00:11:41,460 --> 00:11:42,520
+With simple
+
+229
+00:11:44,262 --> 00:11:46,020
+Bitwise calculation.
+
+230
+00:11:46,020 --> 00:11:49,560
+We can basically convert
+the virtual address
+
+231
+00:11:49,560 --> 00:11:52,740
+that we need to, want to access.
+
+232
+00:11:52,740 --> 00:11:53,800
+And find it's
+
+233
+00:11:55,052 --> 00:11:56,703
+matching a PT for it.
+
+234
+00:11:57,720 --> 00:11:59,640
+There is a problem with it.
+
+235
+00:11:59,640 --> 00:12:00,473
+Basically,
+
+236
+00:12:02,820 --> 00:12:05,253
+the other spaces now randomized.
+
+237
+00:12:06,510 --> 00:12:08,700
+But it's a very good thing that it
+
+238
+00:12:08,700 --> 00:12:12,240
+already had some research
+in the past that covered it.
+
+239
+00:12:12,240 --> 00:12:15,940
+So we can just read the new PT base
+
+240
+00:12:16,920 --> 00:12:19,200
+with a single read from Kernel,
+
+241
+00:12:19,200 --> 00:12:21,723
+using an exported function in centOS.
+
+242
+00:12:22,800 --> 00:12:24,630
+As we can see here.
+
+243
+00:12:24,630 --> 00:12:29,190
+Then we go on and read the
+PTs that we need to change.
+
+244
+00:12:29,190 --> 00:12:31,260
+The PT for the original page,
+
+245
+00:12:31,260 --> 00:12:33,483
+and the PT for the page we allocated.
+
+246
+00:12:35,880 --> 00:12:37,620
+Then we need to copy the page.
+
+247
+00:12:37,620 --> 00:12:40,200
+Because if we're gonna swap the page,
+
+248
+00:12:40,200 --> 00:12:42,300
+in order for anything else not to break
+
+249
+00:12:42,300 --> 00:12:44,580
+we need to copy the entire values there.
+
+250
+00:12:44,580 --> 00:12:45,450
+Because we don't really know
+
+251
+00:12:45,450 --> 00:12:49,830
+what other things are in the page itself.
+
+252
+00:12:49,830 --> 00:12:51,750
+The flag itself is only four bites.
+
+253
+00:12:51,750 --> 00:12:53,943
+The page size is four kilobyte.
+
+254
+00:12:55,260 --> 00:12:57,610
+We need to modify the
+value in order to set it,
+
+255
+00:12:58,620 --> 00:13:00,030
+to turn it off.
+
+256
+00:13:00,030 --> 00:13:00,863
+And then,
+
+257
+00:13:02,910 --> 00:13:04,920
+basically just switch the PFN
+
+258
+00:13:04,920 --> 00:13:05,970
+as we showed earlier.
+
+259
+00:13:06,900 --> 00:13:09,933
+Load the driver, and restore the PT.
+
+260
+00:13:14,070 --> 00:13:16,143
+So this is pretty complicated.
+
+261
+00:13:17,970 --> 00:13:20,670
+When I worked on it I wasn't really happy.
+
+262
+00:13:20,670 --> 00:13:24,990
+So I tried to figure out
+some other way to solve it,
+
+263
+00:13:24,990 --> 00:13:28,020
+and make it a bit more feasible to use.
+
+264
+00:13:28,020 --> 00:13:30,570
+And with a few very slight changes
+
+265
+00:13:30,570 --> 00:13:31,713
+it's very easy to do.
+
+266
+00:13:32,700 --> 00:13:35,580
+Basically, instead of
+allocating a page in Kernel,
+
+267
+00:13:35,580 --> 00:13:38,610
+we're gonna allocate a page in user space.
+
+268
+00:13:38,610 --> 00:13:40,530
+And then everything we need to
+
+269
+00:13:40,530 --> 00:13:42,753
+locate just remains the same.
+
+270
+00:13:44,070 --> 00:13:49,070
+Instead of copying the page and
+doing a lot of Kernel reads,
+
+271
+00:13:49,200 --> 00:13:51,780
+we can just in the case of CIDLL,
+
+272
+00:13:51,780 --> 00:13:56,310
+since the variable was moved
+to its own unique page,
+
+273
+00:13:56,310 --> 00:13:59,790
+we can just use the default values
+
+274
+00:13:59,790 --> 00:14:00,783
+for this page.
+
+275
+00:14:02,340 --> 00:14:04,110
+Most of them are just zeros
+
+276
+00:14:04,110 --> 00:14:07,653
+and just set the value
+that we need for the flag.
+
+277
+00:14:09,210 --> 00:14:12,360
+And then again, change the PFN,
+
+278
+00:14:12,360 --> 00:14:15,183
+load the driver and restore it.
+
+279
+00:14:16,560 --> 00:14:17,913
+So demo time.
+
+280
+00:14:22,860 --> 00:14:23,693
+See.
+
+281
+00:14:28,761 --> 00:14:32,760
+I have a Windows 11 build here
+and it's a previous build,
+
+282
+00:14:32,760 --> 00:14:34,653
+from two weeks ago.
+
+283
+00:14:36,660 --> 00:14:38,193
+We'll boot up in a second.
+
+284
+00:14:40,260 --> 00:14:42,880
+The first thing we're
+gonna show you is that
+
+285
+00:14:48,150 --> 00:14:49,650
+we see the build number,
+
+286
+00:14:49,650 --> 00:14:51,933
+and we see that VBS is running.
+
+287
+00:14:53,070 --> 00:14:55,350
+But the only thing that
+is being enabled is
+
+288
+00:14:55,350 --> 00:14:56,910
+credential guard.
+
+289
+00:14:56,910 --> 00:14:59,553
+KDP doesn't appear here for some reason.
+
+290
+00:15:00,630 --> 00:15:02,760
+So the first thing we're
+gonna show is basically
+
+291
+00:15:02,760 --> 00:15:04,923
+that the current technique in the wild,
+
+292
+00:15:07,140 --> 00:15:08,490
+doesn't work.
+
+293
+00:15:08,490 --> 00:15:10,640
+So here we're gonna
+expect the blue screen.
+
+294
+00:15:11,730 --> 00:15:12,563
+Yay!
+
+295
+00:15:15,210 --> 00:15:17,553
+We can see that it's blocked on the right.
+
+296
+00:15:19,260 --> 00:15:21,453
+And let's see.
+
+297
+00:15:23,050 --> 00:15:25,717
+(Omri mumbling)
+
+298
+00:15:35,884 --> 00:15:36,717
+A second.
+
+299
+00:16:01,110 --> 00:16:02,220
+Okay.
+
+300
+00:16:02,220 --> 00:16:04,540
+So now I have my root kit over here
+
+301
+00:16:05,640 --> 00:16:07,330
+and just show you
+
+302
+00:16:08,850 --> 00:16:10,113
+that it's unsigned.
+
+303
+00:16:14,520 --> 00:16:17,463
+And we gonna quickly install it.
+
+304
+00:16:24,330 --> 00:16:25,630
+We'll try and run it
+
+305
+00:16:27,210 --> 00:16:28,563
+and see it doesn't run.
+
+306
+00:16:29,760 --> 00:16:31,117
+We get an arrow.
+
+307
+00:16:33,000 --> 00:16:34,863
+We'll run the page swapping.
+
+308
+00:16:37,200 --> 00:16:38,343
+And now it runs.
+
+309
+00:16:40,133 --> 00:16:43,133
+(audience applause)
+
+310
+00:16:47,760 --> 00:16:49,560
+You can see the output here.
+
+311
+00:16:49,560 --> 00:16:52,353
+You can see print by
+Root, the Root Kit itself.
+
+312
+00:16:54,540 --> 00:16:55,373
+I stopped it,
+
+313
+00:16:55,373 --> 00:16:57,030
+and now I'll try to write again,
+
+314
+00:16:57,030 --> 00:16:57,930
+I'll get an error.
+
+315
+00:17:01,230 --> 00:17:02,063
+Okay.
+
+316
+00:17:03,090 --> 00:17:05,880
+So this is the first technique.
+
+317
+00:17:05,880 --> 00:17:09,180
+It's pretty complicated to implement.
+
+318
+00:17:09,180 --> 00:17:11,790
+It involves both read in reads
+
+319
+00:17:11,790 --> 00:17:13,080
+and writes to the Kernel.
+
+320
+00:17:13,080 --> 00:17:15,960
+And we wanted to find a
+different method to do it,
+
+321
+00:17:15,960 --> 00:17:19,860
+that won't be as complicated as that.
+
+322
+00:17:19,860 --> 00:17:22,050
+So we found another way.
+
+323
+00:17:22,050 --> 00:17:26,523
+If we look on basically
+on how the callbacks work.
+
+324
+00:17:28,440 --> 00:17:31,230
+There is some address that basically
+
+325
+00:17:31,230 --> 00:17:36,230
+calls CIDLL, and this callback
+needs to return as zero.
+
+326
+00:17:36,600 --> 00:17:37,980
+Okay.
+
+327
+00:17:37,980 --> 00:17:38,813
+Sorry.
+
+328
+00:17:41,907 --> 00:17:43,923
+It needs to return zero.
+
+329
+00:17:45,780 --> 00:17:47,910
+Now, instead of
+
+330
+00:17:47,910 --> 00:17:50,000
+just calling to the
+
+331
+00:17:50,000 --> 00:17:52,710
+entry point of the function,
+
+332
+00:17:52,710 --> 00:17:54,630
+maybe we can just replace
+this functionality
+
+333
+00:17:54,630 --> 00:17:59,630
+and get some other point,
+some other way to return zero.
+
+334
+00:18:00,060 --> 00:18:02,313
+And then it'll just work as the same,
+
+335
+00:18:05,460 --> 00:18:08,410
+and the authorization
+of the driver will work.
+
+336
+00:18:09,810 --> 00:18:13,620
+So we're basically gonna
+swap the callbacks.
+
+337
+00:18:13,620 --> 00:18:15,513
+But we need to find out how to do it.
+
+338
+00:18:16,350 --> 00:18:20,223
+So first we need to find the
+global callback structure.
+
+339
+00:18:21,090 --> 00:18:22,600
+It's very easy to do because
+
+340
+00:18:23,700 --> 00:18:27,180
+CI initializes is important by the Kernel.
+
+341
+00:18:27,180 --> 00:18:29,670
+So we can just find referenced
+
+342
+00:18:29,670 --> 00:18:32,943
+in the import address table for it.
+
+343
+00:18:34,050 --> 00:18:37,560
+From there, we need to go back
+
+344
+00:18:37,560 --> 00:18:40,713
+and find the register assignment for it.
+
+345
+00:18:44,550 --> 00:18:47,438
+When we do, we see that
+the address will point to
+
+346
+00:18:47,438 --> 00:18:50,523
+uninitialized memo in data section.
+
+347
+00:18:52,020 --> 00:18:55,080
+Now we need to find a
+new replacement callback.
+
+348
+00:18:55,080 --> 00:18:56,190
+Which is pretty easy to do,
+
+349
+00:18:56,190 --> 00:18:59,010
+because all we need to return is zero.
+
+350
+00:18:59,010 --> 00:19:01,920
+There are exported functions
+in the Kernel for this.
+
+351
+00:19:01,920 --> 00:19:04,290
+And if we don't want to go that far,
+
+352
+00:19:04,290 --> 00:19:06,690
+we can just use the ideal CIDLL itself
+
+353
+00:19:06,690 --> 00:19:09,453
+and look for gadgets or
+exported functions in it.
+
+354
+00:19:12,090 --> 00:19:13,470
+Now we need to find the way
+
+355
+00:19:13,470 --> 00:19:15,120
+to restore
+
+356
+00:19:15,120 --> 00:19:18,300
+the original callbacks.
+
+357
+00:19:18,300 --> 00:19:19,230
+And that's important.
+
+358
+00:19:19,230 --> 00:19:21,300
+So we can just do this entire technique
+
+359
+00:19:21,300 --> 00:19:22,683
+without any Kernel reads.
+
+360
+00:19:28,247 --> 00:19:29,580
+The pattern that use is used
+
+361
+00:19:29,580 --> 00:19:32,160
+to initialize the callback structure,
+
+362
+00:19:32,160 --> 00:19:34,050
+is pretty much the same in every build.
+
+363
+00:19:34,050 --> 00:19:35,820
+So we can just look for it.
+
+364
+00:19:35,820 --> 00:19:36,810
+And then we get
+
+365
+00:19:36,810 --> 00:19:39,060
+a list of addresses that
+we need to actually verify
+
+366
+00:19:39,060 --> 00:19:40,920
+that they are are functions.
+
+367
+00:19:40,920 --> 00:19:44,610
+So we can basically traverse
+the exception directory
+
+368
+00:19:44,610 --> 00:19:46,480
+and look for entries that are
+
+369
+00:19:48,240 --> 00:19:51,990
+basically function start addresses.
+
+370
+00:19:51,990 --> 00:19:54,390
+And then we know that we
+got to the right place.
+
+371
+00:19:55,950 --> 00:19:59,253
+So then we need to set the
+callback, which is pretty easy.
+
+372
+00:20:00,660 --> 00:20:03,843
+Load the driver and restore
+the callbacks again.
+
+373
+00:20:06,120 --> 00:20:08,013
+Go back for a quick demo.
+
+374
+00:20:15,214 --> 00:20:18,714
+(computer mouse clicking)
+
+375
+00:20:22,119 --> 00:20:24,786
+(Omri mumbling)
+
+376
+00:20:26,100 --> 00:20:28,023
+So right now, I disable DSE.
+
+377
+00:20:32,730 --> 00:20:36,210
+We see that our Root Kit is back running
+
+378
+00:20:36,210 --> 00:20:37,983
+after we didn't manage to run it.
+
+379
+00:20:39,947 --> 00:20:41,364
+We re-enable DSE.
+
+380
+00:20:47,104 --> 00:20:48,143
+Yeah.
+
+381
+00:20:48,143 --> 00:20:49,143
+Well, sorry.
+
+382
+00:20:52,875 --> 00:20:56,375
+(computer mouse clicking)
+
+383
+00:21:00,240 --> 00:21:01,473
+Sorry. Can't see it.
+
+384
+00:21:05,525 --> 00:21:08,590
+So it's stopped as we can see now.
+
+385
+00:21:13,050 --> 00:21:14,433
+And we can run it again.
+
+386
+00:21:16,530 --> 00:21:18,060
+So I'm a bit out of time.
+
+387
+00:21:18,060 --> 00:21:20,763
+So I'll try to go quickly about this,
+
+388
+00:21:21,735 --> 00:21:23,013
+to next slide.
+
+389
+00:21:24,870 --> 00:21:27,860
+We can see that basically
+we manage to find some...
+
+390
+00:21:28,800 --> 00:21:33,330
+managed to find a new technique
+that is pretty synonymous
+
+391
+00:21:33,330 --> 00:21:35,703
+to the existing one in the wild.
+
+392
+00:21:38,107 --> 00:21:40,718
+There is a way to mitigate it.
+
+393
+00:21:40,718 --> 00:21:41,740
+What we
+
+394
+00:21:43,350 --> 00:21:44,310
+suggest is,
+
+395
+00:21:44,310 --> 00:21:45,370
+try and find
+
+396
+00:21:47,400 --> 00:21:49,830
+all of this internal states,
+
+397
+00:21:49,830 --> 00:21:51,600
+internal variables ourself,
+
+398
+00:21:51,600 --> 00:21:53,130
+just as attackers do.
+
+399
+00:21:53,130 --> 00:21:54,570
+And there is no reason not to do it.
+
+400
+00:21:54,570 --> 00:21:56,290
+It was proven as stable
+
+401
+00:21:57,720 --> 00:21:58,893
+till now, at least.
+
+402
+00:21:59,790 --> 00:22:01,680
+We can copy the state of the variables
+
+403
+00:22:01,680 --> 00:22:05,100
+and then just retest them
+again and again and again.
+
+404
+00:22:05,100 --> 00:22:06,753
+Every time a driver is loaded.
+
+405
+00:22:07,950 --> 00:22:09,330
+It's also easy to prevent.
+
+406
+00:22:09,330 --> 00:22:13,410
+Because once we see that there
+is a change in the variables,
+
+407
+00:22:13,410 --> 00:22:15,390
+we could either block the I operation,
+
+408
+00:22:15,390 --> 00:22:18,090
+or just restore the variables
+to the original state
+
+409
+00:22:18,090 --> 00:22:22,173
+and let the operation
+system do the work for us.
+
+410
+00:22:23,460 --> 00:22:25,713
+And just to sum it up,
+
+411
+00:22:27,900 --> 00:22:29,640
+DSE tampering is still feasible,
+
+412
+00:22:29,640 --> 00:22:31,230
+even with everything,
+
+413
+00:22:31,230 --> 00:22:33,423
+Microsoft the template to do it here.
+
+414
+00:22:36,330 --> 00:22:40,800
+Providing data and mitigations
+are pretty difficult,
+
+415
+00:22:40,800 --> 00:22:41,643
+as you can see.
+
+416
+00:22:44,160 --> 00:22:46,620
+The real solution for it at the end
+
+417
+00:22:46,620 --> 00:22:48,900
+is called the HVCI.
+
+418
+00:22:48,900 --> 00:22:53,900
+It's another feature that
+Microsoft provided on top of VBS.
+
+419
+00:22:54,210 --> 00:22:55,410
+It's a very old feature,
+
+420
+00:22:55,410 --> 00:22:57,240
+it's there from the beginning.
+
+421
+00:22:57,240 --> 00:23:00,030
+And it pretty much covers
+every aspect of it.
+
+422
+00:23:00,030 --> 00:23:01,270
+Because what it does is
+
+423
+00:23:05,130 --> 00:23:08,970
+have the entire validation process
+
+424
+00:23:08,970 --> 00:23:10,170
+being done twice.
+
+425
+00:23:10,170 --> 00:23:13,650
+Once in the Kernel itself by CIDLL,
+
+426
+00:23:13,650 --> 00:23:16,570
+and then it holds a copy of the policy
+
+427
+00:23:17,461 --> 00:23:21,870
+in the secure area that the
+Kernel cannot can touch.
+
+428
+00:23:21,870 --> 00:23:25,110
+And it basically does the
+entire validation there.
+
+429
+00:23:25,110 --> 00:23:28,530
+And only then it provides
+the execution permission.
+
+430
+00:23:28,530 --> 00:23:31,653
+So without that validation,
+nothing will work.
+
+431
+00:23:32,850 --> 00:23:34,410
+And that's it.
+
+432
+00:23:34,410 --> 00:23:36,600
+You can check out our
+blog for additional data.
+
+433
+00:23:36,600 --> 00:23:38,046
+And we are done.
+
+434
+00:23:38,046 --> 00:23:41,460
+(audience applause)
+
+435
+00:23:41,460 --> 00:23:42,293
+Thank you.
+

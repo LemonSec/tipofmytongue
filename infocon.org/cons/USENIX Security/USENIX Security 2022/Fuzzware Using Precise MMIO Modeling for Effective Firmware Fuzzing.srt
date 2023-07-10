@@ -1,0 +1,984 @@
+﻿1
+00:00:07,639 --> 00:00:10,860
+all right thank you everyone for joining
+
+2
+00:00:10,860 --> 00:00:13,679
+us or me in this talk it's called
+
+3
+00:00:13,679 --> 00:00:16,680
+Fazbear using precise mmio modeling for
+
+4
+00:00:16,680 --> 00:00:18,900
+Effective firmware fuzzing this was a
+
+5
+00:00:18,900 --> 00:00:21,960
+joint work between different people from
+
+6
+00:00:21,960 --> 00:00:23,820
+Hawaii University buchhom over in
+
+7
+00:00:23,820 --> 00:00:26,640
+Germany but as well in Amsterdam and the
+
+8
+00:00:26,640 --> 00:00:31,740
+SEC Lab at UCSB in California
+
+9
+00:00:31,740 --> 00:00:34,140
+all right so let's give a little bit of
+
+10
+00:00:34,140 --> 00:00:35,760
+an overview of what we are trying to
+
+11
+00:00:35,760 --> 00:00:37,620
+achieve with this kind of direction of
+
+12
+00:00:37,620 --> 00:00:40,320
+research so what we're trying to do is
+
+13
+00:00:40,320 --> 00:00:42,480
+we just taken a firmware image from
+
+14
+00:00:42,480 --> 00:00:44,579
+somebody we may not even have the device
+
+15
+00:00:44,579 --> 00:00:48,059
+and we may not have any emulator that's
+
+16
+00:00:48,059 --> 00:00:51,719
+already working uh in a full-blown state
+
+17
+00:00:51,719 --> 00:00:54,300
+but we still want to get out some bugs
+
+18
+00:00:54,300 --> 00:00:56,460
+in there and we want to perform Dynamic
+
+19
+00:00:56,460 --> 00:00:58,260
+analysis we want to run this firmware
+
+20
+00:00:58,260 --> 00:01:01,820
+but we do not actually have the
+
+21
+00:01:01,820 --> 00:01:04,019
+hypervisor around it as we have seen in
+
+22
+00:01:04,019 --> 00:01:06,240
+this previous talk we were attacking the
+
+23
+00:01:06,240 --> 00:01:08,280
+hypervisor in the previous talk but in
+
+24
+00:01:08,280 --> 00:01:10,080
+this one we are actually trying to run
+
+25
+00:01:10,080 --> 00:01:12,060
+and find bugs within the firmware that
+
+26
+00:01:12,060 --> 00:01:14,100
+is running
+
+27
+00:01:14,100 --> 00:01:16,380
+um so let's first synchronize on what
+
+28
+00:01:16,380 --> 00:01:18,720
+we're actually talking about within this
+
+29
+00:01:18,720 --> 00:01:22,320
+firmware domain it's very large and many
+
+30
+00:01:22,320 --> 00:01:23,939
+of you depending on your background May
+
+31
+00:01:23,939 --> 00:01:26,939
+associate an embedded system with
+
+32
+00:01:26,939 --> 00:01:28,860
+something like a router for example but
+
+33
+00:01:28,860 --> 00:01:33,000
+as it turns out routers use Linux a lot
+
+34
+00:01:33,000 --> 00:01:35,220
+of time like lizzybox Linux for example
+
+35
+00:01:35,220 --> 00:01:37,439
+and uh
+
+36
+00:01:37,439 --> 00:01:39,780
+it turns out for these types of embedded
+
+37
+00:01:39,780 --> 00:01:41,340
+systems we can actually use
+
+38
+00:01:41,340 --> 00:01:44,759
+off-the-shelf tools reasonably well but
+
+39
+00:01:44,759 --> 00:01:47,820
+there is also a whole different area of
+
+40
+00:01:47,820 --> 00:01:51,420
+devices and examples of these are for
+
+41
+00:01:51,420 --> 00:01:52,340
+example
+
+42
+00:01:52,340 --> 00:01:54,479
+programmable logic controllers which
+
+43
+00:01:54,479 --> 00:01:55,619
+would which you would find for
+
+44
+00:01:55,619 --> 00:01:57,780
+Automation in factories or an ECU which
+
+45
+00:01:57,780 --> 00:02:00,540
+is deployed within a car and what these
+
+46
+00:02:00,540 --> 00:02:03,360
+types of devices have in common is that
+
+47
+00:02:03,360 --> 00:02:05,219
+they do not actually run Linux and they
+
+48
+00:02:05,219 --> 00:02:06,960
+don't have these nice abstractions like
+
+49
+00:02:06,960 --> 00:02:09,119
+we can use something like AFL or lib
+
+50
+00:02:09,119 --> 00:02:11,879
+fuzzer and but we still want to perform
+
+51
+00:02:11,879 --> 00:02:14,220
+some security analysis of these because
+
+52
+00:02:14,220 --> 00:02:17,280
+in the end they are running our critical
+
+53
+00:02:17,280 --> 00:02:20,040
+infrastructure in an electric grid in
+
+54
+00:02:20,040 --> 00:02:21,840
+production plants and so on so the
+
+55
+00:02:21,840 --> 00:02:24,920
+Safety and Security is very important
+
+56
+00:02:24,920 --> 00:02:27,900
+and when looking at how these
+
+57
+00:02:27,900 --> 00:02:30,720
+differences kind of manifest between the
+
+58
+00:02:30,720 --> 00:02:32,819
+two types of systems we can first look
+
+59
+00:02:32,819 --> 00:02:35,120
+at an example from a Linux based
+
+60
+00:02:35,120 --> 00:02:37,260
+functionality and this is a function
+
+61
+00:02:37,260 --> 00:02:40,980
+that just simply gets in one byte of
+
+62
+00:02:40,980 --> 00:02:43,379
+Serial input and as we can see what we
+
+63
+00:02:43,379 --> 00:02:47,280
+can do on a Linux system is to basically
+
+64
+00:02:47,280 --> 00:02:50,280
+just use a Cisco a read Cisco and which
+
+65
+00:02:50,280 --> 00:02:53,580
+reads from standard in and Linux will
+
+66
+00:02:53,580 --> 00:02:55,680
+just give us one byte of input in here
+
+67
+00:02:55,680 --> 00:02:57,900
+and it's pretty straightforward so we
+
+68
+00:02:57,900 --> 00:03:00,840
+can get this input byte when we look at
+
+69
+00:03:00,840 --> 00:03:02,060
+this same
+
+70
+00:03:02,060 --> 00:03:05,040
+kind of functionality which also gets in
+
+71
+00:03:05,040 --> 00:03:08,040
+one single byte of inputs on an bare
+
+72
+00:03:08,040 --> 00:03:10,980
+metal system which is doesn't run Linux
+
+73
+00:03:10,980 --> 00:03:13,319
+then we can see that this gets much more
+
+74
+00:03:13,319 --> 00:03:16,980
+complex and in here for example we
+
+75
+00:03:16,980 --> 00:03:19,019
+require the firmware to perform some
+
+76
+00:03:19,019 --> 00:03:20,700
+excesses on the hardware and we have
+
+77
+00:03:20,700 --> 00:03:22,860
+seen this in the previous talk which
+
+78
+00:03:22,860 --> 00:03:25,680
+introduced mmio already or memory mapped
+
+79
+00:03:25,680 --> 00:03:28,860
+input output where we have some memory
+
+80
+00:03:28,860 --> 00:03:30,540
+range which is not actually backed by
+
+81
+00:03:30,540 --> 00:03:34,280
+memory but by a virtual by a device
+
+82
+00:03:34,280 --> 00:03:37,440
+instead and here what we can see for
+
+83
+00:03:37,440 --> 00:03:40,920
+example is that we would need to ask the
+
+84
+00:03:40,920 --> 00:03:42,599
+hardware whether some data is available
+
+85
+00:03:42,599 --> 00:03:44,340
+in the first place and before there is
+
+86
+00:03:44,340 --> 00:03:46,500
+no data available we cannot re-read
+
+87
+00:03:46,500 --> 00:03:48,540
+anything so we perform a while loop on
+
+88
+00:03:48,540 --> 00:03:51,959
+this then we might want to indicate to
+
+89
+00:03:51,959 --> 00:03:54,360
+the user by blinking an LED that some
+
+90
+00:03:54,360 --> 00:03:56,580
+activity is going on you might have seen
+
+91
+00:03:56,580 --> 00:04:00,239
+this on some boards before which also
+
+92
+00:04:00,239 --> 00:04:01,920
+involves talking to the hardware so
+
+93
+00:04:01,920 --> 00:04:04,200
+additional mmio accesses and then of
+
+94
+00:04:04,200 --> 00:04:06,360
+course what we need to do is to get the
+
+95
+00:04:06,360 --> 00:04:09,659
+actual data and it takes like three
+
+96
+00:04:09,659 --> 00:04:11,819
+different mmio accesses some in the loop
+
+97
+00:04:11,819 --> 00:04:16,039
+to just get out one byte of input
+
+98
+00:04:16,320 --> 00:04:19,798
+um and if we look at this Mio what we
+
+99
+00:04:19,798 --> 00:04:21,540
+can do in a very simple approach would
+
+100
+00:04:21,540 --> 00:04:24,720
+be to have an emulator running which
+
+101
+00:04:24,720 --> 00:04:27,240
+just takes in this firmware and just
+
+102
+00:04:27,240 --> 00:04:29,160
+starts running it and whenever we
+
+103
+00:04:29,160 --> 00:04:32,759
+encounter one of these Mio accesses then
+
+104
+00:04:32,759 --> 00:04:35,040
+we can just have a fuzzer provide some
+
+105
+00:04:35,040 --> 00:04:37,199
+input to this Mio
+
+106
+00:04:37,199 --> 00:04:40,440
+and one of the interesting properties of
+
+107
+00:04:40,440 --> 00:04:42,240
+this type of setup is that we do not
+
+108
+00:04:42,240 --> 00:04:45,120
+actually need the real Hardware but we
+
+109
+00:04:45,120 --> 00:04:47,040
+can run this on general purpose
+
+110
+00:04:47,040 --> 00:04:49,500
+computational resources just spin up
+
+111
+00:04:49,500 --> 00:04:52,620
+some Cloud instances and scale it up to
+
+112
+00:04:52,620 --> 00:04:55,620
+high performance clusters for example
+
+113
+00:04:55,620 --> 00:04:58,800
+which makes it very scalable
+
+114
+00:04:58,800 --> 00:05:00,300
+um and we want to kind of talk about
+
+115
+00:05:00,300 --> 00:05:02,699
+this in the context of this example what
+
+116
+00:05:02,699 --> 00:05:05,759
+this might entail and how this approach
+
+117
+00:05:05,759 --> 00:05:09,000
+might not be quite feasible to perform
+
+118
+00:05:09,000 --> 00:05:12,780
+meaningful testing as it is and to look
+
+119
+00:05:12,780 --> 00:05:15,900
+at this we can see on the left side a
+
+120
+00:05:15,900 --> 00:05:18,720
+piece of code which basically
+
+121
+00:05:18,720 --> 00:05:21,000
+takes in some Hardware input from the
+
+122
+00:05:21,000 --> 00:05:24,300
+mmio operation register of a specific
+
+123
+00:05:24,300 --> 00:05:26,880
+peripheral and then based on what this
+
+124
+00:05:26,880 --> 00:05:29,460
+peripheral state is we want to do some
+
+125
+00:05:29,460 --> 00:05:31,259
+housekeeping for example in this one
+
+126
+00:05:31,259 --> 00:05:35,400
+case or handle a specific value in
+
+127
+00:05:35,400 --> 00:05:37,080
+another case or do some other
+
+128
+00:05:37,080 --> 00:05:39,360
+computation and as we can see in this B
+
+129
+00:05:39,360 --> 00:05:42,000
+case the third one
+
+130
+00:05:42,000 --> 00:05:44,039
+here we actually have a second Mio
+
+131
+00:05:44,039 --> 00:05:46,320
+access and a decision based on this mmio
+
+132
+00:05:46,320 --> 00:05:48,000
+status we might want to do some special
+
+133
+00:05:48,000 --> 00:05:50,699
+or some default handling in here and we
+
+134
+00:05:50,699 --> 00:05:53,160
+can click through this to visualize this
+
+135
+00:05:53,160 --> 00:05:54,539
+a bit
+
+136
+00:05:54,539 --> 00:05:57,320
+and then what we can
+
+137
+00:05:57,320 --> 00:06:02,039
+do is to visualize how this would work
+
+138
+00:06:02,039 --> 00:06:04,919
+from a fuzzing perspective so if we look
+
+139
+00:06:04,919 --> 00:06:06,060
+at
+
+140
+00:06:06,060 --> 00:06:06,660
+um
+
+141
+00:06:06,660 --> 00:06:09,479
+these slots over at the Top This Could
+
+142
+00:06:09,479 --> 00:06:11,699
+represent our input space so we have 16
+
+143
+00:06:11,699 --> 00:06:13,440
+different values that the fuzzer could
+
+144
+00:06:13,440 --> 00:06:16,440
+choose and what fuzzer like AFL would do
+
+145
+00:06:16,440 --> 00:06:19,560
+is basically resolve to some Randomness
+
+146
+00:06:19,560 --> 00:06:22,680
+in the input and if we pick some of
+
+147
+00:06:22,680 --> 00:06:23,639
+those
+
+148
+00:06:23,639 --> 00:06:27,120
+values at random let's say 16 we can see
+
+149
+00:06:27,120 --> 00:06:30,479
+what kind of values we hit and in this
+
+150
+00:06:30,479 --> 00:06:33,720
+case we can see a was hit one time and
+
+151
+00:06:33,720 --> 00:06:36,360
+the other one was hit quite a bit as
+
+152
+00:06:36,360 --> 00:06:39,660
+well so we hit the default case in a lot
+
+153
+00:06:39,660 --> 00:06:42,120
+of cases which is indicated in this dark
+
+154
+00:06:42,120 --> 00:06:45,120
+green and then we
+
+155
+00:06:45,120 --> 00:06:48,900
+hit the the B case in no cases which is
+
+156
+00:06:48,900 --> 00:06:51,300
+the right one and then a in the light
+
+157
+00:06:51,300 --> 00:06:53,639
+green but what we can see is that we
+
+158
+00:06:53,639 --> 00:06:56,160
+kind of leave out one of the regions and
+
+159
+00:06:56,160 --> 00:06:58,520
+because it's grayed out here
+
+160
+00:06:58,520 --> 00:07:01,440
+we also missed the back that could
+
+161
+00:07:01,440 --> 00:07:04,199
+potentially lie within there and and the
+
+162
+00:07:04,199 --> 00:07:06,000
+general issue that we are facing here is
+
+163
+00:07:06,000 --> 00:07:07,380
+that the father just has too many
+
+164
+00:07:07,380 --> 00:07:09,600
+choices so this kind of gets us to a
+
+165
+00:07:09,600 --> 00:07:12,479
+paradox where we would like the fuzzer
+
+166
+00:07:12,479 --> 00:07:14,060
+to be able to
+
+167
+00:07:14,060 --> 00:07:17,340
+explore all this database of this
+
+168
+00:07:17,340 --> 00:07:19,680
+firmware image but at the same time we
+
+169
+00:07:19,680 --> 00:07:22,860
+want it to be not overwhelmed and have
+
+170
+00:07:22,860 --> 00:07:24,199
+has to
+
+171
+00:07:24,199 --> 00:07:28,560
+spend too many mutations and tries just
+
+172
+00:07:28,560 --> 00:07:32,039
+without getting any any effects
+
+173
+00:07:32,039 --> 00:07:35,639
+and so this is where our work kind of
+
+174
+00:07:35,639 --> 00:07:38,759
+goes in is where we add a modeling step
+
+175
+00:07:38,759 --> 00:07:41,479
+that is trying to
+
+176
+00:07:41,479 --> 00:07:44,099
+eliminate all the choices or boil down
+
+177
+00:07:44,099 --> 00:07:45,960
+the choices for the fuzzer and represent
+
+178
+00:07:45,960 --> 00:07:48,180
+it in a very accessible way so that the
+
+179
+00:07:48,180 --> 00:07:51,120
+fuzzah doesn't have to just guess its
+
+180
+00:07:51,120 --> 00:07:55,139
+way through a too large input space and
+
+181
+00:07:55,139 --> 00:07:57,479
+we can kind of visualize this as well so
+
+182
+00:07:57,479 --> 00:07:59,099
+if we look at this piece of code again
+
+183
+00:07:59,099 --> 00:08:01,139
+what we have is that we have a switch
+
+184
+00:08:01,139 --> 00:08:04,020
+case statement over in a case a b case
+
+185
+00:08:04,020 --> 00:08:07,680
+and then the D4 case and as it turns out
+
+186
+00:08:07,680 --> 00:08:09,479
+all the firmware actually cares about is
+
+187
+00:08:09,479 --> 00:08:10,940
+whether
+
+188
+00:08:10,940 --> 00:08:14,220
+the hardware peripheral indicates it to
+
+189
+00:08:14,220 --> 00:08:16,919
+be in one one of three cases and not the
+
+190
+00:08:16,919 --> 00:08:18,960
+whole state space of 16 in this example
+
+191
+00:08:18,960 --> 00:08:21,240
+which is on a real computer obviously
+
+192
+00:08:21,240 --> 00:08:24,479
+even much larger and hard to test for
+
+193
+00:08:24,479 --> 00:08:27,720
+the further exhaustively so instead what
+
+194
+00:08:27,720 --> 00:08:30,599
+we can do by having in mind that we only
+
+195
+00:08:30,599 --> 00:08:32,760
+have three cases the a case the B case
+
+196
+00:08:32,760 --> 00:08:35,339
+and then a third one which we could call
+
+197
+00:08:35,339 --> 00:08:37,919
+the C case then we can actually for the
+
+198
+00:08:37,919 --> 00:08:39,719
+fuzzer remove all these different
+
+199
+00:08:39,719 --> 00:08:42,779
+choices and just boil it down to three
+
+200
+00:08:42,779 --> 00:08:45,540
+and we can actually step through this
+
+201
+00:08:45,540 --> 00:08:47,339
+where we say
+
+202
+00:08:47,339 --> 00:08:50,700
+each of these excesses would be then
+
+203
+00:08:50,700 --> 00:08:53,100
+discoverable by the fuzzer just choosing
+
+204
+00:08:53,100 --> 00:08:55,080
+between one of three options as we can
+
+205
+00:08:55,080 --> 00:08:58,140
+see here and in the B case what we can
+
+206
+00:08:58,140 --> 00:09:00,480
+see we have a second on my ox's keep in
+
+207
+00:09:00,480 --> 00:09:02,399
+mind and it turns out we can do this
+
+208
+00:09:02,399 --> 00:09:04,620
+recursively as well so for every one of
+
+209
+00:09:04,620 --> 00:09:06,480
+these choices we can do the modeling
+
+210
+00:09:06,480 --> 00:09:09,420
+again and this makes it very easy for
+
+211
+00:09:09,420 --> 00:09:11,279
+the fuzzer to guess the Special Value
+
+212
+00:09:11,279 --> 00:09:13,740
+which might be one in four billion for
+
+213
+00:09:13,740 --> 00:09:17,279
+example on a in a real firmware image
+
+214
+00:09:17,279 --> 00:09:20,880
+but if we pre-compute these two values
+
+215
+00:09:20,880 --> 00:09:22,860
+representing these different states then
+
+216
+00:09:22,860 --> 00:09:25,380
+it's only two and it turns out the
+
+217
+00:09:25,380 --> 00:09:27,899
+fuzzer is able to much more easily cover
+
+218
+00:09:27,899 --> 00:09:30,839
+a lot of the the surface here and as we
+
+219
+00:09:30,839 --> 00:09:33,480
+can see the buggy path is also easily
+
+220
+00:09:33,480 --> 00:09:36,300
+coverable and this allows the fuzzer to
+
+221
+00:09:36,300 --> 00:09:39,060
+uncover vaccine here as well within the
+
+222
+00:09:39,060 --> 00:09:40,500
+firmware
+
+223
+00:09:40,500 --> 00:09:42,800
+and this brings us to the results
+
+224
+00:09:42,800 --> 00:09:45,660
+so first of all we measured the input
+
+225
+00:09:45,660 --> 00:09:48,959
+space reduction which is comparing the
+
+226
+00:09:48,959 --> 00:09:51,720
+uh the amount of choices that the father
+
+227
+00:09:51,720 --> 00:09:54,240
+had before our modeling and before
+
+228
+00:09:54,240 --> 00:09:57,000
+boiling it down and then the amount of
+
+229
+00:09:57,000 --> 00:09:58,800
+choices that the fuzzer has after our
+
+230
+00:09:58,800 --> 00:10:01,080
+modeling and it turns out we can get rid
+
+231
+00:10:01,080 --> 00:10:04,860
+of around 95 or up to 95 percent of the
+
+232
+00:10:04,860 --> 00:10:06,600
+choices that the fuzzer would normally
+
+233
+00:10:06,600 --> 00:10:09,420
+have to go through and try out we also
+
+234
+00:10:09,420 --> 00:10:11,760
+measured the government coverage that we
+
+235
+00:10:11,760 --> 00:10:15,839
+could get via this approach and
+
+236
+00:10:15,839 --> 00:10:19,500
+comparing it to other work we get a up
+
+237
+00:10:19,500 --> 00:10:21,540
+to three x Improvement in the coverage
+
+238
+00:10:21,540 --> 00:10:23,700
+that we have observed and then finally
+
+239
+00:10:23,700 --> 00:10:25,980
+to show some real world impact we also
+
+240
+00:10:25,980 --> 00:10:29,459
+fast tested the network stacks of
+
+241
+00:10:29,459 --> 00:10:31,920
+different iot operating systems and we
+
+242
+00:10:31,920 --> 00:10:35,580
+found 12 cves or 12 bucks leading to the
+
+243
+00:10:35,580 --> 00:10:39,420
+assignment of CVS in both zeph iOS which
+
+244
+00:10:39,420 --> 00:10:41,580
+is a real-time operating system and
+
+245
+00:10:41,580 --> 00:10:44,640
+contiki Os as well and with that I am
+
+246
+00:10:44,640 --> 00:10:47,899
+open to questions
+

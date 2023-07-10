@@ -1,0 +1,2558 @@
+﻿00:00:00.10-->000:00:05.105
+>>So let’s talk about
+deserialization vulnerabilities.
+Um before I get into it uh just
+
+00:00:05.105,00:00:09.209
+a couple words about myself; my
+name is Ian Haken I’m a senior
+software security engineer at
+
+00:00:09.209,00:00:13.947
+Netflix. Um I’m on the platform
+security team where we make a
+bunch of tools to keep our
+
+00:00:13.947,00:00:18.185
+microservice ecosystem safe.
+Download the slide deck
+afterwards we talk a lot about
+
+00:00:18.185,00:00:22.756
+all the cool stuff we do so you
+can check that out after the
+talk. But today I’m talking
+
+00:00:22.756,00:00:27.094
+about deserialization gadget
+chains. So I’m gonna start by
+just answering the obvious
+
+00:00:27.094,00:00:30.163
+question “What is a
+deserialization vulnerability?”
+And then getting into the
+
+00:00:30.163,00:00:34.034
+question of “What is a
+deserialization gadget chain?”
+And ultimately what I want to
+
+00:00:34.034,00:00:39.540
+talk about is a new tool that I
+built for understanding gadget
+chains. And of course the fun
+
+00:00:39.54-->000:00:44.511
+stuff at the end: some of the
+new exploits that that tool was
+able to uncover. So what is a
+
+00:00:44.511,00:00:49.716
+deserialization vulnerability.
+So in object oriented languages
+like Java, um and I’m mostly
+
+00:00:49.716,00:00:55.522
+gonna be using Java examples in
+this talk. Uh code is contained
+in classes and classes hold your
+
+00:00:55.522,00:00:59.760
+data alongside the code. And
+that’s the whole point of object
+oriented design and that gives
+
+00:00:59.76-->000:01:04.097
+you cool features like
+polymorphism. But this means
+that if you control the type of
+
+00:01:04.097,00:01:08.669
+data, if you’re able to specify
+what data type something is,
+then you’re implicitly
+
+00:01:08.669,00:01:14.875
+controlling what code gets run.
+So let me give you an example.
+So this is kind of a classic
+
+00:01:14.875,00:01:18.812
+Java deserialization
+vulnerability. It’s a rest
+endpoint that reads in a post
+
+00:01:18.812,00:01:24.084
+body and passes it in to an
+object input stream and then you
+read some object out of it and
+
+00:01:24.084,00:01:29.589
+in this case we’re casting that
+object to a user and calling
+render on it. So what the
+
+00:01:29.589,00:01:34.528
+developer might intend is that
+this is some user class that
+exists on the class path and so
+
+00:01:34.528,00:01:38.832
+the post body that gets sent in
+is some serialized version of
+this. It has a name, when you
+
+00:01:38.832,00:01:42.636
+call render on it it returns
+that name. Totally innocuous,
+nothing interesting can really
+
+00:01:42.636,00:01:47.374
+happen with this. But where you
+start getting into dangerous
+territory is if maybe you had
+
+00:01:47.374,00:01:51.812
+something like this on your
+classpath. So it extends user,
+and it’s a thumbnail user, the
+
+00:01:51.812,00:01:56.049
+intent is that there’s some
+number that specifies a file
+path with the thumbnail of that
+
+00:01:56.049,00:02:01.321
+user and when you call render it
+reads that file from disc. So if
+an attacker sends a thumbnail
+
+00:02:01.321,00:02:05.759
+user to this endpoint instead of
+a regular user, then when he
+calls user dot render, he can
+
+00:02:05.759,00:02:10.297
+read off any file from the disc
+and get that returned. So that’s
+what I mean by controlling data
+
+00:02:10.297,00:02:15.969
+types means that you end up
+controlling what code gets
+executed. So why am I talking
+
+00:02:15.969,00:02:20.674
+about deserialization today?
+Like that’s a 2016 topic like
+this is not new this is
+
+00:02:20.674,00:02:24.177
+something that we’ve been
+thinking about for a little
+while. But I mean honestly this
+
+00:02:24.177,00:02:30.050
+uh class of vulnerabilities
+really goes back to even before
+2016. So some of the first
+
+00:02:30.05-->000:02:36.089
+mentions of it go all the way
+back to 2006. So Marc Shonefeld
+gave a talk in uh a BlackHat
+
+00:02:36.089,00:02:42.262
+that year and kind of identified
+how some application containers
+basically were subject to this
+
+00:02:42.262,00:02:46.400
+kind of vulnerability. They were
+using the object input stream in
+an unsafe way and you could get
+
+00:02:46.40-->000:02:51.705
+code execution on them. But uh
+the talk that really kinda put
+the spotlight back on the sun-
+
+00:02:51.705,00:02:58.245
+subject was given by Frohoff and
+Lawrence in 2015 at AppSecCali.
+And this just really kinda blew
+
+00:02:58.245,00:03:02.849
+up this vulnerability class
+because they showed that there’s
+these gadget chains that exists
+
+00:03:02.849,00:03:08.422
+in all sorts of open source
+libraries that mean basically
+any cla- any application that’s
+
+00:03:08.422,00:03:14.194
+doing unsafe deserialization is
+subject to some kind of RCE. Um
+and it’s because they utilize
+
+00:03:14.194,00:03:19.299
+these libraries that have these
+RCE gadget chains in them. So in
+the year that followed I’ve
+
+00:03:19.299,00:03:22.669
+heard a lot of application
+security researchers refer to
+that as like the Java
+
+00:03:22.669,00:03:26.973
+deserialization apocalypse.
+Because everyone realized that
+their application was vulnerable
+
+00:03:26.973,00:03:31.945
+to this sort of thing. So every
+talk every conference every
+convention had someone talking
+
+00:03:31.945,00:03:37.084
+about this stuff in 2016. My
+favorite talk from that year was
+probably by Luca at a OWASP
+
+00:03:37.084,00:03:41.421
+meetup where he just did a
+really good job of kind of
+explaining what these
+
+00:03:41.421,00:03:45.225
+vulnerabilities are, uh what
+they look like, what the
+exploits look like, and how you
+
+00:03:45.225,00:03:49.796
+should remediate them. So if you
+really want to dive into this a
+bit more after, uh that’s
+
+00:03:49.796,00:03:54.101
+definitely a good talk to go
+look at. Um but you might have
+thought that was the end of it
+
+00:03:54.101,00:03:58.972
+if 2016 was the Java
+deserialization apocalypse, then
+it’s all said and done. But at
+
+00:03:58.972,00:04:04.444
+last year’s BlackHat, Munoz and
+Mirosh gave a survey of JSON
+parsing libraries that talked
+
+00:04:04.444,00:04:08.782
+about how all these other
+libraries also can potentially
+do some unsafe deser-
+
+00:04:08.782,00:04:14.087
+deserialization and you can be
+subject to just as much
+dangerous behavior as if you’re
+
+00:04:14.087,00:04:18.692
+using like the Java object input
+stream. Because up to that point
+most of the focus was really on
+
+00:04:18.692,00:04:22.596
+this Java object input stream
+and they did a survey not just
+in Java but across other
+
+00:04:22.596,00:04:27.868
+languages. Like C Sharp, uh of
+just other JSON parsing
+libraries where things can go
+
+00:04:27.868,00:04:32.205
+wrong. And in case you think
+that was the last talk or
+basically this is the last talk
+
+00:04:32.205,00:04:37.444
+um this vulnerability class
+isn’t going away. In October at
+AppSecUSA there's someone
+
+00:04:37.444,00:04:41.348
+talking again about
+deserialization vulnerabilities
+and why you’ve gotta do stuff to
+
+00:04:41.348,00:04:46.853
+protect yourself from them
+because we haven't solved this
+yet. It’s not gone. So why are
+
+00:04:46.853,00:04:51.424
+deserialization vulnerabilities
+so bad and interesting? If they
+were all really just like that
+
+00:04:51.424,00:04:55.362
+first slide I showed, then they
+actually wouldn't pop up that
+much ‘cause it’s not that often
+
+00:04:55.362,00:04:58.999
+that you have some class on your
+classpath that does something
+dangerous that overrides
+
+00:04:58.999,00:05:02.736
+something where you meant it to
+do something safe. And the
+reason that they’re so bad is
+
+00:05:02.736,00:05:07.641
+because there’s these things
+called Magic methods. And what
+those are are they’re methods on
+
+00:05:07.641,00:05:13.046
+classes that get automatically
+invoked by the deserializer
+before the deserializer ever
+
+00:05:13.046,00:05:18.885
+even returns. So that means that
+dangerous behavior that’s
+implemented in 1 of these Magic
+
+00:05:18.885,00:05:23.957
+Methods can get invoked
+regardless of what data type you
+meant to be returned from that
+
+00:05:23.957,00:05:28.995
+deserializer. So here’s another
+example. So this is exactly the
+same dangerous endpoint or
+
+00:05:28.995,00:05:32.866
+vulnerable end point from that
+first slide but let’s say
+there’s some bad class you have
+
+00:05:32.866,00:05:36.870
+on your classpath that’s doing
+something unsafe inside 1 of
+these Magic Methods. Like read
+
+00:05:36.87-->000:05:42.409
+object. So in this case it’s
+just executing some string that
+it’s reading out of the object
+
+00:05:42.409,00:05:48.481
+input stream. But even though my
+application isn’t using evil
+class at all, even though it
+
+00:05:48.481,00:05:53.220
+expects the user to come back,
+the deserializer is going to
+execute that read object magic
+
+00:05:53.22-->000:05:58.391
+method before it ever returns.
+So it’s gonna execute that
+runtime exec before the cast to
+
+00:05:58.391,00:06:05.332
+user. So it doesn’t matter what
+my application actually expected
+the data type to be. So what’s
+
+00:06:05.332,00:06:09.569
+the deal with magic methods?
+Maybe you’ve never even heard of
+them before; how common can they
+
+00:06:09.569,00:06:15.175
+actually be. And the answer is
+they’re actually really common
+because all sorts of classes
+
+00:06:15.175,00:06:20.680
+inside the JDK implement magic
+methods. And so HashMap and
+PriorityQueue are a couple of
+
+00:06:20.68-->000:06:24.584
+good examples but they’re all
+over the place. And the reason
+that these magic methods exists
+
+00:06:24.584,00:06:30.156
+is because it allows classes to
+customize how they serialize and
+deserialize their data. So if
+
+00:06:30.156,00:06:35.295
+you had a HashMap that just used
+the default serialization
+strategy where it serialized all
+
+00:06:35.295,00:06:41.167
+its hash tables and different
+maps and bins and buckets, then
+that serialized version of the
+
+00:06:41.167,00:06:45.205
+HashMap probably wouldn’t be
+inter operable between Java
+versions, because they may
+
+00:06:45.205,00:06:48.141
+change their implementation
+under the hood and then
+everything would break when you
+
+00:06:48.141,00:06:52.579
+tried to deserialize it. So
+instead is what it does is it
+implements these magic methods
+
+00:06:52.579,00:06:57.083
+where when you try to write out
+the object, instead of implement
+instead of writing out all its
+
+00:06:57.083,00:07:02.589
+hash tables, it just writes out
+the list of key value pairs. And
+then inside its read object
+
+00:07:02.589,00:07:07.527
+methods, it expects to be able
+to read in a list of key value
+pairs and it calls this dot put
+
+00:07:07.527,00:07:11.965
+on they key and the value. And
+that means that each object or
+each key at least that it’s
+
+00:07:11.965,00:07:16.269
+reading in for that input stream
+it’s calling hashcode and equals
+on it in order to put it into
+
+00:07:16.269,00:07:21.941
+the HashMap. So this gets you
+some additional known entry
+points because it means that if
+
+00:07:21.941,00:07:25.979
+you have some class on your
+classpath that does something
+dangerous inside hashcode or
+
+00:07:25.979,00:07:31.184
+equals, we know we can wrap that
+class inside the hashmap and get
+from its read object magic
+
+00:07:31.184,00:07:35.422
+method into the dangerous
+hashcode method. And so this is
+how we start building up a
+
+00:07:35.422,00:07:41.428
+gadget chain. So here’s a really
+specific example of what a
+gadget chain might look like. So
+
+00:07:41.428,00:07:46.533
+here’s uh more or less what
+Hashmap does inside its read
+object method. And all of it’s-
+
+00:07:46.533,00:07:51.137
+it’s doing is basically what I
+just said. It’s reading keys and
+values out of a list and then
+
+00:07:51.137,00:07:55.542
+calling put on it. And in
+particular it calls hashcode on
+the keys it reads out. So let’s
+
+00:07:55.542,00:07:59.212
+say there’s this class that
+exists on your class path. And
+this is an example of a class
+
+00:07:59.212,00:08:05.118
+out of the Clojure library. So
+it’s basically a proxy object
+where inside hashcode what it
+
+00:08:05.118,00:08:09.356
+does is it looks up an
+I-Function interface inside its
+map for hash code and then it
+
+00:08:09.356,00:08:15.161
+invokes it. And so inside that
+Clojure function map, we the
+attacker could serialize some
+
+00:08:15.161,00:08:19.299
+interesting I-function
+implementation. So as an example
+you could implement, y- you
+
+00:08:19.299,00:08:24.771
+could supply the compose
+function, which just has 2
+members functions inside of it
+
+00:08:24.771,00:08:30.777
+that it composes. And so as 1 of
+those functions we could supply
+the constant function, and then
+
+00:08:30.777,00:08:35.148
+as the other function we could
+supply eval and then basically
+when you wrap all of this up in
+
+00:08:35.148,00:08:39.886
+a nice package and tell your
+deserializer to deserialize it,
+it’s going to automatically call
+
+00:08:39.886,00:08:44.090
+re object on your hashmap,
+that’s automatically going to
+co- call invoke on this compose
+
+00:08:44.09-->000:08:48.194
+function, which is automatically
+going to call invoke on this
+constant function and pass that
+
+00:08:48.194,00:08:54.834
+into the eval function and then
+do arbitrary code execution. So
+this is an example of what that
+
+00:08:54.834,00:09:00.073
+payload might look like using uh
+Jackson style serialization. So
+and that’s exactly what we just
+
+00:09:00.073,00:09:04.711
+described. You wrap things in a
+hashmap, it’s- as its members
+you use this abstracttablemodel
+
+00:09:04.711,00:09:09.516
+class with the dangerous hash
+code, uh implementation as
+hashcode you use this compose
+
+00:09:09.516,00:09:14.821
+function and then you supply the
+values you want for each of
+those 2 functions inside there
+
+00:09:14.821,00:09:20.393
+and then you can execute
+whatever binary or command you
+want. So the important thing to
+
+00:09:20.393,00:09:24.197
+understand about gadget chains
+and the things that makes
+deserialization vulnerabilities
+
+00:09:24.197,00:09:29.302
+so dangerous is as I kind of
+showed you in that example and
+kind of alluded to earlier, what
+
+00:09:29.302,00:09:34.507
+gadget chains can be constructed
+has nothing to do with what your
+class- with what your
+
+00:09:34.507,00:09:40.213
+application actually does.
+Because if there are classes on
+your classpath, they can be
+
+00:09:40.213,00:09:46.486
+specified by the serialized
+payload and then your
+application can- there- or be
+
+00:09:46.486,00:09:53.326
+made to construct them and run
+whatever magic methods exist in
+those classes. So your codes in-
+
+00:09:53.326,00:09:57.530
+as with that example, wouldn’t
+had to have called any of those
+things in fact maybe there’s no
+
+00:09:57.53-->000:10:02.168
+code anywhere even transitively
+that called any of those methods
+but by the mere fact that they
+
+00:10:02.168,00:10:09.142
+exist on your classpath they can
+potentially be exploited. So
+what Java libraries are
+
+00:10:09.142,00:10:15.849
+vulnerable? Um and I- again I’m
+kinda focusing on Java but this
+is definitely something that
+
+00:10:15.849,00:10:21.621
+applies to C- Sharp and PhP and
+lots of other languages. Uh but
+in Java, the object input
+
+00:10:21.621,00:10:23.623
+stream, the 1 that’s built into
+the JDK is probably the most
+well known and well most studied
+
+00:10:23.623,00:10:27.894
+1. But XStream is another
+library it’s an XML parser in
+its default configuration
+
+00:10:27.894,00:10:33.333
+configuration, uh that can be
+used unsafely and all these JSON
+parsing libraries have unsafe
+
+00:10:33.333,00:10:36.736
+configurations where they can
+basically be induced to
+deserialize arbitrary types and
+
+00:10:36.736,00:10:40.473
+therefore potentially do
+dangerous behavior. And if
+you're interested in exactly
+
+00:10:40.473,00:10:43.776
+when those libraries might be
+dangerous, you should definitely
+spend some time reading Munoz
+
+00:10:43.776,00:10:48.648
+and Mirosh, they did a really
+good survey of how and when
+these kinds of libraries can be
+
+00:10:48.648,00:10:53.653
+misused. But what’s important is
+that as you begin studying these
+additional libraries beyond just
+
+00:10:53.653,00:10:57.690
+the object input stream,
+libraries end up having
+different magic methods that
+
+00:10:57.69-->000:11:01.661
+will automatically get invoked.
+And they have different notions
+of what can be serialized. And
+
+00:11:01.661,00:11:08.134
+that’s gonna be really important
+as I keep talking about this and
+later in the talk. So how do you
+
+00:11:08.134,00:11:11.604
+know if your application is
+vulnerable? So finding
+potentially vulnerable
+
+00:11:11.604,00:11:16.009
+applications is really basically
+the same thing as a lot of other
+application security
+
+00:11:16.009,00:11:21.447
+vulnerabilities. So things like
+XSS or sequel injection. All the
+vulnerability really is is some
+
+00:11:21.447,00:11:26.119
+kind of attacker controlled
+input flowing into 1 of these
+dangerous libraries. So in this
+
+00:11:26.119,00:11:33.026
+case it’s the object input
+stream or uh XStream or Jackson.
+Um and so existing tools are
+
+00:11:33.026,00:11:36.629
+kind of already good at
+understanding how to find those
+vulnerabilities ‘cause it’s
+
+00:11:36.629,00:11:40.433
+exactly the same thing as
+looking for some kind of
+attacker controlled string going
+
+00:11:40.433,00:11:46.806
+into some kind of sequel
+statement. So I’m not too
+interested in digging further on
+
+00:11:46.806,00:11:50.643
+how you find those
+vulnerabilities cause existing
+tools are really good at that.
+
+00:11:50.643,00:11:54.914
+But what do you do once you do
+find a vulnerability? That’s the
+big question that I wanted to
+
+00:11:54.914,00:12:00.820
+talk about. Um and 1 of the
+simple answers is why don’t you
+just use a better serialization
+
+00:12:00.82-->000:12:05.491
+strategy? Why use 1 of these
+dangerous libraries? Use
+something that’s safe. Um and
+
+00:12:05.491,00:12:10.196
+Luca has this great quote from
+his talk in 2016: “It’s 2016
+there’s better options.” Why do
+
+00:12:10.196,00:12:14.601
+you still use object input
+stream? And I think that’s
+really good advice if you’re
+
+00:12:14.601,00:12:19.472
+working on a new project, if
+you’re building a new service.
+But what happens if you’re not
+
+00:12:19.472,00:12:25.011
+working on a new project. So who
+recognizes these guys or in
+particular the thing on the
+
+00:12:25.011,00:12:29.749
+left. So that’s the original
+Netflix disc that got sent out
+to owners of a Wii so that you
+
+00:12:29.749,00:12:35.755
+could stream Netflix from Wiis.
+And so that’s got client codes
+stamped on a disc that was sent
+
+00:12:35.755,00:12:42.295
+out in 2010 that we still have
+to be able to speak to. And so
+you might be in situations where
+
+00:12:42.295,00:12:47.433
+you don’t control your clients
+and can readily update your IPC
+mechanism. The guy on the right
+
+00:12:47.433,00:12:51.270
+is the first generation Roku
+that came out, and it’s exactly
+the same thing. It’s got
+
+00:12:51.27-->000:12:57.644
+firmware in there that needs to
+be able to talk to upstream
+services and even if you can you
+
+00:12:57.644,00:13:02.081
+know you’re thinking you can
+just update firmware and update
+your IPC mechanism, if someone's
+
+00:13:02.081,00:13:05.551
+got 1 of those in a closet and
+they pull it out in 2 years, at
+the very least we need to be
+
+00:13:05.551,00:13:09.889
+able to talk the IPC mechanism
+that tells them they need to go
+fetch an update. So you can’t
+
+00:13:09.889,00:13:15.995
+just turn things off easily
+necessarily. And even if you’re
+not in 1 of these contexts where
+
+00:13:15.995,00:13:22.101
+you’ve got some clients that you
+can’t easily update, it’s still
+just a very costly operation to
+
+00:13:22.101,00:13:27.473
+start ripping apart your IPC
+mechanism. If you need to update
+your server to speak something
+
+00:13:27.473,00:13:33.479
+new, something other than JSON
+or XStream or object input
+stream binary format then you’ve
+
+00:13:33.479,00:13:37.150
+gotta update your server then
+make sure you update all of your
+clients and then only once you
+
+00:13:37.15-->000:13:41.487
+finally tear down everything on
+the server side would you be
+safe. And that’s just a lot of
+
+00:13:41.487,00:13:45.825
+work, even in an ecosystem where
+you control both the client and
+the server. And so with Netflix
+
+00:13:45.825,00:13:49.595
+where we’ve got a microservice
+ecosystem, we’ve got thousands
+of applications and we’re coming
+
+00:13:49.595,00:13:54.500
+across these things and we have
+to decide what to tell a
+developer about how important it
+
+00:13:54.50-->000:14:00.840
+is to patch this issue we found.
+We need to answer the question:
+“Is it worth the effort to drop
+
+00:14:00.84-->000:14:05.244
+what I’m doing and spend 3 or 4
+weeks, or maybe more, doing
+exactly that process I
+
+00:14:05.244,00:14:09.082
+described.” The updating all
+your clients and services in
+order to patch that
+
+00:14:09.082,00:14:12.785
+vulnerability. Is your
+deserialization vulnerability
+that we just found even
+
+00:14:12.785,00:14:17.457
+exploitable? And that’s
+something that’s not immediately
+obvious when all you know is
+
+00:14:17.457,00:14:23.963
+that some kind of untrusted
+input flows into 1 of these
+unsafe libraries. So how do you
+
+00:14:23.963,00:14:27.800
+find exploits for a
+deserialization vulnerability?
+How do you find these gadget
+
+00:14:27.80-->000:14:33.306
+chains? So ysoserial is one of
+the most well known projects in
+this space that Frohoff
+
+00:14:33.306,00:14:38.578
+maintains and it’s got a bunch
+of gadget chains for the object
+input stream. Uh Marshalsec is
+
+00:14:38.578,00:14:44.050
+another- uh another project in
+this space that’s got some wider
+breadth and understands some
+
+00:14:44.05-->000:14:49.122
+gadget chains for some of the
+other deserialization libraries.
+But they’re both basically
+
+00:14:49.122,00:14:54.360
+projects that have these known
+gadget chains and you can
+compare your application to that
+
+00:14:54.36-->000:14:58.498
+list of bad libraries where you
+know there’s some version of
+this particular library where
+
+00:14:58.498,00:15:02.335
+you can construct a gadget
+chain. But that doesn't tell you
+something that might be unique
+
+00:15:02.335,00:15:06.272
+about your application. Maybe
+there’s the gadget chain that
+only shows up when there’s some
+
+00:15:06.272,00:15:11.477
+class in your application plus
+some other classes in these
+other libraries that only when
+
+00:15:11.477,00:15:15.681
+all put together end up giving
+you some kind of interesting
+gadget chain. And furthermore
+
+00:15:15.681,00:15:20.920
+those are all bound to these
+kind of known deserialization
+libraries. What if you're using
+
+00:15:20.92-->000:15:26.225
+something new or something
+custom that is vulnerable to
+these same kind of attacks but
+
+00:15:26.225,00:15:31.397
+isn’t 1 of these sort of well
+studied ones. How do you answer
+the question: “Is my
+
+00:15:31.397,00:15:35.802
+vulnerability exploitable?” So
+besides the couple that I
+mentioned there's a bunch of
+
+00:15:35.802,00:15:41.340
+other existing tools in this
+space. So joogle is a good tool
+for programmatically querying
+
+00:15:41.34-->000:15:46.012
+about metadata on your
+classpath. Um there’s the Java
+Deserialization Scanner which is
+
+00:15:46.012,00:15:50.616
+a burp suite plugin that mostly
+uses payloads from ysoserial in
+order to detect whether or not
+
+00:15:50.616,00:15:55.621
+you’re vulnerable to 1 of these
+known gadget chains. Um the NCC
+Group Burp Plugin is something
+
+00:15:55.621,00:16:00.259
+that was released earlier this
+year uh again another dynamic
+scanner that’s mainly based on
+
+00:16:00.259,00:16:05.298
+payloads from the Munoz and
+Mirosh’s work at last year’s
+BlackHat so this is more focused
+
+00:16:05.298,00:16:10.636
+on the JSON deserializers but
+again these are all kind of
+tools that might help you but
+
+00:16:10.636,00:16:15.875
+don’t immediately answer that
+question: “Is there something
+unique to my application that
+
+00:16:15.875,00:16:21.747
+makes it d- uh vulnerable to one
+of these exploits?” So given
+that I wasn’t able to find a
+
+00:16:21.747,00:16:27.587
+tool that did exactly what I
+wanted, I went about the task of
+asking “How can we evaluate the
+
+00:16:27.587,00:16:32.191
+risk of this kind of
+vulnerability and what- what do
+we really want to be able to
+
+00:16:32.191,00:16:37.997
+answer?” And what we want to be
+able to answer is: “What is the
+risk?” How important is it to
+
+00:16:37.997,00:16:41.500
+remediate a vulnerability. We
+want to know if that
+deserialization vulnerability is
+
+00:16:41.50-->000:16:46.138
+exploitable. So and if it is
+exploitable, what exploits are
+possible, you know? RCEs tend to
+
+00:16:46.138,00:16:51.611
+be much more interesting than
+DoS. Um and so if that’s our
+goal, just to evaluate the risk,
+
+00:16:51.611,00:16:55.414
+we don’t necessarily have to be
+perfect. We don’t have to set
+about to solve this problem once
+
+00:16:55.414,00:16:59.585
+and for all. A reasonable
+overestimation of risk is
+reasonable. And we don’t
+
+00:16:59.585,00:17:03.756
+actually have to generate
+payloads if we don’t want to.
+Knowing what kinds of payloads
+
+00:17:03.756,00:17:09.295
+might be constructible is also a
+really useful piece of
+information. So if that’s- if
+
+00:17:09.295,00:17:15.568
+those are the requirements, what
+I want to set out to do, and
+specifically what I’d like to do
+
+00:17:15.568,00:17:20.239
+is build something that finds
+these gadget chains. So I’m not
+looking for vulnerabilities, I’m
+
+00:17:20.239,00:17:24.911
+only gonna use this new tool if
+I already know my application is
+vulnerable. Um but it needs to
+
+00:17:24.911,00:17:29.982
+be able to look at the entire
+class path because of what I
+said at the beginning. It
+
+00:17:29.982,00:17:35.054
+doesn't matter what code is in
+my application, it matters about
+the sum total of classes on my
+
+00:17:35.054,00:17:39.292
+classpath. It should err on the
+side of false positives because
+of reasonable overestimation of
+
+00:17:39.292,00:17:43.763
+risk is more useful because I
+don’t want to tell developers to
+drop what they’re doing and fix
+
+00:17:43.763,00:17:48.601
+something unless I have good
+reason to believe that there’s
+something uh exploitable in it.
+
+00:17:48.601,00:17:54.840
+Um and lastly it should operate
+on the java bytecode; because
+we’ve got like a million plus 1
+
+00:17:54.84-->000:17:58.811
+languages written on top of the
+JVM now and I don’t want to
+write something that has to
+
+00:17:58.811,00:18:03.582
+understand Groovy and Scala and
+Clojure and Cotlin and whatever
+comes out next week. So if I
+
+00:18:03.582,00:18:08.688
+just operate on bytecode then
+I’ve got it covered. So I put
+together a tool that I call
+
+00:18:08.688,00:18:13.926
+Gadget Inspector which is a Java
+bytecode analysis tool for
+finding gadget chains. That’s
+
+00:18:13.926,00:18:19.231
+what it does. So the way it
+works is it operates on a
+classpath so you specify either
+
+00:18:19.231,00:18:24.036
+some jars and their dependencies
+or an entire war basically your
+entire application and then it
+
+00:18:24.036,00:18:28.274
+reports discovered gadget chains
+which is really just a sequence
+of method invocations where 1
+
+00:18:28.274,00:18:31.911
+invokes the next and you’re
+starting at some known entry
+point and you’re getting to some
+
+00:18:31.911,00:18:36.382
+kind of dangerous behavior. It
+does a little bit of simplistic
+symbolic execution to figure out
+
+00:18:36.382,00:18:41.220
+when some attacker controlled
+arguments can get passed into a
+method and then that gets passed
+
+00:18:41.22-->000:18:47.093
+to the next 1 in the chain. And
+most importantly because of the
+context we’re working in, this
+
+00:18:47.093,00:18:51.430
+tool is able to make a lot of
+simplifying assumptions that
+actually makes this pretty easy
+
+00:18:51.43-->000:18:55.835
+to do. It’s not something where
+you have to have written a
+thesis on symbolic execution in
+
+00:18:55.835,00:19:01.974
+order to understand or implement
+it. So alright specifically how
+does this tool work? So the
+
+00:19:01.974,00:19:05.644
+first step is just enumerating
+everything on your classpath.
+You wanna figure out the whole
+
+00:19:05.644,00:19:11.083
+class hierarchy, all the method
+hierarchy, so that when you see
+something do- calling a method
+
+00:19:11.083,00:19:16.022
+from 1 magic method like you
+know hashmap calling hashcode,
+you want to know what are all
+
+00:19:16.022,00:19:20.059
+the implementations of hashcode
+that you might jump to. So first
+step is just enumerating all
+
+00:19:20.059,00:19:23.496
+that stuff. And that’s not
+terribly difficult. You can use
+the plain old Java reflection
+
+00:19:23.496,00:19:29.735
+APIs to do that if you want to.
+But important first step for the
+rest of the analysis. So where
+
+00:19:29.735,00:19:34.740
+things start getting interesting
+is when I want to understand the
+data flow inside an application.
+
+00:19:34.74-->000:19:38.511
+So first thing that I wanted it
+to discover is what I call
+“passthrough” dataflow. So this
+
+00:19:38.511,00:19:44.150
+is where basically what I mean
+is if an attacker can control
+the input to a function, does
+
+00:19:44.15-->000:19:49.355
+that attacker controlled data
+get returned back out of the
+function. So in this case, like
+
+00:19:49.355,00:19:55.127
+with the constant function, if
+an attacker controls the
+implicit this to this argument,
+
+00:19:55.127,00:19:59.065
+then they’re gonna be able to
+control this dot value and
+therefore the return value. So
+
+00:19:59.065,00:20:02.601
+that’s 1 of the first
+assumptions that goes into this.
+Is if an object is tainted, and
+
+00:20:02.601,00:20:06.605
+this is basically taint analysis
+that I’m doing here. And by- and
+if you’re not familiar with that
+
+00:20:06.605,00:20:10.876
+or don’t really know what I mean
+about- by taint in this context,
+all I really mean is that I’m
+
+00:20:10.876,00:20:16.215
+thinking of it as being attacker
+controllable. So if an object is
+tainted, then every member on
+
+00:20:16.215,00:20:20.119
+that object is also considered
+tainted. And that’s a pretty
+reasonable assumption because if
+
+00:20:20.119,00:20:24.857
+we are thinking of an object as
+being attacker controlled, that
+means it came out of the
+
+00:20:24.857,00:20:29.328
+serialization library so all of
+the members on that object are
+also in that serialized payload.
+
+00:20:29.328,00:20:34.366
+So that means when we look at a
+function like this, we can
+enumerate this piece of path
+
+00:20:34.366,00:20:38.571
+through dataflow. And all this
+kind of funky custom syntax
+means is that if the attacker
+
+00:20:38.571,00:20:43.109
+controls argument 0 which in
+this case is the implicit this,
+then the return value is also
+
+00:20:43.109,00:20:48.147
+considered attacker controlled.
+And that’s just because we
+return this dot value. So as 1
+
+00:20:48.147,00:20:52.952
+other example, where things
+start getting a little harrier,
+uh there’s this default function
+
+00:20:52.952,00:20:58.157
+which wasn’t on our previous
+slides, so all this does is look
+at an argument and if it’s not
+
+00:20:58.157,00:21:01.927
+null, it returns it and
+otherwise it invokes some other
+function like a constant
+
+00:21:01.927,00:21:06.298
+function. And in this case we’ve
+got a branch condition, which is
+something that’s also really
+
+00:21:06.298,00:21:10.936
+hairy to deal with if you're
+doing any kind of static or
+symbolic analysis. But in this
+
+00:21:10.936,00:21:15.441
+case we make another assumption,
+which is that all branch
+conditions are satisfiable. I’m
+
+00:21:15.441,00:21:19.645
+not gonna worry about whether or
+not I can go down different
+paths and this is probably 1 of
+
+00:21:19.645,00:21:23.349
+the weakest assumptions that's
+made in this, but it’s also 1 of
+the easiest 1’s to make, because
+
+00:21:23.349,00:21:27.052
+in practice if you’re inside
+these magic methods or going
+down a gadget chain where all
+
+00:21:27.052,00:21:30.523
+this stuff is attacker
+controllable because it would
+have to be for you to get there
+
+00:21:30.523,00:21:35.294
+in this chain, that basically
+all of the variables and
+arguments going into a branch
+
+00:21:35.294,00:21:39.431
+condition are attacker
+controllable. So usually an
+attacker can tweak these things
+
+00:21:39.431,00:21:44.870
+to get down whatever branch
+condition they want to. So if we
+assume all different all
+
+00:21:44.87-->000:21:51.110
+branches can be walked down,
+then we end up with these
+passthrough data flows. So in
+
+00:21:51.11-->000:21:55.848
+this case the first argument
+just gets directly returned here
+if we go down the true path. If
+
+00:21:55.848,00:22:00.386
+we go down the false path based
+on the first passthrough data
+flow we discovered, the return
+
+00:22:00.386,00:22:07.092
+value of F dot invoke is gonna
+be considered tainted as well.
+So we enumerate that. So step 3
+
+00:22:07.092,00:22:12.164
+is basically exactly the same
+thing. It’s the same symbolic
+execution of just walking
+
+00:22:12.164,00:22:16.535
+through what data flows where;
+but this time instead of looking
+at return values we care about
+
+00:22:16.535,00:22:22.541
+where data flows into subsequent
+method calls. And so we’re gonna
+use the data from step 2 in this
+
+00:22:22.541,00:22:27.846
+to just enhance uh this
+enumeration. But let’s look at
+that uh dangerous hashcode
+
+00:22:27.846,00:22:32.851
+method that we had earlier and
+see how that shakes out here. So
+in this case we would end up
+
+00:22:34.954,00:22:39.592
+enumerating these passthrough
+callgraphs. Um or method calls.
+So again some sort of funny
+
+00:22:39.592,00:22:45.030
+custom syntax but all I’m saying
+here is that if argument 0 the
+implicit “this” is attacker
+
+00:22:45.03-->000:22:50.202
+controllable, then that’s gonna
+flow in as argument 1 when I
+call function dot invoke. In
+
+00:22:50.202,00:22:55.808
+this case, all I know is that
+it’s the I function interface.
+Um and so we get that literally
+
+00:22:55.808,00:22:59.545
+because this gets passed in as
+argument 1 to that function
+there. That one’s kind of easy
+
+00:22:59.545,00:23:05.751
+to figure out. Um but F dot
+invoke, F comes out of this map
+which is a member of this so
+
+00:23:05.751,00:23:10.256
+again because of that assumption
+where we assume all members are
+attacker controllable, um we
+
+00:23:10.256,00:23:14.426
+know that F would be attacker
+controllable so F which gets
+passed in as the implicit “this”
+
+00:23:14.426,00:23:18.097
+to function dot invoke would
+also be attacker controllable so
+that’s where we get that from.
+
+00:23:18.097,00:23:23.669
+Um and just to go through, sort
+of, 1 more example. This is what
+you would get if you looked at
+
+00:23:23.669,00:23:30.109
+the compose function again from
+the previous slide and again all
+we’re really doing when you are
+
+00:23:30.109,00:23:35.314
+doing this symbolic execution is
+just stepping through bytecode 1
+line at a time and it’s actually
+
+00:23:35.314,00:23:39.985
+kind of easier to understand
+what’s going on when you look at
+it that way. Um but sort of at a
+
+00:23:39.985,00:23:44.590
+higher level, what we do is we
+see: argument 1 gets passed into
+this argument 1 function dot
+
+00:23:44.59-->000:23:49.928
+invoke. Then we see F 1 which is
+a member of argument 0. The
+implicit “this” gets passed in
+
+00:23:49.928,00:23:54.566
+as the implicit “this” to
+function dot invoke. And finally
+the value that gets returned
+
+00:23:54.566,00:23:58.437
+from that based on our analysis
+from step 2 would also be
+considered attacker
+
+00:23:58.437,00:24:04.276
+controllable. And it gets- that
+gets passed in as function 1 to-
+or argument 1, to F2. So just a
+
+00:24:04.276,00:24:08.714
+lot of walking through a func-
+walking through these functions
+and enumerating these things.
+
+00:24:08.714,00:24:15.020
+And really there’s not- not a
+lot very deep going on here,
+it’s just kind of a lot to keep
+
+00:24:15.02-->000:24:20.793
+track of. But computers are good
+at that. So step 4 next to last
+step is just enumerating known
+
+00:24:20.793,00:24:24.730
+entry points and that’s
+basically just using all the
+known tricks that researchers
+
+00:24:24.73-->000:24:28.500
+have come up with over the last
+few years to figure out how to
+get into interesting gadget
+
+00:24:28.50-->000:24:32.805
+chains. So for example we l- we
+see this hashcode method. We
+know it overrides object dot
+
+00:24:32.805,00:24:37.376
+hashcode, so we can enumerate
+that as an entry point. So
+alright that- that step’s super
+
+00:24:37.376,00:24:41.947
+easy, especially after the last
+few. Um but this does highlight
+1 limitation that I want to
+
+00:24:41.947,00:24:46.251
+point out which is that this
+does rely on known tricks. So
+knowing that we can get to
+
+00:24:46.251,00:24:51.357
+hashcode we c- could have
+derived this analysis just by
+going to that symbolic execution
+
+00:24:51.357,00:24:57.463
+of the read objects method of
+hashmap. Um but there’s other
+clever tricks that researchers
+
+00:24:57.463,00:25:02.468
+have come up with like wrapping
+things in a dynamic proxy where
+that then calls invocation
+
+00:25:02.468,00:25:07.306
+handler dot handle. Um that we
+wouldn’t be able to derive. So
+there’s definitely room for more
+
+00:25:07.306,00:25:10.642
+gadget chains that this thing
+might be missing, just because
+there might be more clever
+
+00:25:10.642,00:25:16.248
+tricks that aren’t hard coded
+into this guy. So alright very
+last step. Now that we’ve
+
+00:25:16.248,00:25:21.453
+enumerated all that stuff, the
+only thing that we have left to
+do is literally just do a like
+
+00:25:21.453,00:25:25.758
+algorithms 101 breadth for
+search on this call graph in
+order to see if we can get from
+
+00:25:25.758,00:25:30.929
+1 of these known sources to a
+method that does something
+interesting. So just using
+
+00:25:30.929,00:25:35.000
+exactly that stuff we’ve
+enumerated to build up that
+gadget chain from some of those
+
+00:25:35.00-->000:25:40.973
+first slides. We would look at
+that entry point and then
+looking at the methods of that
+
+00:25:40.973,00:25:47.012
+calls below we’d want to step
+into each of those and see what
+methods those things would
+
+00:25:47.012,00:25:51.750
+subsequently call. And here’s
+where we make 1 of the last
+assumptions which is: any method
+
+00:25:51.75-->000:25:56.455
+implementation can be jumped to.
+So down here we see we’re
+calling I Function dot invoke.
+
+00:25:56.455,00:26:00.793
+And we don’t have a specific
+method that we’re- or a specific
+implementation that we’re
+
+00:26:00.793,00:26:05.297
+jumping to there. So as we’re
+going through this call graph,
+we’re gonna go look at every
+
+00:26:05.297,00:26:09.735
+implementation of that, as long
+as that class is considered
+serializable. And the reason
+
+00:26:09.735,00:26:14.006
+that we assume we can do that is
+literally because that’s how we
+build up gadget chains. If we
+
+00:26:14.006,00:26:20.479
+control the data type of 1 of
+those members that determines
+what implementation of I
+
+00:26:20.479,00:26:24.316
+Function this is, then we can
+build up our gadget chain in
+such a way to get to whatever
+
+00:26:24.316,00:26:29.688
+implementation we want to get
+to. So for example we might use
+this call in order to get into
+
+00:26:29.688,00:26:34.893
+function compose dot invoke and
+then looking at what functions
+that calls. We’re gonna end up
+
+00:26:34.893,00:26:39.865
+walking through each of those
+invocations and 1 in particular
+might be calling function dot
+
+00:26:39.865,00:26:45.304
+invoke where we pass in a
+tainted argument of 1 and use
+the eval as our implementation.
+
+00:26:45.304,00:26:49.041
+And then inside there we would
+see we call runtime dot exec and
+we know that does something
+
+00:26:49.041,00:26:53.111
+interesting and something
+dangerous so we would output
+this as our gadget chain. So by
+
+00:26:53.111,00:26:56.815
+walking through all those steps,
+this thing would look at that
+library and spit out this gadget
+
+00:26:56.815,00:27:02.521
+chain. Um the 1 last limitation
+that I will point out here is
+that this of course relies on
+
+00:27:02.521,00:27:06.492
+knowing what are interesting
+methods or interesting sinks
+that we should output gadget
+
+00:27:06.492,00:27:12.164
+chains for. So there’s lots of
+good stuff in the JDK so reading
+files, writing files, runtime
+
+00:27:12.164,00:27:16.869
+dot exec, opening up the URL
+doing DNS lookups, leaping,
+there’s all kinds of side
+
+00:27:16.869,00:27:21.974
+effects that you might be
+interested in. So adding more to
+it’s list of interesting sinks
+
+00:27:21.974,00:27:28.280
+is a way to improve this tool
+but even with kind of a limited
+set of just knowing what's
+
+00:27:28.28-->000:27:34.052
+interesting gets you pretty far.
+So 1 of the things that I
+mentioned at the top of this
+
+00:27:34.052,00:27:39.825
+talk that was really important
+to me is that there’s a lot of
+different libraries now where we
+
+00:27:39.825,00:27:43.962
+know there’s serialization
+vulnerabilities. And as part of
+this analysis I mentioned a few
+
+00:27:43.962,00:27:49.334
+times that there’s things like
+known entry points that we want
+to start with or we consider any
+
+00:27:49.334,00:27:53.171
+class that’s serializable to
+have a method we can jump to. So
+all those things are
+
+00:27:53.171,00:27:58.010
+parameterizable in this
+analysis. So for JRE
+deserialization, anything
+
+00:27:58.01-->000:28:02.514
+implementing serializable is
+considered a serializable class.
+But for XStream it depends on
+
+00:28:02.514,00:28:06.184
+what converters you’ve enabled
+so it depends on how your
+application is set up. For
+
+00:28:06.184,00:28:10.989
+Jackson it’s basically any class
+with a no-arg constructor is
+considered serializable, um for
+
+00:28:10.989,00:28:16.161
+Jackson you can also only jump
+into constructors as your entry
+points. And so there’s lots of
+
+00:28:16.161,00:28:19.998
+differences between libraries
+but all those things can be
+easily tweaked and parameterized
+
+00:28:19.998,00:28:25.003
+in this analysis. So this is
+what makes this tool I think
+especially powerful is that you
+
+00:28:25.003,00:28:29.141
+might be working some kind of
+custom context where you’re
+doing unusual forms of
+
+00:28:29.141,00:28:34.012
+deserialization that happen to
+be unsafe but aren’t well
+studied yet by a project like
+
+00:28:34.012,00:28:38.283
+Marshalsec or ysoserial. And
+this is a tool that can help
+give you insight into those
+
+00:28:38.283,00:28:43.388
+kinds of uh libraries. So
+alright I’ve described this
+tool, it does a whole bunch of
+
+00:28:43.388,00:28:49.428
+funky things that maybe you- you
+did or didn’t follow depending
+on how much sleep you guys got
+
+00:28:49.428,00:28:53.932
+last night. Um and I claim that
+like, at the end of the day this
+thing can find some gadget
+
+00:28:53.932,00:28:58.737
+chains. Alright, does it live up
+to the hype? Um so the first
+thing I did after writing this
+
+00:28:58.737,00:29:03.842
+thing on like a 10 hour flight
+to Europe was run it on some
+open source libraries to see
+
+00:29:03.842,00:29:07.713
+does this thing actually do
+anything useful? Can it find
+some stuff? ‘Cause at the very
+
+00:29:07.713,00:29:11.850
+least it should be able to find
+gadget chains we know exist
+because of the stuff that
+
+00:29:11.85-->000:29:16.855
+Frohoff and Lawrence discovered
+in 2015. So alright. Built this
+tool. Ran it against the 100
+
+00:29:19.257,00:29:22.527
+most popular libraries at least
+according to Maven repository
+dot com and looked for exploits
+
+00:29:22.527,00:29:27.199
+against the standard java
+serialization library. So it did
+successfully rediscover some
+
+00:29:27.199,00:29:33.171
+known gadget chains. So cool,
+it’s at least doing what I claim
+it’s supposed to do. Um it
+
+00:29:33.171,00:29:37.876
+didn’t find a ton of classes
+implementing serializable, so it
+didn’t have a ton of new
+
+00:29:37.876,00:29:42.347
+findings, but it did have some
+and so I’m gonna talk about
+those. Um and it did have a
+
+00:29:42.347,00:29:46.685
+handful of false positives
+‘cause this does try to err on
+the side of false positives but
+
+00:29:46.685,00:29:51.990
+not as many as you’d expect.
+It’s just like a dozen enough
+that are easy to rule out, and
+
+00:29:51.99-->000:29:57.229
+it’s mostly because reflection
+is hard to reason about. So
+alright old gadget chains. What
+
+00:29:57.229,00:30:00.766
+did it discover? So it
+rediscovered the commons
+collections gadget chain and the
+
+00:30:00.766,00:30:04.870
+reason this gadget chain was so
+interesting when Frohoff and
+Lawrence first discovered it is
+
+00:30:04.87-->000:30:09.908
+because it’s the 38th most
+popular dependency at least when
+I looked this up a couple months
+
+00:30:09.908,00:30:14.713
+ago. And so it’s everywhere.
+Like every application more or
+less ends up pulling this thing
+
+00:30:14.713,00:30:18.650
+in as some kind of transitive
+dependency. And this is more or
+less what that gadget chain
+
+00:30:18.65-->000:30:22.721
+looked like. You wrap your
+object inside a dynamic proxy,
+and then you get into this
+
+00:30:22.721,00:30:26.625
+invocation handler, and then you
+go to the commons collections
+lazymap which ends up doing some
+
+00:30:26.625,00:30:31.797
+reflection things and lets you
+basically call any method you
+want. And so hooray it found
+
+00:30:31.797,00:30:36.168
+that whole gadget chain it’s
+finding things that I expect
+that it should be able to find.
+
+00:30:36.168,00:30:40.706
+But the first thing that it
+actually found was this new
+gadget chain inside clojure. And
+
+00:30:40.706,00:30:44.409
+this is basically the gadget
+chain that I’ve been kind of
+discussing and using it as an
+
+00:30:44.409,00:30:49.181
+example leading up to this. So
+this was super interesting
+because this was the sixth most
+
+00:30:49.181,00:30:55.754
+popular dependency according to
+uh MVN Repository dot com. And
+so what this gadget chain did,
+
+00:30:55.754,00:31:00.992
+at least according to the w- the
+version I originally found, is
+load a clojure file from disc
+
+00:31:00.992,00:31:06.164
+and execute it. Which may or may
+not be interesting. But it also
+turned out that by tweaking that
+
+00:31:06.164,00:31:11.436
+last step in there to call eval
+instead of load file, it would
+execute arbitrary clojure that
+
+00:31:11.436,00:31:16.775
+you pass in. So it’s basically
+RCE. Um so that’s super
+interesting. If there are people
+
+00:31:16.775,00:31:20.512
+that patch their version of
+commons collections but decided
+that they’re good now and they
+
+00:31:20.512,00:31:24.716
+still doing unsafe
+deserialization um chances are
+you’re probably pulling in this
+
+00:31:24.716,00:31:29.154
+dependency, so you’re still in
+hot water. Hopefully in the last
+couple years people have figured
+
+00:31:29.154,00:31:33.658
+out that they shouldn’t be doing
+unsafe deserialization but um
+people continue to surprise me.
+
+00:31:33.658,00:31:39.698
+So uh I did report this to the
+clojure dev mailing list when I
+discovered it. Um and they
+
+00:31:39.698,00:31:44.536
+decided “Who is even serializing
+this class anyway? We’re just
+gonna turn off serialization for
+
+00:31:44.536,00:31:51.409
+that class.” Um and then that's-
+that’s great. So all releases
+since 1 9 0 have disabled
+
+00:31:51.409,00:31:56.081
+serialization on that
+abstracttablemodel class so that
+hashcode entry point doesn’t
+
+00:31:56.081,00:32:01.419
+exist anymore. Yay! Uh we’re
+making the world safer 1 gadget
+chain at a time. Um more
+
+00:32:01.419,00:32:05.791
+recently I discovered some new
+gadget chains in Scala using
+this tool. So Scala is the third
+
+00:32:05.791,00:32:10.862
+most popular dependency uh
+according to Maven repository
+dot com. So this gadget chain
+
+00:32:10.862,00:32:16.234
+isn’t an RCE maybe not as
+interesting but it does allow
+you to write or overwrite a 0
+
+00:32:16.234,00:32:22.574
+byte file on disc. And that’s an
+interesting uh DoS uh exploit,
+because you can overwrite some
+
+00:32:22.574,00:32:28.313
+application resource file. 0 it
+out and then your app goes down.
+So that’s possibly interesting.
+
+00:32:28.313,00:32:33.318
+Um there’s a very similar 1 that
+gadget inspector also found that
+can do an SSRF. So it does a get
+
+00:32:35.387,00:32:41.626
+send an arbitrary URL, and it’s
+basically the same thing. Um and
+this is something that gadget
+
+00:32:41.626,00:32:47.199
+chain spat out. And I’ve got
+examples of the actual gadget
+chain payloads on my fork of
+
+00:32:47.199,00:32:51.937
+ysoserial that you can check out
+after this talk. So these are
+not just things that I’ve found
+
+00:32:51.937,00:32:55.240
+that I’m claiming like could
+actually work if you build the
+gadget chain. I did actually
+
+00:32:55.24-->000:33:00.111
+build the corresponding gadget
+chain and verify that these
+things work. So cool stuff. Um
+
+00:33:00.111,00:33:05.717
+so just before this talk a
+couple weeks ago I re ran gadget
+inspector on the latest release
+
+00:33:05.717,00:33:11.156
+of Clojure and then it turns out
+that that exact same gadget
+chain I found before still
+
+00:33:11.156,00:33:15.694
+exists in Clojure, just with a
+different entry point. There’s
+another class implementing
+
+00:33:15.694,00:33:21.233
+hashcode that delegates to a
+function and so you can actually
+do exactly the same gadget chain
+
+00:33:21.233,00:33:23.235
+using this different entry
+point. There’s another class
+implementing hashcode that
+
+00:33:23.235,00:33:25.237
+delegates to a function and you
+can actually do exactly the same
+gadget chain using this
+
+00:33:25.237,00:33:27.239
+different entry point.And that’s
+been in every release since 1
+dot 8 dot 0. So apparently
+
+00:33:27.239,00:33:32.043
+there’s still an RCE gadget
+chain in every release of
+Clojure that’s out there. So I
+
+00:33:32.043,00:33:35.580
+need to follow up with the
+Clojure guys and see if they
+wanna lock down this too, but
+
+00:33:35.58-->000:33:40.118
+really I hope this is just
+hammering in the point that
+you’ve gotta stop doing unsafe
+
+00:33:40.118,00:33:46.892
+deserialization guys; there’s
+gadget chains everywhere. But
+alright enough of that. I looked
+
+00:33:46.892,00:33:51.263
+at open source libraries but
+what I was getting at at the top
+of this talk was that what I
+
+00:33:51.263,00:33:56.735
+really wanted to find was gadget
+chains that are specific to my
+applications I'm looking at so
+
+00:33:56.735,00:34:00.739
+that I can go back to developers
+and tell them how important is
+it that you patch this thing
+
+00:34:00.739,00:34:04.576
+right away. Or can you wait
+until your next release so that
+you can finish up these critical
+
+00:34:04.576,00:34:09.581
+features. So let’s look at
+vulnerable web app number 1. So
+this was using some potentially
+
+00:34:11.783,00:34:16.154
+dangerous use of Jackson
+deserialization; an attacker
+could specify any class to
+
+00:34:16.154,00:34:21.426
+substantiate and put an
+arbitrary body in there. Um but
+there were a lot of limitations
+
+00:34:21.426,00:34:25.196
+on it. It was using more or less
+the default configuration of
+Jackson so you could only
+
+00:34:25.196,00:34:29.167
+deserialize class with no-arg
+constructors. Your only entry
+points are gonna be no-arg
+
+00:34:29.167,00:34:33.271
+constructors and most of the
+time classes don’t do anything
+terribly interesting in
+
+00:34:33.271,00:34:38.877
+constructors, but it did have a
+200 megabyte classpath and was
+bringing in like 6 dozen
+
+00:34:38.877,00:34:42.981
+dependencies. So there might be
+something there and I don’t
+really have enough time to
+
+00:34:42.981,00:34:46.918
+manually go through every
+constructor of every class on
+that classpath to find out if
+
+00:34:46.918,00:34:52.724
+any of them do anything
+interesting. So I ran Gadget
+inspector and it found nothing!
+
+00:34:52.724,00:34:58.063
+So alright that wasn’t the cool
+exploit and bombshell you guys
+were hoping for but it saved a
+
+00:34:58.063,00:35:02.901
+bunch of time cause no one had
+to go through every constructor
+and decide if it was important
+
+00:35:02.901,00:35:06.571
+to remediate this vulnerability.
+We could tell the developers
+that “Hey, it’s cool if you wait
+
+00:35:06.571,00:35:11.476
+until the next time that you’re
+able to get to this.” But the
+story doesn’t end there. So
+
+00:35:11.476,00:35:15.880
+internal web app number 2 so
+this 1 was really interesting
+cause it used a non standard
+
+00:35:15.88-->000:35:20.385
+deserialization library
+something that had some like
+custom in house tweaks to it
+
+00:35:20.385,00:35:26.291
+that had some really unique
+constraints on it. So it invoked
+readResolve magic method but not
+
+00:35:26.291,00:35:31.363
+readObject and it was able to
+deserialize any class on the
+classpath that didn't have to
+
+00:35:31.363,00:35:35.233
+implement serializable except
+for the rest of these
+constraints down here. So 1 is
+
+00:35:35.233,00:35:39.938
+that its number fields couldn’t
+have dollars in it, because that
+screwed up the binary format of
+
+00:35:39.938,00:35:41.940
+this thing. So non-static inner
+classes always have this
+implicit dollar outer member
+
+00:35:41.94-->000:35:43.942
+name. So basically anything that
+happened to be a non-static
+inner class was not
+
+00:35:43.942,00:35:49.447
+serializable. Um furthermore it
+didn’t have any support for its
+utilizing arrays or generic
+
+00:35:49.447,00:35:54.452
+maps. And most importantly,
+every member value had to be non
+null. And that meant that every
+
+00:35:59.691,00:36:04.496
+member value, every type- the-
+every type of every member
+value, also had to satisfy all
+
+00:36:04.496,00:36:07.665
+of these constraints. Because
+you couldn’t leave it null so
+you had to serialize it as
+
+00:36:07.665,00:36:11.069
+something so it had to satisfy
+all these constraints. And it
+also meant that you couldn’t
+
+00:36:11.069,00:36:15.740
+have any data types that had
+character arrays or byte arrays
+in it. You couldn’t have any
+
+00:36:15.74-->000:36:19.844
+data types that had some kind of
+self referential or recursive
+type. ‘Cause like Thread for
+
+00:36:19.844,00:36:24.916
+example has Parent which is a
+type of thread. So there’s no
+way to have non null members for
+
+00:36:24.916,00:36:29.254
+all of those and stick ‘em in a
+payload. So it was really really
+hard to determine what classes
+
+00:36:29.254,00:36:33.191
+were even considered
+serializable in this context.
+Much less whether or not you
+
+00:36:33.191,00:36:38.563
+could actually build a gadget
+chain that went through those
+particular classes. Um but
+
+00:36:38.563,00:36:43.268
+that’s the sort of thing where
+gadget inspector has the
+functionality to stick in all of
+
+00:36:43.268,00:36:49.541
+those constraints and then ask
+it to tell you what do you find.
+And this is what it found. So
+
+00:36:49.541,00:36:55.280
+this is a 12 step deep gadget
+chain, starts at readResolve
+like I promised. Um and the
+
+00:36:55.28-->000:37:00.885
+bottom thing that it does here
+is copy a file from any
+arbitrary location to any other
+
+00:37:00.885,00:37:05.490
+arbitrary location. And that was
+cool cause it allowed us to do
+things like exfiltrate private
+
+00:37:05.49-->000:37:09.994
+keys off the box by dropping
+them in the web app resources
+directory. And you can look at
+
+00:37:09.994,00:37:14.365
+this really closely but I feel
+like you don’t really have to.
+The thing that’s really
+
+00:37:14.365,00:37:18.736
+interesting is just looking at
+the package names that are
+showing up here. So here I’ve
+
+00:37:18.736,00:37:22.874
+highlighted the different
+dependencies that this gadget
+chain is flowing through. And if
+
+00:37:22.874,00:37:27.078
+you count the app itself and the
+JRE, there’s 7 different
+libraries involved in this
+
+00:37:27.078,00:37:30.648
+gadget chain. And it’s something
+that you would never have found
+by analyzing any of those
+
+00:37:30.648,00:37:35.754
+individually and you would never
+have found it by looking at the
+set of dependencies without also
+
+00:37:35.754,00:37:41.326
+pulling in uh the classes from
+the application itself but it’s
+something that just lit up as
+
+00:37:41.326,00:37:44.929
+soon as I ran gadget inspector
+on it. And so that’s super cool
+and that’s what I’m talking
+
+00:37:44.929,00:37:50.034
+about; where this thing is
+utilizing the power to look at
+the entire classpath and it’s
+
+00:37:50.034,00:37:53.538
+able to utilize the
+parameterization of what it
+means to be serializable
+
+00:37:53.538,00:37:58.777
+according to your kind of custom
+constraints. So uh that was a
+really cool gadget chain that
+
+00:37:58.777,00:38:02.847
+this thing found. But also
+spending just like 5 or 10
+minutes staring at this you see
+
+00:38:02.847,00:38:08.987
+this step this uh gadget chain
+method is step 8 which is
+StreamPumper dot run. What that
+
+00:38:08.987,00:38:13.458
+actually does is copies an input
+stream to an output stream. So
+if you look at this for just a
+
+00:38:13.458,00:38:17.795
+few minutes you’ll realize you
+can tweak this last thing to
+copy an arbitrary string input
+
+00:38:17.795,00:38:22.901
+stream to a file output stream,
+and be able to write an
+arbitrary string to an arbitrary
+
+00:38:22.901,00:38:27.906
+file. So I was able to write a
+JSP to my web app resource
+directory and get RCE with this
+
+00:38:27.906,00:38:33.812
+gadget chain. So this was a
+really cool result to come out
+of this and immediately allowed
+
+00:38:33.812,00:38:37.982
+us to say “Alright, we’ve got to
+fix this thing now because
+you’re getting RCE on this like
+
+00:38:37.982,00:38:42.954
+really sensitive service. So
+this was really powerful and it
+allowed us and it saved us time
+
+00:38:42.954,00:38:48.193
+of trying to actually build up
+this thing. As a matter of fact
+this was a web app that we
+
+00:38:48.193,00:38:53.698
+actually had a pen test team
+looking at. And they identified
+those vulnerable to those kind
+
+00:38:53.698,00:38:57.535
+of vulnerability but they spent
+a couple days kind of looking at
+it here and there and basically
+
+00:38:57.535,00:39:01.539
+weren’t able to decide whether
+or not you could do anything
+with it. Um gadget inspector
+
+00:39:01.539,00:39:06.144
+took about 15 minutes to run on
+this application and it spit
+this out. So that is a huge time
+
+00:39:06.144,00:39:11.749
+saver and I think a huge win for
+both pen testers and appsec
+engineers trying to understand
+
+00:39:11.749,00:39:17.155
+deserialization vulnerabilities
+in applications. So obviously
+there’s gonna be a lot of room
+
+00:39:17.155,00:39:22.293
+for improvement in this kind of
+tool. So um reflection continues
+to be the bane of existence for
+
+00:39:22.293,00:39:26.397
+anyone doing code analysis of
+any form. It’s hard to
+understand and this tool
+
+00:39:26.397,00:39:30.835
+basically just treats any kind
+of reflection as an interesting
+sink, just cause it doesn't know
+
+00:39:30.835,00:39:35.173
+how to do any better. Um but
+that also leads to a lot of
+false positives and some blind
+
+00:39:35.173,00:39:38.910
+spots so it can be improved
+there. I also mentioned that
+there’s a number of assumptions
+
+00:39:38.91-->000:39:42.580
+and limitations that I made in
+the course of building this
+tool. And while I think most of
+
+00:39:42.58-->000:39:47.018
+those are reasonable given the
+context we’re working in, um
+it’s obviously something that
+
+00:39:47.018,00:39:52.023
+could be improved. But that
+being said, I think diving down
+into this kind of automatic
+
+00:39:54.259,00:40:00.131
+analysis for deserialization
+vulnerabilities, is territory
+that has a lot of room for more
+
+00:40:00.131,00:40:05.436
+discovery and more time spent on
+it because uh this was something
+that’s just kind of a functional
+
+00:40:05.436,00:40:10.108
+prototype but it’s already saved
+us a bunch of time as we’ve been
+doing appsec reviews of our
+
+00:40:10.108,00:40:14.345
+internal applications. And this
+was something that I
+specifically wrote for Java and
+
+00:40:14.345,00:40:18.249
+to understand Java bytecode, but
+I think all the techniques I
+described here apply equally
+
+00:40:18.249,00:40:23.521
+well to C Sharp and PHP and all
+these other languages that have
+these kind of libraries that
+
+00:40:23.521,00:40:27.692
+allow you to specify data types
+and therefore can be used
+dangerously. But this tool is
+
+00:40:27.692,00:40:33.431
+open source so I encourage you
+to go look at it, check it out,
+see if you want to do a PR on it
+
+00:40:33.431,00:40:38.703
+or improve it, um or just use
+these ideas and kinda build your
+own thing that’s better. Um but
+
+00:40:38.703,00:40:43.074
+also most importantly,
+deserialization vulnerabilities
+aren’t gone yet. They’re still
+
+00:40:43.074,00:40:47.345
+relevant and they’re still
+interesting and I think exploits
+can and will be more complex as
+
+00:40:47.345,00:40:51.883
+time goes on. This is the first
+time I’ve ever seen a gadget
+chain that long. Um and I think
+
+00:40:51.883,00:40:56.654
+we need better tools to help us
+better understand those sorts of
+vulnerabilities. So if you got
+
+00:40:56.654,00:41:01.893
+questions uh we’ve got about 5
+minutes; you can also hit me up
+online later. And thank you all
+
+00:41:01.893,00:41:05.797
+for coming. [applause]
+

@@ -1,0 +1,2408 @@
+﻿1
+00:00:01,199 --> 00:00:04,199
+foreign
+
+2
+00:00:13,980 --> 00:00:15,660
+good afternoon thank you all for having
+
+3
+00:00:15,660 --> 00:00:17,760
+me my name is Ian haken I'm a security
+
+4
+00:00:17,760 --> 00:00:20,640
+software engineer at Netflix and I've
+
+5
+00:00:20,640 --> 00:00:22,619
+spent about six and a half years they
+
+6
+00:00:22,619 --> 00:00:24,480
+are mostly working on the platform and
+
+7
+00:00:24,480 --> 00:00:26,699
+infrastructure security team and today I
+
+8
+00:00:26,699 --> 00:00:28,439
+want to talk about some adventures in
+
+9
+00:00:28,439 --> 00:00:31,199
+authentication and authorization and to
+
+10
+00:00:31,199 --> 00:00:33,420
+kick it off I want to talk about one of
+
+11
+00:00:33,420 --> 00:00:36,180
+the first times I got admin credentials
+
+12
+00:00:36,180 --> 00:00:38,760
+to our Cloud ecosystem so this was
+
+13
+00:00:38,760 --> 00:00:40,440
+during a red team exercise it wasn't
+
+14
+00:00:40,440 --> 00:00:41,700
+just while I was walking down the
+
+15
+00:00:41,700 --> 00:00:44,760
+hallway so I was acting as malicious
+
+16
+00:00:44,760 --> 00:00:47,340
+Insider and the target of my attack was
+
+17
+00:00:47,340 --> 00:00:50,039
+this Keys key service we have running in
+
+18
+00:00:50,039 --> 00:00:51,539
+our Cloud environment the idea behind
+
+19
+00:00:51,539 --> 00:00:52,920
+this key service is that it sort of
+
+20
+00:00:52,920 --> 00:00:54,180
+hands out different flavors of
+
+21
+00:00:54,180 --> 00:00:55,800
+credentials to developers like building
+
+22
+00:00:55,800 --> 00:00:57,600
+code at their desk that's later going to
+
+23
+00:00:57,600 --> 00:00:59,940
+run in the cloud but the thing that
+
+24
+00:00:59,940 --> 00:01:01,320
+makes the attack interesting is that
+
+25
+00:01:01,320 --> 00:01:02,460
+it's not something I can talk to
+
+26
+00:01:02,460 --> 00:01:04,199
+directly it lives up there in our cloud
+
+27
+00:01:04,199 --> 00:01:06,780
+in our VPC something with you know
+
+28
+00:01:06,780 --> 00:01:08,460
+firewalls around it all those good
+
+29
+00:01:08,460 --> 00:01:10,560
+things so the way you actually interact
+
+30
+00:01:10,560 --> 00:01:12,060
+with this system is through our internet
+
+31
+00:01:12,060 --> 00:01:13,920
+gateway service so this is the thing
+
+32
+00:01:13,920 --> 00:01:16,200
+that I actually log into with my SSO
+
+33
+00:01:16,200 --> 00:01:18,119
+credentials and that's going to proxy
+
+34
+00:01:18,119 --> 00:01:20,460
+the request on my behalf up to this key
+
+35
+00:01:20,460 --> 00:01:22,500
+service and the key service is going to
+
+36
+00:01:22,500 --> 00:01:25,200
+turn around and say okay well is Ian
+
+37
+00:01:25,200 --> 00:01:26,580
+actually allowed to get the key he's
+
+38
+00:01:26,580 --> 00:01:28,259
+asking for so it's going to call out to
+
+39
+00:01:28,259 --> 00:01:30,119
+our authorization service that's going
+
+40
+00:01:30,119 --> 00:01:31,860
+to give a yes no answer
+
+41
+00:01:31,860 --> 00:01:33,720
+and this is sort of all fine the way
+
+42
+00:01:33,720 --> 00:01:35,400
+I've drawn it the challenge with this
+
+43
+00:01:35,400 --> 00:01:37,259
+diagram is that there's a hop between
+
+44
+00:01:37,259 --> 00:01:40,500
+the thing that I logged into and the
+
+45
+00:01:40,500 --> 00:01:42,240
+thing that needs to know who I am in
+
+46
+00:01:42,240 --> 00:01:43,979
+order to do that check that I'm allowed
+
+47
+00:01:43,979 --> 00:01:46,380
+to get the key so the way this was
+
+48
+00:01:46,380 --> 00:01:48,000
+initially solved during the course of
+
+49
+00:01:48,000 --> 00:01:50,159
+this exercise is the internet gateway
+
+50
+00:01:50,159 --> 00:01:52,020
+throws in this little header says who is
+
+51
+00:01:52,020 --> 00:01:53,759
+the user and passes that up to the key
+
+52
+00:01:53,759 --> 00:01:54,659
+service
+
+53
+00:01:54,659 --> 00:01:57,240
+and that's a little bit problematic for
+
+54
+00:01:57,240 --> 00:01:59,939
+probably a handful of reasons but the
+
+55
+00:01:59,939 --> 00:02:01,920
+the big problem is that anything else
+
+56
+00:02:01,920 --> 00:02:03,840
+that's sort of in this ecosystem can put
+
+57
+00:02:03,840 --> 00:02:05,640
+whatever they want to in that header so
+
+58
+00:02:05,640 --> 00:02:07,380
+if I get control over something else
+
+59
+00:02:07,380 --> 00:02:09,000
+that's able to talk directly to the key
+
+60
+00:02:09,000 --> 00:02:11,400
+service then I can pretend to be anyone
+
+61
+00:02:11,400 --> 00:02:13,680
+and fortunately for me pretending to be
+
+62
+00:02:13,680 --> 00:02:15,840
+an attacker here there's a convenience
+
+63
+00:02:15,840 --> 00:02:17,459
+service already running in the
+
+64
+00:02:17,459 --> 00:02:18,720
+environment that lets you run whatever
+
+65
+00:02:18,720 --> 00:02:20,700
+code you want we've got this python
+
+66
+00:02:20,700 --> 00:02:23,160
+notebook system lets you run data run
+
+67
+00:02:23,160 --> 00:02:25,220
+queries against our Big Data Warehouse
+
+68
+00:02:25,220 --> 00:02:27,660
+schedule those things to run later but
+
+69
+00:02:27,660 --> 00:02:29,280
+importantly it literally lets me run
+
+70
+00:02:29,280 --> 00:02:31,319
+whatever code I want so I was able to
+
+71
+00:02:31,319 --> 00:02:32,879
+ask it to go talk to this key service
+
+72
+00:02:32,879 --> 00:02:35,099
+put admin in a header and give me some
+
+73
+00:02:35,099 --> 00:02:36,959
+credentials back so
+
+74
+00:02:36,959 --> 00:02:38,940
+that's the picture that I kind of want
+
+75
+00:02:38,940 --> 00:02:40,980
+to talk about for roughly the next 20
+
+76
+00:02:40,980 --> 00:02:43,560
+minutes uh the and talk about the
+
+77
+00:02:43,560 --> 00:02:45,060
+various iterations we went through
+
+78
+00:02:45,060 --> 00:02:46,560
+trying to make improvements to this
+
+79
+00:02:46,560 --> 00:02:48,780
+ecosystem and importantly talk about a
+
+80
+00:02:48,780 --> 00:02:50,640
+lot of the things that didn't quite work
+
+81
+00:02:50,640 --> 00:02:52,800
+that still had problems had different
+
+82
+00:02:52,800 --> 00:02:55,080
+threat models we hadn't considered and
+
+83
+00:02:55,080 --> 00:02:57,000
+if you're working in a similar space
+
+84
+00:02:57,000 --> 00:02:59,220
+thinking about problems like this or
+
+85
+00:02:59,220 --> 00:03:01,200
+really just trying to solve
+
+86
+00:03:01,200 --> 00:03:02,879
+authentication authorization your
+
+87
+00:03:02,879 --> 00:03:04,739
+ecosystem I'm hoping to just save you
+
+88
+00:03:04,739 --> 00:03:06,480
+some time and kind of fast forward to
+
+89
+00:03:06,480 --> 00:03:08,340
+this last step that we were finally
+
+90
+00:03:08,340 --> 00:03:10,140
+happy with
+
+91
+00:03:10,140 --> 00:03:11,700
+so all right talking about
+
+92
+00:03:11,700 --> 00:03:13,980
+authentication authorization and so
+
+93
+00:03:13,980 --> 00:03:15,540
+before I get too far into it I'm just
+
+94
+00:03:15,540 --> 00:03:16,980
+going to spend one minute to find those
+
+95
+00:03:16,980 --> 00:03:18,480
+terms make sure we're all talking about
+
+96
+00:03:18,480 --> 00:03:21,599
+the same thing so authentication AKA op
+
+97
+00:03:21,599 --> 00:03:24,300
+n is establishing your identity usually
+
+98
+00:03:24,300 --> 00:03:25,860
+there's some form of credential involved
+
+99
+00:03:25,860 --> 00:03:27,120
+there's a bunch of different ways you
+
+100
+00:03:27,120 --> 00:03:28,440
+can do authentication a lot of different
+
+101
+00:03:28,440 --> 00:03:30,780
+Technologies but at the end of the day
+
+102
+00:03:30,780 --> 00:03:34,260
+it's proving who you are to the remote
+
+103
+00:03:34,260 --> 00:03:37,260
+system and then authorization is the
+
+104
+00:03:37,260 --> 00:03:39,000
+other piece of it once we've established
+
+105
+00:03:39,000 --> 00:03:40,920
+who you are we want to know are you
+
+106
+00:03:40,920 --> 00:03:43,260
+allowed to do the thing so the thing can
+
+107
+00:03:43,260 --> 00:03:44,580
+vary a lot depending on the context
+
+108
+00:03:44,580 --> 00:03:45,959
+usually there's some resource you're
+
+109
+00:03:45,959 --> 00:03:48,000
+acting on some type of action you might
+
+110
+00:03:48,000 --> 00:03:49,980
+be doing a read versus a write they can
+
+111
+00:03:49,980 --> 00:03:51,900
+be a lot of other Dynamic factors pulled
+
+112
+00:03:51,900 --> 00:03:54,120
+in what sort of roles you have whether
+
+113
+00:03:54,120 --> 00:03:56,459
+you did MFA when you logged in what IP
+
+114
+00:03:56,459 --> 00:03:57,599
+you're coming from lots of things can
+
+115
+00:03:57,599 --> 00:04:00,060
+feed into that but authorization output
+
+116
+00:04:00,060 --> 00:04:02,519
+is basically a yes or no answer
+
+117
+00:04:02,519 --> 00:04:04,200
+and one of the things that we've been
+
+118
+00:04:04,200 --> 00:04:06,480
+seeing at kind of industry trend for is
+
+119
+00:04:06,480 --> 00:04:09,680
+a sort of centralization of a reusable
+
+120
+00:04:09,680 --> 00:04:12,060
+optimized authorization system and
+
+121
+00:04:12,060 --> 00:04:13,620
+that's kind of the what I'm alluding to
+
+122
+00:04:13,620 --> 00:04:15,180
+with this picture over here where my key
+
+123
+00:04:15,180 --> 00:04:16,620
+service is calling out to something it's
+
+124
+00:04:16,620 --> 00:04:18,839
+calling to something that has a rich
+
+125
+00:04:18,839 --> 00:04:21,060
+expressible policy language a lot of
+
+126
+00:04:21,060 --> 00:04:23,520
+information about roles and attributes
+
+127
+00:04:23,520 --> 00:04:26,280
+on the user and there's some links here
+
+128
+00:04:26,280 --> 00:04:29,340
+that you can look up about with some
+
+129
+00:04:29,340 --> 00:04:31,259
+examples of some of these sort of uh
+
+130
+00:04:31,259 --> 00:04:33,960
+optimized authorization services
+
+131
+00:04:33,960 --> 00:04:36,540
+but going back to our picture
+
+132
+00:04:36,540 --> 00:04:39,419
+uh the first fix that we wanted to lean
+
+133
+00:04:39,419 --> 00:04:41,160
+into is using affordable Bearer
+
+134
+00:04:41,160 --> 00:04:43,560
+credentials and so Bearer credentials
+
+135
+00:04:43,560 --> 00:04:45,240
+are basically just something that proves
+
+136
+00:04:45,240 --> 00:04:47,639
+who you are that can be passed along
+
+137
+00:04:47,639 --> 00:04:49,680
+kind of regardless of the context of the
+
+138
+00:04:49,680 --> 00:04:52,259
+specific request and this is a great
+
+139
+00:04:52,259 --> 00:04:54,419
+blog post I really like that does a
+
+140
+00:04:54,419 --> 00:04:56,400
+really good survey uh it truly is
+
+141
+00:04:56,400 --> 00:04:57,780
+tedious it goes through a lot of
+
+142
+00:04:57,780 --> 00:05:01,139
+different Technologies but regardless of
+
+143
+00:05:01,139 --> 00:05:03,479
+the specific to that the relevant bit
+
+144
+00:05:03,479 --> 00:05:04,800
+here is that it's something that can be
+
+145
+00:05:04,800 --> 00:05:07,919
+passed along the Hop so I do my SSO
+
+146
+00:05:07,919 --> 00:05:09,780
+login here I authenticate I get some
+
+147
+00:05:09,780 --> 00:05:12,120
+kind of like oidc access token or jaw to
+
+148
+00:05:12,120 --> 00:05:13,740
+prosetto or macaroon or biscuit
+
+149
+00:05:13,740 --> 00:05:16,500
+whichever whichever is your favorite and
+
+150
+00:05:16,500 --> 00:05:18,300
+that can be pass along when my internet
+
+151
+00:05:18,300 --> 00:05:19,919
+gateway makes a call to the key service
+
+152
+00:05:19,919 --> 00:05:21,720
+so the key service is able to validate
+
+153
+00:05:21,720 --> 00:05:23,100
+that this is actually an authentic
+
+154
+00:05:23,100 --> 00:05:26,220
+credential unpack the username from it
+
+155
+00:05:26,220 --> 00:05:28,320
+make the same authorization check as
+
+156
+00:05:28,320 --> 00:05:30,479
+before and now this sort of solves the
+
+157
+00:05:30,479 --> 00:05:33,000
+initial problem if there's some sort of
+
+158
+00:05:33,000 --> 00:05:34,800
+remote code execution in the service it
+
+159
+00:05:34,800 --> 00:05:36,300
+can't pretend to be anyone it has to use
+
+160
+00:05:36,300 --> 00:05:37,919
+a real credential that can be verified
+
+161
+00:05:37,919 --> 00:05:39,419
+by the key service
+
+162
+00:05:39,419 --> 00:05:41,940
+so this resolved the initial problem we
+
+163
+00:05:41,940 --> 00:05:42,840
+had
+
+164
+00:05:42,840 --> 00:05:45,600
+but we ran into a different problem with
+
+165
+00:05:45,600 --> 00:05:47,280
+this picture and the different problem
+
+166
+00:05:47,280 --> 00:05:49,199
+here is because of a completely
+
+167
+00:05:49,199 --> 00:05:51,360
+different service so in this case we had
+
+168
+00:05:51,360 --> 00:05:53,160
+a travel service this was an
+
+169
+00:05:53,160 --> 00:05:54,660
+off-the-shelf piece of software that
+
+170
+00:05:54,660 --> 00:05:56,580
+does sort of hotel and travel bookings
+
+171
+00:05:56,580 --> 00:05:59,039
+for us and this was part of the same
+
+172
+00:05:59,039 --> 00:06:00,900
+ecosystem so my bear credentials have
+
+173
+00:06:00,900 --> 00:06:02,699
+passed in there whenever I want to go
+
+174
+00:06:02,699 --> 00:06:04,560
+book a flight with our internal booking
+
+175
+00:06:04,560 --> 00:06:05,460
+system
+
+176
+00:06:05,460 --> 00:06:08,039
+but the problem is uh we had a really
+
+177
+00:06:08,039 --> 00:06:09,479
+good vulnerability scanner set up
+
+178
+00:06:09,479 --> 00:06:10,680
+discovered that there was a
+
+179
+00:06:10,680 --> 00:06:13,860
+unauthenticated rce in this service and
+
+180
+00:06:13,860 --> 00:06:15,720
+uh it turns out it was because it was
+
+181
+00:06:15,720 --> 00:06:17,220
+pulling in some super old version of
+
+182
+00:06:17,220 --> 00:06:19,800
+Open Source Library had rce in it uh
+
+183
+00:06:19,800 --> 00:06:22,580
+lots of goods Red teams that I work with
+
+184
+00:06:22,580 --> 00:06:24,720
+and the question came up during the
+
+185
+00:06:24,720 --> 00:06:26,520
+incident review what's the worst case
+
+186
+00:06:26,520 --> 00:06:29,220
+scenario if a malicious actor had gone
+
+187
+00:06:29,220 --> 00:06:31,680
+into the system well they have to have
+
+188
+00:06:31,680 --> 00:06:34,860
+real credentials in order to make use of
+
+189
+00:06:34,860 --> 00:06:36,720
+these calls to other systems but the
+
+190
+00:06:36,720 --> 00:06:38,520
+problem is that this is a service that
+
+191
+00:06:38,520 --> 00:06:41,400
+was used by basically every employee at
+
+192
+00:06:41,400 --> 00:06:44,880
+the company so when Joe admin went and
+
+193
+00:06:44,880 --> 00:06:46,620
+booked his flight his credentials flowed
+
+194
+00:06:46,620 --> 00:06:48,660
+into that service and those credentials
+
+195
+00:06:48,660 --> 00:06:50,340
+could have been forwarded by malicious
+
+196
+00:06:50,340 --> 00:06:51,960
+actor back up to this key service so
+
+197
+00:06:51,960 --> 00:06:54,240
+this is another way of getting admin
+
+198
+00:06:54,240 --> 00:06:56,039
+credentials from a single point of
+
+199
+00:06:56,039 --> 00:06:58,380
+compromise completely unrelated to the
+
+200
+00:06:58,380 --> 00:07:01,080
+security of that system so sort of the
+
+201
+00:07:01,080 --> 00:07:02,699
+lesson in walking through that incident
+
+202
+00:07:02,699 --> 00:07:04,919
+review is that using Bearer credentials
+
+203
+00:07:04,919 --> 00:07:07,500
+specifically in this way introduces a
+
+204
+00:07:07,500 --> 00:07:09,240
+high risk of compromise from any single
+
+205
+00:07:09,240 --> 00:07:10,979
+point of failure because any individual
+
+206
+00:07:10,979 --> 00:07:12,840
+service in the whole ecosystem that gets
+
+207
+00:07:12,840 --> 00:07:15,479
+compromised any user that has gone to it
+
+208
+00:07:15,479 --> 00:07:17,580
+can now have their credentials harvested
+
+209
+00:07:17,580 --> 00:07:19,800
+and reused in this way
+
+210
+00:07:19,800 --> 00:07:22,979
+so one potential fix for that uh that
+
+211
+00:07:22,979 --> 00:07:24,900
+people have asked me about a lot is what
+
+212
+00:07:24,900 --> 00:07:26,580
+about using credential Scopes so
+
+213
+00:07:26,580 --> 00:07:28,080
+credential Scopes is a bit of an
+
+214
+00:07:28,080 --> 00:07:29,940
+overloaded term it can kind of be
+
+215
+00:07:29,940 --> 00:07:31,080
+implemented a few different ways
+
+216
+00:07:31,080 --> 00:07:32,160
+depending on exactly which
+
+217
+00:07:32,160 --> 00:07:33,599
+authentication technology we're talking
+
+218
+00:07:33,599 --> 00:07:36,180
+about so like jots uh have an audience
+
+219
+00:07:36,180 --> 00:07:38,460
+in them oidc tokens have Scopes but the
+
+220
+00:07:38,460 --> 00:07:40,740
+idea is that your credential instead of
+
+221
+00:07:40,740 --> 00:07:42,240
+just being the same credential you use
+
+222
+00:07:42,240 --> 00:07:44,160
+everywhere has something embedded in it
+
+223
+00:07:44,160 --> 00:07:45,960
+that says what it's meant to be used for
+
+224
+00:07:45,960 --> 00:07:48,180
+so when I go to the key service I use
+
+225
+00:07:48,180 --> 00:07:49,860
+one flavor of credential or something
+
+226
+00:07:49,860 --> 00:07:51,780
+with my username in it that says this is
+
+227
+00:07:51,780 --> 00:07:53,940
+for getting keys out of the key service
+
+228
+00:07:53,940 --> 00:07:55,800
+and when I go and talk to that Travel
+
+229
+00:07:55,800 --> 00:07:57,360
+Service I have a different flavor of
+
+230
+00:07:57,360 --> 00:07:59,099
+credential a different audience or scope
+
+231
+00:07:59,099 --> 00:08:01,139
+embedded in it that says this is usable
+
+232
+00:08:01,139 --> 00:08:03,479
+for the travel service so this solves
+
+233
+00:08:03,479 --> 00:08:05,039
+the problem somewhat because then these
+
+234
+00:08:05,039 --> 00:08:06,780
+credentials I'm sending down there can't
+
+235
+00:08:06,780 --> 00:08:09,240
+be replayed against the key service but
+
+236
+00:08:09,240 --> 00:08:11,520
+the problem is that this only works in
+
+237
+00:08:11,520 --> 00:08:14,940
+sort of a static unchanging microservice
+
+238
+00:08:14,940 --> 00:08:18,240
+ecosystem so one enhancement that came
+
+239
+00:08:18,240 --> 00:08:19,800
+along down the road is that account
+
+240
+00:08:19,800 --> 00:08:21,780
+calendaring service wanted to get users
+
+241
+00:08:21,780 --> 00:08:23,400
+calendar data sorry the Travel Service
+
+242
+00:08:23,400 --> 00:08:25,259
+wanted to get users calendar data in
+
+243
+00:08:25,259 --> 00:08:26,759
+order to find like empty blocks in your
+
+244
+00:08:26,759 --> 00:08:29,039
+calendar go booked flights during that
+
+245
+00:08:29,039 --> 00:08:31,680
+period but those credentials that we're
+
+246
+00:08:31,680 --> 00:08:33,360
+sending down to the Travel Service can't
+
+247
+00:08:33,360 --> 00:08:34,740
+be used against the calendaring service
+
+248
+00:08:34,740 --> 00:08:35,880
+because they don't have the appropriate
+
+249
+00:08:35,880 --> 00:08:38,159
+scope instead the credentials that I get
+
+250
+00:08:38,159 --> 00:08:40,200
+sent down have to have scopes for both
+
+251
+00:08:40,200 --> 00:08:42,059
+services in them
+
+252
+00:08:42,059 --> 00:08:44,279
+but you can't just magically change the
+
+253
+00:08:44,279 --> 00:08:45,420
+Scopes down here that would sort of
+
+254
+00:08:45,420 --> 00:08:47,040
+defeat the whole point instead that has
+
+255
+00:08:47,040 --> 00:08:48,420
+to be configuration that's propagated
+
+256
+00:08:48,420 --> 00:08:50,640
+all the way back of this call chain the
+
+257
+00:08:50,640 --> 00:08:52,680
+Travel Service needs to use multi-scope
+
+258
+00:08:52,680 --> 00:08:54,240
+credentials and so your initial
+
+259
+00:08:54,240 --> 00:08:55,860
+authentication needs to embed both
+
+260
+00:08:55,860 --> 00:08:57,120
+Scopes in it
+
+261
+00:08:57,120 --> 00:09:00,959
+and that kind of cascade maybe isn't
+
+262
+00:09:00,959 --> 00:09:02,160
+that big of a problem in the picture
+
+263
+00:09:02,160 --> 00:09:05,040
+that I've drawn but Netflix is a really
+
+264
+00:09:05,040 --> 00:09:06,959
+big microservice ecosystem we have
+
+265
+00:09:06,959 --> 00:09:08,820
+literally thousands of microservice
+
+266
+00:09:08,820 --> 00:09:12,000
+applications and any given API call
+
+267
+00:09:12,000 --> 00:09:15,000
+based on some traces I pulled up uh
+
+268
+00:09:15,000 --> 00:09:16,860
+preparing this talk has on average
+
+269
+00:09:16,860 --> 00:09:19,140
+around seven 10 different microservices
+
+270
+00:09:19,140 --> 00:09:21,480
+it ends up talking to so when you look
+
+271
+00:09:21,480 --> 00:09:23,760
+at a given API call having any idea
+
+272
+00:09:23,760 --> 00:09:25,860
+about exactly what Scopes you would need
+
+273
+00:09:25,860 --> 00:09:27,600
+to embed to include all of those
+
+274
+00:09:27,600 --> 00:09:29,820
+different microservices it talks to is
+
+275
+00:09:29,820 --> 00:09:32,399
+really hard to figure out just a priori
+
+276
+00:09:32,399 --> 00:09:34,260
+and even if you do a really good job of
+
+277
+00:09:34,260 --> 00:09:35,580
+that you get a snapshot of your
+
+278
+00:09:35,580 --> 00:09:37,380
+ecosystem find out everything that every
+
+279
+00:09:37,380 --> 00:09:39,420
+call is going to talk to you have the
+
+280
+00:09:39,420 --> 00:09:41,040
+same problem I just mentioned before
+
+281
+00:09:41,040 --> 00:09:42,959
+where as soon as a new dependency gets
+
+282
+00:09:42,959 --> 00:09:45,000
+added that has a cascading effect where
+
+283
+00:09:45,000 --> 00:09:47,220
+whatever configuration enumerates the
+
+284
+00:09:47,220 --> 00:09:49,019
+Scopes that are needed has to go back up
+
+285
+00:09:49,019 --> 00:09:51,060
+every single micro service and
+
+286
+00:09:51,060 --> 00:09:53,640
+ultimately affects dozens if not
+
+287
+00:09:53,640 --> 00:09:55,440
+hundreds of Engineers
+
+288
+00:09:55,440 --> 00:09:58,200
+so in trying to think through how we
+
+289
+00:09:58,200 --> 00:10:00,360
+would roll this out our takeaway was
+
+290
+00:10:00,360 --> 00:10:03,899
+that using finely grains Scopes like
+
+291
+00:10:03,899 --> 00:10:05,760
+this at least in the context of like
+
+292
+00:10:05,760 --> 00:10:07,620
+trying to map them to a single micro
+
+293
+00:10:07,620 --> 00:10:09,660
+service and keeping up with that was
+
+294
+00:10:09,660 --> 00:10:12,959
+just intractable at a system as uh sort
+
+295
+00:10:12,959 --> 00:10:14,820
+of agile and dynamic as the one we were
+
+296
+00:10:14,820 --> 00:10:17,640
+working in so we basically gave up on
+
+297
+00:10:17,640 --> 00:10:18,660
+that effort
+
+298
+00:10:18,660 --> 00:10:20,399
+instead what we did was lean into
+
+299
+00:10:20,399 --> 00:10:22,800
+Services service or S2s access control
+
+300
+00:10:22,800 --> 00:10:25,980
+so the idea here is that in addition to
+
+301
+00:10:25,980 --> 00:10:28,019
+the user having credentials each
+
+302
+00:10:28,019 --> 00:10:29,700
+individual micro service has its own
+
+303
+00:10:29,700 --> 00:10:32,040
+credentials that uses whenever it talks
+
+304
+00:10:32,040 --> 00:10:33,839
+to the next hop in the chain
+
+305
+00:10:33,839 --> 00:10:36,000
+so in this case our internet gateway is
+
+306
+00:10:36,000 --> 00:10:37,380
+going to authenticate down to this
+
+307
+00:10:37,380 --> 00:10:39,360
+compromise Travel Service the travel
+
+308
+00:10:39,360 --> 00:10:41,160
+service has to authenticate up to the
+
+309
+00:10:41,160 --> 00:10:44,279
+key service and importantly on each hop
+
+310
+00:10:44,279 --> 00:10:46,140
+along the way there's an access check
+
+311
+00:10:46,140 --> 00:10:48,600
+and here the key service would check is
+
+312
+00:10:48,600 --> 00:10:50,279
+the travel service allowed to talk to
+
+313
+00:10:50,279 --> 00:10:51,839
+the key service and the answer should be
+
+314
+00:10:51,839 --> 00:10:53,519
+no there's no reason that should be
+
+315
+00:10:53,519 --> 00:10:55,560
+talking to me so that blocks this
+
+316
+00:10:55,560 --> 00:10:57,300
+particular attack where a user's
+
+317
+00:10:57,300 --> 00:10:59,700
+credentials can be replayed against that
+
+318
+00:10:59,700 --> 00:11:02,579
+so I think this is what at least in my
+
+319
+00:11:02,579 --> 00:11:04,260
+experience people mean when they talk
+
+320
+00:11:04,260 --> 00:11:06,060
+about sort of zero trust microservice
+
+321
+00:11:06,060 --> 00:11:09,240
+design where every hop along the way you
+
+322
+00:11:09,240 --> 00:11:10,500
+don't take for granted that that service
+
+323
+00:11:10,500 --> 00:11:12,180
+should be talking to you you want to
+
+324
+00:11:12,180 --> 00:11:14,040
+know who they are and are they in some
+
+325
+00:11:14,040 --> 00:11:16,620
+kind of Access Control list so enrolling
+
+326
+00:11:16,620 --> 00:11:18,420
+this out we kind of ran into a couple of
+
+327
+00:11:18,420 --> 00:11:21,000
+gotchas that are worth pointing out the
+
+328
+00:11:21,000 --> 00:11:23,100
+first is just I mentioned that each
+
+329
+00:11:23,100 --> 00:11:24,420
+service should authenticate to the next
+
+330
+00:11:24,420 --> 00:11:27,180
+hop but exactly how do you do that if
+
+331
+00:11:27,180 --> 00:11:28,560
+you're using the same type of
+
+332
+00:11:28,560 --> 00:11:30,899
+authentication technology as I said we
+
+333
+00:11:30,899 --> 00:11:32,459
+should be using for users so that it can
+
+334
+00:11:32,459 --> 00:11:34,740
+be passed along then you basically end
+
+335
+00:11:34,740 --> 00:11:36,360
+up eroding everything you're trying to
+
+336
+00:11:36,360 --> 00:11:38,040
+build because in this case the internet
+
+337
+00:11:38,040 --> 00:11:40,200
+gateway authenticates down to the travel
+
+338
+00:11:40,200 --> 00:11:41,880
+service and that service could just
+
+339
+00:11:41,880 --> 00:11:43,440
+Harvest that credential replay it
+
+340
+00:11:43,440 --> 00:11:46,140
+against the key service and now you've
+
+341
+00:11:46,140 --> 00:11:47,279
+kind of gained nothing in this whole
+
+342
+00:11:47,279 --> 00:11:49,800
+design so the lesson there is that
+
+343
+00:11:49,800 --> 00:11:51,959
+whatever authentication technology you
+
+344
+00:11:51,959 --> 00:11:53,040
+use it needs to be something
+
+345
+00:11:53,040 --> 00:11:55,140
+non-forwardable in contrast to what
+
+346
+00:11:55,140 --> 00:11:56,399
+we've been talking about for the user
+
+347
+00:11:56,399 --> 00:11:59,220
+credentials and exactly how you do that
+
+348
+00:11:59,220 --> 00:12:01,019
+you time we've got a lot of choices you
+
+349
+00:12:01,019 --> 00:12:03,959
+can either use finely Scopes Bearer
+
+350
+00:12:03,959 --> 00:12:06,720
+credentials or mtls certificates that's
+
+351
+00:12:06,720 --> 00:12:08,519
+what we ended up leaning into but the
+
+352
+00:12:08,519 --> 00:12:09,720
+point is it should be something that you
+
+353
+00:12:09,720 --> 00:12:12,420
+can't just sort of verbatim replay
+
+354
+00:12:12,420 --> 00:12:14,700
+and the other Pitfall sort of alludes
+
+355
+00:12:14,700 --> 00:12:15,959
+back to that previous Slide the fact
+
+356
+00:12:15,959 --> 00:12:17,880
+that we've got this really big ecosystem
+
+357
+00:12:17,880 --> 00:12:21,240
+with really deep call graphs and in each
+
+358
+00:12:21,240 --> 00:12:23,640
+step of that call I'm now suggesting
+
+359
+00:12:23,640 --> 00:12:25,440
+that we add an authorization check where
+
+360
+00:12:25,440 --> 00:12:27,720
+we say is Hop N minus one allowed to
+
+361
+00:12:27,720 --> 00:12:30,240
+call Hop N and that means that for any
+
+362
+00:12:30,240 --> 00:12:32,399
+given API request we're going to end up
+
+363
+00:12:32,399 --> 00:12:35,399
+having about 10 authorization checks and
+
+364
+00:12:35,399 --> 00:12:37,320
+if you're doing an RPC to some
+
+365
+00:12:37,320 --> 00:12:39,720
+centralized authorization service then
+
+366
+00:12:39,720 --> 00:12:42,420
+that's adding 10 times one two
+
+367
+00:12:42,420 --> 00:12:44,459
+milliseconds and that adds up that's
+
+368
+00:12:44,459 --> 00:12:46,980
+like 20 milliseconds for every API call
+
+369
+00:12:46,980 --> 00:12:49,740
+and if you've got a very rich home page
+
+370
+00:12:49,740 --> 00:12:51,899
+that does dozens of API calls just to
+
+371
+00:12:51,899 --> 00:12:54,360
+load it just adding up to now hundreds
+
+372
+00:12:54,360 --> 00:12:55,860
+of milliseconds which is just a
+
+373
+00:12:55,860 --> 00:12:58,079
+non-starter for basically everyone we
+
+374
+00:12:58,079 --> 00:13:00,060
+talked to about this so the way you
+
+375
+00:13:00,060 --> 00:13:03,000
+implement this is really important and
+
+376
+00:13:03,000 --> 00:13:05,160
+the thing that we learned in talking to
+
+377
+00:13:05,160 --> 00:13:06,600
+our partners is that we really have to
+
+378
+00:13:06,600 --> 00:13:08,279
+come up with a solution where the
+
+379
+00:13:08,279 --> 00:13:09,839
+authentication and authorization can
+
+380
+00:13:09,839 --> 00:13:12,540
+people can be performed locally so
+
+381
+00:13:12,540 --> 00:13:14,639
+there's a old talk we gave you can look
+
+382
+00:13:14,639 --> 00:13:16,680
+that up later uh that's still very
+
+383
+00:13:16,680 --> 00:13:18,360
+relevant that really goes into the
+
+384
+00:13:18,360 --> 00:13:20,760
+details of how we built in this
+
+385
+00:13:20,760 --> 00:13:22,560
+authorization story to be zero round
+
+386
+00:13:22,560 --> 00:13:24,360
+trip and it's basically just pushing
+
+387
+00:13:24,360 --> 00:13:28,139
+down Ackles and evaluating those locally
+
+388
+00:13:28,139 --> 00:13:30,959
+but you really want to design that into
+
+389
+00:13:30,959 --> 00:13:33,180
+how you actually Implement these
+
+390
+00:13:33,180 --> 00:13:34,440
+features
+
+391
+00:13:34,440 --> 00:13:38,579
+so all right that's 2s and that does
+
+392
+00:13:38,579 --> 00:13:42,240
+block the uh last attack I was talking
+
+393
+00:13:42,240 --> 00:13:44,100
+about because now our compromise service
+
+394
+00:13:44,100 --> 00:13:45,839
+can no longer go and talk to the key
+
+395
+00:13:45,839 --> 00:13:48,300
+service but there is one more attack in
+
+396
+00:13:48,300 --> 00:13:50,459
+this picture that in hindsight was kind
+
+397
+00:13:50,459 --> 00:13:52,019
+of obvious but actually sort of took us
+
+398
+00:13:52,019 --> 00:13:54,300
+to this level of iteration to really
+
+399
+00:13:54,300 --> 00:13:56,700
+consider and defend against which is
+
+400
+00:13:56,700 --> 00:13:58,260
+we've got our credentials being
+
+401
+00:13:58,260 --> 00:13:59,760
+harvested by this compromised service
+
+402
+00:13:59,760 --> 00:14:01,500
+and it can't go talk to the key service
+
+403
+00:14:01,500 --> 00:14:02,760
+directly
+
+404
+00:14:02,760 --> 00:14:04,260
+but there's nothing stopping it from
+
+405
+00:14:04,260 --> 00:14:05,820
+Just replaying that credential back
+
+406
+00:14:05,820 --> 00:14:07,440
+against our front door back against the
+
+407
+00:14:07,440 --> 00:14:10,320
+internet gateway because that sort of
+
+408
+00:14:10,320 --> 00:14:12,060
+looks just like a genuine user and that
+
+409
+00:14:12,060 --> 00:14:13,380
+can be played directly against the key
+
+410
+00:14:13,380 --> 00:14:15,899
+service so whether this compromise
+
+411
+00:14:15,899 --> 00:14:17,880
+service is exfil trading these
+
+412
+00:14:17,880 --> 00:14:19,200
+credentials or actually literally
+
+413
+00:14:19,200 --> 00:14:21,540
+calling the internet gateway itself the
+
+414
+00:14:21,540 --> 00:14:23,339
+fact that we've forwarded the actual
+
+415
+00:14:23,339 --> 00:14:25,740
+user credentials along every call inside
+
+416
+00:14:25,740 --> 00:14:27,600
+our ecosystem now means we actually
+
+417
+00:14:27,600 --> 00:14:28,860
+still have the same problem as before
+
+418
+00:14:28,860 --> 00:14:31,680
+any individually compromised service can
+
+419
+00:14:31,680 --> 00:14:33,360
+have those credentials exfiltrated and
+
+420
+00:14:33,360 --> 00:14:35,040
+reused
+
+421
+00:14:35,040 --> 00:14:37,920
+so the lesson there is that we don't
+
+422
+00:14:37,920 --> 00:14:40,019
+actually want to forward the actual end
+
+423
+00:14:40,019 --> 00:14:41,880
+user credentials internally because that
+
+424
+00:14:41,880 --> 00:14:43,380
+has the same problem as before any
+
+425
+00:14:43,380 --> 00:14:45,920
+single point of compromise uh leads to
+
+426
+00:14:45,920 --> 00:14:47,480
+Badness
+
+427
+00:14:47,480 --> 00:14:50,339
+so our fix for that was to use something
+
+428
+00:14:50,339 --> 00:14:52,260
+that I'll call end user context ticket
+
+429
+00:14:52,260 --> 00:14:55,380
+so I lifted that term from uh Google's
+
+430
+00:14:55,380 --> 00:14:57,360
+Beyond prod white paper we actually
+
+431
+00:14:57,360 --> 00:14:59,459
+developed this technology independently
+
+432
+00:14:59,459 --> 00:15:01,019
+called it something different but we
+
+433
+00:15:01,019 --> 00:15:02,639
+don't have a public write-up about it so
+
+434
+00:15:02,639 --> 00:15:05,579
+I'll use that term and the idea is
+
+435
+00:15:05,579 --> 00:15:07,800
+fairly straightforward you still forward
+
+436
+00:15:07,800 --> 00:15:09,600
+the end user credential off to this
+
+437
+00:15:09,600 --> 00:15:11,639
+ticketing system but what that does is
+
+438
+00:15:11,639 --> 00:15:14,100
+verify these credentials bundle them
+
+439
+00:15:14,100 --> 00:15:16,740
+into a new form of credential called an
+
+440
+00:15:16,740 --> 00:15:18,540
+end user context ticket has the same
+
+441
+00:15:18,540 --> 00:15:20,639
+data inside it but it's a different form
+
+442
+00:15:20,639 --> 00:15:22,320
+of Bearer credential that's meant to be
+
+443
+00:15:22,320 --> 00:15:24,120
+forwarded around internally
+
+444
+00:15:24,120 --> 00:15:26,519
+so that ticket is what gets passed
+
+445
+00:15:26,519 --> 00:15:28,380
+around instead of the actual user
+
+446
+00:15:28,380 --> 00:15:29,820
+credentials
+
+447
+00:15:29,820 --> 00:15:31,860
+and now if there's a compromised service
+
+448
+00:15:31,860 --> 00:15:33,600
+that gets a hold of that ticket well
+
+449
+00:15:33,600 --> 00:15:35,699
+it's sort of useless it can't be passed
+
+450
+00:15:35,699 --> 00:15:37,440
+back to the front door because that only
+
+451
+00:15:37,440 --> 00:15:40,440
+accepts the actual user credentials and
+
+452
+00:15:40,440 --> 00:15:42,779
+because of our implementation of S2s
+
+453
+00:15:42,779 --> 00:15:45,360
+access controls the compromise service
+
+454
+00:15:45,360 --> 00:15:46,920
+can't talk to the key service directly
+
+455
+00:15:46,920 --> 00:15:48,779
+even though it has a good ticket but the
+
+456
+00:15:48,779 --> 00:15:50,699
+services service Access Control prevents
+
+457
+00:15:50,699 --> 00:15:53,220
+that so this is sort of the final
+
+458
+00:15:53,220 --> 00:15:55,440
+picture of the state that we ended up
+
+459
+00:15:55,440 --> 00:15:57,000
+being pretty happy with that sort of
+
+460
+00:15:57,000 --> 00:15:58,440
+blocked all these different styles of
+
+461
+00:15:58,440 --> 00:16:00,120
+attacks and compromise that we were
+
+462
+00:16:00,120 --> 00:16:02,040
+worried about
+
+463
+00:16:02,040 --> 00:16:03,720
+but this has a different problem and
+
+464
+00:16:03,720 --> 00:16:05,579
+it's no longer really a technical one
+
+465
+00:16:05,579 --> 00:16:08,279
+instead it's a human one
+
+466
+00:16:08,279 --> 00:16:10,260
+everything I've just described now has
+
+467
+00:16:10,260 --> 00:16:11,639
+several different flavors of
+
+468
+00:16:11,639 --> 00:16:13,560
+authentication Technologies has several
+
+469
+00:16:13,560 --> 00:16:16,260
+different ways of doing RC and it's a
+
+470
+00:16:16,260 --> 00:16:18,480
+lot to wrap your head around so we've
+
+471
+00:16:18,480 --> 00:16:20,519
+got not just different types of
+
+472
+00:16:20,519 --> 00:16:21,839
+authentication Technologies we've
+
+473
+00:16:21,839 --> 00:16:23,519
+actually got different flavors of Bearer
+
+474
+00:16:23,519 --> 00:16:26,160
+tokens we've got mtls certificates in
+
+475
+00:16:26,160 --> 00:16:28,079
+the mix we've got multiple authorization
+
+476
+00:16:28,079 --> 00:16:30,360
+tools one for doing the local S2s Access
+
+477
+00:16:30,360 --> 00:16:32,579
+Control one that has a centralized
+
+478
+00:16:32,579 --> 00:16:35,160
+robust policy engine and in practice
+
+479
+00:16:35,160 --> 00:16:36,839
+we've actually got several flavors of
+
+480
+00:16:36,839 --> 00:16:38,339
+remote policy services that have been
+
+481
+00:16:38,339 --> 00:16:39,540
+sort of optimized for different
+
+482
+00:16:39,540 --> 00:16:42,180
+verticals and use cases and reverse
+
+483
+00:16:42,180 --> 00:16:45,240
+indexing and all sorts of things and to
+
+484
+00:16:45,240 --> 00:16:47,639
+operate in this system to actually sort
+
+485
+00:16:47,639 --> 00:16:50,820
+of be secure you have to be able to use
+
+486
+00:16:50,820 --> 00:16:52,380
+all those Technologies otherwise there's
+
+487
+00:16:52,380 --> 00:16:53,880
+not really a good way for this
+
+488
+00:16:53,880 --> 00:16:56,940
+authenticated RPC call to reach you so
+
+489
+00:16:56,940 --> 00:16:58,860
+how do we allow our developers to
+
+490
+00:16:58,860 --> 00:17:00,839
+operate in this ecosystem when we have
+
+491
+00:17:00,839 --> 00:17:02,339
+all these requirements for what they
+
+492
+00:17:02,339 --> 00:17:04,319
+have to do and the answer to that is
+
+493
+00:17:04,319 --> 00:17:05,699
+probably not too surprising is the
+
+494
+00:17:05,699 --> 00:17:07,079
+answer to everything in computer science
+
+495
+00:17:07,079 --> 00:17:10,579
+it's add a layer of attraction
+
+496
+00:17:10,579 --> 00:17:13,319
+but how we did that I think is sort of
+
+497
+00:17:13,319 --> 00:17:15,480
+just useful to illustrate so we've got
+
+498
+00:17:15,480 --> 00:17:16,619
+all these different flavors of
+
+499
+00:17:16,619 --> 00:17:18,359
+authentication we've got the bear tokens
+
+500
+00:17:18,359 --> 00:17:19,740
+when you come into the internet gateway
+
+501
+00:17:19,740 --> 00:17:22,140
+we've got mtls for the services service
+
+502
+00:17:22,140 --> 00:17:24,000
+authentication we've got these end user
+
+503
+00:17:24,000 --> 00:17:25,439
+context tickets
+
+504
+00:17:25,439 --> 00:17:28,020
+but regardless of how a request comes in
+
+505
+00:17:28,020 --> 00:17:29,640
+regardless of which combination of
+
+506
+00:17:29,640 --> 00:17:31,380
+things get used for any particular hop
+
+507
+00:17:31,380 --> 00:17:34,200
+in this call graph our platform packages
+
+508
+00:17:34,200 --> 00:17:36,480
+this all up and creates an authorizable
+
+509
+00:17:36,480 --> 00:17:38,700
+context and this is just an opaque
+
+510
+00:17:38,700 --> 00:17:40,440
+object that our developers are able to
+
+511
+00:17:40,440 --> 00:17:42,419
+work with and basically the only thing
+
+512
+00:17:42,419 --> 00:17:43,980
+you can do with this totally opaque
+
+513
+00:17:43,980 --> 00:17:45,720
+object is to pass it into our other
+
+514
+00:17:45,720 --> 00:17:47,520
+abstraction piece which is the
+
+515
+00:17:47,520 --> 00:17:49,140
+authorization client and this is a thing
+
+516
+00:17:49,140 --> 00:17:51,240
+which is configured under the hood to go
+
+517
+00:17:51,240 --> 00:17:52,620
+talk to whichever flavor of
+
+518
+00:17:52,620 --> 00:17:55,020
+authorization makes sense for the
+
+519
+00:17:55,020 --> 00:17:57,539
+application being developed
+
+520
+00:17:57,539 --> 00:17:59,760
+so when a developer actually wants to
+
+521
+00:17:59,760 --> 00:18:01,380
+write some code like this key service
+
+522
+00:18:01,380 --> 00:18:04,140
+where they're implementing this RPC now
+
+523
+00:18:04,140 --> 00:18:06,539
+they can inject this authorizable
+
+524
+00:18:06,539 --> 00:18:08,700
+context which is some kind of opaque
+
+525
+00:18:08,700 --> 00:18:09,780
+thing that they can just take for
+
+526
+00:18:09,780 --> 00:18:12,200
+granted will be there through magic
+
+527
+00:18:12,200 --> 00:18:15,480
+in any given request they can wire up
+
+528
+00:18:15,480 --> 00:18:17,220
+whichever authorization client they want
+
+529
+00:18:17,220 --> 00:18:19,200
+configured and you just pass that
+
+530
+00:18:19,200 --> 00:18:21,179
+authorization contact directly into it
+
+531
+00:18:21,179 --> 00:18:22,320
+and it's going to give you a yes no
+
+532
+00:18:22,320 --> 00:18:24,419
+answer and it's part of a platform
+
+533
+00:18:24,419 --> 00:18:26,700
+provider we also give you other useful
+
+534
+00:18:26,700 --> 00:18:28,500
+utilities like being able to log that
+
+535
+00:18:28,500 --> 00:18:30,480
+authorization context a bunch of things
+
+536
+00:18:30,480 --> 00:18:32,160
+that know how to unpack it under the
+
+537
+00:18:32,160 --> 00:18:33,660
+hood so that our developers don't need
+
+538
+00:18:33,660 --> 00:18:35,220
+to try and introspect this thing because
+
+539
+00:18:35,220 --> 00:18:36,960
+that's sort of the abstraction barrier
+
+540
+00:18:36,960 --> 00:18:39,179
+we want to keep
+
+541
+00:18:39,179 --> 00:18:41,820
+so that's basically everything I wanted
+
+542
+00:18:41,820 --> 00:18:43,679
+to talk about today but I think there's
+
+543
+00:18:43,679 --> 00:18:46,260
+sort of three takeaways that really sort
+
+544
+00:18:46,260 --> 00:18:48,240
+of summarize everything I just said and
+
+545
+00:18:48,240 --> 00:18:49,860
+the first is really what I've been
+
+546
+00:18:49,860 --> 00:18:50,940
+talking about since that very first
+
+547
+00:18:50,940 --> 00:18:52,440
+slide which is that you want your end
+
+548
+00:18:52,440 --> 00:18:55,200
+user identity propagated throughout your
+
+549
+00:18:55,200 --> 00:18:57,480
+ecosystem in order to actually have
+
+550
+00:18:57,480 --> 00:18:59,940
+useful fine-grained authorization at the
+
+551
+00:18:59,940 --> 00:19:01,740
+back of your call graph
+
+552
+00:19:01,740 --> 00:19:04,679
+and so uh if you're going to do that you
+
+553
+00:19:04,679 --> 00:19:06,480
+need to actually have verifiable and
+
+554
+00:19:06,480 --> 00:19:08,160
+forwardable identity otherwise you have
+
+555
+00:19:08,160 --> 00:19:09,480
+that problem that we had on the first
+
+556
+00:19:09,480 --> 00:19:11,100
+slide where anyone can pretend to be
+
+557
+00:19:11,100 --> 00:19:12,720
+anyone
+
+558
+00:19:12,720 --> 00:19:14,880
+but you want to avoid passing the actual
+
+559
+00:19:14,880 --> 00:19:16,740
+user credentials in order to solve that
+
+560
+00:19:16,740 --> 00:19:18,179
+and that's where the end user context
+
+561
+00:19:18,179 --> 00:19:20,640
+tickets are for
+
+562
+00:19:20,640 --> 00:19:22,980
+Services service authen and Aussie on
+
+563
+00:19:22,980 --> 00:19:24,000
+the other hand
+
+564
+00:19:24,000 --> 00:19:27,600
+can that limits any single point of
+
+565
+00:19:27,600 --> 00:19:29,460
+compromise again that sort of zero trust
+
+566
+00:19:29,460 --> 00:19:30,780
+that's why everyone's been talking about
+
+567
+00:19:30,780 --> 00:19:33,360
+it for the last however many years
+
+568
+00:19:33,360 --> 00:19:35,580
+but that needs to use a different
+
+569
+00:19:35,580 --> 00:19:37,260
+technology it shouldn't be something
+
+570
+00:19:37,260 --> 00:19:38,940
+affordable because that sort of erodes
+
+571
+00:19:38,940 --> 00:19:40,260
+everything you're trying to build with
+
+572
+00:19:40,260 --> 00:19:42,120
+that and there's some unique
+
+573
+00:19:42,120 --> 00:19:44,820
+requirements in particular for our use
+
+574
+00:19:44,820 --> 00:19:47,160
+case at our scale that says we can't use
+
+575
+00:19:47,160 --> 00:19:48,720
+the same centralized authorization
+
+576
+00:19:48,720 --> 00:19:50,160
+service that we want to use for other
+
+577
+00:19:50,160 --> 00:19:51,600
+use cases
+
+578
+00:19:51,600 --> 00:19:54,840
+and so the last takeaway is just if you
+
+579
+00:19:54,840 --> 00:19:56,640
+believe these first two points then
+
+580
+00:19:56,640 --> 00:19:58,320
+you're not going to use a single authen
+
+581
+00:19:58,320 --> 00:20:00,780
+or Aussie technology in your ecosystem
+
+582
+00:20:00,780 --> 00:20:02,460
+and so you really want to plan
+
+583
+00:20:02,460 --> 00:20:04,440
+accordingly as you go out on this
+
+584
+00:20:04,440 --> 00:20:07,860
+journey and for us that meant be nice to
+
+585
+00:20:07,860 --> 00:20:09,480
+our developers provide a good layer of
+
+586
+00:20:09,480 --> 00:20:10,919
+distraction means they don't have to
+
+587
+00:20:10,919 --> 00:20:12,840
+think about these problems but the nice
+
+588
+00:20:12,840 --> 00:20:14,820
+thing about abstractions is that they're
+
+589
+00:20:14,820 --> 00:20:16,980
+useful for you too because it allows you
+
+590
+00:20:16,980 --> 00:20:19,320
+to be agile in exactly which bits and
+
+591
+00:20:19,320 --> 00:20:21,240
+pieces of authen Technology you pull in
+
+592
+00:20:21,240 --> 00:20:23,400
+because if you're anything like me it's
+
+593
+00:20:23,400 --> 00:20:24,780
+going to take you more than one try to
+
+594
+00:20:24,780 --> 00:20:26,160
+get this right you're going to try some
+
+595
+00:20:26,160 --> 00:20:27,539
+new authen and I'll see you Technologies
+
+596
+00:20:27,539 --> 00:20:29,400
+and that abstraction layer kind of
+
+597
+00:20:29,400 --> 00:20:31,860
+defends you against having to uh tell
+
+598
+00:20:31,860 --> 00:20:34,080
+your developers to update their code yet
+
+599
+00:20:34,080 --> 00:20:36,720
+again so that's it
+
+600
+00:20:36,720 --> 00:20:38,820
+thank you all for coming and I think
+
+601
+00:20:38,820 --> 00:20:40,380
+we've got some yeah about seven minutes
+
+602
+00:20:40,380 --> 00:20:42,799
+for questions
+

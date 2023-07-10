@@ -1,0 +1,4632 @@
+﻿1
+00:00:00,000 --> 00:00:07,319
+Oh welcome back everybody as announced
+
+2
+00:00:03,600 --> 00:00:09,150
+now we have Han with how to use IPC
+
+3
+00:00:07,319 --> 00:00:11,790
+fuzzing in Barron's analysis to find
+
+4
+00:00:09,150 --> 00:00:20,609
+what is a sandbox escape in Safari there
+
+5
+00:00:11,790 --> 00:00:22,380
+you go okay hi I'm pretty nervous so
+
+6
+00:00:20,609 --> 00:00:24,900
+please bear with me
+
+7
+00:00:22,380 --> 00:00:28,169
+I'm Keaton on and some people know me by
+
+8
+00:00:24,900 --> 00:00:30,299
+my twitter handle externalist and today
+
+9
+00:00:28,170 --> 00:00:35,040
+I'm here to talk about some sandbox
+
+10
+00:00:30,300 --> 00:00:37,500
+escapes in Safari a little bit of
+
+11
+00:00:35,040 --> 00:00:40,820
+introduction I work for exotic
+
+12
+00:00:37,500 --> 00:00:42,870
+intelligence and I have experienced in
+
+13
+00:00:40,820 --> 00:00:46,860
+vulnerability research in various areas
+
+14
+00:00:42,870 --> 00:00:49,379
+and currently I'm mainly focusing on
+
+15
+00:00:46,860 --> 00:00:53,250
+creating exploits that constitute the
+
+16
+00:00:49,379 --> 00:00:55,410
+Safari full chain this is the agenda for
+
+17
+00:00:53,250 --> 00:00:59,039
+the talk I'll start with a short
+
+18
+00:00:55,410 --> 00:01:01,529
+introduction on IPC internals and talk
+
+19
+00:00:59,039 --> 00:01:04,379
+about the attack surface and move on to
+
+20
+00:01:01,530 --> 00:01:08,250
+fuzzing and finally discuss variant
+
+21
+00:01:04,379 --> 00:01:10,979
+analysis the first topic is the attack
+
+22
+00:01:08,250 --> 00:01:13,740
+surface there are essentially two
+
+23
+00:01:10,979 --> 00:01:16,170
+sandbox profiles that govern the Safari
+
+24
+00:01:13,740 --> 00:01:19,470
+web content process and it's these two
+
+25
+00:01:16,170 --> 00:01:22,080
+files if you look at these files there
+
+26
+00:01:19,470 --> 00:01:24,810
+is a really long list of fine grained
+
+27
+00:01:22,080 --> 00:01:27,360
+policies that's a little over 1,000
+
+28
+00:01:24,810 --> 00:01:29,549
+lines however the only ones that matter
+
+29
+00:01:27,360 --> 00:01:31,829
+in terms of sandbox escapes are the ones
+
+30
+00:01:29,549 --> 00:01:34,350
+that start with allow Mac look up
+
+31
+00:01:31,829 --> 00:01:36,559
+because they list the IPC endpoints that
+
+32
+00:01:34,350 --> 00:01:39,119
+are reachable from the Safari sandbox
+
+33
+00:01:36,560 --> 00:01:41,100
+and if you collect all of these
+
+34
+00:01:39,119 --> 00:01:43,920
+endpoints in the profile you realize
+
+35
+00:01:41,100 --> 00:01:46,470
+there's a plethora of endpoints that an
+
+36
+00:01:43,920 --> 00:01:48,329
+attacker can choose from and I think
+
+37
+00:01:46,470 --> 00:01:50,250
+Apple has realized this is a problem and
+
+38
+00:01:48,329 --> 00:01:53,008
+if you look at WebKit commits recently
+
+39
+00:01:50,250 --> 00:01:55,860
+they're starting to add a lots of
+
+40
+00:01:53,009 --> 00:01:58,530
+telemetry to find out which IPC
+
+41
+00:01:55,860 --> 00:02:01,860
+endpoints are not being used and they're
+
+42
+00:01:58,530 --> 00:02:05,299
+removing the one set leader they
+
+43
+00:02:01,860 --> 00:02:08,068
+determined obsolete one by one
+
+44
+00:02:05,299 --> 00:02:09,420
+personally what I do next is I organized
+
+45
+00:02:08,068 --> 00:02:11,790
+the attack surface in different
+
+46
+00:02:09,419 --> 00:02:13,708
+categories and map the served service
+
+47
+00:02:11,790 --> 00:02:17,280
+endpoints endpoints in
+
+48
+00:02:13,709 --> 00:02:19,319
+actual binaries the reason I do this is
+
+49
+00:02:17,280 --> 00:02:21,840
+so I can focus on IPC endpoints that
+
+50
+00:02:19,319 --> 00:02:23,909
+match a certain criteria I would
+
+51
+00:02:21,840 --> 00:02:27,329
+normally try to focus on services that
+
+52
+00:02:23,909 --> 00:02:29,459
+are running in unsampled context newly
+
+53
+00:02:27,329 --> 00:02:30,180
+added IPC services are definitely worth
+
+54
+00:02:29,459 --> 00:02:32,639
+checking out
+
+55
+00:02:30,180 --> 00:02:35,909
+because they're probably less audited
+
+56
+00:02:32,639 --> 00:02:37,799
+and categorizing also helps if you want
+
+57
+00:02:35,909 --> 00:02:40,798
+to look look into services that use a
+
+58
+00:02:37,799 --> 00:02:45,000
+specific IPC method such as the legacy
+
+59
+00:02:40,799 --> 00:02:47,310
+IPC there are main mainly three types of
+
+60
+00:02:45,000 --> 00:02:49,560
+IPC communication there's actually a
+
+61
+00:02:47,310 --> 00:02:52,530
+little more like distributed objects
+
+62
+00:02:49,560 --> 00:02:54,030
+notifications named pipes and so on but
+
+63
+00:02:52,530 --> 00:02:55,230
+I think these three are the most
+
+64
+00:02:54,030 --> 00:02:57,870
+relevant
+
+65
+00:02:55,230 --> 00:02:59,939
+there's the legacy IPC interface that's
+
+66
+00:02:57,870 --> 00:03:04,019
+been target for hacking competitions for
+
+67
+00:02:59,939 --> 00:03:07,290
+many many years and then there's the new
+
+68
+00:03:04,019 --> 00:03:10,919
+there's a more newer x pc and nsx pc
+
+69
+00:03:07,290 --> 00:03:13,620
+which most services are based on in this
+
+70
+00:03:10,919 --> 00:03:16,439
+talk I'm going to specifically focus on
+
+71
+00:03:13,620 --> 00:03:18,739
+the Leggett legacy IPC interface which
+
+72
+00:03:16,439 --> 00:03:23,728
+brings us to the next section
+
+73
+00:03:18,739 --> 00:03:27,299
+legacy IPC internals so why legacy IPC
+
+74
+00:03:23,729 --> 00:03:29,010
+services in particular they mean the
+
+75
+00:03:27,299 --> 00:03:31,349
+main reason is because it's been a
+
+76
+00:03:29,010 --> 00:03:34,439
+target for sandbox escapes in multiple
+
+77
+00:03:31,349 --> 00:03:37,018
+polling competitions so it already makes
+
+78
+00:03:34,439 --> 00:03:39,150
+it a very attractive target and also
+
+79
+00:03:37,019 --> 00:03:41,459
+when you look at various IPC services
+
+80
+00:03:39,150 --> 00:03:44,220
+you'll see that parsing these
+
+81
+00:03:41,459 --> 00:03:46,409
+serialization and handling of the
+
+82
+00:03:44,220 --> 00:03:49,199
+attacker IPC data is different and
+
+83
+00:03:46,409 --> 00:03:51,780
+unique for every service which makes it
+
+84
+00:03:49,199 --> 00:03:55,379
+more prone to coding mistakes and human
+
+85
+00:03:51,780 --> 00:03:57,959
+errors and I found legacy IPC services
+
+86
+00:03:55,379 --> 00:04:00,870
+to be much easier to understand and
+
+87
+00:03:57,959 --> 00:04:04,049
+reverse but yet that's just my personal
+
+88
+00:04:00,870 --> 00:04:06,900
+preference and the IPC message handling
+
+89
+00:04:04,049 --> 00:04:11,069
+logic for legacy IPC services comes in
+
+90
+00:04:06,900 --> 00:04:13,379
+many flavors as an example I'll walk
+
+91
+00:04:11,069 --> 00:04:16,529
+through how its implemented in the
+
+92
+00:04:13,379 --> 00:04:20,279
+security de launch daemon this is the
+
+93
+00:04:16,529 --> 00:04:23,520
+main function it calls into a function
+
+94
+00:04:20,279 --> 00:04:27,500
+called server dot run which in turn
+
+95
+00:04:23,520 --> 00:04:30,109
+calls to Mac server dot run
+
+96
+00:04:27,500 --> 00:04:33,530
+this calls this in turn calls into run
+
+97
+00:04:30,110 --> 00:04:36,139
+server thread and what you see in this
+
+98
+00:04:33,530 --> 00:04:38,929
+function is the heart of the IPC message
+
+99
+00:04:36,139 --> 00:04:41,479
+handling loop it receives the IPC
+
+100
+00:04:38,930 --> 00:04:44,270
+message through the Mac message function
+
+101
+00:04:41,479 --> 00:04:47,690
+and then delegates the actual heavy
+
+102
+00:04:44,270 --> 00:04:50,979
+lifting to the handle function this
+
+103
+00:04:47,690 --> 00:04:54,009
+function simply calls you CSP server and
+
+104
+00:04:50,979 --> 00:04:56,568
+the source code of UCSB server is not
+
+105
+00:04:54,009 --> 00:04:58,639
+actually included in the source archive
+
+106
+00:04:56,569 --> 00:05:01,099
+but you can generate it with the MiG
+
+107
+00:04:58,639 --> 00:05:02,660
+util which auto generates the server and
+
+108
+00:05:01,099 --> 00:05:06,469
+client side code for the make
+
+109
+00:05:02,660 --> 00:05:09,380
+definitions after that you have the
+
+110
+00:05:06,470 --> 00:05:12,440
+source code for the UCSB server function
+
+111
+00:05:09,380 --> 00:05:15,199
+this function essentially chooses which
+
+112
+00:05:12,440 --> 00:05:19,210
+mimic function is going to call based on
+
+113
+00:05:15,199 --> 00:05:23,419
+the MSG H under by bar ID field and
+
+114
+00:05:19,210 --> 00:05:25,580
+actually calls the make function and all
+
+115
+00:05:23,419 --> 00:05:28,000
+of the make function definitions are
+
+116
+00:05:25,580 --> 00:05:30,948
+declared in a file with the top diffs
+
+117
+00:05:28,000 --> 00:05:34,400
+extension and the most interesting ones
+
+118
+00:05:30,949 --> 00:05:37,940
+are the ones that take a variable length
+
+119
+00:05:34,400 --> 00:05:39,859
+and buffer as input these variable size
+
+120
+00:05:37,940 --> 00:05:42,229
+input buffers are most likely going to
+
+121
+00:05:39,860 --> 00:05:44,419
+be parsed in some kind of way in the
+
+122
+00:05:42,229 --> 00:05:48,258
+make function and this parsing is
+
+123
+00:05:44,419 --> 00:05:50,000
+usually the source of many bugs for
+
+124
+00:05:48,259 --> 00:05:53,659
+example this is a make function called
+
+125
+00:05:50,000 --> 00:05:55,130
+fine first in security in the very
+
+126
+00:05:53,659 --> 00:05:57,469
+beginning of the function there is a
+
+127
+00:05:55,130 --> 00:05:59,990
+call into the constructor of the object
+
+128
+00:05:57,469 --> 00:06:02,000
+this constructor accepts an attacker
+
+129
+00:05:59,990 --> 00:06:04,120
+controlled variable length buffer and
+
+130
+00:06:02,000 --> 00:06:06,620
+when you look into this constructor
+
+131
+00:06:04,120 --> 00:06:08,690
+you'll see there's a lot of the
+
+132
+00:06:06,620 --> 00:06:10,849
+serialization going this is just a small
+
+133
+00:06:08,690 --> 00:06:13,550
+portion of it but there's there's like a
+
+134
+00:06:10,849 --> 00:06:17,090
+huge amount of it and this already makes
+
+135
+00:06:13,550 --> 00:06:19,580
+it an interesting target to audit now
+
+136
+00:06:17,090 --> 00:06:22,250
+this is the infamous dock service it's
+
+137
+00:06:19,580 --> 00:06:24,020
+this is an example of a legacy IPC
+
+138
+00:06:22,250 --> 00:06:26,630
+service that doesn't have any source
+
+139
+00:06:24,020 --> 00:06:28,820
+code and just the binary the thing
+
+140
+00:06:26,630 --> 00:06:31,310
+you're usually looking for is the large
+
+141
+00:06:28,820 --> 00:06:34,130
+function table which enumerates all the
+
+142
+00:06:31,310 --> 00:06:36,320
+MiG functions and to find that the best
+
+143
+00:06:34,130 --> 00:06:38,510
+starting point would be to find the
+
+144
+00:06:36,320 --> 00:06:40,159
+place where the IPC endpoint is being
+
+145
+00:06:38,510 --> 00:06:42,589
+registered and
+
+146
+00:06:40,159 --> 00:06:45,830
+in this picture the IPC service is
+
+147
+00:06:42,589 --> 00:06:49,099
+checking into the launch into launch D
+
+148
+00:06:45,830 --> 00:06:51,019
+with bootstrap underbar check-in and a
+
+149
+00:06:49,099 --> 00:06:54,080
+couple lines below the make function
+
+150
+00:06:51,019 --> 00:07:02,089
+table is being registered by the MSH
+
+151
+00:06:54,080 --> 00:07:04,159
+create mix server source function sorry
+
+152
+00:07:02,089 --> 00:07:07,239
+for the short le I'm running out of
+
+153
+00:07:04,159 --> 00:07:10,188
+breath and this is the function table
+
+154
+00:07:07,239 --> 00:07:13,159
+that includes all of the Mik functions
+
+155
+00:07:10,189 --> 00:07:14,869
+and at this point you can create it you
+
+156
+00:07:13,159 --> 00:07:17,119
+can either create a function targeting
+
+157
+00:07:14,869 --> 00:07:19,309
+all of these functions or you can just
+
+158
+00:07:17,119 --> 00:07:22,969
+purely audit these functions one by one
+
+159
+00:07:19,309 --> 00:07:24,709
+through pure reverse engineering this is
+
+160
+00:07:22,969 --> 00:07:26,689
+how a Mik function typically looks like
+
+161
+00:07:24,709 --> 00:07:29,479
+in binary if you follow that inner
+
+162
+00:07:26,689 --> 00:07:32,149
+function in the middle you can see the
+
+163
+00:07:29,479 --> 00:07:35,269
+main function logic and in this example
+
+164
+00:07:32,149 --> 00:07:37,459
+you can see the uncie realized CF type
+
+165
+00:07:35,269 --> 00:07:40,249
+function which was a source of a really
+
+166
+00:07:37,459 --> 00:07:42,439
+nice bug found pi it was bomb struck
+
+167
+00:07:40,249 --> 00:07:47,659
+somewhere somewhere in this room and
+
+168
+00:07:42,439 --> 00:07:50,119
+used in Ponte on 2019 after you located
+
+169
+00:07:47,659 --> 00:07:52,248
+these Mik functions you can either audit
+
+170
+00:07:50,119 --> 00:07:55,279
+the source code or reverse-engineer the
+
+171
+00:07:52,249 --> 00:07:57,019
+service binary it's also a worse trying
+
+172
+00:07:55,279 --> 00:07:59,749
+to attach a fuzzer if the function is
+
+173
+00:07:57,019 --> 00:08:02,349
+too complex to reverse and you just want
+
+174
+00:07:59,749 --> 00:08:05,499
+to get some quick results out of it and
+
+175
+00:08:02,349 --> 00:08:07,849
+finally there's variant analysis
+
+176
+00:08:05,499 --> 00:08:09,860
+personally I use all four of these
+
+177
+00:08:07,849 --> 00:08:12,438
+methods because they all have their pros
+
+178
+00:08:09,860 --> 00:08:16,389
+and cons and they tend to complement
+
+179
+00:08:12,439 --> 00:08:19,009
+each other first I'll talk about fuzzing
+
+180
+00:08:16,389 --> 00:08:21,589
+when I first started I tried to build
+
+181
+00:08:19,009 --> 00:08:24,110
+something based on a set of goals these
+
+182
+00:08:21,589 --> 00:08:26,449
+four goals I wanted it to be coverage
+
+183
+00:08:24,110 --> 00:08:29,329
+coverage guided because coverage guided
+
+184
+00:08:26,449 --> 00:08:31,879
+fuzzing seems to be the latest craze and
+
+185
+00:08:29,329 --> 00:08:33,979
+it seems to have the highest return on
+
+186
+00:08:31,879 --> 00:08:38,000
+investment compared to other fuzzing
+
+187
+00:08:33,979 --> 00:08:41,569
+methods and I wanted it to be generic so
+
+188
+00:08:38,000 --> 00:08:43,909
+I could just plug it into any IPC
+
+189
+00:08:41,568 --> 00:08:46,639
+functions with minimum effort on my site
+
+190
+00:08:43,909 --> 00:08:49,160
+and finally I didn't want to build it
+
+191
+00:08:46,639 --> 00:08:51,889
+from scratch but instead fork from an
+
+192
+00:08:49,160 --> 00:08:54,140
+existing father so I can massively cut
+
+193
+00:08:51,889 --> 00:08:56,700
+down on development time
+
+194
+00:08:54,140 --> 00:08:59,400
+the first question was which buzzer I
+
+195
+00:08:56,700 --> 00:09:03,000
+was going to use as a base and these are
+
+196
+00:08:59,400 --> 00:09:05,730
+the three most popular flutters AFL is
+
+197
+00:09:03,000 --> 00:09:07,890
+like the industry industry standard
+
+198
+00:09:05,730 --> 00:09:10,560
+nowadays but unfortunately it isn't
+
+199
+00:09:07,890 --> 00:09:11,480
+really fully supporting Mac OS at the
+
+200
+00:09:10,560 --> 00:09:15,000
+moment
+
+201
+00:09:11,480 --> 00:09:17,040
+then there's lip butter but however you
+
+202
+00:09:15,000 --> 00:09:19,320
+need source code and he used lip buzzer
+
+203
+00:09:17,040 --> 00:09:21,949
+and Apple releases source code for only
+
+204
+00:09:19,320 --> 00:09:23,070
+a small portion of their user land
+
+205
+00:09:21,950 --> 00:09:25,950
+Damons
+
+206
+00:09:23,070 --> 00:09:28,170
+services finally there is home chief us
+
+207
+00:09:25,950 --> 00:09:31,050
+personally I think Hongzhi Falls is
+
+208
+00:09:28,170 --> 00:09:33,000
+pretty underrated because if you look at
+
+209
+00:09:31,050 --> 00:09:36,780
+most fuzzing part projects they're
+
+210
+00:09:33,000 --> 00:09:39,270
+pretty much some kind of work of AFL but
+
+211
+00:09:36,780 --> 00:09:42,959
+I think Hongzhi Falls is pretty it's
+
+212
+00:09:39,270 --> 00:09:44,970
+very stable feature-rich modular and the
+
+213
+00:09:42,960 --> 00:09:47,670
+source code is pretty easy to read and
+
+214
+00:09:44,970 --> 00:09:50,370
+modify and most importantly it fully
+
+215
+00:09:47,670 --> 00:09:54,329
+supports Mac OS so it was perfect for
+
+216
+00:09:50,370 --> 00:09:57,570
+this project so I decided to build my
+
+217
+00:09:54,330 --> 00:09:59,460
+father based on home dzifa's there was
+
+218
+00:09:57,570 --> 00:10:03,900
+actually some previous research done by
+
+219
+00:09:59,460 --> 00:10:07,020
+Paul Renault in in the past the basic
+
+220
+00:10:03,900 --> 00:10:09,420
+concept is he used quarks labs dynamic
+
+221
+00:10:07,020 --> 00:10:12,030
+binary instrumentation framework you BDI
+
+222
+00:10:09,420 --> 00:10:14,910
+to attach a coverage guided fuzzer to
+
+223
+00:10:12,030 --> 00:10:18,060
+close source binaries and the way it
+
+224
+00:10:14,910 --> 00:10:21,390
+works is basically it works the same way
+
+225
+00:10:18,060 --> 00:10:23,369
+as win a FL when Al tries to achieve
+
+226
+00:10:21,390 --> 00:10:26,040
+coverage guided buzzing by inserting
+
+227
+00:10:23,370 --> 00:10:29,250
+callbacks in every basic block using
+
+228
+00:10:26,040 --> 00:10:31,890
+dynamo Rio framework while writing to
+
+229
+00:10:29,250 --> 00:10:36,650
+the feedback bitmap in all of those
+
+230
+00:10:31,890 --> 00:10:36,650
+basic black block basic block callbacks
+
+231
+00:10:39,980 --> 00:10:45,930
+okay so Paul did pretty much the same
+
+232
+00:10:42,930 --> 00:10:49,378
+thing using QV di instead of Dinamo Rio
+
+233
+00:10:45,930 --> 00:10:52,859
+and use Hongzhi fuzz as a main driver
+
+234
+00:10:49,379 --> 00:10:55,199
+for fuzzing and with that fuzzing Mac OS
+
+235
+00:10:52,860 --> 00:10:57,600
+library or framework functions becomes
+
+236
+00:10:55,199 --> 00:11:01,139
+as simple as writing a couple dozen item
+
+237
+00:10:57,600 --> 00:11:03,629
+lines of code I'll do a small case study
+
+238
+00:11:01,139 --> 00:11:06,029
+with the uncie realized CF type function
+
+239
+00:11:03,629 --> 00:11:09,449
+that's called inside an IPC function of
+
+240
+00:11:06,029 --> 00:11:10,889
+the infamous stock service Paul didn't
+
+241
+00:11:09,449 --> 00:11:13,290
+release the source code of how he
+
+242
+00:11:10,889 --> 00:11:15,600
+implemented the glue between QB di and
+
+243
+00:11:13,290 --> 00:11:18,269
+home cephas so i wrote my own version of
+
+244
+00:11:15,600 --> 00:11:21,000
+it on the upper half it's initializing
+
+245
+00:11:18,269 --> 00:11:23,730
+the QPD our framework and deciding which
+
+246
+00:11:21,000 --> 00:11:26,220
+library code it's going to instrument on
+
+247
+00:11:23,730 --> 00:11:28,980
+the bottom half there is a Hong ji fuzz
+
+248
+00:11:26,220 --> 00:11:32,069
+persistent loop which calls qbg I call
+
+249
+00:11:28,980 --> 00:11:36,000
+and that in turn kick-starts the uncie
+
+250
+00:11:32,069 --> 00:11:39,209
+realized CF type function call within q
+
+251
+00:11:36,000 --> 00:11:41,250
+BD is virtual machine the fuzzing input
+
+252
+00:11:39,209 --> 00:11:44,420
+is provided by the Hong ji by Hong
+
+253
+00:11:41,250 --> 00:11:48,180
+dzifa's by the hf underbar underbar
+
+254
+00:11:44,420 --> 00:11:49,979
+eater macro this is the function that
+
+255
+00:11:48,180 --> 00:11:52,589
+will be called on the beginning of every
+
+256
+00:11:49,980 --> 00:11:54,959
+basic block basically the function just
+
+257
+00:11:52,589 --> 00:11:57,600
+marks the feedback bitmap and simply
+
+258
+00:11:54,959 --> 00:11:59,729
+returns this feedback bitmap will be
+
+259
+00:11:57,600 --> 00:12:01,680
+interpreted by Hong Cephas which in turn
+
+260
+00:11:59,730 --> 00:12:02,750
+drives the feedback driven fuzzing
+
+261
+00:12:01,680 --> 00:12:05,910
+engine
+
+262
+00:12:02,750 --> 00:12:08,699
+I'll show us a small demo of how this
+
+263
+00:12:05,910 --> 00:12:11,069
+works in practice the target function is
+
+264
+00:12:08,699 --> 00:12:16,019
+the uncie relies CF type from the doc
+
+265
+00:12:11,069 --> 00:12:18,479
+service and I'll run this time and the
+
+266
+00:12:16,019 --> 00:12:23,089
+demo is running on a vulnerable version
+
+267
+00:12:18,480 --> 00:12:23,089
+of the unusual ICF type function
+
+268
+00:12:42,150 --> 00:12:50,850
+so yeah I didn't have that much faith in
+
+269
+00:12:45,060 --> 00:12:56,010
+the demo but so it was recorded so first
+
+270
+00:12:50,850 --> 00:12:58,770
+this is how it was written this is the
+
+271
+00:12:56,010 --> 00:13:02,880
+basic block callback function that marks
+
+272
+00:12:58,770 --> 00:13:12,029
+the feedback bitmap and this is the home
+
+273
+00:13:02,880 --> 00:13:15,480
+G fuzz persistent loop wait yeah right
+
+274
+00:13:12,029 --> 00:13:20,640
+there calling and it's calling on
+
+275
+00:13:15,480 --> 00:13:22,710
+serialized CF type and there is one only
+
+276
+00:13:20,640 --> 00:13:25,699
+one file in the input corpus and it's
+
+277
+00:13:22,710 --> 00:13:28,950
+just a simple corefoundation dictionary
+
+278
+00:13:25,700 --> 00:13:33,240
+that I filled up with random keys in
+
+279
+00:13:28,950 --> 00:13:36,980
+objects when the father runs it quickly
+
+280
+00:13:33,240 --> 00:13:46,260
+finds several crashes and whom G fuzz
+
+281
+00:13:36,980 --> 00:13:49,670
+will intern yeah it's running and whom
+
+282
+00:13:46,260 --> 00:13:55,260
+g-force categorizes in in a separate
+
+283
+00:13:49,670 --> 00:13:59,040
+folder and I made a small verifier that
+
+284
+00:13:55,260 --> 00:14:01,050
+tests each of these crashes and what is
+
+285
+00:13:59,040 --> 00:14:05,550
+simply what it does is it simply calls
+
+286
+00:14:01,050 --> 00:14:11,699
+the vulnerable CF as usual ICF type
+
+287
+00:14:05,550 --> 00:14:20,160
+function so I copy the first cig ill
+
+288
+00:14:11,700 --> 00:14:24,630
+crash case and verify verify that it's
+
+289
+00:14:20,160 --> 00:14:29,569
+an actual crash case and the next thing
+
+290
+00:14:24,630 --> 00:14:33,860
+is to yeah try
+
+291
+00:14:29,570 --> 00:14:35,570
+get in debar and printing the back trace
+
+292
+00:14:33,860 --> 00:14:38,480
+shows the root function of the
+
+293
+00:14:35,570 --> 00:14:42,830
+vulnerability CF attributed string
+
+294
+00:14:38,480 --> 00:14:44,960
+create with runs and further printing
+
+295
+00:14:42,830 --> 00:14:48,220
+the register values show that it's
+
+296
+00:14:44,960 --> 00:14:55,960
+probably a very interesting crash case
+
+297
+00:14:48,220 --> 00:14:55,960
+yeah okay
+
+298
+00:15:04,970 --> 00:15:10,459
+okay whatever so yeah this was actually
+
+299
+00:15:08,519 --> 00:15:13,499
+a book that I found somewhere in late
+
+300
+00:15:10,459 --> 00:15:19,589
+2019 but it was sadly burned due to a
+
+301
+00:15:13,499 --> 00:15:21,539
+bug collision from Ponton but yeah so I
+
+302
+00:15:19,589 --> 00:15:23,609
+think the beauty of all of this is that
+
+303
+00:15:21,539 --> 00:15:26,189
+in order to run this fuzzing session I
+
+304
+00:15:23,609 --> 00:15:28,079
+didn't have to modify any of whom G for
+
+305
+00:15:26,189 --> 00:15:32,118
+this source code and all of it works
+
+306
+00:15:28,079 --> 00:15:32,118
+with just a couple dozen lines of code
+
+307
+00:15:32,449 --> 00:15:38,248
+but not all code is neatly wrapped up
+
+308
+00:15:35,489 --> 00:15:40,649
+into a function in a framework or
+
+309
+00:15:38,249 --> 00:15:42,749
+library function so I think the next
+
+310
+00:15:40,649 --> 00:15:45,179
+logical question would be how do you
+
+311
+00:15:42,749 --> 00:15:47,939
+fuzz functions that are compiled inside
+
+312
+00:15:45,179 --> 00:15:49,919
+the service binary and if the function
+
+313
+00:15:47,939 --> 00:15:51,599
+is pretty self-contained then and
+
+314
+00:15:49,919 --> 00:15:53,699
+doesn't rely on the daemon to be
+
+315
+00:15:51,600 --> 00:15:55,589
+actually running then it's possible to
+
+316
+00:15:53,699 --> 00:15:58,469
+fuzz using the previous method that I
+
+317
+00:15:55,589 --> 00:16:00,869
+just described but what about functions
+
+318
+00:15:58,470 --> 00:16:04,350
+that properly work only when the daemon
+
+319
+00:16:00,869 --> 00:16:06,389
+is actually running and a nice
+
+320
+00:16:04,350 --> 00:16:09,329
+alternative to that would be in memory
+
+321
+00:16:06,389 --> 00:16:11,759
+fuzzing but wouldn't it be awesome if we
+
+322
+00:16:09,329 --> 00:16:12,209
+could somehow hook it up with home G
+
+323
+00:16:11,759 --> 00:16:14,069
+fuzz
+
+324
+00:16:12,209 --> 00:16:19,079
+so we can use its coverage guiding
+
+325
+00:16:14,069 --> 00:16:20,029
+fuzzing powers so that led to the next
+
+326
+00:16:19,079 --> 00:16:23,479
+project
+
+327
+00:16:20,029 --> 00:16:27,059
+so what I did was I modified several
+
+328
+00:16:23,480 --> 00:16:28,859
+hundred lines of home G home G fuzz so
+
+329
+00:16:27,059 --> 00:16:31,559
+it would it wouldn't use this fork
+
+330
+00:16:28,859 --> 00:16:34,410
+server model but instead interact with a
+
+331
+00:16:31,559 --> 00:16:38,579
+live running daemon through several IPC
+
+332
+00:16:34,410 --> 00:16:40,529
+channels first Hongzhi fuzz injects a
+
+333
+00:16:38,579 --> 00:16:42,929
+dynamic library into the demo that's
+
+334
+00:16:40,529 --> 00:16:45,929
+already running the dy live is
+
+335
+00:16:42,929 --> 00:16:48,569
+essentially the live H fuzz component of
+
+336
+00:16:45,929 --> 00:16:51,569
+home G fuzz and includes all of the
+
+337
+00:16:48,569 --> 00:16:54,389
+clients eyes fuzzing code the dynamic
+
+338
+00:16:51,569 --> 00:16:56,579
+library runs its constructor and waits
+
+339
+00:16:54,389 --> 00:16:59,129
+for home G fuzz to pass all of its file
+
+340
+00:16:56,579 --> 00:17:00,569
+descriptors home G fuss passes several
+
+341
+00:16:59,129 --> 00:17:02,939
+of its file descriptors that are
+
+342
+00:17:00,569 --> 00:17:06,898
+relevant to buzzing through UNIX domain
+
+343
+00:17:02,939 --> 00:17:09,299
+sockets the client duplicates all the
+
+344
+00:17:06,898 --> 00:17:11,609
+file descriptors into hard hard coded
+
+345
+00:17:09,299 --> 00:17:14,319
+file descriptor values that Hongzhi fuzz
+
+346
+00:17:11,609 --> 00:17:18,439
+expects
+
+347
+00:17:14,319 --> 00:17:20,480
+homes EFA's then sends its exception
+
+348
+00:17:18,440 --> 00:17:23,750
+port service name and thread number
+
+349
+00:17:20,480 --> 00:17:26,140
+through a TCP socket the client receives
+
+350
+00:17:23,750 --> 00:17:28,700
+the exception port through launch D and
+
+351
+00:17:26,140 --> 00:17:30,920
+registers all exceptions to be handled
+
+352
+00:17:28,700 --> 00:17:33,410
+through the exception port on the home G
+
+353
+00:17:30,920 --> 00:17:35,510
+first fuzz server side and this will
+
+354
+00:17:33,410 --> 00:17:39,530
+make home chief us handle all exceptions
+
+355
+00:17:35,510 --> 00:17:42,230
+happening inside a separate service then
+
+356
+00:17:39,530 --> 00:17:44,120
+the client initializes the QB di Virtual
+
+357
+00:17:42,230 --> 00:17:48,710
+Machine and runs the home G fuzz
+
+358
+00:17:44,120 --> 00:17:50,929
+persistent loop although the code is to
+
+359
+00:17:48,710 --> 00:17:54,590
+wire all of these together is pretty
+
+360
+00:17:50,930 --> 00:17:58,640
+hacky it surprisingly works correctly
+
+361
+00:17:54,590 --> 00:18:00,919
+and the files are passed through the
+
+362
+00:17:58,640 --> 00:18:02,900
+files to be fussed are passed through a
+
+363
+00:18:00,920 --> 00:18:05,510
+shared file descriptor and the
+
+364
+00:18:02,900 --> 00:18:07,700
+persistent loop state machine is pulled
+
+365
+00:18:05,510 --> 00:18:10,970
+through another shared file descriptor
+
+366
+00:18:07,700 --> 00:18:12,800
+that home g-force interprets within the
+
+367
+00:18:10,970 --> 00:18:14,780
+loop the client essentially just calls
+
+368
+00:18:12,800 --> 00:18:17,330
+the target function through the function
+
+369
+00:18:14,780 --> 00:18:19,250
+QbD I call this runs the function
+
+370
+00:18:17,330 --> 00:18:22,490
+through the QPD i virtual machine and
+
+371
+00:18:19,250 --> 00:18:25,490
+the basic block callbacks will mark the
+
+372
+00:18:22,490 --> 00:18:27,200
+feedback bitched bitmap which is also
+
+373
+00:18:25,490 --> 00:18:30,140
+shared between the server and the client
+
+374
+00:18:27,200 --> 00:18:32,120
+through file descriptors actually
+
+375
+00:18:30,140 --> 00:18:35,870
+there's a little more to this but this
+
+376
+00:18:32,120 --> 00:18:37,189
+basically the gist of it and I would
+
+377
+00:18:35,870 --> 00:18:39,169
+like to give a special thanks to
+
+378
+00:18:37,190 --> 00:18:41,900
+Nicholas bounce truck for this tweet
+
+379
+00:18:39,170 --> 00:18:46,490
+which inspired me to start this small
+
+380
+00:18:41,900 --> 00:18:48,050
+fuzzing project and as much as I want to
+
+381
+00:18:46,490 --> 00:18:50,930
+but I couldn't
+
+382
+00:18:48,050 --> 00:18:54,110
+actually disclose 0 days on live on
+
+383
+00:18:50,930 --> 00:18:56,690
+stage although it would be super cool so
+
+384
+00:18:54,110 --> 00:18:58,820
+I'll just fuzz a non vulnerable function
+
+385
+00:18:56,690 --> 00:19:02,090
+just to show a demo of how it actually
+
+386
+00:18:58,820 --> 00:19:04,399
+works in practice in this demo I will
+
+387
+00:19:02,090 --> 00:19:07,490
+fuzz a deserialization routine and
+
+388
+00:19:04,400 --> 00:19:09,440
+security D pretending that we don't have
+
+389
+00:19:07,490 --> 00:19:12,980
+access to the source code and just the
+
+390
+00:19:09,440 --> 00:19:15,980
+actual binary this is what the function
+
+391
+00:19:12,980 --> 00:19:17,930
+looks like in the binary and I reverse
+
+392
+00:19:15,980 --> 00:19:20,420
+this function just enough to pinpoint
+
+393
+00:19:17,930 --> 00:19:22,580
+where the D serialization is happening
+
+394
+00:19:20,420 --> 00:19:25,760
+the father is going to target the fire
+
+395
+00:19:22,580 --> 00:19:27,530
+function I labeled as copy in and the
+
+396
+00:19:25,760 --> 00:19:29,750
+home G fuzz persistent loop
+
+397
+00:19:27,530 --> 00:19:32,030
+feed data into the second and third
+
+398
+00:19:29,750 --> 00:19:35,060
+parameter of the function which is a
+
+399
+00:19:32,030 --> 00:19:36,740
+serialized data buffer and size the
+
+400
+00:19:35,060 --> 00:19:40,970
+fourth parameter points to the D
+
+401
+00:19:36,740 --> 00:19:43,690
+serialization routine so a short demo of
+
+402
+00:19:40,970 --> 00:19:43,690
+how this works
+
+403
+00:20:03,680 --> 00:20:06,680
+okay
+
+404
+00:20:11,190 --> 00:20:16,809
+so this this is the code of the lip h
+
+405
+00:20:14,380 --> 00:20:20,320
+buzz dynamic library which i heavily
+
+406
+00:20:16,809 --> 00:20:25,750
+modified and this is these are the
+
+407
+00:20:20,320 --> 00:20:28,030
+offsets of the variable various various
+
+408
+00:20:25,750 --> 00:20:30,159
+d serialization functions i found
+
+409
+00:20:28,030 --> 00:20:32,770
+through reversing and the one that's
+
+410
+00:20:30,159 --> 00:20:34,419
+highlighted is the QPD i call function
+
+411
+00:20:32,770 --> 00:20:37,500
+which actually calls the function
+
+412
+00:20:34,419 --> 00:20:37,500
+through QB di
+
+413
+00:20:45,179 --> 00:20:52,289
+oh I was looking where there was a
+
+414
+00:20:47,190 --> 00:20:54,839
+screen right there so yeah this is where
+
+415
+00:20:52,289 --> 00:20:58,619
+the client receives various things from
+
+416
+00:20:54,839 --> 00:21:00,658
+the home dzifa's server yeah it first
+
+417
+00:20:58,619 --> 00:21:04,978
+receives all the file descriptors
+
+418
+00:21:00,659 --> 00:21:07,139
+through a UNIX domain socket then it
+
+419
+00:21:04,979 --> 00:21:12,210
+receives the exception port service name
+
+420
+00:21:07,139 --> 00:21:16,619
+and the thread number duplicates all the
+
+421
+00:21:12,210 --> 00:21:22,919
+file descriptors and maps them all into
+
+422
+00:21:16,619 --> 00:21:28,080
+memory and finally it sets up the
+
+423
+00:21:22,919 --> 00:21:31,919
+exception port and the next thing is the
+
+424
+00:21:28,080 --> 00:21:33,869
+seed corpus which is just a single input
+
+425
+00:21:31,919 --> 00:21:39,779
+that was that I collected with Frieda
+
+426
+00:21:33,869 --> 00:21:41,849
+and saved to a file and as soon as the
+
+427
+00:21:39,779 --> 00:21:44,159
+father runs the fuzzer will quickly
+
+428
+00:21:41,849 --> 00:21:46,769
+converge into a state where it fully
+
+429
+00:21:44,159 --> 00:21:50,369
+explored all the past that's reachable
+
+430
+00:21:46,769 --> 00:21:52,229
+by D serialization and the files in the
+
+431
+00:21:50,369 --> 00:21:57,988
+input directory corpus directory
+
+432
+00:21:52,229 --> 00:22:00,539
+reflects the results and we could test
+
+433
+00:21:57,989 --> 00:22:03,479
+more D serialization functions just by
+
+434
+00:22:00,539 --> 00:22:10,169
+modifying the function offset like I'm
+
+435
+00:22:03,479 --> 00:22:14,489
+doing in this example and they run make
+
+436
+00:22:10,169 --> 00:22:16,950
+and run the fuzzer again and the father
+
+437
+00:22:14,489 --> 00:22:20,279
+again quickly converges into a state
+
+438
+00:22:16,950 --> 00:22:23,119
+where it explored all paths so yeah
+
+439
+00:22:20,279 --> 00:22:23,119
+that's pretty much it
+
+440
+00:22:29,770 --> 00:22:35,740
+so yeah although the demo didn't really
+
+441
+00:22:32,530 --> 00:22:39,100
+show any new bugs it actually works and
+
+442
+00:22:35,740 --> 00:22:41,320
+there's nothing super advanced like it's
+
+443
+00:22:39,100 --> 00:22:46,120
+just a coverage guided fuzzer attached
+
+444
+00:22:41,320 --> 00:22:48,790
+to a live running service and I think if
+
+445
+00:22:46,120 --> 00:22:51,340
+you point this to some complex parsing
+
+446
+00:22:48,790 --> 00:22:53,379
+routines or DC realizes the same
+
+447
+00:22:51,340 --> 00:22:55,330
+routines and other services than the
+
+448
+00:22:53,380 --> 00:23:00,070
+ones that were presented here you might
+
+449
+00:22:55,330 --> 00:23:02,860
+find some interesting bugs yeah so yeah
+
+450
+00:23:00,070 --> 00:23:06,460
+that's that's it about fuzzing and the
+
+451
+00:23:02,860 --> 00:23:08,500
+next topic is variant analysis there was
+
+452
+00:23:06,460 --> 00:23:10,930
+actually a really good talk by Mary
+
+453
+00:23:08,500 --> 00:23:14,230
+stone at blue blue hat IL about a week
+
+454
+00:23:10,930 --> 00:23:16,420
+ago that's also a topic about variant
+
+455
+00:23:14,230 --> 00:23:19,150
+analysis and I highly recommend for
+
+456
+00:23:16,420 --> 00:23:21,690
+anyone who's interested to go through it
+
+457
+00:23:19,150 --> 00:23:24,600
+because it's a pretty good talk
+
+458
+00:23:21,690 --> 00:23:27,220
+so for me and for many others I believe
+
+459
+00:23:24,600 --> 00:23:31,000
+variant analysis is equivalent to
+
+460
+00:23:27,220 --> 00:23:32,950
+searching for low-hanging fruits I think
+
+461
+00:23:31,000 --> 00:23:35,290
+it's the modern version of searching for
+
+462
+00:23:32,950 --> 00:23:37,240
+low-hanging fruits and if you look
+
+463
+00:23:35,290 --> 00:23:39,490
+around Twitter or talk with other
+
+464
+00:23:37,240 --> 00:23:42,300
+researchers you'll recognize that a lot
+
+465
+00:23:39,490 --> 00:23:45,070
+of people are actually doing this and
+
+466
+00:23:42,300 --> 00:23:47,919
+this is a quote borrowed from Bruno
+
+467
+00:23:45,070 --> 00:23:51,070
+Keyes talk and I couldn't agree more to
+
+468
+00:23:47,920 --> 00:23:52,960
+this apparently a lot of really lots of
+
+469
+00:23:51,070 --> 00:23:57,159
+people are doing this so bug collision
+
+470
+00:23:52,960 --> 00:24:00,340
+is really a thing so this is basically
+
+471
+00:23:57,160 --> 00:24:03,040
+variant analysis 101 first you pick a
+
+472
+00:24:00,340 --> 00:24:05,830
+good reference book preferably a bug
+
+473
+00:24:03,040 --> 00:24:07,600
+that has an exploit attached to it then
+
+474
+00:24:05,830 --> 00:24:10,320
+you study the component that contains
+
+475
+00:24:07,600 --> 00:24:12,399
+the faulty code and next you try to
+
+476
+00:24:10,320 --> 00:24:14,590
+understand the root cause of the bug
+
+477
+00:24:12,400 --> 00:24:18,070
+studying everything you need to along
+
+478
+00:24:14,590 --> 00:24:20,139
+the way and while you're doing so you'll
+
+479
+00:24:18,070 --> 00:24:23,560
+get a general idea of the attack surface
+
+480
+00:24:20,140 --> 00:24:26,260
+where similar bugs can occur and finally
+
+481
+00:24:23,560 --> 00:24:28,629
+you start looking for new bugs with the
+
+482
+00:24:26,260 --> 00:24:30,480
+similar bug pattern and I'll discuss how
+
+483
+00:24:28,630 --> 00:24:35,550
+a researcher goes through this parse
+
+484
+00:24:30,480 --> 00:24:35,550
+process by looking at to real world bugs
+
+485
+00:24:39,059 --> 00:24:44,019
+the first book is actually not really a
+
+486
+00:24:41,919 --> 00:24:47,110
+sandbox escape so it might seem a little
+
+487
+00:24:44,019 --> 00:24:50,080
+off-topic but JavaScript it's a
+
+488
+00:24:47,110 --> 00:24:52,389
+JavaScript core bug but still I thought
+
+489
+00:24:50,080 --> 00:24:55,210
+it was a perfect candidate to discuss
+
+490
+00:24:52,389 --> 00:24:58,559
+variant analysis while not straying away
+
+491
+00:24:55,210 --> 00:25:00,909
+too much from the topic of browsers and
+
+492
+00:24:58,559 --> 00:25:03,190
+also I thought it was a really cool bug
+
+493
+00:25:00,909 --> 00:25:06,039
+back then but there wasn't much public
+
+494
+00:25:03,190 --> 00:25:09,519
+interest into it so I wanted to use this
+
+495
+00:25:06,039 --> 00:25:12,100
+opportunity to discuss more about it so
+
+496
+00:25:09,519 --> 00:25:15,940
+this bug family was first found by Loki
+
+497
+00:25:12,100 --> 00:25:18,908
+Harty back in late 2008 II and I call it
+
+498
+00:25:15,940 --> 00:25:22,029
+the does GC bug family because the DOS
+
+499
+00:25:18,909 --> 00:25:25,899
+GC function is the mothership of this
+
+500
+00:25:22,029 --> 00:25:26,710
+entire ball class so this is Loki
+
+501
+00:25:25,899 --> 00:25:29,229
+hearties
+
+502
+00:25:26,710 --> 00:25:31,600
+public advisory it was a pretty cool bug
+
+503
+00:25:29,230 --> 00:25:33,639
+I mean it was pretty cool that he found
+
+504
+00:25:31,600 --> 00:25:37,959
+this bug through just a pure source code
+
+505
+00:25:33,639 --> 00:25:40,389
+auditing and a couple months later Luca
+
+506
+00:25:37,960 --> 00:25:42,929
+posted his own variance on Twitter and
+
+507
+00:25:40,389 --> 00:25:46,360
+along with a proof-of-concept exploit
+
+508
+00:25:42,929 --> 00:25:50,590
+and this is the patch that killed Lucas
+
+509
+00:25:46,360 --> 00:25:53,110
+variants a patch 6 DF g DF g op codes
+
+510
+00:25:50,590 --> 00:25:59,320
+that were incorrectly returning false in
+
+511
+00:25:53,110 --> 00:26:01,240
+the does GC function now I'll go through
+
+512
+00:25:59,320 --> 00:26:05,230
+the process of understanding the root
+
+513
+00:26:01,240 --> 00:26:08,110
+cause of this specific book there is
+
+514
+00:26:05,230 --> 00:26:10,570
+this function called does GC and what it
+
+515
+00:26:08,110 --> 00:26:14,559
+does is it's responsible of telling the
+
+516
+00:26:10,570 --> 00:26:16,539
+DFG compiler which the FG op codes have
+
+517
+00:26:14,559 --> 00:26:18,908
+the possibility of bringing up the
+
+518
+00:26:16,539 --> 00:26:22,179
+garbage collector and before the patch
+
+519
+00:26:18,909 --> 00:26:24,759
+the compare EQ opcode was returning
+
+520
+00:26:22,179 --> 00:26:27,129
+false which means that it doesn't have
+
+521
+00:26:24,759 --> 00:26:32,470
+any chance of in using garbage
+
+522
+00:26:27,129 --> 00:26:35,649
+collection now this is how the compare
+
+523
+00:26:32,470 --> 00:26:39,159
+eq d FG opcode is compiled into the DFG
+
+524
+00:26:35,649 --> 00:26:42,729
+JIT code it follows into it flows into
+
+525
+00:26:39,159 --> 00:26:44,679
+the function compare if both arguments
+
+526
+00:26:42,730 --> 00:26:46,779
+are a string type then it will
+
+527
+00:26:44,679 --> 00:26:48,330
+eventually flow into compiled string
+
+528
+00:26:46,779 --> 00:26:50,910
+equality
+
+529
+00:26:48,330 --> 00:26:53,370
+if any of the arguments is a rope string
+
+530
+00:26:50,910 --> 00:26:56,580
+then it'll flow into operation compare
+
+531
+00:26:53,370 --> 00:26:59,610
+string EQ and which goes into these
+
+532
+00:26:56,580 --> 00:27:03,210
+three series of function calls until it
+
+533
+00:26:59,610 --> 00:27:06,179
+reaches here and if any of these
+
+534
+00:27:03,210 --> 00:27:08,220
+arguments if any of the arguments is a
+
+535
+00:27:06,180 --> 00:27:11,790
+rope string then the function will try
+
+536
+00:27:08,220 --> 00:27:13,920
+to resolve this rope string and doing so
+
+537
+00:27:11,790 --> 00:27:16,710
+will create a new buffer that's big
+
+538
+00:27:13,920 --> 00:27:18,960
+enough to contain all of the strings
+
+539
+00:27:16,710 --> 00:27:22,980
+that are contained inside this rope
+
+540
+00:27:18,960 --> 00:27:25,140
+string and this new allocation is what
+
+541
+00:27:22,980 --> 00:27:27,900
+could Simone the garbage collector so
+
+542
+00:27:25,140 --> 00:27:30,930
+the fact that jittered code can reach
+
+543
+00:27:27,900 --> 00:27:33,360
+this piece of code which creates a new
+
+544
+00:27:30,930 --> 00:27:35,910
+allocation violates the assumption that
+
+545
+00:27:33,360 --> 00:27:39,510
+compare EQ up code can never bring up
+
+546
+00:27:35,910 --> 00:27:42,630
+the garbage collector so why is this a
+
+547
+00:27:39,510 --> 00:27:44,790
+problem to explain why it's important to
+
+548
+00:27:42,630 --> 00:27:47,400
+understand a DFG optimization phase
+
+549
+00:27:44,790 --> 00:27:51,060
+called DFG store barrier barrier
+
+550
+00:27:47,400 --> 00:27:53,730
+insertion phase and simply put that
+
+551
+00:27:51,060 --> 00:27:57,060
+phase largely relies on the correct
+
+552
+00:27:53,730 --> 00:27:59,790
+modeling of the does GC function and if
+
+553
+00:27:57,060 --> 00:28:01,710
+does GC isn't modelled correctly the
+
+554
+00:27:59,790 --> 00:28:04,350
+optimization phase will not emit
+
+555
+00:28:01,710 --> 00:28:06,780
+something called right barriers where
+
+556
+00:28:04,350 --> 00:28:09,959
+it's supposed to emit them and these
+
+557
+00:28:06,780 --> 00:28:12,330
+so-called right barriers are important
+
+558
+00:28:09,960 --> 00:28:15,090
+to make garbage collector work properly
+
+559
+00:28:12,330 --> 00:28:18,780
+so a single missing right barrier can
+
+560
+00:28:15,090 --> 00:28:20,820
+turn into a serious problem so let's
+
+561
+00:28:18,780 --> 00:28:23,520
+assume that we are back in time like
+
+562
+00:28:20,820 --> 00:28:25,620
+right after we saw Lucas tweets that the
+
+563
+00:28:23,520 --> 00:28:28,050
+bugs were patched and at this point you
+
+564
+00:28:25,620 --> 00:28:30,360
+would start thinking are there any more
+
+565
+00:28:28,050 --> 00:28:33,480
+of these bug patterns in JavaScript core
+
+566
+00:28:30,360 --> 00:28:36,209
+or are those were those the last ones
+
+567
+00:28:33,480 --> 00:28:38,640
+standing well you can quickly figure out
+
+568
+00:28:36,210 --> 00:28:41,610
+by investing a day or two in source code
+
+569
+00:28:38,640 --> 00:28:47,130
+auditing and so here are their
+
+570
+00:28:41,610 --> 00:28:49,770
+ingredients there is a giant switch case
+
+571
+00:28:47,130 --> 00:28:51,840
+in the dust GC function and the OP code
+
+572
+00:28:49,770 --> 00:28:54,960
+that you're looking for must return
+
+573
+00:28:51,840 --> 00:28:57,560
+false and the JIT code that's emitted by
+
+574
+00:28:54,960 --> 00:29:00,300
+the code must create a new allocation
+
+575
+00:28:57,560 --> 00:29:02,490
+also the size of the allocated objects
+
+576
+00:29:00,300 --> 00:29:05,040
+should be preferably controllable
+
+577
+00:29:02,490 --> 00:29:07,410
+the ideal case would be an opcode that
+
+578
+00:29:05,040 --> 00:29:10,170
+will resolve a rope string or something
+
+579
+00:29:07,410 --> 00:29:12,390
+similar and finally the jaded opcode
+
+580
+00:29:10,170 --> 00:29:14,250
+should not hold the lock of the garbage
+
+581
+00:29:12,390 --> 00:29:17,670
+collector there are actually a few
+
+582
+00:29:14,250 --> 00:29:20,310
+functions that explicit explicitly hold
+
+583
+00:29:17,670 --> 00:29:22,980
+this lock in order to prevent these kind
+
+584
+00:29:20,310 --> 00:29:26,429
+of issues and to give you a perspective
+
+585
+00:29:22,980 --> 00:29:29,070
+of how I found and how anyone could have
+
+586
+00:29:26,430 --> 00:29:31,290
+found a variant of this book what I did
+
+587
+00:29:29,070 --> 00:29:34,350
+is I just manually read the JIT
+
+588
+00:29:31,290 --> 00:29:36,960
+implementation of every single give G
+
+589
+00:29:34,350 --> 00:29:40,230
+opcode for a couple hours being very
+
+590
+00:29:36,960 --> 00:29:42,660
+mentally focused to find code that
+
+591
+00:29:40,230 --> 00:29:46,700
+matches this exact same pattern until I
+
+592
+00:29:42,660 --> 00:29:49,920
+reached the hash index property of code
+
+593
+00:29:46,700 --> 00:29:52,020
+as shown in the picture the does GC
+
+594
+00:29:49,920 --> 00:29:55,140
+function used to return false for this
+
+595
+00:29:52,020 --> 00:29:59,550
+OP code and this is how the OP code is
+
+596
+00:29:55,140 --> 00:30:01,980
+compiled by the by DF G if the OP code
+
+597
+00:29:59,550 --> 00:30:04,320
+passed long is not an array object then
+
+598
+00:30:01,980 --> 00:30:07,470
+the jaded assembly will jump to a slow
+
+599
+00:30:04,320 --> 00:30:10,260
+case I calls through a series of
+
+600
+00:30:07,470 --> 00:30:12,630
+functions until it tries to call the get
+
+601
+00:30:10,260 --> 00:30:16,350
+own property slot by index function
+
+602
+00:30:12,630 --> 00:30:18,480
+inside the JS object method table and if
+
+603
+00:30:16,350 --> 00:30:20,969
+the object happens to be a string object
+
+604
+00:30:18,480 --> 00:30:24,510
+then it further goes down the chain of
+
+605
+00:30:20,970 --> 00:30:27,840
+function calls until it resolves a rope
+
+606
+00:30:24,510 --> 00:30:30,300
+string this this happens when the object
+
+607
+00:30:27,840 --> 00:30:32,129
+is a string object but the string object
+
+608
+00:30:30,300 --> 00:30:35,310
+is actually storing a rope string
+
+609
+00:30:32,130 --> 00:30:37,740
+instead of a normal string so this is
+
+610
+00:30:35,310 --> 00:30:41,639
+essentially a variant of the patch does
+
+611
+00:30:37,740 --> 00:30:44,430
+GC bug class and unfortunately this
+
+612
+00:30:41,640 --> 00:30:46,230
+variant didn't live very long it lasted
+
+613
+00:30:44,430 --> 00:30:49,800
+for about a month until it was patched
+
+614
+00:30:46,230 --> 00:30:52,320
+somewhere in March and somewhere about
+
+615
+00:30:49,800 --> 00:30:54,180
+round may about was the restricted in
+
+616
+00:30:52,320 --> 00:30:56,300
+the project zero issue tracker and I
+
+617
+00:30:54,180 --> 00:30:58,890
+really realized that Samuel Groth
+
+618
+00:30:56,300 --> 00:31:02,040
+reported the same bug to Apple in March
+
+619
+00:30:58,890 --> 00:31:05,460
+so yeah this proves that ball collisions
+
+620
+00:31:02,040 --> 00:31:08,159
+are real but regardless of bug collision
+
+621
+00:31:05,460 --> 00:31:10,860
+and I think the moral of this story is
+
+622
+00:31:08,160 --> 00:31:14,160
+that it's relatedly easy to find bugs
+
+623
+00:31:10,860 --> 00:31:15,360
+with a very specific pattern and what
+
+624
+00:31:14,160 --> 00:31:17,820
+you have to do is you just
+
+625
+00:31:15,360 --> 00:31:20,370
+have to read the source code with a very
+
+626
+00:31:17,820 --> 00:31:23,760
+with a trained eye and being very
+
+627
+00:31:20,370 --> 00:31:26,399
+focused to look for an exact bug pattern
+
+628
+00:31:23,760 --> 00:31:28,950
+and of course this requires a lot of
+
+629
+00:31:26,400 --> 00:31:41,370
+patience and perseverance but it's very
+
+630
+00:31:28,950 --> 00:31:44,850
+doable so yeah nothing really terribly
+
+631
+00:31:41,370 --> 00:31:46,860
+of advanced and here's how Apple tried
+
+632
+00:31:44,850 --> 00:31:49,590
+to eliminate this entire class of bugs
+
+633
+00:31:46,860 --> 00:31:53,399
+now it would take too long to explain
+
+634
+00:31:49,590 --> 00:31:56,220
+exactly how it works but they placed
+
+635
+00:31:53,400 --> 00:31:59,070
+basically they placed asserts that would
+
+636
+00:31:56,220 --> 00:32:01,260
+check if the does GC function and the
+
+637
+00:31:59,070 --> 00:32:03,830
+allocations happening inside the JIT
+
+638
+00:32:01,260 --> 00:32:08,190
+code is correctly modeled and it matches
+
+639
+00:32:03,830 --> 00:32:10,799
+what the JIT is assuming and however if
+
+640
+00:32:08,190 --> 00:32:14,130
+you look at new DFG ACOs most notably
+
+641
+00:32:10,799 --> 00:32:16,590
+the big integer EFG opcodes being added
+
+642
+00:32:14,130 --> 00:32:18,540
+every now and then you can see that some
+
+643
+00:32:16,590 --> 00:32:21,750
+of them are still being incorrectly
+
+644
+00:32:18,540 --> 00:32:23,879
+modeled in the CC and but Apple seems to
+
+645
+00:32:21,750 --> 00:32:26,100
+be running in an internal fuzzer which
+
+646
+00:32:23,880 --> 00:32:29,520
+catches them through these new assert
+
+647
+00:32:26,100 --> 00:32:31,770
+statements and after a couple weeks you
+
+648
+00:32:29,520 --> 00:32:33,929
+can see if you see the WebKit comments
+
+649
+00:32:31,770 --> 00:32:37,740
+they're moved back to the right switch
+
+650
+00:32:33,929 --> 00:32:40,710
+case so maybe I don't think I think this
+
+651
+00:32:37,740 --> 00:32:45,990
+is the end of this class of bugs but who
+
+652
+00:32:40,710 --> 00:32:47,700
+knows before moving on I want to briefly
+
+653
+00:32:45,990 --> 00:32:50,309
+discuss how this bug class can be
+
+654
+00:32:47,700 --> 00:32:51,600
+exploited because it was pretty cool
+
+655
+00:32:50,309 --> 00:32:54,780
+when I saw it first
+
+656
+00:32:51,600 --> 00:32:58,080
+when lucas variants were patched he just
+
+657
+00:32:54,780 --> 00:33:01,200
+dropped a POC on twitter and just moved
+
+658
+00:32:58,080 --> 00:33:03,120
+on to his next thing and i thought it
+
+659
+00:33:01,200 --> 00:33:05,760
+was a really cool exploit but I haven't
+
+660
+00:33:03,120 --> 00:33:07,530
+seen anyone talk about it in a public
+
+661
+00:33:05,760 --> 00:33:09,210
+domain so I thought it would be worth
+
+662
+00:33:07,530 --> 00:33:11,970
+discussing in here because the exploit
+
+663
+00:33:09,210 --> 00:33:14,790
+technique behind it was really nice in
+
+664
+00:33:11,970 --> 00:33:16,440
+my opinion they exploit a soon set the
+
+665
+00:33:14,790 --> 00:33:19,350
+garbage collector runs in a single
+
+666
+00:33:16,440 --> 00:33:21,450
+thread and but there are ways to make it
+
+667
+00:33:19,350 --> 00:33:25,080
+work in a multi thread threaded
+
+668
+00:33:21,450 --> 00:33:27,720
+environments this function called our
+
+669
+00:33:25,080 --> 00:33:30,090
+Alec creates an enormous tree of a race
+
+670
+00:33:27,720 --> 00:33:32,429
+and the purpose of this tree is to make
+
+671
+00:33:30,090 --> 00:33:34,830
+the garbage collector traverse the tree
+
+672
+00:33:32,429 --> 00:33:37,860
+in a kind of like a little bit like a
+
+673
+00:33:34,830 --> 00:33:40,939
+breadth-first search so it'll take a lot
+
+674
+00:33:37,860 --> 00:33:44,280
+a long time to reach the leaf nodes and
+
+675
+00:33:40,940 --> 00:33:47,340
+due to the searching algorithm the most
+
+676
+00:33:44,280 --> 00:33:49,760
+left bottom most leaf node will be
+
+677
+00:33:47,340 --> 00:33:52,678
+reached in the very last iteration and
+
+678
+00:33:49,760 --> 00:33:53,180
+you'll assume that this left bottom most
+
+679
+00:33:52,679 --> 00:33:58,700
+leaf
+
+680
+00:33:53,180 --> 00:34:01,220
+note is storing a valid JSON Tech victim
+
+681
+00:33:58,700 --> 00:34:04,100
+is just an array with eight elements and
+
+682
+00:34:01,220 --> 00:34:08,300
+victim one now points to the root of the
+
+683
+00:34:04,100 --> 00:34:11,509
+enormous tree and this compiles into the
+
+684
+00:34:08,300 --> 00:34:14,240
+compare less DFG opcode but the does GC
+
+685
+00:34:11,510 --> 00:34:17,720
+function returns false for this opcode
+
+686
+00:34:14,239 --> 00:34:19,639
+so DFG is not aware that this opcode can
+
+687
+00:34:17,719 --> 00:34:23,029
+actually bring up the garbage collector
+
+688
+00:34:19,639 --> 00:34:25,520
+and because of this the logic behind the
+
+689
+00:34:23,030 --> 00:34:28,460
+DFG store variation insertion phase
+
+690
+00:34:25,520 --> 00:34:31,219
+concludes that it doesn't have to insert
+
+691
+00:34:28,460 --> 00:34:34,040
+the right barrier after this piece of
+
+692
+00:34:31,219 --> 00:34:36,830
+line and this right barrier is supposed
+
+693
+00:34:34,040 --> 00:34:40,009
+to put the victim our array back onto
+
+694
+00:34:36,830 --> 00:34:42,679
+something called the mark stack so the
+
+695
+00:34:40,010 --> 00:34:47,480
+garbage collector with visited it once
+
+696
+00:34:42,679 --> 00:34:49,580
+more but in this case it won't so what
+
+697
+00:34:47,480 --> 00:34:52,340
+can I note that attacker do with this
+
+698
+00:34:49,580 --> 00:34:55,580
+missing right barrier let's assume that
+
+699
+00:34:52,340 --> 00:34:58,130
+the function argument s is a rope string
+
+700
+00:34:55,580 --> 00:34:59,690
+that's very very long long enough to
+
+701
+00:34:58,130 --> 00:35:02,750
+wake up the garbage collector when the
+
+702
+00:34:59,690 --> 00:35:05,240
+rope string is being resolved and when
+
+703
+00:35:02,750 --> 00:35:06,860
+the compare less up code executes it'll
+
+704
+00:35:05,240 --> 00:35:09,049
+kickstart the garbage collector because
+
+705
+00:35:06,860 --> 00:35:12,530
+resolving the rough string will create a
+
+706
+00:35:09,050 --> 00:35:15,470
+very huge allocation and the mutator
+
+707
+00:35:12,530 --> 00:35:17,870
+which is the JavaScript executing main
+
+708
+00:35:15,470 --> 00:35:20,149
+thread thread will collect the core
+
+709
+00:35:17,870 --> 00:35:22,100
+constraints from the stack and pass it
+
+710
+00:35:20,150 --> 00:35:25,820
+on to the collector garbage collector
+
+711
+00:35:22,100 --> 00:35:28,220
+and before the mutator even reaches the
+
+712
+00:35:25,820 --> 00:35:30,710
+this piece of line the collector will
+
+713
+00:35:28,220 --> 00:35:34,549
+already have map marked all eight
+
+714
+00:35:30,710 --> 00:35:36,830
+elements of the victim array the garbage
+
+715
+00:35:34,550 --> 00:35:39,080
+collector is still traveling through the
+
+716
+00:35:36,830 --> 00:35:41,120
+enormous tree marking each node one at a
+
+717
+00:35:39,080 --> 00:35:43,310
+time and it hasn't reached the left
+
+718
+00:35:41,120 --> 00:35:47,839
+bottom of snowed yet which is storing a
+
+719
+00:35:43,310 --> 00:35:50,420
+valid JS object and before GC ever has a
+
+720
+00:35:47,840 --> 00:35:53,750
+chance to reach this left bottom most
+
+721
+00:35:50,420 --> 00:35:56,780
+node the mutator snatches it and saves
+
+722
+00:35:53,750 --> 00:35:58,670
+it into victim zero and at this point
+
+723
+00:35:56,780 --> 00:36:01,100
+the garbage collector already marked
+
+724
+00:35:58,670 --> 00:36:03,800
+victim zero so there should be something
+
+725
+00:36:01,100 --> 00:36:05,540
+that should notify the garbage collector
+
+726
+00:36:03,800 --> 00:36:06,440
+that it should go through the victim
+
+727
+00:36:05,540 --> 00:36:09,980
+array one
+
+728
+00:36:06,440 --> 00:36:14,089
+again so it could mark that updated
+
+729
+00:36:09,980 --> 00:36:16,760
+victim zero and that something should
+
+730
+00:36:14,089 --> 00:36:18,440
+have been the right barrier that that
+
+731
+00:36:16,760 --> 00:36:20,980
+should have been inserted right after
+
+732
+00:36:18,440 --> 00:36:23,780
+this piece of line but it's missing now
+
+733
+00:36:20,980 --> 00:36:26,900
+the right barrier is of course missing
+
+734
+00:36:23,780 --> 00:36:30,470
+so the victim array is not placed back
+
+735
+00:36:26,900 --> 00:36:33,050
+on the mark stack and the mutator stores
+
+736
+00:36:30,470 --> 00:36:34,910
+the constant zero in the left bottom
+
+737
+00:36:33,050 --> 00:36:38,150
+most node of the enormous tree which
+
+738
+00:36:34,910 --> 00:36:40,250
+originally contained the JS object at
+
+739
+00:36:38,150 --> 00:36:42,589
+some point later guard the garbage
+
+740
+00:36:40,250 --> 00:36:44,930
+collector finally arrives at this left
+
+741
+00:36:42,589 --> 00:36:48,770
+bottom most node and it will only see
+
+742
+00:36:44,930 --> 00:36:52,040
+the constant zero so now there is a
+
+743
+00:36:48,770 --> 00:36:53,660
+valid JS object in victim zero which
+
+744
+00:36:52,040 --> 00:36:56,569
+isn't marked by the garbage collector
+
+745
+00:36:53,660 --> 00:36:57,799
+and the garbage collector won't revisit
+
+746
+00:36:56,569 --> 00:37:00,800
+it again
+
+747
+00:36:57,800 --> 00:37:04,099
+this victim array is returned to the
+
+748
+00:37:00,800 --> 00:37:06,079
+caller and the caller keeps allocating
+
+749
+00:37:04,099 --> 00:37:09,310
+jeaious objects that are exactly the
+
+750
+00:37:06,079 --> 00:37:12,560
+same size of that unmarked JS object and
+
+751
+00:37:09,310 --> 00:37:15,109
+at some point the unmarked J's object
+
+752
+00:37:12,560 --> 00:37:18,020
+will be swept and reused for a new
+
+753
+00:37:15,109 --> 00:37:20,420
+allocation for one of the objects that's
+
+754
+00:37:18,020 --> 00:37:24,020
+going to be stored in the variable Z and
+
+755
+00:37:20,420 --> 00:37:25,849
+at that point a valid JS object which
+
+756
+00:37:24,020 --> 00:37:28,099
+was used to be in the left bottom most
+
+757
+00:37:25,849 --> 00:37:31,510
+node of the enormous tree is overwritten
+
+758
+00:37:28,099 --> 00:37:34,730
+with a new JS object with the same size
+
+759
+00:37:31,510 --> 00:37:37,190
+and there's actually a little more to
+
+760
+00:37:34,730 --> 00:37:40,550
+this but yeah I just abbreviated it in
+
+761
+00:37:37,190 --> 00:37:43,790
+one sentence but basically the exploit
+
+762
+00:37:40,550 --> 00:37:47,270
+makes a stale J's array object to point
+
+763
+00:37:43,790 --> 00:37:49,970
+to a hex 200 size buffer where the
+
+764
+00:37:47,270 --> 00:37:53,540
+indexing type is contiguous J's values
+
+765
+00:37:49,970 --> 00:37:56,569
+and there's another valid jsr a with the
+
+766
+00:37:53,540 --> 00:37:59,599
+arrays buffer overlapping the same hex
+
+767
+00:37:56,569 --> 00:38:01,900
+200 buffer but this time the indexing
+
+768
+00:37:59,599 --> 00:38:05,349
+type type is contiguous doubles so
+
+769
+00:38:01,900 --> 00:38:08,270
+essentially there's two arrays where
+
+770
+00:38:05,349 --> 00:38:10,849
+with different indexing types pointing
+
+771
+00:38:08,270 --> 00:38:14,089
+to the same underlying hex 200 buffer
+
+772
+00:38:10,849 --> 00:38:16,250
+and this creates a perfect condition to
+
+773
+00:38:14,089 --> 00:38:19,620
+create the fake object in the address of
+
+774
+00:38:16,250 --> 00:38:22,140
+primitive so yeah mad props to
+
+775
+00:38:19,620 --> 00:38:24,930
+go for this super interesting CC racing
+
+776
+00:38:22,140 --> 00:38:28,910
+exploit technique yeah
+
+777
+00:38:24,930 --> 00:38:32,460
+in the next case is going back on topic
+
+778
+00:38:28,910 --> 00:38:34,470
+and it's a sandbox escape that was
+
+779
+00:38:32,460 --> 00:38:38,520
+posted last year in April in the
+
+780
+00:38:34,470 --> 00:38:47,669
+security team block this bug was found
+
+781
+00:38:38,520 --> 00:38:50,009
+by a researcher called mohammad ghana so
+
+782
+00:38:47,670 --> 00:38:53,550
+it's it's an uninitialized buffer
+
+783
+00:38:50,010 --> 00:38:56,820
+vulnerability in the power D demo which
+
+784
+00:38:53,550 --> 00:38:59,310
+is running as unsane box root it was
+
+785
+00:38:56,820 --> 00:39:01,080
+actually a really neat sandbox escape
+
+786
+00:38:59,310 --> 00:39:04,680
+that was pretty well engineered
+
+787
+00:39:01,080 --> 00:39:05,850
+but like most sandbox escapes I think it
+
+788
+00:39:04,680 --> 00:39:08,160
+was pretty underrated
+
+789
+00:39:05,850 --> 00:39:11,670
+and didn't receive much attention by the
+
+790
+00:39:08,160 --> 00:39:14,970
+community because the community is
+
+791
+00:39:11,670 --> 00:39:17,820
+always just crazy about TFE zeroes and
+
+792
+00:39:14,970 --> 00:39:19,950
+it was actually a bug that was very easy
+
+793
+00:39:17,820 --> 00:39:23,610
+to miss unless you were looking very
+
+794
+00:39:19,950 --> 00:39:27,600
+closely closely and I'll do a brief
+
+795
+00:39:23,610 --> 00:39:29,940
+root-cause analysis about this bug this
+
+796
+00:39:27,600 --> 00:39:32,130
+is the IPC main handler a function of
+
+797
+00:39:29,940 --> 00:39:34,410
+power D and you can see that it
+
+798
+00:39:32,130 --> 00:39:39,060
+allocates space for the output buffer
+
+799
+00:39:34,410 --> 00:39:41,759
+but it never initializes it to zero and
+
+800
+00:39:39,060 --> 00:39:46,529
+the make function will be called pass
+
+801
+00:39:41,760 --> 00:39:49,500
+passing this uninitialized buffer and in
+
+802
+00:39:46,530 --> 00:39:52,320
+the make function called IO PN last wake
+
+803
+00:39:49,500 --> 00:39:55,320
+time there is a check if a global
+
+804
+00:39:52,320 --> 00:39:58,020
+variable if is not no and if it if it's
+
+805
+00:39:55,320 --> 00:40:01,320
+not no then the function forgets to
+
+806
+00:39:58,020 --> 00:40:03,410
+initialize two values in the Oppo puffer
+
+807
+00:40:01,320 --> 00:40:06,600
+and sends them back to the caller and
+
+808
+00:40:03,410 --> 00:40:10,170
+this gives an info leak of primitive of
+
+809
+00:40:06,600 --> 00:40:10,560
+a couple bites and this one was pretty
+
+810
+00:40:10,170 --> 00:40:13,200
+funny
+
+811
+00:40:10,560 --> 00:40:15,720
+it's in this make function IO p.m.
+
+812
+00:40:13,200 --> 00:40:18,629
+connection copy status now the function
+
+813
+00:40:15,720 --> 00:40:21,930
+does absolutely nothing and returns and
+
+814
+00:40:18,630 --> 00:40:24,390
+this leaves the output buffer pointer
+
+815
+00:40:21,930 --> 00:40:26,839
+and the Apple prophesize uninitialized
+
+816
+00:40:24,390 --> 00:40:29,490
+and the end result of this is that
+
+817
+00:40:26,840 --> 00:40:32,490
+whatever address was stored in the
+
+818
+00:40:29,490 --> 00:40:34,890
+output buffer pointer is interpreted
+
+819
+00:40:32,490 --> 00:40:37,618
+as the start of the buffer to send back
+
+820
+00:40:34,890 --> 00:40:39,529
+to the user and whatever uninitialized
+
+821
+00:40:37,619 --> 00:40:43,650
+value was in the buffer size is
+
+822
+00:40:39,530 --> 00:40:45,360
+interpreted as the buffer size and the
+
+823
+00:40:43,650 --> 00:40:48,270
+buffer data will be sent back to the
+
+824
+00:40:45,360 --> 00:40:53,460
+caller and this effectively creates a
+
+825
+00:40:48,270 --> 00:40:56,580
+massive heap in Foley primitive and last
+
+826
+00:40:53,460 --> 00:40:59,190
+but not least there's IO p.m. hid event
+
+827
+00:40:56,580 --> 00:41:01,830
+copy history
+
+828
+00:40:59,190 --> 00:41:04,110
+if the CF properly lists create data
+
+829
+00:41:01,830 --> 00:41:07,650
+function fails for data stored in the
+
+830
+00:41:04,110 --> 00:41:10,010
+global variable G hid event history then
+
+831
+00:41:07,650 --> 00:41:12,600
+it returns current success without
+
+832
+00:41:10,010 --> 00:41:15,810
+initializing array data in array data
+
+833
+00:41:12,600 --> 00:41:19,200
+Lin and because the make definition
+
+834
+00:41:15,810 --> 00:41:21,900
+specifies the dialogue flag for this
+
+835
+00:41:19,200 --> 00:41:24,779
+function the the make function is going
+
+836
+00:41:21,900 --> 00:41:27,780
+to deallocate the output buffer array
+
+837
+00:41:24,780 --> 00:41:30,390
+data after it returns and this
+
+838
+00:41:27,780 --> 00:41:34,380
+essentially creates an arbitrary free
+
+839
+00:41:30,390 --> 00:41:36,450
+primitive so how do i omit Ghanim its
+
+840
+00:41:34,380 --> 00:41:40,050
+exploit this just to give a brief
+
+841
+00:41:36,450 --> 00:41:43,259
+overview first you spray a lot of large
+
+842
+00:41:40,050 --> 00:41:45,660
+core foundation objects and then using
+
+843
+00:41:43,260 --> 00:41:48,150
+the info leak leak one of the core
+
+844
+00:41:45,660 --> 00:41:50,640
+foundation objects address and then use
+
+845
+00:41:48,150 --> 00:41:52,830
+the arbitrary free bug to deallocate
+
+846
+00:41:50,640 --> 00:41:55,589
+the leaked core foundation object and
+
+847
+00:41:52,830 --> 00:41:57,990
+afterwards refill the arbitrary freed
+
+848
+00:41:55,590 --> 00:42:00,119
+memory with page aligned and carefully
+
+849
+00:41:57,990 --> 00:42:02,729
+crafted payload that holds the job key
+
+850
+00:42:00,119 --> 00:42:05,760
+and finally call a make function that
+
+851
+00:42:02,730 --> 00:42:07,920
+calls CF really release on the refilled
+
+852
+00:42:05,760 --> 00:42:09,660
+memory interpreting it as a quarry
+
+853
+00:42:07,920 --> 00:42:12,990
+foundation that object which eventually
+
+854
+00:42:09,660 --> 00:42:15,118
+kick-starts the job chain and the exact
+
+855
+00:42:12,990 --> 00:42:16,890
+details of the exploit can be found in
+
+856
+00:42:15,119 --> 00:42:19,950
+the full-blown exploit that was
+
+857
+00:42:16,890 --> 00:42:22,470
+published by Mohammed Ghana it's worth
+
+858
+00:42:19,950 --> 00:42:24,990
+reading it's pretty cool and now let's
+
+859
+00:42:22,470 --> 00:42:32,399
+find a variant of this exact same bug
+
+860
+00:42:24,990 --> 00:42:34,919
+pattern in the same power D Damon first
+
+861
+00:42:32,400 --> 00:42:37,500
+the MiG arguments must include the
+
+862
+00:42:34,920 --> 00:42:40,290
+output buffer and the function must also
+
+863
+00:42:37,500 --> 00:42:42,200
+not initialize the up these output
+
+864
+00:42:40,290 --> 00:42:45,600
+buffers in the beginning of the function
+
+865
+00:42:42,200 --> 00:42:46,410
+also the MiG definition must be specify
+
+866
+00:42:45,600 --> 00:42:49,160
+the DL
+
+867
+00:42:46,410 --> 00:42:53,190
+a flag in the function definition and
+
+868
+00:42:49,160 --> 00:42:55,649
+next there must be a way to fast feel or
+
+869
+00:42:53,190 --> 00:42:58,950
+early return so the output buffer
+
+870
+00:42:55,650 --> 00:43:00,720
+variables are not initialized to some
+
+871
+00:42:58,950 --> 00:43:03,180
+kind of value in the middle of the
+
+872
+00:43:00,720 --> 00:43:06,000
+function and finally the function must
+
+873
+00:43:03,180 --> 00:43:07,618
+return current success but all Mik
+
+874
+00:43:06,000 --> 00:43:11,010
+functions in the parody game of
+
+875
+00:43:07,619 --> 00:43:13,200
+returning current success and all of
+
+876
+00:43:11,010 --> 00:43:16,079
+this might seem very tight restrictions
+
+877
+00:43:13,200 --> 00:43:19,859
+because all of these conditions must be
+
+878
+00:43:16,079 --> 00:43:22,109
+satisfied all at once but it just so
+
+879
+00:43:19,859 --> 00:43:25,259
+happens that 100 lines below the
+
+880
+00:43:22,109 --> 00:43:28,020
+vulnerable IOPS update power source
+
+881
+00:43:25,260 --> 00:43:31,260
+function there is a function called IOPS
+
+882
+00:43:28,020 --> 00:43:34,589
+copy power sources info that actually
+
+883
+00:43:31,260 --> 00:43:36,900
+matches all of those conditions so let's
+
+884
+00:43:34,589 --> 00:43:40,890
+dig into this function to find out if
+
+885
+00:43:36,900 --> 00:43:43,530
+it's exploitable it first creates a new
+
+886
+00:43:40,890 --> 00:43:47,848
+core foundation array and iterates over
+
+887
+00:43:43,530 --> 00:43:52,559
+the GPS list array copying over the
+
+888
+00:43:47,849 --> 00:43:54,299
+description field into the array then it
+
+889
+00:43:52,559 --> 00:43:57,049
+creates the core foundation property
+
+890
+00:43:54,299 --> 00:43:59,700
+list based on the new array contents if
+
+891
+00:43:57,049 --> 00:44:02,309
+the CF property lists create data
+
+892
+00:43:59,700 --> 00:44:04,558
+function somehow fails then it's not
+
+893
+00:44:02,309 --> 00:44:07,650
+going to initialize the output buffers
+
+894
+00:44:04,559 --> 00:44:11,910
+PS PTR and simply returns current
+
+895
+00:44:07,650 --> 00:44:14,520
+success and because the a lock flag is
+
+896
+00:44:11,910 --> 00:44:16,950
+specified in the MiG definition meg will
+
+897
+00:44:14,520 --> 00:44:20,339
+be responsible of automatically d
+
+898
+00:44:16,950 --> 00:44:22,319
+allocating the buffer upon return so the
+
+899
+00:44:20,339 --> 00:44:25,440
+conditions to trigger this bug is to
+
+900
+00:44:22,319 --> 00:44:28,140
+fill in the GPS list array with attacker
+
+901
+00:44:25,440 --> 00:44:31,589
+controlled objects and somehow make the
+
+902
+00:44:28,140 --> 00:44:35,578
+CF property list create data fail but
+
+903
+00:44:31,589 --> 00:44:37,859
+where does GPS list come from it comes
+
+904
+00:44:35,579 --> 00:44:40,380
+from another make function called IOPS
+
+905
+00:44:37,859 --> 00:44:42,900
+update PS power source and this function
+
+906
+00:44:40,380 --> 00:44:45,359
+essentially DC realizes attacker
+
+907
+00:44:42,900 --> 00:44:48,210
+controlled data using the i/o CF
+
+908
+00:44:45,359 --> 00:44:51,690
+uncivilised function and stores it into
+
+909
+00:44:48,210 --> 00:44:53,880
+the description field of the GPS list
+
+910
+00:44:51,690 --> 00:44:58,109
+array that I mentioned earlier in the
+
+911
+00:44:53,880 --> 00:44:59,650
+slide so that solves problem 1 but what
+
+912
+00:44:58,109 --> 00:45:02,799
+about problem 2
+
+913
+00:44:59,650 --> 00:45:06,550
+the problem is that the uncivilized
+
+914
+00:45:02,800 --> 00:45:10,750
+object that comes from IO CF uncivilized
+
+915
+00:45:06,550 --> 00:45:13,660
+is passed on directly into CF property
+
+916
+00:45:10,750 --> 00:45:16,690
+lists create data and both functions are
+
+917
+00:45:13,660 --> 00:45:19,990
+meant to be dealing with the same family
+
+918
+00:45:16,690 --> 00:45:22,060
+of core foundation objects so there
+
+919
+00:45:19,990 --> 00:45:24,339
+doesn't seem to be any chance for one
+
+920
+00:45:22,060 --> 00:45:27,150
+function to succeed and another to fail
+
+921
+00:45:24,340 --> 00:45:30,450
+when both functions are essentially just
+
+922
+00:45:27,150 --> 00:45:33,070
+processing the same family of objects
+
+923
+00:45:30,450 --> 00:45:35,350
+but it's always good to verify in
+
+924
+00:45:33,070 --> 00:45:38,440
+assumption if it's true even if it's
+
+925
+00:45:35,350 --> 00:45:40,690
+strongly suggest otherwise so looking at
+
+926
+00:45:38,440 --> 00:45:42,820
+the D serialization of Io CF
+
+927
+00:45:40,690 --> 00:45:44,170
+unsterilized you can see that at DC
+
+928
+00:45:42,820 --> 00:45:46,900
+realizes several types
+
+929
+00:45:44,170 --> 00:45:49,320
+corefoundation objects but you can also
+
+930
+00:45:46,900 --> 00:45:52,930
+notice that it's not fully inclusive
+
+931
+00:45:49,320 --> 00:45:56,650
+meaning that it only includes a subset
+
+932
+00:45:52,930 --> 00:45:59,319
+of the core foundation objects so now
+
+933
+00:45:56,650 --> 00:46:01,750
+this is a function CF property lists
+
+934
+00:45:59,320 --> 00:46:03,790
+create data this function eventually
+
+935
+00:46:01,750 --> 00:46:07,150
+calls through a chain of function calls
+
+936
+00:46:03,790 --> 00:46:10,090
+until it reaches CF binary plist right
+
+937
+00:46:07,150 --> 00:46:12,970
+which accepts these kind of objects if
+
+938
+00:46:10,090 --> 00:46:15,790
+you draw a set diagram of the two
+
+939
+00:46:12,970 --> 00:46:18,669
+functions you can realize there's
+
+940
+00:46:15,790 --> 00:46:21,910
+exactly one pour found in foundation
+
+941
+00:46:18,670 --> 00:46:24,700
+object that's unsee realizable in IO C
+
+942
+00:46:21,910 --> 00:46:27,580
+if uncie realized but not processed by
+
+943
+00:46:24,700 --> 00:46:29,950
+CF binary PP less right which is a core
+
+944
+00:46:27,580 --> 00:46:34,450
+foundation set object on the leftmost
+
+945
+00:46:29,950 --> 00:46:36,460
+side so now the answer is clear the
+
+946
+00:46:34,450 --> 00:46:38,980
+attacker has to include a single core
+
+947
+00:46:36,460 --> 00:46:42,430
+foundation set object in order to make
+
+948
+00:46:38,980 --> 00:46:46,210
+IO CF unsterilized succeed and CF
+
+949
+00:46:42,430 --> 00:46:49,270
+property lists create data fail and the
+
+950
+00:46:46,210 --> 00:46:51,340
+end result is another arbitrary free bug
+
+951
+00:46:49,270 --> 00:46:54,070
+in the same daemon that is exactly the
+
+952
+00:46:51,340 --> 00:46:57,820
+same bug pattern that Mohammad Ghanim
+
+953
+00:46:54,070 --> 00:46:59,860
+found and exploited unfortunately at
+
+954
+00:46:57,820 --> 00:47:02,950
+some point Apple eventually demolished
+
+955
+00:46:59,860 --> 00:47:06,580
+all of these bugs in the power D with a
+
+956
+00:47:02,950 --> 00:47:08,950
+three liner patch what Apple did is they
+
+957
+00:47:06,580 --> 00:47:12,069
+basically wiped the entire output buffer
+
+958
+00:47:08,950 --> 00:47:12,970
+with zero so before passing it down to
+
+959
+00:47:12,070 --> 00:47:16,240
+the
+
+960
+00:47:12,970 --> 00:47:18,549
+Nik functions so yeah there goes all of
+
+961
+00:47:16,240 --> 00:47:22,569
+the initialized uninitialized variable
+
+962
+00:47:18,550 --> 00:47:25,690
+bugs in power D you can follow the trail
+
+963
+00:47:22,570 --> 00:47:27,940
+trails of Mohammed Ghana by looking at
+
+964
+00:47:25,690 --> 00:47:30,099
+the Apple advisories he was actually
+
+965
+00:47:27,940 --> 00:47:32,940
+going after a similar set of bugs in
+
+966
+00:47:30,099 --> 00:47:35,830
+another day mount called config D and
+
+967
+00:47:32,940 --> 00:47:37,720
+with a quick patch TIFF you can see that
+
+968
+00:47:35,830 --> 00:47:40,359
+he was basically looking for the same
+
+969
+00:47:37,720 --> 00:47:43,480
+set of uninitialized app output variable
+
+970
+00:47:40,359 --> 00:47:45,640
+bugs in the config D Damon and these
+
+971
+00:47:43,480 --> 00:47:48,369
+bugs were also interesting because they
+
+972
+00:47:45,640 --> 00:47:50,890
+opened a potential Avenue for port
+
+973
+00:47:48,369 --> 00:47:54,849
+replacement bugs but yeah they're all
+
+974
+00:47:50,890 --> 00:47:56,759
+patched now so yeah here are some some
+
+975
+00:47:54,849 --> 00:47:59,680
+of my thoughts on variant analysis
+
+976
+00:47:56,760 --> 00:48:03,369
+variance of existing bugs can live on
+
+977
+00:47:59,680 --> 00:48:06,640
+for several months or even years however
+
+978
+00:48:03,369 --> 00:48:09,010
+what collisions do happen very often so
+
+979
+00:48:06,640 --> 00:48:11,440
+you should brace yourself for the impact
+
+980
+00:48:09,010 --> 00:48:14,440
+and vendors seem to be doing it very
+
+981
+00:48:11,440 --> 00:48:17,200
+actively nowadays and the overhead for
+
+982
+00:48:14,440 --> 00:48:19,990
+finding bugs is relatedly small compared
+
+983
+00:48:17,200 --> 00:48:22,210
+to other pocketing methods and also if
+
+984
+00:48:19,990 --> 00:48:24,790
+there's a full-blown exploit for the
+
+985
+00:48:22,210 --> 00:48:28,089
+original bug then exploiting a new
+
+986
+00:48:24,790 --> 00:48:30,520
+variant of it is very trivial finally
+
+987
+00:48:28,089 --> 00:48:33,640
+variant analysis is not not only useful
+
+988
+00:48:30,520 --> 00:48:35,530
+in finding a similar bug variance but it
+
+989
+00:48:33,640 --> 00:48:38,259
+also helps in knowing where other
+
+990
+00:48:35,530 --> 00:48:45,849
+researchers are looking to find their
+
+991
+00:48:38,260 --> 00:48:49,150
+own set of bugs here are some sources
+
+992
+00:48:45,849 --> 00:48:52,080
+for variant analysis my most favorite
+
+993
+00:48:49,150 --> 00:48:54,310
+one is the project zero issue tracker
+
+994
+00:48:52,080 --> 00:48:57,730
+especially because they find a lot of
+
+995
+00:48:54,310 --> 00:49:00,759
+very unique bug patterns and almost
+
+996
+00:48:57,730 --> 00:49:03,790
+every bug comes with a POC of some form
+
+997
+00:49:00,760 --> 00:49:06,160
+or sometimes even a super detailed blog
+
+998
+00:49:03,790 --> 00:49:09,640
+post so it really helps in terms of
+
+999
+00:49:06,160 --> 00:49:12,819
+research and my next favorite one is the
+
+1000
+00:49:09,640 --> 00:49:15,700
+CGI advisories the descriptions give
+
+1001
+00:49:12,820 --> 00:49:18,730
+huge hints on where exactly the big bug
+
+1002
+00:49:15,700 --> 00:49:20,819
+exists they sometimes just throw out the
+
+1003
+00:49:18,730 --> 00:49:23,650
+function names and if you search for
+
+1004
+00:49:20,820 --> 00:49:25,720
+specific terms like pond tone you can
+
+1005
+00:49:23,650 --> 00:49:27,369
+get a glimpse of where other researchers
+
+1006
+00:49:25,720 --> 00:49:30,578
+were digging too
+
+1007
+00:49:27,369 --> 00:49:33,249
+find their set of exploitable bugs and I
+
+1008
+00:49:30,579 --> 00:49:36,009
+think recently the CDI published a bunch
+
+1009
+00:49:33,249 --> 00:49:40,118
+of interesting bugs for VirtualBox if
+
+1010
+00:49:36,009 --> 00:49:42,490
+I'm not mistaken and although not very
+
+1011
+00:49:40,119 --> 00:49:45,160
+descriptive and sometimes misleading
+
+1012
+00:49:42,490 --> 00:49:48,069
+vendor advisories sometimes help and
+
+1013
+00:49:45,160 --> 00:49:51,249
+some security patches are very hard to
+
+1014
+00:49:48,069 --> 00:49:52,960
+read heal or repetitive and dig out but
+
+1015
+00:49:51,249 --> 00:49:56,078
+for others if it doesn't take too long
+
+1016
+00:49:52,960 --> 00:49:58,569
+to find the root cause based on binary
+
+1017
+00:49:56,079 --> 00:50:01,299
+or source sniffing then it's definitely
+
+1018
+00:49:58,569 --> 00:50:04,538
+worth investing a little time and taking
+
+1019
+00:50:01,299 --> 00:50:06,700
+a glimpse at the patched bugs and blog
+
+1020
+00:50:04,539 --> 00:50:09,069
+posts also are very good sources for
+
+1021
+00:50:06,700 --> 00:50:12,700
+mining exploitable bug patterns or
+
+1022
+00:50:09,069 --> 00:50:15,910
+attack surfaces for this Chinese blog
+
+1023
+00:50:12,700 --> 00:50:18,669
+posts I barely know any Chinese or read
+
+1024
+00:50:15,910 --> 00:50:23,828
+Chinese but google translator is awesome
+
+1025
+00:50:18,670 --> 00:50:25,869
+and of course commits from open source
+
+1026
+00:50:23,829 --> 00:50:28,900
+projects like WebKit are worth reading
+
+1027
+00:50:25,869 --> 00:50:30,880
+and I do a quick skim on commits every
+
+1028
+00:50:28,900 --> 00:50:32,890
+morning just to see if there are any
+
+1029
+00:50:30,880 --> 00:50:36,730
+patches there are security issues that I
+
+1030
+00:50:32,890 --> 00:50:38,859
+can base my variant analysis on or if a
+
+1031
+00:50:36,730 --> 00:50:41,380
+new mitigation or in a new attack
+
+1032
+00:50:38,859 --> 00:50:44,650
+surface is being added to the code base
+
+1033
+00:50:41,380 --> 00:50:46,450
+and here are some questions I asked
+
+1034
+00:50:44,650 --> 00:50:49,180
+myself when I'm looking at other
+
+1035
+00:50:46,450 --> 00:50:51,399
+people's bugs I try to find out what the
+
+1036
+00:50:49,180 --> 00:50:54,519
+attack surface was for the bugs used in
+
+1037
+00:50:51,400 --> 00:50:57,309
+hacking competitions then I asked myself
+
+1038
+00:50:54,519 --> 00:51:00,069
+how would the bug finder would have
+
+1039
+00:50:57,309 --> 00:51:02,170
+found those bugs and I imagine if the
+
+1040
+00:51:00,069 --> 00:51:02,680
+bug would have been feasible to find was
+
+1041
+00:51:02,170 --> 00:51:07,900
+a fuzzer
+
+1042
+00:51:02,680 --> 00:51:10,390
+or if if if so then how the attacker
+
+1043
+00:51:07,900 --> 00:51:13,480
+would have designed his father to find
+
+1044
+00:51:10,390 --> 00:51:15,460
+this bug and if it isn't then if it
+
+1045
+00:51:13,480 --> 00:51:18,009
+would have been practical to find this
+
+1046
+00:51:15,460 --> 00:51:20,079
+bug only with pure source code auditing
+
+1047
+00:51:18,009 --> 00:51:21,519
+or reversing or if it would have been
+
+1048
+00:51:20,079 --> 00:51:24,460
+too complicated to do so
+
+1049
+00:51:21,519 --> 00:51:28,149
+hey or if it was just a variant of a
+
+1050
+00:51:24,460 --> 00:51:30,460
+known bug pattern or if it was already a
+
+1051
+00:51:28,150 --> 00:51:33,460
+known bug bug that hasn't been
+
+1052
+00:51:30,460 --> 00:51:37,680
+downstream by the vendors and so on like
+
+1053
+00:51:33,460 --> 00:51:40,810
+the recent mobile portal in 2090 and
+
+1054
+00:51:37,680 --> 00:51:44,259
+here's the next example of pong to own
+
+1055
+00:51:40,810 --> 00:51:46,630
+I think many people already read this
+
+1056
+00:51:44,260 --> 00:51:49,510
+excellent blog post from fall necks
+
+1057
+00:51:46,630 --> 00:51:51,720
+it explains an integer overflow that
+
+1058
+00:51:49,510 --> 00:51:54,880
+occurs in the array spread operation
+
+1059
+00:51:51,720 --> 00:51:58,569
+which was used to compromise the Safari
+
+1060
+00:51:54,880 --> 00:52:01,000
+Safari renderer in Ponton 2017 and right
+
+1061
+00:51:58,570 --> 00:52:03,940
+after reading this blog post if you
+
+1062
+00:52:01,000 --> 00:52:05,470
+asked this question to yourself what
+
+1063
+00:52:03,940 --> 00:52:07,990
+about the G code is it properly
+
+1064
+00:52:05,470 --> 00:52:11,680
+implemented in the check code then maybe
+
+1065
+00:52:07,990 --> 00:52:14,410
+maybe some some of the people would have
+
+1066
+00:52:11,680 --> 00:52:20,259
+found this bug that was used for 2000
+
+1067
+00:52:14,410 --> 00:52:22,990
+year 2019 version of Ponton so yeah
+
+1068
+00:52:20,260 --> 00:52:25,540
+finally I asked myself how would I have
+
+1069
+00:52:22,990 --> 00:52:27,819
+found the same set of bugs with my
+
+1070
+00:52:25,540 --> 00:52:30,720
+current skill set what would have been
+
+1071
+00:52:27,820 --> 00:52:33,580
+the most time wise feasible way and
+
+1072
+00:52:30,720 --> 00:52:35,649
+after doing some self-reflection I
+
+1073
+00:52:33,580 --> 00:52:37,720
+update my buck hunting strategies if
+
+1074
+00:52:35,650 --> 00:52:41,410
+there are any any areas for improvement
+
+1075
+00:52:37,720 --> 00:52:43,509
+and speaking of areas of improvement
+
+1076
+00:52:41,410 --> 00:52:46,420
+this presentation only scratched the
+
+1077
+00:52:43,510 --> 00:52:48,460
+surface of hunting for sandbox escape in
+
+1078
+00:52:46,420 --> 00:52:51,730
+my opinion for instance I only went
+
+1079
+00:52:48,460 --> 00:52:54,760
+through one open-source daemon that used
+
+1080
+00:52:51,730 --> 00:52:56,980
+used to have an uninitialized output
+
+1081
+00:52:54,760 --> 00:52:59,110
+buffer vulnerability the next obvious
+
+1082
+00:52:56,980 --> 00:53:01,300
+question would be what about closed
+
+1083
+00:52:59,110 --> 00:53:04,570
+source demons would they have the same
+
+1084
+00:53:01,300 --> 00:53:07,450
+bug pattern and also this talk only
+
+1085
+00:53:04,570 --> 00:53:10,090
+focused on legacy ipce des monts but
+
+1086
+00:53:07,450 --> 00:53:11,919
+other demons that use different IPC
+
+1087
+00:53:10,090 --> 00:53:15,610
+mechanisms is definitely worth checking
+
+1088
+00:53:11,920 --> 00:53:18,100
+out and also there are probably legacy
+
+1089
+00:53:15,610 --> 00:53:20,520
+IP jjigae mounts that only exist on iOS
+
+1090
+00:53:18,100 --> 00:53:23,529
+and those are definitely definitely
+
+1091
+00:53:20,520 --> 00:53:25,150
+interesting targets as well and finally
+
+1092
+00:53:23,530 --> 00:53:28,240
+you can see that I haven't even
+
+1093
+00:53:25,150 --> 00:53:30,960
+attempted to attach dynamics and
+
+1094
+00:53:28,240 --> 00:53:33,640
+sanitizers such as live gmail lock and
+
+1095
+00:53:30,960 --> 00:53:36,100
+attaching a sanitizer also gives a high
+
+1096
+00:53:33,640 --> 00:53:38,620
+return on investment so it's definitely
+
+1097
+00:53:36,100 --> 00:53:42,430
+worth it's an avenue worth checking out
+
+1098
+00:53:38,620 --> 00:53:44,290
+and yeah I think I'm running out of time
+
+1099
+00:53:42,430 --> 00:53:46,480
+yet I'll just go through this really
+
+1100
+00:53:44,290 --> 00:53:49,990
+quickly and this is my final comments on
+
+1101
+00:53:46,480 --> 00:53:52,810
+variant analysis it's definitely a lower
+
+1102
+00:53:49,990 --> 00:53:53,990
+entry point for bug hunting basically
+
+1103
+00:53:52,810 --> 00:53:56,750
+you just have to
+
+1104
+00:53:53,990 --> 00:53:59,359
+understand why the book is occurring and
+
+1105
+00:53:56,750 --> 00:54:02,630
+with a trained eye search for that exact
+
+1106
+00:53:59,360 --> 00:54:04,430
+same bug pattern however like I
+
+1107
+00:54:02,630 --> 00:54:07,220
+mentioned previously the bugs are very
+
+1108
+00:54:04,430 --> 00:54:08,839
+short-lived and in my experience I mean
+
+1109
+00:54:07,220 --> 00:54:12,109
+it may be different for everyone else
+
+1110
+00:54:08,840 --> 00:54:14,180
+but maybe like 20 to 30 percent of bugs
+
+1111
+00:54:12,110 --> 00:54:16,820
+are very long-lived and the rest die
+
+1112
+00:54:14,180 --> 00:54:18,859
+pretty quickly and I believe this
+
+1113
+00:54:16,820 --> 00:54:21,530
+percentage is gonna get lower and lower
+
+1114
+00:54:18,860 --> 00:54:23,450
+as time passes because variant analysis
+
+1115
+00:54:21,530 --> 00:54:28,340
+seems to be gaining a lot more attention
+
+1116
+00:54:23,450 --> 00:54:30,770
+recently thanks to Simon and QL and on
+
+1117
+00:54:28,340 --> 00:54:34,760
+the bug collision side I think the key
+
+1118
+00:54:30,770 --> 00:54:37,790
+is to I mean the only way is to not get
+
+1119
+00:54:34,760 --> 00:54:40,610
+too discouraged if it happens because it
+
+1120
+00:54:37,790 --> 00:54:43,460
+will happen based on my personal
+
+1121
+00:54:40,610 --> 00:54:46,490
+experience and finally variant analysis
+
+1122
+00:54:43,460 --> 00:54:49,790
+is good if you're relatively new to the
+
+1123
+00:54:46,490 --> 00:54:52,609
+bug hunting scene because if you have
+
+1124
+00:54:49,790 --> 00:54:54,920
+this fixed goal that that is a strong
+
+1125
+00:54:52,610 --> 00:54:57,220
+motivation factor which enables you to
+
+1126
+00:54:54,920 --> 00:54:59,810
+dig deeper and deeper into the target
+
+1127
+00:54:57,220 --> 00:55:01,850
+and at some point you'll stack enough
+
+1128
+00:54:59,810 --> 00:55:03,920
+knowledge up to the point where you
+
+1129
+00:55:01,850 --> 00:55:06,020
+don't have to rely on other people's
+
+1130
+00:55:03,920 --> 00:55:09,830
+bugs and you can find quality bugs
+
+1131
+00:55:06,020 --> 00:55:11,660
+entirely on your own and yeah finally
+
+1132
+00:55:09,830 --> 00:55:13,700
+the conclusion personally I think
+
+1133
+00:55:11,660 --> 00:55:16,069
+coverage sky def fussing hasn't
+
+1134
+00:55:13,700 --> 00:55:18,470
+flourished in Mac OS as much as other
+
+1135
+00:55:16,070 --> 00:55:21,530
+operating systems so there's still a lot
+
+1136
+00:55:18,470 --> 00:55:24,020
+of area for improvement and variant
+
+1137
+00:55:21,530 --> 00:55:27,890
+analysis is a powerful and relatedly
+
+1138
+00:55:24,020 --> 00:55:29,950
+easy way to find exploitable bugs but be
+
+1139
+00:55:27,890 --> 00:55:32,299
+prepared for about collisions and
+
+1140
+00:55:29,950 --> 00:55:34,790
+finally I think I'm repeating myself
+
+1141
+00:55:32,300 --> 00:55:38,090
+over and over but studying patched bugs
+
+1142
+00:55:34,790 --> 00:55:41,000
+helps a lot because it's it not only
+
+1143
+00:55:38,090 --> 00:55:42,890
+reveals the exploitable bug pattern but
+
+1144
+00:55:41,000 --> 00:55:45,619
+you also get to know the attack surface
+
+1145
+00:55:42,890 --> 00:55:47,839
+that you previously didn't know which is
+
+1146
+00:55:45,619 --> 00:55:51,290
+a potential source of even more books
+
+1147
+00:55:47,840 --> 00:55:53,140
+and yeah that concludes my presentation
+
+1148
+00:55:51,290 --> 00:56:00,279
+thank you for listening
+
+1149
+00:55:53,140 --> 00:56:07,390
+[Applause]
+
+1150
+00:56:00,280 --> 00:56:10,180
+I think there's like five we got three
+
+1151
+00:56:07,390 --> 00:56:11,740
+minutes of questions or otherwise you
+
+1152
+00:56:10,180 --> 00:56:13,000
+can just come during the coffee break I
+
+1153
+00:56:11,740 --> 00:56:19,689
+guess so
+
+1154
+00:56:13,000 --> 00:56:25,180
+do we have questions okay everybody
+
+1155
+00:56:19,690 --> 00:56:26,950
+wants coffee seems to be so okay then
+
+1156
+00:56:25,180 --> 00:56:30,270
+wrap it up and if you come up with a
+
+1157
+00:56:26,950 --> 00:56:33,368
+question speak personally talk
+
+1158
+00:56:30,270 --> 00:56:33,369
+[Applause]
+

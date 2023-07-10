@@ -1,0 +1,564 @@
+﻿1
+00:00:03,973 --> 00:00:04,817
+Good time of day,
+
+2
+00:00:05,057 --> 00:00:08,160
+ my name is Dan Frumin and 
+I would like to present you our work 
+
+3
+00:00:08,160 --> 00:00:12,594
+on compositional reasoning about non-interference for
+fine-grained concurrent programs.
+
+4
+00:00:13,093 --> 00:00:16,142
+This is joint work with Robbert Krebbers and Lars Birkedal.
+
+5
+00:00:17,608 --> 00:00:21,751
+Before we go forward, let me briefly explain what kind of problem we are trying to tackle here.
+
+6
+00:00:22,400 --> 00:00:24,887
+The question that we are trying to answer
+is this:
+
+7
+00:00:25,208 --> 00:00:30,959
+how to reason compositionally about non-interference of
+fine-grained concurrent programs in a foundational manner?
+
+8
+00:00:31,875 --> 00:00:35,262
+There is a lot of jargon in this sentence, so let me unpack it a bit.
+
+9
+00:00:36,088 --> 00:00:42,622
+By non-interference we mean a specific notion of security, that guarantees that a program does not leak secret information, 
+
+10
+00:00:42,942 --> 00:00:44,620
+as we will detail later.
+
+11
+00:00:45,733 --> 00:00:50,471
+We are considering non-interference specifically for fine-grained concurrent programs.
+
+12
+00:00:50,600 --> 00:01:01,580
+that is, concurrent programs that use non-blocking atomic instructions, such as compare-and-set and fetch-and-add, instead of less granular synchronization primitives like locks.
+
+13
+00:01:02,540 --> 00:01:11,640
+We want to reason about non-interference of such programs in a compositional way. For example, if we have a library and a client using this library,
+
+14
+00:01:12,020 --> 00:01:22,259
+what do we need to know about both of these components separately in order to conclude that their composition is secure? Can we prove non-interference (possibly under some conditions)
+
+15
+00:01:22,380 --> 00:01:26,560
+for the library and for the client separately, and then compose the proofs together?
+
+16
+00:01:27,360 --> 00:01:31,960
+Finally, we want to take a "foundational" approach to our non-interference proofs:
+
+17
+00:01:32,080 --> 00:01:39,820
+with all the notions formulated against some agreed-upon operational semantics of a programming language, formalized in the Coq proof assistant.
+
+18
+00:01:41,500 --> 00:01:48,900
+Let us talk a little bit about what we mean by non-interference, since it is a notion that we heavily rely on.
+
+19
+00:01:49,080 --> 00:01:57,220
+Non-interference formalizes a notion of security for a computer program. We start with some program `e' that operates on sensitive data.
+
+20
+00:01:57,340 --> 00:02:04,040
+Let us suppose that the data is stored in the variable `secret'. We say that the program `e' satisfies non-interference if 
+
+21
+00:02:04,200 --> 00:02:09,120
+if varying the secret data in the program does not lead to observably different behavior.
+
+22
+00:02:09,240 --> 00:02:19,400
+So, an attacker who observes the behavior of `e' from the outside, couldn't tell the difference between `e' operating on the secret data being an integer 0 or an integer 1.
+
+23
+00:02:20,020 --> 00:02:27,720
+Intuitively, this means that the secret data is not leaked to the attacker. For those who are familiar with non-interference, 
+
+24
+00:02:27,720 --> 00:02:34,460
+the specific notion of observational equivalence that we use in this work is strong-low bisimulation of Sabelfeld and Sands.
+
+25
+00:02:35,200 --> 00:02:39,739
+Here are some examples of programs that do NOT satisfy non-interference.
+
+26
+00:02:39,900 --> 00:02:45,700
+As we can see, the first program leaks the secret information by directly printing it onto the screen.
+
+27
+00:02:45,700 --> 00:02:53,359
+This is an example of a direct information leak. The second program, on the other hand, exhibits an indirect information leak:
+
+28
+00:02:53,480 --> 00:02:58,579
+depending on the value of the secret data the program can output different numbers to the screen.
+
+29
+00:02:59,120 --> 00:03:06,360
+The third programs leaks information through the termination behavior. On the face value, such termination leaks might 
+
+30
+00:03:06,360 --> 00:03:12,300
+not provide much information to the attacker, but their effect can be aggravated in presence of concurrency.
+
+31
+00:03:13,080 --> 00:03:20,880
+Determining whether a program satisfies non-interference can be quite complex, especially in the presence of  programming language features
+
+32
+00:03:20,880 --> 00:03:27,820
+like concurrency. Let me try to illustrate this with the following running example, written in an OCaml-style language.
+
+33
+00:03:28,480 --> 00:03:34,260
+At the beginning, we create a new record `r'. It contains two mutable fields:
+
+34
+00:03:34,260 --> 00:03:41,560
+the field `data', which stores an integer, and the field `is_classified' which stores a boolean.
+
+35
+00:03:41,560 --> 00:03:48,960
+Initially the `data' field contains some secret value. And the idea is that the `is_classified' bit tells us
+
+36
+00:03:48,960 --> 00:03:57,760
+whether the information stored in the `data' field is actually secret or not. With this record `r' initialized, we run the following two threads in parallel.
+
+37
+00:03:57,760 --> 00:04:09,160
+The rightmost thread does the following: it first overwrites the secret information in the `data' field of `r' with some junk, and then it sets the `is_classified' bit to false.
+
+38
+00:04:09,460 --> 00:04:18,880
+The thread on the left acts as follows: it spins in an infinite loop, and in each iteration it checks whether the is_classified bit is set to false.
+
+39
+00:04:18,880 --> 00:04:23,700
+If that is the case, the thread prints the value of `r.data' onto the screen.
+
+40
+00:04:23,700 --> 00:04:27,960
+This program is secure, it does satisfy non-interference.
+
+41
+00:04:27,960 --> 00:04:34,359
+To see, informally, note the following two facts: first, if the `is_classified` bit is set to false,
+
+42
+00:04:34,360 --> 00:04:41,920
+than the information stored in `r.data` cannot be secret. Secondly, once the secret data
+
+43
+00:04:41,920 --> 00:04:46,120
+is overwritten, the `r.data` field does not get assigned secret information ever again.
+
+44
+00:04:46,560 --> 00:04:54,220
+Both of those facts are quite important. Note that, for example, if we switch around the two lines in the rightmost thread,
+
+45
+00:04:54,220 --> 00:05:05,540
+the program violates the first condition and becomes insecure. This is because the right thread can be interrputed in-between the two assignments,
+
+46
+00:05:05,540 --> 00:05:11,940
+leaving the record `r' in an "incoherent" state. The left thread then can observe this "incoherent" state,
+
+47
+00:05:11,940 --> 00:05:17,180
+reading the value of `is_classified', and drawing incorrect conclusions from that.
+
+48
+00:05:18,120 --> 00:05:24,800
+What I've shown here is but an informal argument. How do we make it precise and establish non-interference formally?
+
+49
+00:05:24,800 --> 00:05:29,740
+Or, even better, can we establish non-interference of this program compositionally?
+
+50
+00:05:29,940 --> 00:05:37,540
+That is, can we identify what do we need to know about and establish of the sub-program (the left and the right threads),
+
+51
+00:05:37,680 --> 00:05:43,420
+to derive non-interference of the program as a whole? This is what we mean by compositional non-interference.
+
+52
+00:05:44,040 --> 00:05:49,480
+Alright, let us take a set back and talk about how we can enforce non-interference.
+
+53
+00:05:49,980 --> 00:05:55,360
+One of the most popular ways of establishing compositional non-interference is, at least on the 
+
+54
+00:05:55,380 --> 00:05:59,900
+level of programming languages, is by using a type system. Typically, you would have 
+
+55
+00:05:59,900 --> 00:06:07,239
+a type system in which types are annotated with sensitivity labels. `H' for high sensitivity (for secret data),
+
+56
+00:06:07,240 --> 00:06:12,920
+and `L` for low sensitivity (for public data). In the typing judgment on the screen, we see a program `e`
+
+57
+00:06:12,920 --> 00:06:19,340
+that returns a low-sensitivity integer. It operates on the variable `x', also a low-sensitivity integer,
+
+58
+00:06:19,340 --> 00:06:27,859
+and the variable `y', which contains potentially secret data, as determined by the sensitivity label `H'.
+
+59
+00:06:27,860 --> 00:06:32,620
+Type systems are popular because they are fundamentally compositional in their nature, 
+
+60
+00:06:32,620 --> 00:06:39,460
+and can be extended with various programming language features -- although not always in the most obvious or straightforward way.
+
+61
+00:06:39,460 --> 00:06:47,120
+On the other hand type systems are too weak, when it comes to programs where non-interference depends on functional correctness properties 
+
+62
+00:06:47,120 --> 00:06:55,620
+and some protocols on data strucutres, as was in the previous example. This in particular means that a conventional type system
+
+63
+00:06:55,620 --> 00:07:03,100
+would not be strong enough to verify non-interference of the previous example with the record `r' and two threads.
+
+64
+00:07:03,100 --> 00:07:08,480
+That is, the typing judgment for this program is not going to be derivable.
+
+65
+00:07:08,480 --> 00:07:14,300
+In order to account for such programs we use a technique called "semantic typing".
+
+66
+00:07:14,300 --> 00:07:23,480
+The idea behind it is as follows. The job of the type system is to delineate between programs with "good" behavior and "bad" behavior.
+
+67
+00:07:23,480 --> 00:07:30,480
+However, a type system is described by a set of inference rules, usually in such a way that type checking is decidable.
+
+68
+00:07:30,480 --> 00:07:37,340
+So, a priori, type checking cannot be used to check behavioral properties in all the cases.
+
+69
+00:07:37,700 --> 00:07:43,260
+Now, under semantic typing, instead of using inference rules, we take a typing judgment
+
+70
+00:07:43,260 --> 00:07:50,560
+and we generate a predicate, which descrbies what kind of behavior the typing is actually supposed to delineate.
+
+71
+00:07:50,720 --> 00:07:59,480
+Then, instead of checking that the program `e' satisfies some typing judgment, we instead verify that the
+
+72
+00:07:59,480 --> 00:08:06,860
+generated predicate holds for the program `e'. This allows us to leave the world of typing derivations and use the whole power of mathematical logic.
+
+73
+00:08:06,860 --> 00:08:13,820
+For this approach to work we need to ensure that all the typeable programs do indeed satisfy the generated predicates.
+
+74
+00:08:14,540 --> 00:08:22,160
+This approach is great for reasoning about combinations of typed and untyped code. If our program consists of both, then we 
+
+75
+00:08:22,160 --> 00:08:27,900
+can simply typecheck the typed part, and separately verify the untyped part of the program.
+
+76
+00:08:28,200 --> 00:08:34,600
+In fact, this approach has been previously successfully applied in the context of the type system for the Rust programming language.
+
+77
+00:08:34,600 --> 00:08:43,460
+(in the RustBelt project). There, the type system guarantees the safety of the program, and the generated contracts were called "safety contracts".
+
+78
+00:08:43,460 --> 00:08:50,180
+In this work we instead consider "security contracts", which gurantee not only safety, but also non-interference.
+
+79
+00:08:50,860 --> 00:09:01,280
+In the modern approach (such as the one used in the RustBelt project), the safety contracts are 
+
+80
+00:09:01,280 --> 00:09:04,500
+written in Hoare logic. The typing judgment gets translated into a specific Hoare triple.
+
+81
+00:09:04,500 --> 00:09:11,960
+This works quite well, as Hoare logic is tailored towards proving safety. In our work we introduce
+
+82
+00:09:11,960 --> 00:09:16,880
+another program logic, which we call SeLoC, and which is aimed at proving non-interference.
+
+83
+00:09:17,820 --> 00:09:24,680
+The key idea behind SeLoC is to internalize the notion of a strong-low bisimulation inside the logic.
+
+84
+00:09:25,120 --> 00:09:30,500
+So, instead of Hoare triples we have propositions of this shape, 
+
+85
+00:09:30,500 --> 00:09:34,920
+which we call "double weakest precondition", or DWP for short.
+
+86
+00:09:35,240 --> 00:09:41,200
+Intuitively, this proposition says that `e1' and `e2' are in some sort of bisimulation, and 
+
+87
+00:09:41,200 --> 00:09:46,840
+if they terminate with some results, then these results satisfy the predicate Phi.
+
+88
+00:09:47,320 --> 00:09:54,100
+One way to think about it is that `e1' and `e2' are essentially the same program but with varied secret input.
+
+89
+00:09:54,440 --> 00:10:00,300
+And the double weakest precondition ensures that they produce the same observable behavior.
+
+90
+00:10:01,060 --> 00:10:04,400
+As such, we have the following soundness theorem:
+
+91
+00:10:04,400 --> 00:10:08,640
+Suppose that we have a program `e' with a secret variable named "secret".
+
+92
+00:10:08,880 --> 00:10:17,620
+We then take this program `e' and produce two other programs by replacing  the secret in `e' variable with values `h1' and `h2', respectively.
+
+93
+00:10:17,620 --> 00:10:21,020
+(where `h1' and `h2' are arbitrary values).
+
+94
+00:10:21,240 --> 00:10:26,200
+We then ask that the two resulting programs are related by DWP,
+
+95
+00:10:26,200 --> 00:10:34,880
+In the postcondition we further that the resulting values `v1' (from the first program) and `v2' (from the second program) are in fact equal.
+
+96
+00:10:35,320 --> 00:10:42,020
+If that holds, if we can derive this proposition in SeLoC, then we know that the program `e' satisfies non-interference.
+
+97
+00:10:44,420 --> 00:10:51,620
+Another imporant ingredient in SeLoC  is a mechanism for defining and enforcing protocols on programs and data structures.
+
+98
+00:10:51,620 --> 00:10:57,520
+As we've mentioned SeLoC is a program logic, specifically, it is a concurrent separation logic.
+
+99
+00:10:57,520 --> 00:11:04,640
+Concurrent separation logic is an extension of Hoare logic geared towards reasoning about concurrent and stateful programs.
+
+100
+00:11:05,140 --> 00:11:13,040
+We build SeLoC on top of the concurrent separation logic framework Iris, and as such, we inherit useful features like
+
+101
+00:11:13,040 --> 00:11:20,760
+ invariants and custom ghost state, which are crucial for reasoning about concurrent programs with custom protocols on data structures.
+
+102
+00:11:20,940 --> 00:11:27,920
+I will not go into the details of this, but I would rather like to illustrate this on our example.
+
+103
+00:11:28,220 --> 00:11:34,120
+Recall this program from before, with the record `r' and two threads operating on this record.
+
+104
+00:11:34,440 --> 00:11:42,060
+We are going to formalize the protocol on the record `r' as a transition system containing three states, corresponding to
+
+105
+00:11:42,060 --> 00:11:49,160
+how the record `r' evolves. In a way, this transition system tells us the life story of the record `r'.
+
+106
+00:11:49,160 --> 00:11:52,900
+Initiallly, `r' is in the Classified state, meaning that
+
+107
+00:11:52,900 --> 00:11:56,880
+the `is_classified' bit is set to `true' , and the `data' field contains
+
+108
+00:11:56,940 --> 00:11:58,900
+sensitive information.
+
+109
+00:11:58,900 --> 00:12:01,600
+Let us first look at the rightmost thread.
+
+110
+00:12:01,820 --> 00:12:05,500
+The first thing we do in the right thread is overwrite the `data' field
+
+111
+00:12:05,500 --> 00:12:09,680
+This moves the transition system into the Intermediate state.
+
+112
+00:12:09,680 --> 00:12:13,459
+Meaning that the `is_classified' bit is still set to `true', but
+
+113
+00:12:13,460 --> 00:12:18,320
+the `r.data' field does not contain sensitive information.
+
+114
+00:12:19,880 --> 00:12:23,880
+Then, the program sets the `is_classified' bit to `false'.
+
+115
+00:12:23,880 --> 00:12:28,800
+This moves the transition system into the final state -- Declassified.
+
+116
+00:12:29,240 --> 00:12:34,860
+So, the rightmost thread evolves the reference `r' in accordance with the protocol.
+
+117
+00:12:35,300 --> 00:12:41,459
+Now, let us see how the leftmost thread can rely on the protocol in order to show non-interference.
+
+118
+00:12:42,020 --> 00:12:48,380
+First, when we check the `is_classified' bit, and it is set to `false', 
+
+119
+00:12:48,380 --> 00:12:51,340
+that is, we are actually going to take the 'then'-branch,
+
+120
+00:12:51,340 --> 00:12:55,240
+we know that the system has to be in the Declassified state, 
+
+121
+00:12:55,240 --> 00:12:58,860
+because that is the only state in which the flag can be set to `false'.
+
+122
+00:12:59,680 --> 00:13:04,099
+Then, when we reach the output command, we know
+
+123
+00:13:04,100 --> 00:13:06,700
+that the system still has to remain in the Declassified state,
+
+124
+00:13:06,700 --> 00:13:09,880
+because the state does not have any transitions out from it.
+
+125
+00:13:09,880 --> 00:13:13,700
+So, that means that the record `r' could not have evolved into
+
+126
+00:13:13,700 --> 00:13:16,240
+a different state inbetween those two operations.
+
+127
+00:13:16,740 --> 00:13:20,740
+So, whatever is stored in the `r.data' field is not sensitive
+
+128
+00:13:20,740 --> 00:13:22,740
+and we can output it to the screen.
+
+129
+00:13:23,460 --> 00:13:28,300
+Now, I am not going to show you details on how this protocol is actually encoded in the logic, 
+
+130
+00:13:28,300 --> 00:13:32,540
+but I just wanted to show you that it is indeed possible to do so.
+
+131
+00:13:32,560 --> 00:13:37,319
+And there is a semi-systematic way of encoding protocols and transition systems like this.
+
+132
+00:13:37,340 --> 00:13:39,720
+Please see the paper for more details.
+
+133
+00:13:40,800 --> 00:13:44,780
+So, in conclusion, we have presented SeLoC --
+
+134
+00:13:44,780 --> 00:13:48,199
+a novel relational separation logic for proving non-interference
+
+135
+00:13:48,200 --> 00:13:50,200
+of fine-grained concurrent programs.
+
+136
+00:13:50,380 --> 00:13:56,460
+To our knowledge, it is the first program logic to tackle non-interference in the context of fine-grained concurrency.
+
+137
+00:13:56,660 --> 00:14:05,740
+It is fully formalized in the Coq proof assistant, including all the examples and utilizing the powerful Iris separation logic framework.
+
+138
+00:14:06,380 --> 00:14:13,260
+We have shown how to construct a model of an Information Flow Control type system, using the methodology of semantic typing.
+
+139
+00:14:13,760 --> 00:14:18,080
+Please see the paper for more examples and a more thorough explanation.
+
+140
+00:14:18,080 --> 00:14:20,960
+Thank you very much for your attention.
+

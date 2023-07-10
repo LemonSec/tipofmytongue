@@ -1,0 +1,3672 @@
+﻿1
+00:00:10,639 --> 00:00:13,200
+so yeah i'm michael now at bell labs
+
+2
+00:00:13,200 --> 00:00:15,200
+formerly of india software institute
+
+3
+00:00:15,200 --> 00:00:17,359
+this is joint work with my former
+
+4
+00:00:17,359 --> 00:00:19,840
+colleagues at india software in madrid
+
+5
+00:00:19,840 --> 00:00:22,880
+and a couple of nice guys in portugal
+
+6
+00:00:22,880 --> 00:00:25,519
+a very high level view of my talk is
+
+7
+00:00:25,519 --> 00:00:26,640
+just
+
+8
+00:00:26,640 --> 00:00:28,480
+this talk is about a program security
+
+9
+00:00:28,480 --> 00:00:30,640
+property called constant time this is a
+
+10
+00:00:30,640 --> 00:00:32,800
+property that we want our programs to
+
+11
+00:00:32,800 --> 00:00:35,120
+satisfy and an approach to verify this
+
+12
+00:00:35,120 --> 00:00:36,960
+property which is called selective
+
+13
+00:00:36,960 --> 00:00:38,719
+self-composition and hopefully you'll
+
+14
+00:00:38,719 --> 00:00:40,160
+understand what that means by the end of
+
+15
+00:00:40,160 --> 00:00:41,680
+this talk
+
+16
+00:00:41,680 --> 00:00:43,680
+along with our implementation that's
+
+17
+00:00:43,680 --> 00:00:46,239
+that uses smt based verification of llvm
+
+18
+00:00:46,239 --> 00:00:48,399
+assembly code and experiments of
+
+19
+00:00:48,399 --> 00:00:50,480
+verifying actual c code implementations
+
+20
+00:00:50,480 --> 00:00:51,920
+of cryptographic libraries and
+
+21
+00:00:51,920 --> 00:00:54,879
+arithmetic libraries
+
+22
+00:00:54,960 --> 00:00:56,879
+so my this you know very high level
+
+23
+00:00:56,879 --> 00:00:59,039
+stupid picture of what we want to do
+
+24
+00:00:59,039 --> 00:01:01,120
+is to prevent program leakage so the
+
+25
+00:01:01,120 --> 00:01:03,680
+attacker in this case wants to extract
+
+26
+00:01:03,680 --> 00:01:04,720
+secrets
+
+27
+00:01:04,720 --> 00:01:07,280
+by executing computer programs and for
+
+28
+00:01:07,280 --> 00:01:08,880
+the purposes of this talk i don't care
+
+29
+00:01:08,880 --> 00:01:10,720
+whether he's executing those programs as
+
+30
+00:01:10,720 --> 00:01:12,080
+a process on a machine that he has
+
+31
+00:01:12,080 --> 00:01:15,200
+access to or right over a service over
+
+32
+00:01:15,200 --> 00:01:18,400
+the network for instance these are both
+
+33
+00:01:18,400 --> 00:01:19,759
+environments in which this talk could
+
+34
+00:01:19,759 --> 00:01:22,240
+make sense
+
+35
+00:01:22,240 --> 00:01:24,159
+so the basic idea of leaking secrets
+
+36
+00:01:24,159 --> 00:01:26,240
+right so for this talk we'll we'll
+
+37
+00:01:26,240 --> 00:01:28,960
+assume that the attacker calls into
+
+38
+00:01:28,960 --> 00:01:31,439
+some api some public interface functions
+
+39
+00:01:31,439 --> 00:01:32,960
+for instance this public interface
+
+40
+00:01:32,960 --> 00:01:34,799
+function which takes a number
+
+41
+00:01:34,799 --> 00:01:36,560
+representing some length and returns
+
+42
+00:01:36,560 --> 00:01:38,479
+another number
+
+43
+00:01:38,479 --> 00:01:40,159
+uh the the implementation of this public
+
+44
+00:01:40,159 --> 00:01:41,520
+interface function
+
+45
+00:01:41,520 --> 00:01:43,040
+calls this copy function which
+
+46
+00:01:43,040 --> 00:01:45,759
+essentially performs a copy of a secret
+
+47
+00:01:45,759 --> 00:01:48,320
+input buffer to a secret output buffer
+
+48
+00:01:48,320 --> 00:01:51,119
+which is bounded by a secret offset and
+
+49
+00:01:51,119 --> 00:01:52,960
+the given length that was passed into
+
+50
+00:01:52,960 --> 00:01:54,960
+this public interface function
+
+51
+00:01:54,960 --> 00:01:57,280
+now this copy function it does you know
+
+52
+00:01:57,280 --> 00:01:59,119
+what you'd expect a buffer copy function
+
+53
+00:01:59,119 --> 00:02:01,360
+to do it iterates over the indices of
+
+54
+00:02:01,360 --> 00:02:03,439
+the the buffer to be copied from from
+
+55
+00:02:03,439 --> 00:02:05,680
+output to input and so on and so forth
+
+56
+00:02:05,680 --> 00:02:07,200
+uh this particular implementation of
+
+57
+00:02:07,200 --> 00:02:08,720
+this copy function ends up returning an
+
+58
+00:02:08,720 --> 00:02:09,679
+index
+
+59
+00:02:09,679 --> 00:02:12,239
+and we would say that although the the
+
+60
+00:02:12,239 --> 00:02:14,720
+secret is not directly leaked so i'm
+
+61
+00:02:14,720 --> 00:02:16,239
+considering the secret to be the offset
+
+62
+00:02:16,239 --> 00:02:17,920
+here highlighted in blue
+
+63
+00:02:17,920 --> 00:02:20,000
+this program does not directly leak the
+
+64
+00:02:20,000 --> 00:02:21,599
+secret offset right it never returns
+
+65
+00:02:21,599 --> 00:02:23,920
+some value which is uh computed from the
+
+66
+00:02:23,920 --> 00:02:25,760
+secret offset but it indirectly leaks
+
+67
+00:02:25,760 --> 00:02:29,360
+the secret offset because the attacker
+
+68
+00:02:29,360 --> 00:02:31,440
+were he to know the implementation of
+
+69
+00:02:31,440 --> 00:02:33,360
+public interface and copy he could
+
+70
+00:02:33,360 --> 00:02:35,120
+easily figure out just by following the
+
+71
+00:02:35,120 --> 00:02:36,400
+logic of this code
+
+72
+00:02:36,400 --> 00:02:38,080
+that the return value of public
+
+73
+00:02:38,080 --> 00:02:40,800
+interface minus the argument length that
+
+74
+00:02:40,800 --> 00:02:42,560
+he passed into the public interface
+
+75
+00:02:42,560 --> 00:02:44,640
+reveals the secret offset all he would
+
+76
+00:02:44,640 --> 00:02:46,480
+need to know is what is the source code
+
+77
+00:02:46,480 --> 00:02:49,519
+of this which is right a reasonable
+
+78
+00:02:49,519 --> 00:02:51,519
+assumption to make of attackers in many
+
+79
+00:02:51,519 --> 00:02:53,599
+cases
+
+80
+00:02:53,599 --> 00:02:55,440
+now in this case it's a pretty obvious
+
+81
+00:02:55,440 --> 00:02:57,360
+solution to fix this right we just want
+
+82
+00:02:57,360 --> 00:03:00,319
+to cut off this flow of information so
+
+83
+00:03:00,319 --> 00:03:01,920
+just being completely brutal in this
+
+84
+00:03:01,920 --> 00:03:03,840
+particular example let's just say that
+
+85
+00:03:03,840 --> 00:03:05,760
+okay well this copy in public interface
+
+86
+00:03:05,760 --> 00:03:07,440
+functions they now just return void they
+
+87
+00:03:07,440 --> 00:03:09,840
+can't possibly leak any information
+
+88
+00:03:09,840 --> 00:03:13,440
+right so so that's a fix in some sense
+
+89
+00:03:13,440 --> 00:03:16,159
+but this program still isn't completely
+
+90
+00:03:16,159 --> 00:03:17,280
+secure
+
+91
+00:03:17,280 --> 00:03:18,959
+because besides just learning
+
+92
+00:03:18,959 --> 00:03:21,040
+information about secrets from the
+
+93
+00:03:21,040 --> 00:03:22,800
+return values of this public interface
+
+94
+00:03:22,800 --> 00:03:24,879
+function an attacker could potentially
+
+95
+00:03:24,879 --> 00:03:26,400
+with other assumptions of course could
+
+96
+00:03:26,400 --> 00:03:27,760
+potentially
+
+97
+00:03:27,760 --> 00:03:30,000
+learn secret information by the timing
+
+98
+00:03:30,000 --> 00:03:31,760
+of that operation right so he passes in
+
+99
+00:03:31,760 --> 00:03:33,760
+the given argument length equals 10 and
+
+100
+00:03:33,760 --> 00:03:35,599
+he times how long it takes for this
+
+101
+00:03:35,599 --> 00:03:37,440
+function to return
+
+102
+00:03:37,440 --> 00:03:39,280
+now suppose the attacker knows not only
+
+103
+00:03:39,280 --> 00:03:40,560
+a little bit about
+
+104
+00:03:40,560 --> 00:03:42,879
+how this function is implemented but
+
+105
+00:03:42,879 --> 00:03:44,480
+also a little bit about
+
+106
+00:03:44,480 --> 00:03:46,239
+what processor architecture this will be
+
+107
+00:03:46,239 --> 00:03:48,159
+running on right some information about
+
+108
+00:03:48,159 --> 00:03:50,720
+the machine he might be able to right
+
+109
+00:03:50,720 --> 00:03:52,879
+compute an equation for the total time
+
+110
+00:03:52,879 --> 00:03:55,200
+it should take this function to execute
+
+111
+00:03:55,200 --> 00:03:57,840
+based on uh right the total time is
+
+112
+00:03:57,840 --> 00:04:00,400
+equal to the number of cash hits times
+
+113
+00:04:00,400 --> 00:04:02,000
+the time it takes for a cash hit on this
+
+114
+00:04:02,000 --> 00:04:04,080
+particular processor plus the number of
+
+115
+00:04:04,080 --> 00:04:06,319
+cast misses times the time it takes for
+
+116
+00:04:06,319 --> 00:04:08,239
+miss plus some base offset just as a
+
+117
+00:04:08,239 --> 00:04:10,400
+simple example
+
+118
+00:04:10,400 --> 00:04:12,080
+given that he knows the value for the
+
+119
+00:04:12,080 --> 00:04:13,920
+time it takes for cash miss versus cash
+
+120
+00:04:13,920 --> 00:04:16,320
+hit etc he might plug in and solve for h
+
+121
+00:04:16,320 --> 00:04:18,720
+here based on the measured total time
+
+122
+00:04:18,720 --> 00:04:21,199
+and compute that the secret offset is in
+
+123
+00:04:21,199 --> 00:04:22,880
+fact equal to h which he'll compute to
+
+124
+00:04:22,880 --> 00:04:25,360
+be five for instance now
+
+125
+00:04:25,360 --> 00:04:27,199
+maybe this equation is not so simple to
+
+126
+00:04:27,199 --> 00:04:28,800
+compute for a single invocation over a
+
+127
+00:04:28,800 --> 00:04:30,080
+function especially when you're talking
+
+128
+00:04:30,080 --> 00:04:32,720
+about a service over network but perhaps
+
+129
+00:04:32,720 --> 00:04:33,680
+right
+
+130
+00:04:33,680 --> 00:04:35,919
+given a large enough sample size he can
+
+131
+00:04:35,919 --> 00:04:37,680
+have some statistical significance and
+
+132
+00:04:37,680 --> 00:04:38,960
+actually
+
+133
+00:04:38,960 --> 00:04:42,240
+be able to leak secrets this way
+
+134
+00:04:42,240 --> 00:04:43,600
+and and
+
+135
+00:04:43,600 --> 00:04:45,360
+so if we look at why this particular
+
+136
+00:04:45,360 --> 00:04:47,120
+code is broken how it can leak a secret
+
+137
+00:04:47,120 --> 00:04:49,280
+even though it's not returning any value
+
+138
+00:04:49,280 --> 00:04:51,360
+well let's look at the how this function
+
+139
+00:04:51,360 --> 00:04:52,880
+is written there's a for loop here that
+
+140
+00:04:52,880 --> 00:04:54,560
+iterates over the the indices of the
+
+141
+00:04:54,560 --> 00:04:55,759
+buffer
+
+142
+00:04:55,759 --> 00:04:57,360
+and then there's a branch checking if
+
+143
+00:04:57,360 --> 00:04:59,440
+we're in bounds of the the part of the
+
+144
+00:04:59,440 --> 00:05:01,280
+buffer that we want copied
+
+145
+00:05:01,280 --> 00:05:03,440
+so it says if i is greater than equal
+
+146
+00:05:03,440 --> 00:05:05,759
+offset or i is less than offset plus
+
+147
+00:05:05,759 --> 00:05:08,240
+length if we look at how this will be
+
+148
+00:05:08,240 --> 00:05:10,320
+compiled in x86 for instance it's not
+
+149
+00:05:10,320 --> 00:05:11,840
+important that this is x86 it could be
+
+150
+00:05:11,840 --> 00:05:13,520
+anything but at the end we're going to
+
+151
+00:05:13,520 --> 00:05:16,160
+have some comparison some jump right and
+
+152
+00:05:16,160 --> 00:05:17,600
+what the jump is going to do on the
+
+153
+00:05:17,600 --> 00:05:19,840
+machine is to fetch the next instruction
+
+154
+00:05:19,840 --> 00:05:21,680
+so if we look at what happens in terms
+
+155
+00:05:21,680 --> 00:05:24,160
+of the success of this jump in in terms
+
+156
+00:05:24,160 --> 00:05:27,199
+of the loop index i right as i equals 0
+
+157
+00:05:27,199 --> 00:05:29,759
+1 2 the jump is going to skip the if
+
+158
+00:05:29,759 --> 00:05:31,280
+branch and go straight to the to the
+
+159
+00:05:31,280 --> 00:05:32,479
+loop end
+
+160
+00:05:32,479 --> 00:05:33,680
+until
+
+161
+00:05:33,680 --> 00:05:35,680
+i is equal to offset
+
+162
+00:05:35,680 --> 00:05:38,080
+right at this point this jump will now
+
+163
+00:05:38,080 --> 00:05:40,960
+go inside of the branch uh and
+
+164
+00:05:40,960 --> 00:05:43,039
+and the jump in fact will fail so we'll
+
+165
+00:05:43,039 --> 00:05:44,800
+just continue to the next instruction
+
+166
+00:05:44,800 --> 00:05:46,800
+now in terms of what's happening with
+
+167
+00:05:46,800 --> 00:05:48,800
+loading the instructions from the cache
+
+168
+00:05:48,800 --> 00:05:51,600
+we we expect right the first maybe not
+
+169
+00:05:51,600 --> 00:05:53,199
+zero but at least one two three right
+
+170
+00:05:53,199 --> 00:05:55,520
+the first indices to be cash hits and
+
+171
+00:05:55,520 --> 00:05:57,120
+finally when we get to offset there to
+
+172
+00:05:57,120 --> 00:05:59,280
+be a cash miss because we hadn't
+
+173
+00:05:59,280 --> 00:06:01,919
+branched to that location before
+
+174
+00:06:01,919 --> 00:06:02,639
+so
+
+175
+00:06:02,639 --> 00:06:05,680
+again just based on right timing and
+
+176
+00:06:05,680 --> 00:06:07,520
+what the attacker and based on the
+
+177
+00:06:07,520 --> 00:06:09,039
+timing the source code
+
+178
+00:06:09,039 --> 00:06:12,240
+and and processor cache cost uh the
+
+179
+00:06:12,240 --> 00:06:14,800
+attacker could feasibly here compute uh
+
+180
+00:06:14,800 --> 00:06:16,400
+the offset just based on the branching
+
+181
+00:06:16,400 --> 00:06:19,360
+behavior of this program
+
+182
+00:06:19,360 --> 00:06:21,680
+but software engineers especially people
+
+183
+00:06:21,680 --> 00:06:23,440
+writing security critical code are
+
+184
+00:06:23,440 --> 00:06:25,120
+pretty aware of this kind of thing and
+
+185
+00:06:25,120 --> 00:06:26,960
+so right my talk is about constant time
+
+186
+00:06:26,960 --> 00:06:28,000
+but here i'll just talk about an
+
+187
+00:06:28,000 --> 00:06:29,680
+intermediate property to get there
+
+188
+00:06:29,680 --> 00:06:31,440
+called constant path which
+
+189
+00:06:31,440 --> 00:06:33,039
+i'm not sure if this exists in nature
+
+190
+00:06:33,039 --> 00:06:34,400
+but this is we'll just call it that for
+
+191
+00:06:34,400 --> 00:06:35,199
+now
+
+192
+00:06:35,199 --> 00:06:36,800
+and the idea is that programmers that
+
+193
+00:06:36,800 --> 00:06:38,960
+are writing the secure code
+
+194
+00:06:38,960 --> 00:06:40,639
+they they're aware of this kind of
+
+195
+00:06:40,639 --> 00:06:42,960
+attack and they want to make their code
+
+196
+00:06:42,960 --> 00:06:45,120
+not be able to branch dependent on
+
+197
+00:06:45,120 --> 00:06:47,280
+secret information so you could rewrite
+
+198
+00:06:47,280 --> 00:06:49,759
+this this buffer copy code as follows
+
+199
+00:06:49,759 --> 00:06:51,440
+where in in the for loop here where
+
+200
+00:06:51,440 --> 00:06:53,680
+you're doing the buffer assignments you
+
+201
+00:06:53,680 --> 00:06:55,840
+don't conditionally assign based on
+
+202
+00:06:55,840 --> 00:06:57,360
+whether you're in range or not you do
+
+203
+00:06:57,360 --> 00:06:59,120
+the assignment anyways but the
+
+204
+00:06:59,120 --> 00:07:02,000
+assignment is ineffective right based on
+
+205
+00:07:02,000 --> 00:07:04,479
+this in-range mask variable and this
+
+206
+00:07:04,479 --> 00:07:06,560
+n-range mask variable is computed based
+
+207
+00:07:06,560 --> 00:07:08,479
+on some bit operations
+
+208
+00:07:08,479 --> 00:07:10,240
+and that's either going to be all 0s or
+
+209
+00:07:10,240 --> 00:07:12,479
+all ones depending on if a is less than
+
+210
+00:07:12,479 --> 00:07:13,360
+b
+
+211
+00:07:13,360 --> 00:07:15,120
+based on this implementation of constant
+
+212
+00:07:15,120 --> 00:07:17,520
+time less than
+
+213
+00:07:17,520 --> 00:07:19,599
+right so now we can look at this code
+
+214
+00:07:19,599 --> 00:07:20,960
+and convince ourselves that it still
+
+215
+00:07:20,960 --> 00:07:23,840
+implements the buffer copy correctly
+
+216
+00:07:23,840 --> 00:07:24,720
+and
+
+217
+00:07:24,720 --> 00:07:26,800
+given the assumption that on a given
+
+218
+00:07:26,800 --> 00:07:29,199
+processor the the bit operations right
+
+219
+00:07:29,199 --> 00:07:30,880
+for a given 32-bit or 64-bit
+
+220
+00:07:30,880 --> 00:07:32,319
+architecture whatever you're on will be
+
+221
+00:07:32,319 --> 00:07:34,160
+constant time then we can convince
+
+222
+00:07:34,160 --> 00:07:36,639
+ourselves that right this code
+
+223
+00:07:36,639 --> 00:07:37,919
+has
+
+224
+00:07:37,919 --> 00:07:39,599
+the path of execution in this code does
+
+225
+00:07:39,599 --> 00:07:42,479
+not depend on the secret
+
+226
+00:07:43,120 --> 00:07:44,400
+but that's still not the end of the
+
+227
+00:07:44,400 --> 00:07:46,400
+story this code is still vulnerable to
+
+228
+00:07:46,400 --> 00:07:48,800
+timing attacks right the attacker could
+
+229
+00:07:48,800 --> 00:07:51,280
+still reason about the value of offset
+
+230
+00:07:51,280 --> 00:07:53,520
+based on the the loads and stores we're
+
+231
+00:07:53,520 --> 00:07:56,240
+doing in this code even if the path
+
+232
+00:07:56,240 --> 00:07:58,479
+is independent of the secret so in this
+
+233
+00:07:58,479 --> 00:08:02,240
+case the the store to out index j if we
+
+234
+00:08:02,240 --> 00:08:03,919
+look at the address that we will store
+
+235
+00:08:03,919 --> 00:08:06,080
+two right it's going to be the same
+
+236
+00:08:06,080 --> 00:08:08,160
+address the beginning of that array for
+
+237
+00:08:08,160 --> 00:08:10,800
+index i equals 0 1 2 etc all the way to
+
+238
+00:08:10,800 --> 00:08:11,840
+offset
+
+239
+00:08:11,840 --> 00:08:14,080
+once we end up incrementing
+
+240
+00:08:14,080 --> 00:08:16,319
+the variable j we'll now store to a new
+
+241
+00:08:16,319 --> 00:08:18,400
+address out plus one
+
+242
+00:08:18,400 --> 00:08:20,479
+and right now depending on the size of
+
+243
+00:08:20,479 --> 00:08:22,560
+cache lines and so on you might say that
+
+244
+00:08:22,560 --> 00:08:24,240
+okay well it's not out plus one that
+
+245
+00:08:24,240 --> 00:08:25,759
+will cause a cache miss but maybe out
+
+246
+00:08:25,759 --> 00:08:28,479
+plus four out plus eight whatever it is
+
+247
+00:08:28,479 --> 00:08:30,400
+the attacker right can conceivably learn
+
+248
+00:08:30,400 --> 00:08:32,240
+some information about the value of
+
+249
+00:08:32,240 --> 00:08:34,880
+offset just by measuring again the the
+
+250
+00:08:34,880 --> 00:08:37,440
+cash hits and misses
+
+251
+00:08:37,440 --> 00:08:38,719
+that's not the only problem with this
+
+252
+00:08:38,719 --> 00:08:39,599
+code
+
+253
+00:08:39,599 --> 00:08:41,200
+there's another problem
+
+254
+00:08:41,200 --> 00:08:43,440
+in terms of right so so far we've just
+
+255
+00:08:43,440 --> 00:08:44,800
+talked about
+
+256
+00:08:44,800 --> 00:08:46,560
+caches in terms of instruction loading
+
+257
+00:08:46,560 --> 00:08:49,360
+and memory loads and stores
+
+258
+00:08:49,360 --> 00:08:52,320
+but the operations themselves can depend
+
+259
+00:08:52,320 --> 00:08:54,080
+right execution time of individual
+
+260
+00:08:54,080 --> 00:08:56,160
+operations can also depend on secrets so
+
+261
+00:08:56,160 --> 00:08:57,519
+in this case
+
+262
+00:08:57,519 --> 00:09:00,560
+the increment of j is dependent on
+
+263
+00:09:00,560 --> 00:09:01,440
+a
+
+264
+00:09:01,440 --> 00:09:03,600
+in mask modulo 2 operation which on some
+
+265
+00:09:03,600 --> 00:09:05,200
+processor is probably implemented with a
+
+266
+00:09:05,200 --> 00:09:06,640
+division operation
+
+267
+00:09:06,640 --> 00:09:08,640
+and if we look at the dividend compared
+
+268
+00:09:08,640 --> 00:09:10,560
+to the loop index here we see that the
+
+269
+00:09:10,560 --> 00:09:13,519
+dividend this in range mask is all zeros
+
+270
+00:09:13,519 --> 00:09:15,040
+all zeroes until we get to offset and
+
+271
+00:09:15,040 --> 00:09:17,440
+all of a sudden uh this becomes all ones
+
+272
+00:09:17,440 --> 00:09:18,959
+just as we would hope that the mask
+
+273
+00:09:18,959 --> 00:09:21,920
+works it's exactly what we intended
+
+274
+00:09:21,920 --> 00:09:23,279
+but then if you were to look at the
+
+275
+00:09:23,279 --> 00:09:25,440
+processor manual for the x86 processor
+
+276
+00:09:25,440 --> 00:09:27,040
+for instance you might look at the
+
+277
+00:09:27,040 --> 00:09:28,800
+division instruction and see that oh
+
+278
+00:09:28,800 --> 00:09:30,640
+well actually the time that a division
+
+279
+00:09:30,640 --> 00:09:33,600
+takes depends on the most significant
+
+280
+00:09:33,600 --> 00:09:36,399
+bit the maximum most significant bit of
+
+281
+00:09:36,399 --> 00:09:38,720
+the operands right so
+
+282
+00:09:38,720 --> 00:09:41,279
+obviously that that most significant bit
+
+283
+00:09:41,279 --> 00:09:43,040
+is very different from all zeros to all
+
+284
+00:09:43,040 --> 00:09:45,040
+ones so we can expect all of a sudden
+
+285
+00:09:45,040 --> 00:09:46,880
+once we hit offset there to be a big
+
+286
+00:09:46,880 --> 00:09:50,439
+difference in timing
+
+287
+00:09:51,200 --> 00:09:53,440
+so again the people that are writing
+
+288
+00:09:53,440 --> 00:09:55,600
+secure cryptographic implementations for
+
+289
+00:09:55,600 --> 00:09:57,440
+instance are pretty aware of these kinds
+
+290
+00:09:57,440 --> 00:09:58,959
+of pitfalls and dangers and there's a
+
+291
+00:09:58,959 --> 00:10:01,920
+whole uh right knowledge base out there
+
+292
+00:10:01,920 --> 00:10:03,600
+of things you do to prevent these kinds
+
+293
+00:10:03,600 --> 00:10:05,920
+of attacks and there's this
+
+294
+00:10:05,920 --> 00:10:07,680
+particularly informative list of coding
+
+295
+00:10:07,680 --> 00:10:09,519
+rules that this url have provided here
+
+296
+00:10:09,519 --> 00:10:11,279
+which i find pretty interesting so it
+
+297
+00:10:11,279 --> 00:10:12,399
+talks about the things i've already
+
+298
+00:10:12,399 --> 00:10:14,160
+talked about avoid branching controlled
+
+299
+00:10:14,160 --> 00:10:16,160
+by secret data for instance avoid secret
+
+300
+00:10:16,160 --> 00:10:18,480
+dependent loop bounds and some more
+
+301
+00:10:18,480 --> 00:10:20,480
+general advice in terms of right when
+
+302
+00:10:20,480 --> 00:10:22,160
+you're comparing strings make sure that
+
+303
+00:10:22,160 --> 00:10:24,480
+they are bounded with respect to the to
+
+304
+00:10:24,480 --> 00:10:26,560
+the secret information
+
+305
+00:10:26,560 --> 00:10:29,040
+and also to avoid table lookups which
+
+306
+00:10:29,040 --> 00:10:31,120
+are indexed by secret data which covers
+
+307
+00:10:31,120 --> 00:10:33,760
+of course loads and stores and and uh
+
+308
+00:10:33,760 --> 00:10:35,360
+right git element pointer instructions
+
+309
+00:10:35,360 --> 00:10:37,440
+in lvm and so on
+
+310
+00:10:37,440 --> 00:10:38,880
+but what i find particularly interesting
+
+311
+00:10:38,880 --> 00:10:41,279
+in this list of of rules and insights is
+
+312
+00:10:41,279 --> 00:10:42,640
+that you need to prevent compiler
+
+313
+00:10:42,640 --> 00:10:44,079
+interference for security critical
+
+314
+00:10:44,079 --> 00:10:45,920
+operations the advice of how do you
+
+315
+00:10:45,920 --> 00:10:48,320
+prevent compiler interference is well
+
+316
+00:10:48,320 --> 00:10:50,079
+you look at the assembly code produced
+
+317
+00:10:50,079 --> 00:10:51,760
+and make sure that all the instructions
+
+318
+00:10:51,760 --> 00:10:53,600
+that you expected to be there were there
+
+319
+00:10:53,600 --> 00:10:55,279
+and you know no new ones that you didn't
+
+320
+00:10:55,279 --> 00:10:57,200
+expect to be there so
+
+321
+00:10:57,200 --> 00:10:59,200
+which means that right programming
+
+322
+00:10:59,200 --> 00:11:01,600
+secure code at the c level really
+
+323
+00:11:01,600 --> 00:11:03,839
+requires you to to be an assembly
+
+324
+00:11:03,839 --> 00:11:05,920
+programmer as well
+
+325
+00:11:05,920 --> 00:11:07,760
+so we make the argument here that
+
+326
+00:11:07,760 --> 00:11:09,680
+this is not a very good state of affairs
+
+327
+00:11:09,680 --> 00:11:12,399
+for programmers and that constant
+
+328
+00:11:12,399 --> 00:11:14,640
+ensuring constant time is very fragile
+
+329
+00:11:14,640 --> 00:11:16,320
+right you can break your algorithm
+
+330
+00:11:16,320 --> 00:11:18,880
+security just by introducing right new
+
+331
+00:11:18,880 --> 00:11:20,800
+memory accesses maybe inadvertently for
+
+332
+00:11:20,800 --> 00:11:21,920
+instance
+
+333
+00:11:21,920 --> 00:11:23,440
+it's very optimization dependent it
+
+334
+00:11:23,440 --> 00:11:25,040
+depends on compiler optimizations a
+
+335
+00:11:25,040 --> 00:11:26,880
+compiler right code that you thought was
+
+336
+00:11:26,880 --> 00:11:28,959
+constant time at the c level can all of
+
+337
+00:11:28,959 --> 00:11:30,800
+a sudden become not constant time at the
+
+338
+00:11:30,800 --> 00:11:32,800
+assembly level and the compiler is free
+
+339
+00:11:32,800 --> 00:11:34,480
+to do a lot of things it doesn't right
+
+340
+00:11:34,480 --> 00:11:36,720
+it's completely agnostic that you want
+
+341
+00:11:36,720 --> 00:11:38,160
+your program to be constant time there's
+
+342
+00:11:38,160 --> 00:11:39,680
+no way to tell it that and it doesn't
+
+343
+00:11:39,680 --> 00:11:42,399
+factor that into its optimizations
+
+344
+00:11:42,399 --> 00:11:44,320
+it's also right this property is very
+
+345
+00:11:44,320 --> 00:11:46,320
+architecture dependent right it depends
+
+346
+00:11:46,320 --> 00:11:48,959
+on the semantics at the machine level of
+
+347
+00:11:48,959 --> 00:11:52,479
+division instructions for instance
+
+348
+00:11:53,279 --> 00:11:55,040
+what we're proposing right to to
+
+349
+00:11:55,040 --> 00:11:57,360
+hopefully correct or
+
+350
+00:11:57,360 --> 00:11:58,560
+rectify the state of affairs a little
+
+351
+00:11:58,560 --> 00:11:59,519
+bit is
+
+352
+00:11:59,519 --> 00:12:02,000
+is that we should do verification
+
+353
+00:12:02,000 --> 00:12:04,160
+and our approach to verification looks a
+
+354
+00:12:04,160 --> 00:12:05,680
+little bit like this so we start with an
+
+355
+00:12:05,680 --> 00:12:07,200
+annotated program right in reasoning
+
+356
+00:12:07,200 --> 00:12:09,680
+about constant time uh the right
+
+357
+00:12:09,680 --> 00:12:12,000
+intuitively we have to deal with
+
+358
+00:12:12,000 --> 00:12:13,760
+differentiating secret information from
+
+359
+00:12:13,760 --> 00:12:16,079
+public information so we'll assume that
+
+360
+00:12:16,079 --> 00:12:17,760
+our program is annotated the programmer
+
+361
+00:12:17,760 --> 00:12:20,639
+has to say which uh pieces of memory
+
+362
+00:12:20,639 --> 00:12:23,040
+which variables are public information
+
+363
+00:12:23,040 --> 00:12:25,040
+versus what is secret information so our
+
+364
+00:12:25,040 --> 00:12:27,120
+program will be annotated in that way
+
+365
+00:12:27,120 --> 00:12:29,680
+and we also have to have a notion of uh
+
+366
+00:12:29,680 --> 00:12:32,560
+how this program leaks right so so what
+
+367
+00:12:32,560 --> 00:12:34,079
+is it that we're measuring here how do
+
+368
+00:12:34,079 --> 00:12:36,399
+we account for or abstract this notion
+
+369
+00:12:36,399 --> 00:12:39,200
+of cash meshes cast misses hits timing
+
+370
+00:12:39,200 --> 00:12:41,600
+information that attacker could exploit
+
+371
+00:12:41,600 --> 00:12:43,519
+so we'll also parameterize this verifier
+
+372
+00:12:43,519 --> 00:12:45,839
+by a leakage model in this case our
+
+373
+00:12:45,839 --> 00:12:48,079
+leakage model will cover
+
+374
+00:12:48,079 --> 00:12:51,120
+right uh instruction uh timing so
+
+375
+00:12:51,120 --> 00:12:53,440
+instruction cache timing by by assuming
+
+376
+00:12:53,440 --> 00:12:56,880
+that uh any branch target addresses are
+
+377
+00:12:56,880 --> 00:12:59,120
+leaked by the program
+
+378
+00:12:59,120 --> 00:13:02,560
+so uh we we cover the the memory cache
+
+379
+00:13:02,560 --> 00:13:05,600
+by also saying that uh loads and stores
+
+380
+00:13:05,600 --> 00:13:07,839
+leak the address that load that is
+
+381
+00:13:07,839 --> 00:13:09,839
+loaded or stored to and division
+
+382
+00:13:09,839 --> 00:13:12,880
+operations leak their uh maximum
+
+383
+00:13:12,880 --> 00:13:15,760
+operands most significant bits
+
+384
+00:13:15,760 --> 00:13:17,440
+so with these two inputs our security
+
+385
+00:13:17,440 --> 00:13:19,920
+verifier that we we would like to build
+
+386
+00:13:19,920 --> 00:13:21,600
+should return either secure or there's a
+
+387
+00:13:21,600 --> 00:13:23,760
+violation that your program
+
+388
+00:13:23,760 --> 00:13:24,560
+can
+
+389
+00:13:24,560 --> 00:13:25,600
+can
+
+390
+00:13:25,600 --> 00:13:27,200
+is not constant time with respect to
+
+391
+00:13:27,200 --> 00:13:30,000
+this leakage model
+
+392
+00:13:31,440 --> 00:13:33,600
+so just to get a little bit more precise
+
+393
+00:13:33,600 --> 00:13:35,279
+and formal about what it is that
+
+394
+00:13:35,279 --> 00:13:36,800
+constant time is what it is that we want
+
+395
+00:13:36,800 --> 00:13:37,839
+to verify
+
+396
+00:13:37,839 --> 00:13:39,600
+so this looks a bit like
+
+397
+00:13:39,600 --> 00:13:41,120
+non-interference that a lot of you may
+
+398
+00:13:41,120 --> 00:13:42,320
+be familiar with
+
+399
+00:13:42,320 --> 00:13:44,560
+and it's like most security properties
+
+400
+00:13:44,560 --> 00:13:46,639
+it's a property over pairs of executions
+
+401
+00:13:46,639 --> 00:13:48,560
+versus a usual safety properties that
+
+402
+00:13:48,560 --> 00:13:49,839
+people like me and the verification
+
+403
+00:13:49,839 --> 00:13:51,360
+community are concerned with that are
+
+404
+00:13:51,360 --> 00:13:53,360
+properties over single executions here
+
+405
+00:13:53,360 --> 00:13:54,639
+we have to reason about pairs of
+
+406
+00:13:54,639 --> 00:13:56,320
+executions
+
+407
+00:13:56,320 --> 00:13:58,079
+what this property says is that suppose
+
+408
+00:13:58,079 --> 00:14:00,880
+we have two executions here
+
+409
+00:14:00,880 --> 00:14:03,680
+of a program p with inputs labeled i1
+
+410
+00:14:03,680 --> 00:14:06,639
+and i2 outputs labeled o1 and o2 and
+
+411
+00:14:06,639 --> 00:14:08,480
+leakage right based on the leakage model
+
+412
+00:14:08,480 --> 00:14:10,800
+labeled l1 and l2
+
+413
+00:14:10,800 --> 00:14:12,800
+what it says is that whenever i execute
+
+414
+00:14:12,800 --> 00:14:15,279
+this program with identical inputs that
+
+415
+00:14:15,279 --> 00:14:16,720
+is uh
+
+416
+00:14:16,720 --> 00:14:18,320
+when the public parts of inputs are
+
+417
+00:14:18,320 --> 00:14:20,480
+identical the secrets can be different
+
+418
+00:14:20,480 --> 00:14:23,040
+and identical public outputs then the
+
+419
+00:14:23,040 --> 00:14:25,120
+leakage has to be identical so that's
+
+420
+00:14:25,120 --> 00:14:26,160
+the definition that we'll use of
+
+421
+00:14:26,160 --> 00:14:28,000
+constant time and we can see what a
+
+422
+00:14:28,000 --> 00:14:30,639
+violation of constant time is here if we
+
+423
+00:14:30,639 --> 00:14:32,160
+look at public inputs right that are
+
+424
+00:14:32,160 --> 00:14:34,720
+identical input value in both cases is
+
+425
+00:14:34,720 --> 00:14:35,600
+zero
+
+426
+00:14:35,600 --> 00:14:38,000
+and we have different secrets so on the
+
+427
+00:14:38,000 --> 00:14:40,240
+left hand side the the secret is an odd
+
+428
+00:14:40,240 --> 00:14:41,519
+number on the right hand side it's an
+
+429
+00:14:41,519 --> 00:14:42,800
+even number
+
+430
+00:14:42,800 --> 00:14:44,639
+the program then will compute some
+
+431
+00:14:44,639 --> 00:14:47,120
+function of f uh some function f over
+
+432
+00:14:47,120 --> 00:14:49,040
+the input and the secret
+
+433
+00:14:49,040 --> 00:14:50,880
+and release that value as a public
+
+434
+00:14:50,880 --> 00:14:52,399
+output
+
+435
+00:14:52,399 --> 00:14:54,000
+now suppose in our example just for
+
+436
+00:14:54,000 --> 00:14:55,279
+example here
+
+437
+00:14:55,279 --> 00:14:57,279
+that so we have these identical public
+
+438
+00:14:57,279 --> 00:15:00,480
+input 0 identical public outputs 42 for
+
+439
+00:15:00,480 --> 00:15:01,600
+instance i don't know how f is
+
+440
+00:15:01,600 --> 00:15:03,199
+implemented but suppose that the
+
+441
+00:15:03,199 --> 00:15:07,120
+implementation of f now right
+
+442
+00:15:07,120 --> 00:15:09,120
+has different cache behavior so i could
+
+443
+00:15:09,120 --> 00:15:10,480
+have
+
+444
+00:15:10,480 --> 00:15:12,560
+written leakage here in terms of
+
+445
+00:15:12,560 --> 00:15:14,240
+memory addresses or branch addresses i'm
+
+446
+00:15:14,240 --> 00:15:15,680
+just writing in terms of cache hits and
+
+447
+00:15:15,680 --> 00:15:17,199
+misses
+
+448
+00:15:17,199 --> 00:15:19,279
+so this would be a violation because we
+
+449
+00:15:19,279 --> 00:15:21,440
+have although the same public inputs and
+
+450
+00:15:21,440 --> 00:15:23,839
+outputs a different sequence of of cache
+
+451
+00:15:23,839 --> 00:15:27,160
+hits and misses
+
+452
+00:15:28,320 --> 00:15:30,000
+right so
+
+453
+00:15:30,000 --> 00:15:32,480
+to verify a property over pairs of
+
+454
+00:15:32,480 --> 00:15:34,240
+executions like technically this we
+
+455
+00:15:34,240 --> 00:15:35,839
+would call this a two safety property
+
+456
+00:15:35,839 --> 00:15:38,160
+versus a one safety property to verify
+
+457
+00:15:38,160 --> 00:15:40,800
+this we basically want to reduce it to
+
+458
+00:15:40,800 --> 00:15:42,160
+something we know how to do better which
+
+459
+00:15:42,160 --> 00:15:44,160
+is safety verification
+
+460
+00:15:44,160 --> 00:15:45,759
+that's one safety verification so the
+
+461
+00:15:45,759 --> 00:15:47,680
+idea would be to have a translator that
+
+462
+00:15:47,680 --> 00:15:49,279
+takes our annotated program and leakage
+
+463
+00:15:49,279 --> 00:15:51,360
+model and gives us another program that
+
+464
+00:15:51,360 --> 00:15:53,120
+is a program that is annotated with
+
+465
+00:15:53,120 --> 00:15:54,720
+assertions that we can pass to a regular
+
+466
+00:15:54,720 --> 00:15:56,240
+safety verifier
+
+467
+00:15:56,240 --> 00:15:57,600
+and in which
+
+468
+00:15:57,600 --> 00:15:59,360
+when the safety verifier says safe we
+
+469
+00:15:59,360 --> 00:16:01,360
+can conclude that the program is secure
+
+470
+00:16:01,360 --> 00:16:03,279
+and when the safety verifier says
+
+471
+00:16:03,279 --> 00:16:05,680
+assertion violation we can conclude that
+
+472
+00:16:05,680 --> 00:16:07,360
+the program has a security violation in
+
+473
+00:16:07,360 --> 00:16:09,120
+particular a violation of the constant
+
+474
+00:16:09,120 --> 00:16:12,880
+time according to our leakage model
+
+475
+00:16:13,920 --> 00:16:16,800
+now uh there are existing approaches to
+
+476
+00:16:16,800 --> 00:16:19,199
+how do we reason about right executions
+
+477
+00:16:19,199 --> 00:16:21,279
+pairs of executions of a given program
+
+478
+00:16:21,279 --> 00:16:23,519
+uh in terms of a single executions of a
+
+479
+00:16:23,519 --> 00:16:25,839
+given program well the the the known
+
+480
+00:16:25,839 --> 00:16:27,839
+technique in the literature so far is
+
+481
+00:16:27,839 --> 00:16:29,519
+self composition and the idea is
+
+482
+00:16:29,519 --> 00:16:31,759
+basically just to run two copies of the
+
+483
+00:16:31,759 --> 00:16:34,320
+program with right copies of the entire
+
+484
+00:16:34,320 --> 00:16:37,440
+memory space and so on uh
+
+485
+00:16:37,440 --> 00:16:39,839
+and differentiate the the the inputs so
+
+486
+00:16:39,839 --> 00:16:41,360
+that the public parts are equal and the
+
+487
+00:16:41,360 --> 00:16:44,160
+secret parts are not and and and compare
+
+488
+00:16:44,160 --> 00:16:44,959
+then
+
+489
+00:16:44,959 --> 00:16:46,480
+if they have the same inputs and same
+
+490
+00:16:46,480 --> 00:16:48,959
+outputs if i execute one after the other
+
+491
+00:16:48,959 --> 00:16:51,360
+that the leakage is the same
+
+492
+00:16:51,360 --> 00:16:53,040
+right so this is just a rudimentary
+
+493
+00:16:53,040 --> 00:16:54,639
+diagram of what we're doing executing
+
+494
+00:16:54,639 --> 00:16:56,959
+one program after the other
+
+495
+00:16:56,959 --> 00:16:58,320
+and just to illustrate how this would
+
+496
+00:16:58,320 --> 00:17:00,240
+look in a very simple program because
+
+497
+00:17:00,240 --> 00:17:02,880
+we're designing a translator here
+
+498
+00:17:02,880 --> 00:17:04,400
+right so i have now this program on the
+
+499
+00:17:04,400 --> 00:17:06,640
+left which has a public input value x
+
+500
+00:17:06,640 --> 00:17:08,559
+output value y is branching on the
+
+501
+00:17:08,559 --> 00:17:11,280
+secret and writing to y accordingly
+
+502
+00:17:11,280 --> 00:17:12,480
+now the translation that i just
+
+503
+00:17:12,480 --> 00:17:14,319
+described right we would create two
+
+504
+00:17:14,319 --> 00:17:15,839
+copies of the entire memory so in this
+
+505
+00:17:15,839 --> 00:17:17,760
+case we're just in a simple case where
+
+506
+00:17:17,760 --> 00:17:19,839
+there's just program variables x and y
+
+507
+00:17:19,839 --> 00:17:22,799
+so we make copies x prime and y prime
+
+508
+00:17:22,799 --> 00:17:25,199
+and of course secret prime as well
+
+509
+00:17:25,199 --> 00:17:27,280
+we assume initially that the public
+
+510
+00:17:27,280 --> 00:17:29,919
+inputs in both executions x and x prime
+
+511
+00:17:29,919 --> 00:17:30,960
+are equal
+
+512
+00:17:30,960 --> 00:17:32,720
+finally we we assume that the public
+
+513
+00:17:32,720 --> 00:17:34,559
+outputs are equal and then we verify
+
+514
+00:17:34,559 --> 00:17:36,080
+that the leakage of running these two
+
+515
+00:17:36,080 --> 00:17:38,080
+programs so in the middle we run the
+
+516
+00:17:38,080 --> 00:17:40,000
+first program over unprimed variables
+
+517
+00:17:40,000 --> 00:17:41,679
+followed by the same program over prime
+
+518
+00:17:41,679 --> 00:17:44,080
+variables we verify then that
+
+519
+00:17:44,080 --> 00:17:46,400
+both copies of that program have the
+
+520
+00:17:46,400 --> 00:17:48,640
+same leakage assuming the public inputs
+
+521
+00:17:48,640 --> 00:17:50,240
+and outputs are equal
+
+522
+00:17:50,240 --> 00:17:52,400
+so this is already right we can convince
+
+523
+00:17:52,400 --> 00:17:54,080
+ourselves pretty easily that this will
+
+524
+00:17:54,080 --> 00:17:56,400
+be a sound and complete method
+
+525
+00:17:56,400 --> 00:17:59,120
+to verify uh this two safety property
+
+526
+00:17:59,120 --> 00:18:00,320
+that we talked about called constant
+
+527
+00:18:00,320 --> 00:18:02,559
+time
+
+528
+00:18:02,799 --> 00:18:03,840
+however
+
+529
+00:18:03,840 --> 00:18:05,760
+this as i've described it so far is
+
+530
+00:18:05,760 --> 00:18:07,919
+pretty hard for verifiers to handle and
+
+531
+00:18:07,919 --> 00:18:11,120
+to see why let's just consider a simple
+
+532
+00:18:11,120 --> 00:18:12,960
+program here well it's not that simple
+
+533
+00:18:12,960 --> 00:18:14,320
+but it does a simple thing it's
+
+534
+00:18:14,320 --> 00:18:16,080
+computing a fibonacci
+
+535
+00:18:16,080 --> 00:18:18,480
+uh sequence so this is an iterative
+
+536
+00:18:18,480 --> 00:18:20,799
+computation of fibonacci with variables
+
+537
+00:18:20,799 --> 00:18:22,480
+uh f g and n
+
+538
+00:18:22,480 --> 00:18:24,080
+and if we just apply our simple
+
+539
+00:18:24,080 --> 00:18:25,679
+translation here we'll get one copy of
+
+540
+00:18:25,679 --> 00:18:27,840
+the fibonacci iterative procedure
+
+541
+00:18:27,840 --> 00:18:29,520
+followed by another copy
+
+542
+00:18:29,520 --> 00:18:31,120
+and we'll have again the assumptions and
+
+543
+00:18:31,120 --> 00:18:32,400
+assertions we've put in there for the
+
+544
+00:18:32,400 --> 00:18:34,240
+constant time property but at the end of
+
+545
+00:18:34,240 --> 00:18:35,919
+the day what a verifier has to reason
+
+546
+00:18:35,919 --> 00:18:38,400
+about here is right the verifier has to
+
+547
+00:18:38,400 --> 00:18:40,160
+come up with invariance to to prove that
+
+548
+00:18:40,160 --> 00:18:42,640
+this program cannot violate as assertion
+
+549
+00:18:42,640 --> 00:18:44,400
+what that entails is that the verifier
+
+550
+00:18:44,400 --> 00:18:45,600
+ultimately has to come up with a
+
+551
+00:18:45,600 --> 00:18:48,000
+relation at every point in this program
+
+552
+00:18:48,000 --> 00:18:50,320
+at every iteration of each loop how are
+
+553
+00:18:50,320 --> 00:18:52,240
+f and f prime related
+
+554
+00:18:52,240 --> 00:18:53,360
+now i shouldn't have to convince you
+
+555
+00:18:53,360 --> 00:18:55,039
+that
+
+556
+00:18:55,039 --> 00:18:56,640
+this is a hard problem for verifiers i
+
+557
+00:18:56,640 --> 00:18:58,480
+even would say it's a hard problem for
+
+558
+00:18:58,480 --> 00:18:59,760
+human beings to write down these
+
+559
+00:18:59,760 --> 00:19:02,240
+invariants
+
+560
+00:19:03,120 --> 00:19:05,679
+so given right so so the idea is that
+
+561
+00:19:05,679 --> 00:19:07,679
+that's not very scarab scalable it's
+
+562
+00:19:07,679 --> 00:19:11,039
+very hard for verifiers to reason about
+
+563
+00:19:11,039 --> 00:19:14,320
+programs besides very simple ones
+
+564
+00:19:14,320 --> 00:19:15,520
+but there's
+
+565
+00:19:15,520 --> 00:19:17,120
+there are other approaches to computing
+
+566
+00:19:17,120 --> 00:19:19,679
+these kinds of products of programs that
+
+567
+00:19:19,679 --> 00:19:21,520
+we can consider and the one we'll start
+
+568
+00:19:21,520 --> 00:19:23,120
+considering here is called cross product
+
+569
+00:19:23,120 --> 00:19:25,440
+and the idea is instead of executing an
+
+570
+00:19:25,440 --> 00:19:28,160
+entire program one
+
+571
+00:19:28,160 --> 00:19:29,760
+entire copy of the program one after the
+
+572
+00:19:29,760 --> 00:19:32,080
+other the idea is that to
+
+573
+00:19:32,080 --> 00:19:33,760
+to allow the verifier to be able to
+
+574
+00:19:33,760 --> 00:19:35,200
+reason about the intermediate steps of
+
+575
+00:19:35,200 --> 00:19:37,520
+the program will interleave the steps of
+
+576
+00:19:37,520 --> 00:19:39,520
+the two copies of the programs so
+
+577
+00:19:39,520 --> 00:19:41,520
+instead of executing the entire copy one
+
+578
+00:19:41,520 --> 00:19:43,760
+followed by entire copy two we execute
+
+579
+00:19:43,760 --> 00:19:45,919
+the first instruction of the first copy
+
+580
+00:19:45,919 --> 00:19:47,760
+the first instruction of the second copy
+
+581
+00:19:47,760 --> 00:19:49,919
+second instruction the first copy etc
+
+582
+00:19:49,919 --> 00:19:53,919
+etc we interleave them in lockstep
+
+583
+00:19:54,320 --> 00:19:55,039
+so
+
+584
+00:19:55,039 --> 00:19:57,679
+what that implies though is that the the
+
+585
+00:19:57,679 --> 00:19:59,679
+control flow of both executions of the
+
+586
+00:19:59,679 --> 00:20:02,159
+program are in sync right if i wanted to
+
+587
+00:20:02,159 --> 00:20:03,520
+compute the cross product of this
+
+588
+00:20:03,520 --> 00:20:04,720
+program on the left the same program
+
+589
+00:20:04,720 --> 00:20:06,960
+again i would have write just one while
+
+590
+00:20:06,960 --> 00:20:08,720
+loop where in the while loop we
+
+591
+00:20:08,720 --> 00:20:11,440
+interleave the individual assignments of
+
+592
+00:20:11,440 --> 00:20:12,640
+each copy
+
+593
+00:20:12,640 --> 00:20:15,120
+and just one branch here where
+
+594
+00:20:15,120 --> 00:20:17,280
+where right i have x equals one followed
+
+595
+00:20:17,280 --> 00:20:18,799
+by x prime equals one just how you'd
+
+596
+00:20:18,799 --> 00:20:22,240
+expect to interleave those instructions
+
+597
+00:20:22,240 --> 00:20:23,919
+so
+
+598
+00:20:23,919 --> 00:20:25,840
+the implication is that the two copies
+
+599
+00:20:25,840 --> 00:20:27,120
+of the program are following the same
+
+600
+00:20:27,120 --> 00:20:28,400
+control flow
+
+601
+00:20:28,400 --> 00:20:29,760
+and
+
+602
+00:20:29,760 --> 00:20:31,520
+what that entails is that the soundness
+
+603
+00:20:31,520 --> 00:20:33,840
+of this approach to know that both contr
+
+604
+00:20:33,840 --> 00:20:35,919
+that both executions are in fact in sync
+
+605
+00:20:35,919 --> 00:20:38,240
+is that the soundness relies on us
+
+606
+00:20:38,240 --> 00:20:40,880
+constructing uh improving invariance
+
+607
+00:20:40,880 --> 00:20:43,760
+that those control flow uh
+
+608
+00:20:43,760 --> 00:20:46,000
+decisions are in fact in agreement so it
+
+609
+00:20:46,000 --> 00:20:47,440
+requires us to come up with invariance
+
+610
+00:20:47,440 --> 00:20:49,520
+for instance that the the the loop
+
+611
+00:20:49,520 --> 00:20:51,440
+condition is identical for both
+
+612
+00:20:51,440 --> 00:20:53,039
+situations so the n prime is greater
+
+613
+00:20:53,039 --> 00:20:55,039
+than zero if and only if
+
+614
+00:20:55,039 --> 00:20:57,919
+n is greater than zero
+
+615
+00:20:57,919 --> 00:20:59,919
+right but luckily we're in luck because
+
+616
+00:20:59,919 --> 00:21:01,360
+those invariants are exactly the
+
+617
+00:21:01,360 --> 00:21:04,240
+obligation we have to prove to show that
+
+618
+00:21:04,240 --> 00:21:06,799
+uh to uphold the constant path property
+
+619
+00:21:06,799 --> 00:21:08,559
+which is part of constant time right so
+
+620
+00:21:08,559 --> 00:21:11,120
+we need to know anyways that the branch
+
+621
+00:21:11,120 --> 00:21:12,640
+decisions for instance weren't made on
+
+622
+00:21:12,640 --> 00:21:14,480
+secrets and i'm running a little low on
+
+623
+00:21:14,480 --> 00:21:16,640
+time now so i'll start to gloss over
+
+624
+00:21:16,640 --> 00:21:18,720
+some of the details but the point is
+
+625
+00:21:18,720 --> 00:21:20,080
+that these are invariants that we have
+
+626
+00:21:20,080 --> 00:21:21,760
+to prove anyways and second of all there
+
+627
+00:21:21,760 --> 00:21:24,320
+are invariants that uh the verifier
+
+628
+00:21:24,320 --> 00:21:26,000
+would have an easy time coming up with
+
+629
+00:21:26,000 --> 00:21:27,440
+the invariants that we need to discharge
+
+630
+00:21:27,440 --> 00:21:28,720
+this particular program are just the
+
+631
+00:21:28,720 --> 00:21:30,240
+equalities between the unprimed and
+
+632
+00:21:30,240 --> 00:21:31,520
+prime variables
+
+633
+00:21:31,520 --> 00:21:33,440
+which a verification tool could easily
+
+634
+00:21:33,440 --> 00:21:36,000
+just right throw in there by default
+
+635
+00:21:36,000 --> 00:21:37,360
+as an attempt to infer and that's in
+
+636
+00:21:37,360 --> 00:21:40,640
+fact what our implementation does
+
+637
+00:21:40,640 --> 00:21:42,480
+on the other hand this simplistic
+
+638
+00:21:42,480 --> 00:21:44,960
+approach is not quite complete because
+
+639
+00:21:44,960 --> 00:21:46,559
+if we consider the secure program on the
+
+640
+00:21:46,559 --> 00:21:48,559
+left that does branch on a secret which
+
+641
+00:21:48,559 --> 00:21:50,960
+is later justified by delimited release
+
+642
+00:21:50,960 --> 00:21:53,120
+of the variable y
+
+643
+00:21:53,120 --> 00:21:55,200
+right the pro the cr the cross product
+
+644
+00:21:55,200 --> 00:21:57,360
+construction of that will signal a
+
+645
+00:21:57,360 --> 00:21:59,120
+violation because the the two programs
+
+646
+00:21:59,120 --> 00:22:01,600
+are not in sync
+
+647
+00:22:01,600 --> 00:22:03,440
+so in fact our overall solution again
+
+648
+00:22:03,440 --> 00:22:04,960
+i'm not going to go in any detail you
+
+649
+00:22:04,960 --> 00:22:06,159
+can just look at the paper for all these
+
+650
+00:22:06,159 --> 00:22:09,440
+details uh will be to to base our
+
+651
+00:22:09,440 --> 00:22:11,200
+construction on the the cross product
+
+652
+00:22:11,200 --> 00:22:13,039
+which is efficient and scalable and
+
+653
+00:22:13,039 --> 00:22:14,640
+limit
+
+654
+00:22:14,640 --> 00:22:15,679
+the
+
+655
+00:22:15,679 --> 00:22:17,440
+self composition to the small parts of
+
+656
+00:22:17,440 --> 00:22:18,880
+the program which actually have to
+
+657
+00:22:18,880 --> 00:22:20,240
+branch on secrets which are later
+
+658
+00:22:20,240 --> 00:22:22,799
+justified
+
+659
+00:22:23,120 --> 00:22:24,720
+quickly we have an implementation of
+
+660
+00:22:24,720 --> 00:22:28,480
+this which uses the the llvm tool chain
+
+661
+00:22:28,480 --> 00:22:30,960
+and the boogie verifier uh to conclude
+
+662
+00:22:30,960 --> 00:22:31,840
+uh
+
+663
+00:22:31,840 --> 00:22:34,559
+uh security or scissors to include
+
+664
+00:22:34,559 --> 00:22:36,400
+safety or not of of the translated
+
+665
+00:22:36,400 --> 00:22:38,720
+program we implemented our translation
+
+666
+00:22:38,720 --> 00:22:40,720
+in the intermediate language of the
+
+667
+00:22:40,720 --> 00:22:43,120
+boogie verifier
+
+668
+00:22:43,120 --> 00:22:46,480
+and we have experiments uh validating
+
+669
+00:22:46,480 --> 00:22:48,799
+our approach on real implementations of
+
+670
+00:22:48,799 --> 00:22:50,480
+several libraries cryptographic
+
+671
+00:22:50,480 --> 00:22:52,880
+primitives tls fixed point arithmetic
+
+672
+00:22:52,880 --> 00:22:55,280
+elliptic curve arithmetic
+
+673
+00:22:55,280 --> 00:22:58,000
+and we verified all these examples to be
+
+674
+00:22:58,000 --> 00:23:00,320
+correct and we've also
+
+675
+00:23:00,320 --> 00:23:02,720
+pointed out known flaws in previous
+
+676
+00:23:02,720 --> 00:23:04,240
+versions of these
+
+677
+00:23:04,240 --> 00:23:07,280
+that were not constant time
+
+678
+00:23:07,280 --> 00:23:09,039
+and right i don't have time to go into
+
+679
+00:23:09,039 --> 00:23:09,919
+this but you know there's been a
+
+680
+00:23:09,919 --> 00:23:12,559
+plethora of related tools uh as far as
+
+681
+00:23:12,559 --> 00:23:14,960
+we know our tool is the first to deal
+
+682
+00:23:14,960 --> 00:23:17,120
+with both uh
+
+683
+00:23:17,120 --> 00:23:19,039
+public and private the differentiation
+
+684
+00:23:19,039 --> 00:23:21,440
+of public inputs and outputs and
+
+685
+00:23:21,440 --> 00:23:23,919
+so sorry public and private inputs and
+
+686
+00:23:23,919 --> 00:23:26,320
+the declassification of outputs and as
+
+687
+00:23:26,320 --> 00:23:29,360
+both sound and complete
+
+688
+00:23:29,360 --> 00:23:31,039
+and
+
+689
+00:23:31,039 --> 00:23:33,360
+a quick word about
+
+690
+00:23:33,360 --> 00:23:34,960
+right we're doing all this at the llvm
+
+691
+00:23:34,960 --> 00:23:36,799
+assembly whereas initially i talked
+
+692
+00:23:36,799 --> 00:23:38,080
+about there's certain things you'd want
+
+693
+00:23:38,080 --> 00:23:39,919
+to know about process architecture like
+
+694
+00:23:39,919 --> 00:23:41,520
+the specification of whether division
+
+695
+00:23:41,520 --> 00:23:42,640
+instruction
+
+696
+00:23:42,640 --> 00:23:44,640
+takes a constant amount of time or not
+
+697
+00:23:44,640 --> 00:23:46,000
+so there's some trade offs here
+
+698
+00:23:46,000 --> 00:23:47,840
+obviously
+
+699
+00:23:47,840 --> 00:23:50,960
+in reasoning about llvm assembly code
+
+700
+00:23:50,960 --> 00:23:52,880
+we're leveraging some generality it's
+
+701
+00:23:52,880 --> 00:23:54,240
+not tied to a specific processor
+
+702
+00:23:54,240 --> 00:23:56,000
+architecture and convenience because
+
+703
+00:23:56,000 --> 00:23:57,600
+there's a lot of nice infrastructure
+
+704
+00:23:57,600 --> 00:23:58,799
+there to leverage
+
+705
+00:23:58,799 --> 00:24:02,320
+um it's also uh right partially sound in
+
+706
+00:24:02,320 --> 00:24:04,880
+terms of certain kinds of cache timing
+
+707
+00:24:04,880 --> 00:24:07,200
+attacks in terms of constant path
+
+708
+00:24:07,200 --> 00:24:09,600
+because the optimized lvm assembly code
+
+709
+00:24:09,600 --> 00:24:12,640
+just before lowering to x86 for instance
+
+710
+00:24:12,640 --> 00:24:14,240
+will have the same basic block structure
+
+711
+00:24:14,240 --> 00:24:16,080
+in the same basic memory accesses the
+
+712
+00:24:16,080 --> 00:24:17,120
+difference of course will be
+
+713
+00:24:17,120 --> 00:24:18,880
+architecture specific modeling in terms
+
+714
+00:24:18,880 --> 00:24:19,679
+of
+
+715
+00:24:19,679 --> 00:24:22,880
+uh how to model write certain uh
+
+716
+00:24:22,880 --> 00:24:24,240
+arithmetic instructions and floating
+
+717
+00:24:24,240 --> 00:24:26,320
+point instructions etc
+
+718
+00:24:26,320 --> 00:24:28,799
+so in conclusion uh the result that i
+
+719
+00:24:28,799 --> 00:24:30,240
+talked about today is
+
+720
+00:24:30,240 --> 00:24:32,240
+how to verify the constant time property
+
+721
+00:24:32,240 --> 00:24:34,559
+uh using selective self-composition and
+
+722
+00:24:34,559 --> 00:24:36,159
+then just off-the-shelf verification
+
+723
+00:24:36,159 --> 00:24:38,080
+tools a simple prototype that we've
+
+724
+00:24:38,080 --> 00:24:40,880
+implemented and showed effective for
+
+725
+00:24:40,880 --> 00:24:43,200
+existing secure constant time c code
+
+726
+00:24:43,200 --> 00:24:45,840
+implementations and right with the basic
+
+727
+00:24:45,840 --> 00:24:47,840
+limitation of architecture-specific
+
+728
+00:24:47,840 --> 00:24:49,980
+modeling so thank you
+
+729
+00:24:49,980 --> 00:24:53,460
+[Applause]
+
+730
+00:24:56,799 --> 00:25:00,440
+all right questions
+
+731
+00:25:01,360 --> 00:25:02,799
+come on
+
+732
+00:25:02,799 --> 00:25:06,559
+somebody has a question yeah there we go
+
+733
+00:25:06,960 --> 00:25:08,080
+sorry
+
+734
+00:25:08,080 --> 00:25:09,440
+if you could please roll back to your
+
+735
+00:25:09,440 --> 00:25:12,960
+slide where you had yeah that one
+
+736
+00:25:12,960 --> 00:25:16,159
+how was your experience using the smac
+
+737
+00:25:16,159 --> 00:25:17,279
+toolkit
+
+738
+00:25:17,279 --> 00:25:19,440
+uh i guess what i'm trying to understand
+
+739
+00:25:19,440 --> 00:25:21,679
+here is the implementation is typically
+
+740
+00:25:21,679 --> 00:25:23,120
+done in c
+
+741
+00:25:23,120 --> 00:25:26,880
+uh for all these cryptographic functions
+
+742
+00:25:26,880 --> 00:25:29,679
+and somehow smack converts that into an
+
+743
+00:25:29,679 --> 00:25:31,279
+intermediate language that can be
+
+744
+00:25:31,279 --> 00:25:33,039
+digested by boogie
+
+745
+00:25:33,039 --> 00:25:35,200
+yes uh so how was your experience with
+
+746
+00:25:35,200 --> 00:25:38,159
+smack and its conversion process because
+
+747
+00:25:38,159 --> 00:25:40,480
+my personal sort of feeling on that is
+
+748
+00:25:40,480 --> 00:25:42,799
+it's a hit or miss
+
+749
+00:25:42,799 --> 00:25:44,799
+so i'm actually uh one of the co-authors
+
+750
+00:25:44,799 --> 00:25:45,919
+of the smack so i have a lot of
+
+751
+00:25:45,919 --> 00:25:48,640
+experience with that
+
+752
+00:25:48,880 --> 00:25:49,679
+um
+
+753
+00:25:49,679 --> 00:25:52,320
+yeah so basically right we
+
+754
+00:25:52,320 --> 00:25:54,080
+we make we make a best effort
+
+755
+00:25:54,080 --> 00:25:56,960
+translation of translating the llvms
+
+756
+00:25:56,960 --> 00:25:58,159
+intermediate language to boogie's
+
+757
+00:25:58,159 --> 00:26:00,080
+intermediate language
+
+758
+00:26:00,080 --> 00:26:02,960
+it's not perfect but we have covered uh
+
+759
+00:26:02,960 --> 00:26:04,480
+most of the bases so the basic
+
+760
+00:26:04,480 --> 00:26:06,400
+translation for i don't know if you're
+
+761
+00:26:06,400 --> 00:26:07,760
+worried about specific features but just
+
+762
+00:26:07,760 --> 00:26:10,720
+to give you a flavor so initially right
+
+763
+00:26:10,720 --> 00:26:12,320
+we have just a translation that
+
+764
+00:26:12,320 --> 00:26:14,640
+translates uh
+
+765
+00:26:14,640 --> 00:26:16,320
+unsigns integers and all these things
+
+766
+00:26:16,320 --> 00:26:18,480
+just into mathematical integers now we
+
+767
+00:26:18,480 --> 00:26:19,919
+also have something you can do that is
+
+768
+00:26:19,919 --> 00:26:21,279
+more precise that you can actually model
+
+769
+00:26:21,279 --> 00:26:25,840
+those as 32-bit vectors for instance um
+
+770
+00:26:25,840 --> 00:26:27,520
+we've found that i mean for the for the
+
+771
+00:26:27,520 --> 00:26:30,080
+code that we analyze uh it covers all
+
+772
+00:26:30,080 --> 00:26:31,600
+the bases we need to be covered but i
+
+773
+00:26:31,600 --> 00:26:32,799
+mean there's always features that we
+
+774
+00:26:32,799 --> 00:26:34,640
+don't implement and we kind of do this
+
+775
+00:26:34,640 --> 00:26:38,679
+on a on-demand basis
+
+776
+00:26:40,480 --> 00:26:42,960
+questions
+
+777
+00:26:43,120 --> 00:26:44,559
+all right well i have maybe like one or
+
+778
+00:26:44,559 --> 00:26:47,279
+two questions so uh you rely on a
+
+779
+00:26:47,279 --> 00:26:49,360
+leakage model to have a slightly more
+
+780
+00:26:49,360 --> 00:26:51,200
+flexible system
+
+781
+00:26:51,200 --> 00:26:52,960
+how did you get this model and like what
+
+782
+00:26:52,960 --> 00:26:54,480
+does that look like
+
+783
+00:26:54,480 --> 00:26:55,440
+ah
+
+784
+00:26:55,440 --> 00:26:57,440
+yeah so the uh
+
+785
+00:26:57,440 --> 00:26:59,200
+delete right ideally the leakage model
+
+786
+00:26:59,200 --> 00:27:00,640
+would be a parameter here in this case
+
+787
+00:27:00,640 --> 00:27:02,720
+we've just fixed a leakage model but the
+
+788
+00:27:02,720 --> 00:27:05,760
+idea was just that
+
+789
+00:27:05,760 --> 00:27:09,919
+if maybe go back to the to the example
+
+790
+00:27:12,320 --> 00:27:14,480
+so for instance here
+
+791
+00:27:14,480 --> 00:27:17,200
+right if if the problem is uh whether
+
+792
+00:27:17,200 --> 00:27:18,880
+two program paths go down different
+
+793
+00:27:18,880 --> 00:27:20,559
+branches two executions go down
+
+794
+00:27:20,559 --> 00:27:22,320
+different branches depending on secrets
+
+795
+00:27:22,320 --> 00:27:24,799
+the way we would uh
+
+796
+00:27:24,799 --> 00:27:26,240
+just set up the leakage there is we
+
+797
+00:27:26,240 --> 00:27:28,000
+would witness that they've gone down
+
+798
+00:27:28,000 --> 00:27:29,200
+different paths
+
+799
+00:27:29,200 --> 00:27:31,279
+because what they're leaking is the
+
+800
+00:27:31,279 --> 00:27:32,720
+address that they jump that they branch
+
+801
+00:27:32,720 --> 00:27:33,760
+to
+
+802
+00:27:33,760 --> 00:27:34,799
+right so
+
+803
+00:27:34,799 --> 00:27:36,320
+in branch instructions we say that it
+
+804
+00:27:36,320 --> 00:27:37,840
+leaks the branched address so that when
+
+805
+00:27:37,840 --> 00:27:40,559
+two different executions diverge we have
+
+806
+00:27:40,559 --> 00:27:42,480
+a witness of their divergence meaning
+
+807
+00:27:42,480 --> 00:27:44,240
+the the branch address and the same for
+
+808
+00:27:44,240 --> 00:27:45,919
+memory addresses and so on
+
+809
+00:27:45,919 --> 00:27:47,039
+sorry i meant more like ins and for
+
+810
+00:27:47,039 --> 00:27:49,440
+instructions but uh
+
+811
+00:27:49,440 --> 00:27:51,919
+i i guess for that like you estimate
+
+812
+00:27:51,919 --> 00:27:52,640
+sorry
+
+813
+00:27:52,640 --> 00:27:54,159
+i i meant more like instructions right
+
+814
+00:27:54,159 --> 00:27:55,279
+like if i have
+
+815
+00:27:55,279 --> 00:27:56,640
+right for instructions i mean for
+
+816
+00:27:56,640 --> 00:27:59,360
+individual instructions uh
+
+817
+00:27:59,360 --> 00:28:00,880
+that's actually one of the limitations
+
+818
+00:28:00,880 --> 00:28:03,360
+right so we're not modeling the leakage
+
+819
+00:28:03,360 --> 00:28:05,600
+of any specific processor
+
+820
+00:28:05,600 --> 00:28:07,039
+that's something you'd have to do right
+
+821
+00:28:07,039 --> 00:28:08,640
+if you really wanted to know that your
+
+822
+00:28:08,640 --> 00:28:10,559
+code is constant time on x86 and you
+
+823
+00:28:10,559 --> 00:28:12,640
+wanted to verify for x86 you'd have to
+
+824
+00:28:12,640 --> 00:28:13,679
+go to the
+
+825
+00:28:13,679 --> 00:28:15,200
+i mean the best approach i know now is
+
+826
+00:28:15,200 --> 00:28:17,760
+to go to the processor right manual in
+
+827
+00:28:17,760 --> 00:28:20,640
+in and read whether the the execution
+
+828
+00:28:20,640 --> 00:28:22,640
+time of instruction depends on operands
+
+829
+00:28:22,640 --> 00:28:25,120
+and so on
+
+830
+00:28:25,360 --> 00:28:26,320
+thanks
+
+831
+00:28:26,320 --> 00:28:28,720
+um are there any other questions
+
+832
+00:28:28,720 --> 00:28:31,840
+yeah deepak
+
+833
+00:28:34,330 --> 00:28:35,440
+[Music]
+
+834
+00:28:35,440 --> 00:28:37,840
+so in this hybrid construction um or
+
+835
+00:28:37,840 --> 00:28:39,840
+this hybrid product at some point you
+
+836
+00:28:39,840 --> 00:28:41,360
+must know
+
+837
+00:28:41,360 --> 00:28:42,880
+um
+
+838
+00:28:42,880 --> 00:28:44,960
+which control flow points are actually
+
+839
+00:28:44,960 --> 00:28:46,720
+secret dependent and which are not is
+
+840
+00:28:46,720 --> 00:28:48,480
+that correct or did i get this wrong
+
+841
+00:28:48,480 --> 00:28:50,559
+that is correct yeah so what we've done
+
+842
+00:28:50,559 --> 00:28:51,520
+right now
+
+843
+00:28:51,520 --> 00:28:53,120
+most of the code that we've analyzed in
+
+844
+00:28:53,120 --> 00:28:56,080
+those libraries uh never needs this um
+
+845
+00:28:56,080 --> 00:28:57,440
+but there are one or two examples that
+
+846
+00:28:57,440 --> 00:28:59,760
+do and in that case we have just gone in
+
+847
+00:28:59,760 --> 00:29:01,279
+and identified manually what are those
+
+848
+00:29:01,279 --> 00:29:04,080
+control points which do depend right on
+
+849
+00:29:04,080 --> 00:29:06,159
+on later declassification
+
+850
+00:29:06,159 --> 00:29:08,559
+um i see in general you could do
+
+851
+00:29:08,559 --> 00:29:10,880
+right an approach which automatically uh
+
+852
+00:29:10,880 --> 00:29:14,320
+tries the the the proof with just the
+
+853
+00:29:14,320 --> 00:29:15,760
+cross product if it doesn't work then
+
+854
+00:29:15,760 --> 00:29:16,960
+try to identify right where these
+
+855
+00:29:16,960 --> 00:29:18,399
+divergences are and so on so maybe
+
+856
+00:29:18,399 --> 00:29:19,840
+there's some seaguar kind of loop you
+
+857
+00:29:19,840 --> 00:29:22,000
+can do there to to have more automation
+
+858
+00:29:22,000 --> 00:29:22,960
+at the moment we're just doing it
+
+859
+00:29:22,960 --> 00:29:24,000
+manually
+
+860
+00:29:24,000 --> 00:29:27,559
+okay thanks
+
+861
+00:29:31,279 --> 00:29:33,840
+uh cj from georgia tech uh so i'm
+
+862
+00:29:33,840 --> 00:29:35,440
+curious about how do you get the loop
+
+863
+00:29:35,440 --> 00:29:37,200
+environment because you know in general
+
+864
+00:29:37,200 --> 00:29:39,120
+verification is very hard to derive
+
+865
+00:29:39,120 --> 00:29:41,760
+those loop environment but here clearly
+
+866
+00:29:41,760 --> 00:29:44,000
+the user doesn't give such information
+
+867
+00:29:44,000 --> 00:29:45,279
+right
+
+868
+00:29:45,279 --> 00:29:46,640
+so generating these invariants that i
+
+869
+00:29:46,640 --> 00:29:48,720
+was talking about here yes yeah yeah so
+
+870
+00:29:48,720 --> 00:29:52,159
+uh in this case our tool just blindly so
+
+871
+00:29:52,159 --> 00:29:53,679
+our tool is aware
+
+872
+00:29:53,679 --> 00:29:55,919
+right our translation is duplicating all
+
+873
+00:29:55,919 --> 00:29:57,440
+essentially all of the program variables
+
+874
+00:29:57,440 --> 00:29:59,360
+of the program into unprimed and prime
+
+875
+00:29:59,360 --> 00:30:00,480
+versions
+
+876
+00:30:00,480 --> 00:30:02,399
+and our tool uh basically does some
+
+877
+00:30:02,399 --> 00:30:04,720
+analysis to see which variables are live
+
+878
+00:30:04,720 --> 00:30:06,720
+in every given program point and so on
+
+879
+00:30:06,720 --> 00:30:09,279
+and just it all of those so at every
+
+880
+00:30:09,279 --> 00:30:10,320
+loophead
+
+881
+00:30:10,320 --> 00:30:11,760
+uh where it looks at the set of
+
+882
+00:30:11,760 --> 00:30:13,840
+variables that are live and in use uh
+
+883
+00:30:13,840 --> 00:30:16,559
+and and outputs this invariant f equals
+
+884
+00:30:16,559 --> 00:30:18,880
+f prime for every such variable
+
+885
+00:30:18,880 --> 00:30:21,520
+in practice this just works um there
+
+886
+00:30:21,520 --> 00:30:23,279
+have been one or two i think contrived
+
+887
+00:30:23,279 --> 00:30:25,520
+examples where we've had to
+
+888
+00:30:25,520 --> 00:30:27,600
+delete one of those invariants
+
+889
+00:30:27,600 --> 00:30:28,799
+because it actually wasn't an invariant
+
+890
+00:30:28,799 --> 00:30:30,960
+but in most cases it works i don't have
+
+891
+00:30:30,960 --> 00:30:32,480
+a good answer for you in terms of future
+
+892
+00:30:32,480 --> 00:30:35,120
+automation for this to be right complete
+
+893
+00:30:35,120 --> 00:30:37,120
+but uh okay thanks another question i
+
+894
+00:30:37,120 --> 00:30:38,240
+have is as you mentioned at the
+
+895
+00:30:38,240 --> 00:30:40,559
+beginning say writing the
+
+896
+00:30:40,559 --> 00:30:42,799
+time constant code is it's hard
+
+897
+00:30:42,799 --> 00:30:44,799
+extremely hard so
+
+898
+00:30:44,799 --> 00:30:47,120
+what do you think uh i mean we gave a
+
+899
+00:30:47,120 --> 00:30:49,919
+piece code which maybe not constant time
+
+900
+00:30:49,919 --> 00:30:50,960
+program
+
+901
+00:30:50,960 --> 00:30:53,279
+but and we just produce
+
+902
+00:30:53,279 --> 00:30:55,279
+a piece code which equivalent or
+
+903
+00:30:55,279 --> 00:30:56,960
+functionally equivalent to the original
+
+904
+00:30:56,960 --> 00:31:00,240
+code by the constant programming
+
+905
+00:31:00,240 --> 00:31:02,159
+i'm not sure i understood your question
+
+906
+00:31:02,159 --> 00:31:03,840
+what i'm saying is because here the
+
+907
+00:31:03,840 --> 00:31:06,080
+piecework c we can verify whether the
+
+908
+00:31:06,080 --> 00:31:08,880
+code is constant time program right
+
+909
+00:31:08,880 --> 00:31:10,559
+right uh what do you think we just
+
+910
+00:31:10,559 --> 00:31:13,919
+automatically generate such kind of
+
+911
+00:31:13,919 --> 00:31:16,720
+program i mean given input which may not
+
+912
+00:31:16,720 --> 00:31:18,960
+constant time program
+
+913
+00:31:18,960 --> 00:31:20,480
+so would it
+
+914
+00:31:20,480 --> 00:31:23,200
+i didn't understand that what if still
+
+915
+00:31:23,200 --> 00:31:25,600
+take this offline okay okay
+
+916
+00:31:25,600 --> 00:31:28,399
+okay thanks let's take him again
+
+917
+00:31:28,399 --> 00:31:31,399
+thanks
+
+918
+00:31:37,360 --> 00:31:39,439
+you
+

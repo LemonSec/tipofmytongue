@@ -1,0 +1,3683 @@
+﻿1
+00:00:00,630 --> 00:00:02,857
+- So our next talk is called
+
+2
+00:00:02,857 --> 00:00:07,140
+"Exploring the Hidden Attack
+Surfaces of OEM IoT Devices:
+
+3
+00:00:07,140 --> 00:00:09,600
+Pwning Thousands of
+Routers with Vulnerability
+
+4
+00:00:09,600 --> 00:00:13,080
+in Realtek's SDK for eCos OS."
+
+5
+00:00:13,080 --> 00:00:14,840
+We all know about Realtek so,
+
+6
+00:00:14,840 --> 00:00:16,890
+but give a big hand to these guys.
+
+7
+00:00:16,890 --> 00:00:18,330
+It's their first time at DEFCON.
+
+8
+00:00:18,330 --> 00:00:19,163
+- [Audience Member] Woo hoo!
+
+9
+00:00:19,163 --> 00:00:20,307
+- Give 'em a big cheer!
+
+10
+00:00:20,307 --> 00:00:22,170
+(audience applauding)
+
+11
+00:00:22,170 --> 00:00:25,920
+And hopefully you learn
+something and, you know,
+
+12
+00:00:25,920 --> 00:00:27,180
+probably patch your router at home.
+
+13
+00:00:27,180 --> 00:00:28,013
+All right. Bye.
+
+14
+00:00:32,010 --> 00:00:33,870
+- Well, welcome. Do you hear me?
+
+15
+00:00:33,870 --> 00:00:34,703
+- [Speaker #1] Yeah.
+
+16
+00:00:34,703 --> 00:00:36,450
+- Welcome to "Exploring
+the Hidden Attack Surface
+
+17
+00:00:36,450 --> 00:00:38,100
+of OEM IoT Devices."
+
+18
+00:00:38,100 --> 00:00:40,260
+Today, we'll be sharing with
+you vulnerability we found
+
+19
+00:00:40,260 --> 00:00:42,782
+in Realtek's SDK for eCos OS,
+
+20
+00:00:42,782 --> 00:00:43,650
+but the programmability,
+
+21
+00:00:43,650 --> 00:00:45,810
+we managed to pwn multiple router models
+
+22
+00:00:45,810 --> 00:00:47,880
+from many different vendors.
+
+23
+00:00:47,880 --> 00:00:50,400
+So we'll be starting with how we pick
+
+24
+00:00:50,400 --> 00:00:52,860
+our initial target for this research
+
+25
+00:00:52,860 --> 00:00:55,590
+and then we'll move onto the
+initial reconnaissance phase
+
+26
+00:00:55,590 --> 00:00:58,350
+and we'll talk a little bit about eCos OS,
+
+27
+00:00:58,350 --> 00:01:01,110
+which is the operating system
+that these device devices run.
+
+28
+00:01:01,110 --> 00:01:03,630
+After that, we'll talk about
+how we analyze the framework
+
+29
+00:01:03,630 --> 00:01:06,150
+and how we found this
+vulnerability in question,
+
+30
+00:01:06,150 --> 00:01:08,100
+and then we'll discuss exploitation
+
+31
+00:01:08,100 --> 00:01:11,000
+and post-exploitation strategies
+on these kind of devices.
+
+32
+00:01:11,880 --> 00:01:14,160
+Then we'll talk about
+automating framework analysis
+
+33
+00:01:14,160 --> 00:01:15,870
+to detect the presence of vulnerability
+
+34
+00:01:15,870 --> 00:01:18,450
+in other revenue models
+
+35
+00:01:18,450 --> 00:01:20,950
+and finally, we'll be
+closing with some takeaways.
+
+36
+00:01:22,590 --> 00:01:24,633
+But first, let us introduce ourselves.
+
+37
+00:01:25,530 --> 00:01:27,930
+My name is Octavio Gianatiempo
+and I'm a security researcher
+
+38
+00:01:27,930 --> 00:01:30,930
+at Faraday, and here with
+me is Octavio Galland,
+
+39
+00:01:30,930 --> 00:01:33,150
+who was also a security
+researcher at Faraday
+
+40
+00:01:33,150 --> 00:01:34,290
+at the time of this project,
+
+41
+00:01:34,290 --> 00:01:38,010
+and now he's a research intern
+at the Max Planck Institute
+
+42
+00:01:38,010 --> 00:01:41,430
+in Germany, and also Emilio
+Couto and Javier Aguinaga
+
+43
+00:01:41,430 --> 00:01:43,980
+are part of this team and
+contributed to the research
+
+44
+00:01:43,980 --> 00:01:45,990
+that we'll be sharing with you today.
+
+45
+00:01:45,990 --> 00:01:48,453
+Emilio couldn't come,
+but Javier is over there.
+
+46
+00:01:50,455 --> 00:01:53,370
+Well, Octavio and I were
+the main researchers
+
+47
+00:01:53,370 --> 00:01:55,770
+on this project and we are
+computer science students
+
+48
+00:01:55,770 --> 00:01:58,867
+at the University of
+Buenos Aires in Argentina.
+
+49
+00:01:58,867 --> 00:02:01,598
+Anyone from Argentina in the audience?
+
+50
+00:02:01,598 --> 00:02:03,780
+(scattered cheering)
+
+51
+00:02:03,780 --> 00:02:07,110
+So I am also a biologist,
+but that's long story
+
+52
+00:02:07,110 --> 00:02:08,760
+maybe for another time,
+
+53
+00:02:08,760 --> 00:02:12,120
+and we are CTF players with
+our team from Net Injection.
+
+54
+00:02:12,120 --> 00:02:14,610
+Argentines will understand
+the pun in the name
+
+55
+00:02:14,610 --> 00:02:17,070
+and we mainly focus on reverse engineering
+
+56
+00:02:17,070 --> 00:02:20,880
+and pwn categories and the
+most important thing is that,
+
+57
+00:02:20,880 --> 00:02:22,800
+when we started tackling this project,
+
+58
+00:02:22,800 --> 00:02:26,220
+we had no prior hardware
+hacking experience.
+
+59
+00:02:26,220 --> 00:02:29,040
+So our motivation to choose an IoT device
+
+60
+00:02:29,040 --> 00:02:31,440
+was a reputation for being secure
+
+61
+00:02:31,440 --> 00:02:33,270
+and we thought it would
+be a great opportunity
+
+62
+00:02:33,270 --> 00:02:36,030
+to put to test our skills
+in reverse engineering and,
+
+63
+00:02:36,030 --> 00:02:39,153
+hopefully, if we got lucky,
+our exploitation skills too.
+
+64
+00:02:40,170 --> 00:02:42,633
+So how did we pick our initial target?
+
+65
+00:02:43,770 --> 00:02:46,170
+Well, for us, a router
+was an obvious choice
+
+66
+00:02:46,170 --> 00:02:47,670
+because if you manage to buy one router,
+
+67
+00:02:47,670 --> 00:02:49,770
+you can access to an open network and,
+
+68
+00:02:49,770 --> 00:02:51,720
+in this era of working from home,
+
+69
+00:02:51,720 --> 00:02:53,790
+this may also be an
+opportunity to (indistinct)
+
+70
+00:02:53,790 --> 00:02:55,440
+into an enterprise network.
+
+71
+00:02:55,440 --> 00:02:57,720
+And we decided to choose a popular target
+
+72
+00:02:57,720 --> 00:03:00,180
+to maximize the impact of our findings,
+
+73
+00:03:00,180 --> 00:03:01,950
+and also a relatively cheap one,
+
+74
+00:03:01,950 --> 00:03:03,210
+because we thought that,
+
+75
+00:03:03,210 --> 00:03:05,430
+for a vendor that is
+designing a cheap router,
+
+76
+00:03:05,430 --> 00:03:08,190
+maybe security is not a priority.
+
+77
+00:03:08,190 --> 00:03:09,900
+And keeping these things in mind,
+
+78
+00:03:09,900 --> 00:03:11,580
+we looked for the top-selling router
+
+79
+00:03:11,580 --> 00:03:15,210
+in a locally commercial site
+and we settled for this one.
+
+80
+00:03:15,210 --> 00:03:18,600
+It's called a Nexxt Nebula 300 Plus.
+
+81
+00:03:18,600 --> 00:03:21,570
+The brand is Nexxt and
+Nebula 300 Plus is the model
+
+82
+00:03:21,570 --> 00:03:25,364
+and it's a pretty standard
+300-Megabit WiFi router that,
+
+83
+00:03:25,364 --> 00:03:30,364
+it's based on Realtek
+stock, the RTL 8196E,
+
+84
+00:03:30,720 --> 00:03:35,613
+which has a 32-bit MIPS
+processor that can handle
+
+85
+00:03:35,613 --> 00:03:39,570
+also 16-bit instructions
+to raise param size
+
+86
+00:03:39,570 --> 00:03:42,420
+and it's configured in beginning mode.
+
+87
+00:03:42,420 --> 00:03:45,993
+And as you can see here at
+the time of making this light,
+
+88
+00:03:45,993 --> 00:03:49,770
+this router had almost
+40K sales in Argentina,
+
+89
+00:03:49,770 --> 00:03:52,710
+only in this marketplace.
+
+90
+00:03:52,710 --> 00:03:54,270
+And, well, here,
+
+91
+00:03:54,270 --> 00:03:56,400
+it says that this is the
+second top-selling router,
+
+92
+00:03:56,400 --> 00:03:58,200
+but actually the first one was a repeater
+
+93
+00:03:58,200 --> 00:04:01,920
+so this one is the top-selling
+and it's even recommended
+
+94
+00:04:01,920 --> 00:04:03,210
+by the eCommerce itself
+
+95
+00:04:03,210 --> 00:04:07,080
+and because it has pretty good
+reviews from the customers,
+
+96
+00:04:07,080 --> 00:04:09,930
+but, well, the typical
+customer doesn't have the tools
+
+97
+00:04:09,930 --> 00:04:12,540
+or the skills to reverse
+engineering the framework
+
+98
+00:04:12,540 --> 00:04:15,630
+for the router and find
+vulnerability so what do they know
+
+99
+00:04:15,630 --> 00:04:16,743
+about security, right?
+
+100
+00:04:18,360 --> 00:04:20,940
+So we bought this router
+and downloaded the firmware
+
+101
+00:04:20,940 --> 00:04:22,690
+from the vendor's website
+
+102
+00:04:25,230 --> 00:04:27,030
+and the first thing we noticed that,
+
+103
+00:04:27,030 --> 00:04:28,800
+was that it had a good loader
+
+104
+00:04:28,800 --> 00:04:30,840
+and a compressed kernel image.
+
+105
+00:04:30,840 --> 00:04:33,240
+We ran that through the
+Bing work and we managed
+
+106
+00:04:33,240 --> 00:04:34,950
+to decompress this kernel image,
+
+107
+00:04:34,950 --> 00:04:38,250
+but we couldn't guess the
+loading address to start
+
+108
+00:04:38,250 --> 00:04:39,850
+the reverse engineering process.
+
+109
+00:04:41,550 --> 00:04:44,070
+So we decided to crack
+open the device to hook
+
+110
+00:04:44,070 --> 00:04:46,470
+to the UART interface, but we,
+
+111
+00:04:46,470 --> 00:04:49,833
+there weren't pins on the
+board or place to solder them,
+
+112
+00:04:50,940 --> 00:04:55,413
+but luckily this SOC from
+Realtek, the RTL81960,
+
+113
+00:04:56,640 --> 00:05:01,080
+has UART capabilities and has
+some pins assigned to UART.
+
+114
+00:05:01,080 --> 00:05:04,650
+So, since we were working
+from home and on a budget,
+
+115
+00:05:04,650 --> 00:05:06,930
+we designed this little
+contraption with the cork
+
+116
+00:05:06,930 --> 00:05:10,650
+because Argentina, and if you don't know,
+
+117
+00:05:10,650 --> 00:05:12,420
+wine's very good in Argentina,
+
+118
+00:05:12,420 --> 00:05:15,217
+and two thin wires and this
+device covered just over
+
+119
+00:05:15,217 --> 00:05:18,810
+the SOC, very touching the pins.
+
+120
+00:05:18,810 --> 00:05:21,810
+And with that, we managed
+to get our first UART output
+
+121
+00:05:21,810 --> 00:05:23,970
+from this device and, lucky for us,
+
+122
+00:05:23,970 --> 00:05:28,970
+it had a lot of addresses
+printed on the screen
+
+123
+00:05:28,980 --> 00:05:32,250
+and among them there
+was this start address,
+
+124
+00:05:32,250 --> 00:05:35,880
+which is the address of the
+first function that gets called
+
+125
+00:05:35,880 --> 00:05:36,810
+within the kernel code.
+
+126
+00:05:36,810 --> 00:05:41,810
+And with that, we got the
+guess, the logging address
+
+127
+00:05:42,030 --> 00:05:44,703
+and we could start our
+reverse engineering process.
+
+128
+00:05:46,740 --> 00:05:51,510
+So the first thing we noticed
+was that this giant binary,
+
+129
+00:05:51,510 --> 00:05:52,980
+which is the kernel image,
+
+130
+00:05:52,980 --> 00:05:55,830
+is composed of software
+from many different origins.
+
+131
+00:05:55,830 --> 00:05:58,920
+It has a real-time operating
+system called eCos,
+
+132
+00:05:58,920 --> 00:06:02,340
+libc implementation, a
+web server called GoAhead,
+
+133
+00:06:02,340 --> 00:06:05,070
+and a lot of custom code mainly written
+
+134
+00:06:05,070 --> 00:06:08,373
+by the vendor, but it also
+has code from other sources.
+
+135
+00:06:10,110 --> 00:06:12,393
+So let's talk a little bit about eCos.
+
+136
+00:06:12,393 --> 00:06:15,600
+It's an open source,
+real-time operating system.
+
+137
+00:06:15,600 --> 00:06:18,960
+It's POSIX compatible and it's
+designed to be lightweight
+
+138
+00:06:18,960 --> 00:06:20,190
+and customizable.
+
+139
+00:06:20,190 --> 00:06:23,199
+The idea is that the developer
+can choose which modules
+
+140
+00:06:23,199 --> 00:06:26,550
+and packages of the kernel to include
+
+141
+00:06:26,550 --> 00:06:31,290
+it in the build process and to
+bundle that up with our code
+
+142
+00:06:31,290 --> 00:06:34,650
+to achieve a tailored
+solution and then that can run
+
+143
+00:06:34,650 --> 00:06:38,373
+on an embedded device that
+has limited hardware specs.
+
+144
+00:06:39,390 --> 00:06:43,920
+So another key characteristic to achieve
+
+145
+00:06:43,920 --> 00:06:48,720
+this lightweightness is that
+eCos has only a single process,
+
+146
+00:06:48,720 --> 00:06:51,240
+but to be able to achieve concurrency,
+
+147
+00:06:51,240 --> 00:06:53,290
+this process can spawn multiple threads
+
+148
+00:06:55,130 --> 00:06:58,050
+and this threads can access
+the whole memory space.
+
+149
+00:06:58,050 --> 00:06:59,550
+There is no big trail memory.
+
+150
+00:06:59,550 --> 00:07:03,030
+There are no privileges and
+every time a thread crashes,
+
+151
+00:07:03,030 --> 00:07:05,160
+an exception file gets called.
+
+152
+00:07:05,160 --> 00:07:07,434
+And for this device
+that we were looking at,
+
+153
+00:07:07,434 --> 00:07:10,533
+this exception-handler
+just reboots the device.
+
+154
+00:07:12,780 --> 00:07:16,110
+So once we knew the approximate
+composition of this image,
+
+155
+00:07:16,110 --> 00:07:19,170
+we started reverse-engineering
+the custom functionalities
+
+156
+00:07:19,170 --> 00:07:20,003
+of this router.
+
+157
+00:07:22,290 --> 00:07:25,350
+- So, since many parts
+of the software stack
+
+158
+00:07:25,350 --> 00:07:28,020
+were open source, that was good news.
+
+159
+00:07:28,020 --> 00:07:31,260
+We have, well, the
+operating system, the libcs
+
+160
+00:07:31,260 --> 00:07:32,760
+everything was open-source.
+
+161
+00:07:32,760 --> 00:07:35,691
+We wanted to build those
+components ourselves
+
+162
+00:07:35,691 --> 00:07:38,790
+with the maximums enabled and then apply
+
+163
+00:07:38,790 --> 00:07:41,580
+those generate function
+signatures and apply them
+
+164
+00:07:41,580 --> 00:07:45,060
+to the binary we already had
+so that the reversing process
+
+165
+00:07:45,060 --> 00:07:46,530
+will be easier.
+
+166
+00:07:46,530 --> 00:07:49,590
+Unfortunately, the vendor
+did not provide a release
+
+167
+00:07:49,590 --> 00:07:53,220
+for this device so we couldn't
+download a zip package
+
+168
+00:07:53,220 --> 00:07:55,380
+and run Mac on it and have it work,
+
+169
+00:07:55,380 --> 00:07:57,799
+so we looked for the compiler being used
+
+170
+00:07:57,799 --> 00:07:59,370
+within the firmware image.
+
+171
+00:07:59,370 --> 00:08:01,950
+There was a string indicating
+the version, of course,
+
+172
+00:08:01,950 --> 00:08:06,299
+and we tried to use that
+to build the firmware
+
+173
+00:08:06,299 --> 00:08:07,950
+with the box symbols,
+
+174
+00:08:07,950 --> 00:08:11,550
+but we couldn't without the
+exact build configurations,
+
+175
+00:08:11,550 --> 00:08:14,580
+such as the compiler options,
+optimizations enabled,
+
+176
+00:08:14,580 --> 00:08:15,840
+and so on,
+
+177
+00:08:15,840 --> 00:08:18,355
+we couldn't generate a
+matching function signatures.
+
+178
+00:08:18,355 --> 00:08:21,360
+In the slide, there's a
+footnote with how that approach
+
+179
+00:08:21,360 --> 00:08:23,583
+will look like had it been possible.
+
+180
+00:08:24,660 --> 00:08:27,900
+So we had to do without
+function signatures.
+
+181
+00:08:27,900 --> 00:08:29,347
+However, as I just said,
+
+182
+00:08:29,347 --> 00:08:33,210
+we had the code for the
+operating system, the web server,
+
+183
+00:08:33,210 --> 00:08:36,000
+which was GoAhead, the libc was uClibc.
+
+184
+00:08:36,000 --> 00:08:38,490
+All of this is open-source
+and there were many parts
+
+185
+00:08:38,490 --> 00:08:41,571
+which were not actually
+open-source, but it was,
+
+186
+00:08:41,571 --> 00:08:46,200
+the code was leaked online
+so that helped a little bit
+
+187
+00:08:46,200 --> 00:08:47,610
+with the reversing process.
+
+188
+00:08:47,610 --> 00:08:51,030
+So we basically went about the
+reversing process as usual,
+
+189
+00:08:51,030 --> 00:08:54,453
+basically, but reading the
+source code as reference.
+
+190
+00:08:55,680 --> 00:09:00,330
+And now that we knew we had
+the source code and we had
+
+191
+00:09:00,330 --> 00:09:02,430
+the coding device and we noticed
+
+192
+00:09:02,430 --> 00:09:04,290
+that there were a few
+functionalities in the device,
+
+193
+00:09:04,290 --> 00:09:07,525
+which were not available
+in the upstream code,
+
+194
+00:09:07,525 --> 00:09:11,010
+one of these functionalities
+was a shell that was exposed
+
+195
+00:09:11,010 --> 00:09:12,946
+through UART IntelNet.
+
+196
+00:09:12,946 --> 00:09:16,170
+Since the device runs eCos,
+it's not a Linux shell.
+
+197
+00:09:16,170 --> 00:09:18,090
+It doesn't have many
+things that one will expect
+
+198
+00:09:18,090 --> 00:09:21,750
+from a shell, but it
+basically allows us to inspect
+
+199
+00:09:21,750 --> 00:09:24,570
+the configuration of the
+device, inspect the threads,
+
+200
+00:09:24,570 --> 00:09:26,850
+the networking options, and so on.
+
+201
+00:09:26,850 --> 00:09:29,184
+And it also provided us
+with a great starting point
+
+202
+00:09:29,184 --> 00:09:33,630
+for the reversing process
+because we could just look up
+
+203
+00:09:33,630 --> 00:09:35,580
+in the, within the image strings,
+
+204
+00:09:35,580 --> 00:09:38,850
+relating to those commands
+and work our understanding
+
+205
+00:09:38,850 --> 00:09:40,263
+of the device from there.
+
+206
+00:09:41,760 --> 00:09:45,120
+One of those commands, or rather
+a group of these commands,
+
+207
+00:09:45,120 --> 00:09:48,720
+were particularly interesting
+because they allowed us
+
+208
+00:09:48,720 --> 00:09:51,390
+to read and write memory.
+
+209
+00:09:51,390 --> 00:09:53,280
+And this sounds pretty basic,
+
+210
+00:09:53,280 --> 00:09:55,530
+but this was a very low level primitive.
+
+211
+00:09:55,530 --> 00:09:58,320
+Like, it was a command on
+which you could just plug
+
+212
+00:09:58,320 --> 00:10:01,200
+an address and it'll try to
+read from that address or write
+
+213
+00:10:01,200 --> 00:10:03,300
+to it without any checks.
+
+214
+00:10:03,300 --> 00:10:05,280
+So we could use that to, like,
+
+215
+00:10:05,280 --> 00:10:07,740
+modify the code that was
+running on the device,
+
+216
+00:10:07,740 --> 00:10:11,550
+or we could make it
+crash if we try to access
+
+217
+00:10:11,550 --> 00:10:13,710
+an in-valued address,
+
+218
+00:10:13,710 --> 00:10:17,493
+and this will be very
+useful throughout the talk.
+
+219
+00:10:18,720 --> 00:10:22,470
+So when we moved on to trying
+to inspect the threads running
+
+220
+00:10:22,470 --> 00:10:25,470
+on the device, we also
+noticed that this is kind
+
+221
+00:10:25,470 --> 00:10:29,610
+of a design decision by eCos.
+
+222
+00:10:29,610 --> 00:10:32,577
+Basically, every functionality
+recites on its own thread.
+
+223
+00:10:32,577 --> 00:10:34,860
+So, as Octavio said before,
+
+224
+00:10:34,860 --> 00:10:36,120
+we only have one process
+
+225
+00:10:36,120 --> 00:10:38,820
+so we cannot have multiple
+processes or services.
+
+226
+00:10:38,820 --> 00:10:42,600
+Everything has its own thread
+and this is real interesting
+
+227
+00:10:42,600 --> 00:10:44,100
+because, as you can see, for instance,
+
+228
+00:10:44,100 --> 00:10:48,540
+the DHTP server is a
+thread just as privileged
+
+229
+00:10:48,540 --> 00:10:51,900
+as the network support
+thread which implements
+
+230
+00:10:51,900 --> 00:10:53,340
+all the network stack.
+
+231
+00:10:53,340 --> 00:10:56,670
+So, basically, everything lives
+together in the same space
+
+232
+00:10:56,670 --> 00:10:59,374
+and there are no privileges whatsoever.
+
+233
+00:10:59,374 --> 00:11:01,662
+In order to communicate among themselves,
+
+234
+00:11:01,662 --> 00:11:05,010
+these threads can
+basically exchange messages
+
+235
+00:11:05,010 --> 00:11:09,960
+among themselves, the messages
+being just a C strings
+
+236
+00:11:09,960 --> 00:11:14,910
+and well, they, there are
+few API calls that any thread
+
+237
+00:11:14,910 --> 00:11:17,790
+can make using an ID and
+the message that we want
+
+238
+00:11:17,790 --> 00:11:20,340
+to exchange and, on the
+slide, you can see an example.
+
+239
+00:11:20,340 --> 00:11:23,100
+For instance, when the
+reset button is pressed
+
+240
+00:11:23,100 --> 00:11:26,130
+for long enough, a message
+gets sent to a thread
+
+241
+00:11:26,130 --> 00:11:28,293
+which restores the factory settings.
+
+242
+00:11:29,520 --> 00:11:31,980
+And one last thing that we tried to do
+
+243
+00:11:31,980 --> 00:11:35,580
+during the initial
+reversing stage was to debug
+
+244
+00:11:35,580 --> 00:11:38,310
+the firmware because that
+will have been really useful
+
+245
+00:11:38,310 --> 00:11:40,020
+when, you know, trying
+to build up knowledge
+
+246
+00:11:40,020 --> 00:11:43,380
+about how this thing
+worked, but, unlikely,
+
+247
+00:11:43,380 --> 00:11:47,550
+there were no JTAG interface on the board,
+
+248
+00:11:47,550 --> 00:11:51,090
+but when we looked at
+the SOCs documentation,
+
+249
+00:11:51,090 --> 00:11:52,980
+we noticed that there were a few pins
+
+250
+00:11:52,980 --> 00:11:56,400
+that had provided JTAG functionality,
+
+251
+00:11:56,400 --> 00:11:58,770
+but they were used for GPIM
+
+252
+00:11:58,770 --> 00:12:00,120
+on this specific device.
+
+253
+00:12:00,120 --> 00:12:02,430
+They had the two functions
+and when we tried
+
+254
+00:12:02,430 --> 00:12:04,410
+to switch them over to JTAG mode,
+
+255
+00:12:04,410 --> 00:12:07,170
+the device crashed so we
+had to do without JTAG
+
+256
+00:12:07,170 --> 00:12:08,883
+which was somewhat hard.
+
+257
+00:12:09,900 --> 00:12:13,140
+Now, this is what happens
+when the device crashes.
+
+258
+00:12:13,140 --> 00:12:18,140
+We got, well, and a dam indicating
+with which thread caused
+
+259
+00:12:19,500 --> 00:12:22,440
+the crash, the type, like,
+the reason for the crash,
+
+260
+00:12:22,440 --> 00:12:26,550
+or the exception, and
+a dam of all the states
+
+261
+00:12:26,550 --> 00:12:29,130
+that the contents of all the
+registers, a stack trace,
+
+262
+00:12:29,130 --> 00:12:32,760
+and also, we didn't include it
+here, but there's also, like,
+
+263
+00:12:32,760 --> 00:12:35,280
+the contents of the top of the stack.
+
+264
+00:12:35,280 --> 00:12:39,000
+So, even though we cannot
+debug the firmware properly
+
+265
+00:12:39,000 --> 00:12:42,630
+using JTAG and attach to
+it via GDV or anything,
+
+266
+00:12:42,630 --> 00:12:44,070
+if you think about it,
+
+267
+00:12:44,070 --> 00:12:48,600
+getting an such a dam is
+kind of the functionality
+
+268
+00:12:48,600 --> 00:12:52,260
+that one will expect from a
+debugger when the execution hits
+
+269
+00:12:52,260 --> 00:12:53,460
+a break point, right?
+
+270
+00:12:53,460 --> 00:12:55,830
+When you use a debugger
+and you hit a breakpoint,
+
+271
+00:12:55,830 --> 00:12:58,770
+usually we can expect
+the state of the program
+
+272
+00:12:58,770 --> 00:13:00,780
+and the processor and, well,
+
+273
+00:13:00,780 --> 00:13:05,280
+a real debugger will also allow
+you to modify those values
+
+274
+00:13:05,280 --> 00:13:09,180
+and receive execution that
+was not possible in this case,
+
+275
+00:13:09,180 --> 00:13:12,840
+but, you know, it was good
+enough and, more importantly,
+
+276
+00:13:12,840 --> 00:13:14,520
+it was the only thing we had.
+
+277
+00:13:14,520 --> 00:13:18,660
+So, in order to set this
+breakpoints of sorts,
+
+278
+00:13:18,660 --> 00:13:22,410
+what we did was we overwrote
+the desired address
+
+279
+00:13:22,410 --> 00:13:25,020
+where we wanted the execution to stop
+
+280
+00:13:25,020 --> 00:13:27,990
+with an invalid address,
+an invalid distraction,
+
+281
+00:13:27,990 --> 00:13:32,670
+and when the execution hit that address,
+
+282
+00:13:32,670 --> 00:13:35,310
+the thing will crash and
+we'll get the dam and then,
+
+283
+00:13:35,310 --> 00:13:37,950
+after we reboot, we revert
+it back to a clean framework
+
+284
+00:13:37,950 --> 00:13:40,140
+so we can use that as a sort
+
+285
+00:13:40,140 --> 00:13:42,743
+of rudimentary debugging mechanism.
+
+286
+00:13:42,743 --> 00:13:44,760
+Well, with that out of the way,
+
+287
+00:13:44,760 --> 00:13:47,550
+we were able to build an
+initial understanding and moving
+
+288
+00:13:47,550 --> 00:13:49,293
+on to trying to find a liability.
+
+289
+00:13:53,430 --> 00:13:55,980
+- So, during this reversing effort,
+
+290
+00:13:55,980 --> 00:13:58,290
+we identified a lot of libc functions.
+
+291
+00:13:58,290 --> 00:14:00,630
+Remember that we had to do this manually.
+
+292
+00:14:00,630 --> 00:14:03,120
+And as you know, as you might know,
+
+293
+00:14:03,120 --> 00:14:05,340
+many of these functions are dangerous
+
+294
+00:14:05,340 --> 00:14:06,720
+or potentially dangerous.
+
+295
+00:14:06,720 --> 00:14:09,840
+So we decided to write a Ghidra
+script to search for a cause
+
+296
+00:14:09,840 --> 00:14:12,390
+to a string copy and then
+copy in such functions
+
+297
+00:14:12,390 --> 00:14:15,000
+with a destination argument
+located on the stack
+
+298
+00:14:15,000 --> 00:14:18,570
+and the search argument
+that was not hard-coded and,
+
+299
+00:14:18,570 --> 00:14:21,420
+sifting through that list of results,
+
+300
+00:14:21,420 --> 00:14:24,030
+we found this piece of code
+that is very interesting
+
+301
+00:14:24,030 --> 00:14:26,700
+because it uses a string chart to search
+
+302
+00:14:26,700 --> 00:14:29,790
+for a space two times in
+an input line and then,
+
+303
+00:14:29,790 --> 00:14:32,820
+as you can see, it uses
+string copy to copy
+
+304
+00:14:32,820 --> 00:14:35,460
+from there onwards to the tag
+without checking the size.
+
+305
+00:14:35,460 --> 00:14:39,274
+So this is a classic stack
+buffer overflow as you might see,
+
+306
+00:14:39,274 --> 00:14:42,540
+you know, on CDF, but
+before we can understand
+
+307
+00:14:42,540 --> 00:14:45,870
+what this function does in
+the context of your router,
+
+308
+00:14:45,870 --> 00:14:48,297
+we first must talk about
+Voiceover IP and SIP
+
+309
+00:14:48,297 --> 00:14:50,100
+and SDP protocols.
+
+310
+00:14:50,100 --> 00:14:53,640
+So every time a voiceover
+(indistinct) is made, first,
+
+311
+00:14:53,640 --> 00:14:57,390
+a session must be established
+using this C protocol.
+
+312
+00:14:57,390 --> 00:15:00,630
+And alongside this, the
+session description protocol,
+
+313
+00:15:00,630 --> 00:15:04,890
+or SDP, is used to negotiate
+more metrics and media types
+
+314
+00:15:04,890 --> 00:15:07,710
+that will be used when the
+action call takes place
+
+315
+00:15:07,710 --> 00:15:10,797
+over another protocol
+such as RTP and both SIP
+
+316
+00:15:10,797 --> 00:15:13,830
+and SDP protocols are application layer
+
+317
+00:15:13,830 --> 00:15:14,973
+and are text-based.
+
+318
+00:15:16,050 --> 00:15:18,780
+So here you can see an example SIP message
+
+319
+00:15:18,780 --> 00:15:22,860
+and it has two parts: a SIP
+pillar that resembles HTTP,
+
+320
+00:15:22,860 --> 00:15:26,160
+and it can have SDP data alongside.
+
+321
+00:15:26,160 --> 00:15:29,370
+And the important thing for
+us is that it has IP addresses
+
+322
+00:15:29,370 --> 00:15:33,690
+and ports even though
+this works on layer seven
+
+323
+00:15:33,690 --> 00:15:36,660
+And the IP address imports on
+the zip pillar, will be used,
+
+324
+00:15:36,660 --> 00:15:38,310
+for example, in this case,
+
+325
+00:15:38,310 --> 00:15:41,700
+by the colleague to respond
+to this message and the ones
+
+326
+00:15:41,700 --> 00:15:44,790
+on the SDP data will be
+used to establish a session,
+
+327
+00:15:44,790 --> 00:15:46,500
+a media session, and in this case,
+
+328
+00:15:46,500 --> 00:15:50,430
+it is an audio session such as
+it is described in the field,
+
+329
+00:15:50,430 --> 00:15:54,330
+that it starts with the
+M equals audio and the IP
+
+330
+00:15:54,330 --> 00:15:56,913
+and DC field will be used
+to make that connection.
+
+331
+00:15:58,140 --> 00:16:00,900
+So what happens when a device like this,
+
+332
+00:16:00,900 --> 00:16:03,120
+it's in a local network behind a router
+
+333
+00:16:03,120 --> 00:16:05,760
+that does network address translation?
+
+334
+00:16:05,760 --> 00:16:08,460
+Well, this IP address is in
+ports and the SIP message
+
+335
+00:16:08,460 --> 00:16:09,960
+will be local ones.
+
+336
+00:16:09,960 --> 00:16:12,537
+And as this message
+traverses through the router,
+
+337
+00:16:12,537 --> 00:16:16,410
+the router has to change them
+to the external one IP address
+
+338
+00:16:16,410 --> 00:16:19,260
+of the router and an
+external port to ensure
+
+339
+00:16:19,260 --> 00:16:20,850
+that the colleague can respond.
+
+340
+00:16:20,850 --> 00:16:23,970
+When this fails, the call
+might not ring or one
+
+341
+00:16:23,970 --> 00:16:27,093
+of the ends might not have
+audio in this case, for example.
+
+342
+00:16:28,110 --> 00:16:31,410
+So here you can see the same
+message before and after
+
+343
+00:16:31,410 --> 00:16:34,770
+this functionality rewrites
+it and this functionality
+
+344
+00:16:34,770 --> 00:16:37,983
+is called SIP ALG or
+Application Layer Gateway.
+
+345
+00:16:39,600 --> 00:16:43,080
+So now we can go back to the
+vulnerable code and understand
+
+346
+00:16:43,080 --> 00:16:44,608
+it better.
+
+347
+00:16:44,608 --> 00:16:48,510
+The code start reading
+lines from the STP part
+
+348
+00:16:48,510 --> 00:16:51,630
+of this message and it will
+use "Scan F" to try to match
+
+349
+00:16:51,630 --> 00:16:53,790
+the media description field.
+
+350
+00:16:53,790 --> 00:16:58,050
+And from there, it will try to
+extract a port in an attempt
+
+351
+00:16:58,050 --> 00:17:01,560
+to rebuild this media field and replace
+
+352
+00:17:01,560 --> 00:17:03,243
+this with an external port.
+
+353
+00:17:04,320 --> 00:17:08,070
+It will search for the two
+spaces and then it will copy
+
+354
+00:17:08,070 --> 00:17:10,800
+the rest of the information
+that includes the protocol
+
+355
+00:17:10,800 --> 00:17:12,543
+and the format to the stack.
+
+356
+00:17:13,590 --> 00:17:17,550
+So this function that is
+part of the SFLG feature
+
+357
+00:17:17,550 --> 00:17:20,940
+of the router and rewrites
+SDP data instant messages
+
+358
+00:17:20,940 --> 00:17:22,860
+has stack buffer overflow
+
+359
+00:17:22,860 --> 00:17:26,640
+and the router should crash
+if we send a message that has,
+
+360
+00:17:26,640 --> 00:17:29,220
+for example, a lot of phase
+after the media report
+
+361
+00:17:29,220 --> 00:17:31,200
+in this media description field.
+
+362
+00:17:31,200 --> 00:17:34,290
+Assisted functionality has
+to rewrite both incoming
+
+363
+00:17:34,290 --> 00:17:35,520
+and outgoing packets.
+
+364
+00:17:35,520 --> 00:17:38,793
+We might crash the router
+with an incoming packet too.
+
+365
+00:17:40,050 --> 00:17:44,460
+So we sent an UDP packet
+crafted like this with a lot
+
+366
+00:17:44,460 --> 00:17:47,479
+of phase as to report to a
+random port on the router
+
+367
+00:17:47,479 --> 00:17:51,723
+and using this, the routers one
+IP address, the external IP.
+
+368
+00:17:52,560 --> 00:17:54,510
+And when we looked at the UART interface,
+
+369
+00:17:54,510 --> 00:17:56,880
+we thought, we saw that the
+router had crashed with a lot
+
+370
+00:17:56,880 --> 00:18:00,330
+of phase on the stack and with
+control of the pro encounter.
+
+371
+00:18:00,330 --> 00:18:03,450
+So this means that no open
+ports are required to trigger
+
+372
+00:18:03,450 --> 00:18:06,453
+this vulnerability and that
+it can be triggered from one.
+
+373
+00:18:07,391 --> 00:18:08,865
+And more important, importantly,
+
+374
+00:18:08,865 --> 00:18:11,880
+this is a hidden attack surface
+because there's nowhere,
+
+375
+00:18:11,880 --> 00:18:14,760
+no place on the documentation
+of this router that mentioned
+
+376
+00:18:14,760 --> 00:18:17,700
+that it has this SIP ALG functionality
+
+377
+00:18:17,700 --> 00:18:20,940
+and it can be disabled by other
+routers who have interface.
+
+378
+00:18:20,940 --> 00:18:23,610
+We found that it can only be
+disabled by the common line
+
+379
+00:18:23,610 --> 00:18:25,920
+that is available for talent and UART,
+
+380
+00:18:25,920 --> 00:18:28,320
+but there's no way to
+pursue such a configuration
+
+381
+00:18:28,320 --> 00:18:30,120
+and every time the router resets,
+
+382
+00:18:30,120 --> 00:18:32,430
+it will become vulnerable again.
+
+383
+00:18:32,430 --> 00:18:34,890
+And also, port scanning
+wouldn't have revealed
+
+384
+00:18:34,890 --> 00:18:36,340
+the presence of this feature.
+
+385
+00:18:37,590 --> 00:18:39,690
+So, once we knew that the router
+
+386
+00:18:39,690 --> 00:18:43,020
+had this hidden attack surface
+and that it was triggerable,
+
+387
+00:18:43,020 --> 00:18:45,153
+for one, we decided to try to exploit it.
+
+388
+00:18:47,940 --> 00:18:52,320
+- Okay. So the upside of
+trying to write an exploit
+
+389
+00:18:52,320 --> 00:18:54,750
+for an eCos device was that,
+
+390
+00:18:54,750 --> 00:18:56,670
+at least on this particular device,
+
+391
+00:18:56,670 --> 00:18:59,730
+there was no ASLR nor
+any kind of prevention
+
+392
+00:18:59,730 --> 00:19:03,510
+from executing un-writable
+memory, or the other way around,
+
+393
+00:19:03,510 --> 00:19:06,270
+and, well, that implied
+that all the other issues
+
+394
+00:19:06,270 --> 00:19:07,230
+were deterministic.
+
+395
+00:19:07,230 --> 00:19:10,721
+For instance, we knew where
+our shellcode will land.
+
+396
+00:19:10,721 --> 00:19:14,790
+Like, everything we sent
+on the packet will arrive
+
+397
+00:19:14,790 --> 00:19:16,290
+at this specific address.
+
+398
+00:19:16,290 --> 00:19:18,030
+So we will just go with the usual approach
+
+399
+00:19:18,030 --> 00:19:20,550
+and we'll live familiar to a lot of people
+
+400
+00:19:20,550 --> 00:19:22,320
+of just writing shellcode on the stack
+
+401
+00:19:22,320 --> 00:19:23,700
+and then using the overflow
+
+402
+00:19:23,700 --> 00:19:25,560
+to overwrite their return address,
+
+403
+00:19:25,560 --> 00:19:27,420
+to make it point to our shellcode.
+
+404
+00:19:27,420 --> 00:19:29,850
+The two caveats are that
+the shellcode cannot contain
+
+405
+00:19:29,850 --> 00:19:33,420
+no bytes because it will be
+copied over using string copy
+
+406
+00:19:33,420 --> 00:19:36,420
+and that, in this architecture,
+we have two separate caches,
+
+407
+00:19:36,420 --> 00:19:38,580
+one for data and one for instructions.
+
+408
+00:19:38,580 --> 00:19:40,950
+So we cannot write self modifying code,
+
+409
+00:19:40,950 --> 00:19:43,630
+which was our first
+approach to try to avoid
+
+410
+00:19:43,630 --> 00:19:45,630
+using normal bytes.
+
+411
+00:19:45,630 --> 00:19:47,400
+So we can't do that because that leads
+
+412
+00:19:47,400 --> 00:19:49,083
+to cache coherency issues.
+
+413
+00:19:50,220 --> 00:19:51,840
+So what we do is we send
+
+414
+00:19:51,840 --> 00:19:55,860
+an otherwise completely
+normal packet only that,
+
+415
+00:19:55,860 --> 00:19:57,510
+after the audio ports,
+
+416
+00:19:57,510 --> 00:19:59,940
+while we include some
+padding or shellcode, and,
+
+417
+00:19:59,940 --> 00:20:02,940
+as you expect, the address of the,
+
+418
+00:20:02,940 --> 00:20:04,443
+where the show code will land.
+
+419
+00:20:05,280 --> 00:20:08,310
+So when we send this payload
+or shellcode executes
+
+420
+00:20:08,310 --> 00:20:11,220
+within the shellcode, we enabled
+Telnet and sent a message
+
+421
+00:20:11,220 --> 00:20:14,010
+to the firewall service
+in order to turn it off
+
+422
+00:20:14,010 --> 00:20:16,290
+and then we continue execution normally.
+
+423
+00:20:16,290 --> 00:20:17,730
+And it's very important that we do
+
+424
+00:20:17,730 --> 00:20:21,840
+this continuing execution
+because if we fail
+
+425
+00:20:21,840 --> 00:20:24,960
+to receive execution after the
+exploit is done and we crash
+
+426
+00:20:24,960 --> 00:20:27,480
+a thread, not only will the thread crash,
+
+427
+00:20:27,480 --> 00:20:29,580
+but the whole device will go down
+
+428
+00:20:29,580 --> 00:20:31,710
+and the exploit will not work.
+
+429
+00:20:31,710 --> 00:20:33,900
+And after that, we connect to Talent using
+
+430
+00:20:33,900 --> 00:20:35,010
+a backdoor password,
+
+431
+00:20:35,010 --> 00:20:37,140
+an upload that is not
+strictly necessary because
+
+432
+00:20:37,140 --> 00:20:39,177
+at this stage, we have
+full control of the device
+
+433
+00:20:39,177 --> 00:20:43,593
+and we could set the password
+if there was no backdoor.
+
+434
+00:20:44,850 --> 00:20:47,400
+So that was it for the exploitation.
+
+435
+00:20:47,400 --> 00:20:48,233
+At this point,
+
+436
+00:20:48,233 --> 00:20:51,540
+we have a shell which
+isn't strictly necessary.
+
+437
+00:20:51,540 --> 00:20:53,310
+We could do everything with shellcode,
+
+438
+00:20:53,310 --> 00:20:55,203
+but it's easier this way.
+
+439
+00:20:56,490 --> 00:21:00,540
+We cannot use a second stage
+binary like Wget binary
+
+440
+00:21:00,540 --> 00:21:02,670
+and run it because
+there is no file system.
+
+441
+00:21:02,670 --> 00:21:04,473
+This is not a Linux system.
+
+442
+00:21:05,700 --> 00:21:08,640
+So this time we resorted back
+
+443
+00:21:08,640 --> 00:21:10,740
+to the memory modification command
+
+444
+00:21:10,740 --> 00:21:12,510
+that we talked about earlier.
+
+445
+00:21:12,510 --> 00:21:16,200
+So, if we look at how
+commands are handled in eCos,
+
+446
+00:21:16,200 --> 00:21:20,280
+we notice that there is a
+global array which has one entry
+
+447
+00:21:20,280 --> 00:21:21,780
+for each possible command.
+
+448
+00:21:21,780 --> 00:21:24,960
+Each entry consists of a
+pointer to the command name
+
+449
+00:21:24,960 --> 00:21:27,810
+and to the function responsible
+for handling invocations
+
+450
+00:21:27,810 --> 00:21:29,190
+that command.
+
+451
+00:21:29,190 --> 00:21:34,190
+So what we do is we look
+for an unused memory region
+
+452
+00:21:34,290 --> 00:21:38,160
+and we inject a custom code
+in there and then we modify
+
+453
+00:21:38,160 --> 00:21:40,620
+the global array with
+the commands to make one
+
+454
+00:21:40,620 --> 00:21:42,843
+of the handlers point to our code.
+
+455
+00:21:43,770 --> 00:21:45,750
+Again, there is one more caveat here.
+
+456
+00:21:45,750 --> 00:21:48,630
+The code we are injecting
+here is, it's not a binary.
+
+457
+00:21:48,630 --> 00:21:50,820
+It's just that rogue machine code
+
+458
+00:21:50,820 --> 00:21:54,000
+so it has to be self-contained
+or otherwise only depend
+
+459
+00:21:54,000 --> 00:21:56,820
+on functions available
+within the firmware,
+
+460
+00:21:56,820 --> 00:21:59,220
+provided, of course, that
+we know the addresses.
+
+461
+00:22:00,330 --> 00:22:01,230
+So, within this code,
+
+462
+00:22:01,230 --> 00:22:03,247
+we have access to basically
+everything that's available
+
+463
+00:22:03,247 --> 00:22:04,683
+on the device.
+
+464
+00:22:05,629 --> 00:22:09,573
+What we used for our second
+stage for the POC was the eco,
+
+465
+00:22:09,573 --> 00:22:13,770
+eCos API, which includes
+thread management functions
+
+466
+00:22:13,770 --> 00:22:15,000
+and the libc.
+
+467
+00:22:15,000 --> 00:22:15,900
+And, using this,
+
+468
+00:22:15,900 --> 00:22:19,403
+we implemented a multi-threaded
+TCP connect port scanner.
+
+469
+00:22:19,403 --> 00:22:22,560
+Scene port scanner will have been better,
+
+470
+00:22:22,560 --> 00:22:26,520
+but eCos didn't provide
+support for raw TCP sockets
+
+471
+00:22:26,520 --> 00:22:30,660
+for doing that so, and we had
+to do a TCP connect scanner,
+
+472
+00:22:30,660 --> 00:22:33,900
+and we used the multi-threading
+that eCos provided to reduce
+
+473
+00:22:33,900 --> 00:22:34,863
+the scan times.
+
+474
+00:22:35,931 --> 00:22:38,700
+All of this needs to be built statically
+
+475
+00:22:38,700 --> 00:22:40,080
+in a self-contained binary.
+
+476
+00:22:40,080 --> 00:22:42,240
+We use the custom linker
+script in order to be able
+
+477
+00:22:42,240 --> 00:22:44,310
+to specify the loading address so that all
+
+478
+00:22:44,310 --> 00:22:46,770
+the gems will make sense in the context
+
+479
+00:22:46,770 --> 00:22:49,680
+of the router using a compiler,
+
+480
+00:22:49,680 --> 00:22:52,110
+which is compatible with the
+one used to build the image
+
+481
+00:22:52,110 --> 00:22:53,700
+in the original device,
+
+482
+00:22:53,700 --> 00:22:56,520
+and we kind of fake the library
+calls with the addresses
+
+483
+00:22:56,520 --> 00:22:57,810
+that we already know.
+
+484
+00:22:57,810 --> 00:22:59,580
+We can upload this using shell,
+
+485
+00:22:59,580 --> 00:23:03,630
+using Telnet with the
+command for writing memory
+
+486
+00:23:03,630 --> 00:23:05,880
+and from there, we can just execute it.
+
+487
+00:23:05,880 --> 00:23:08,280
+All of this is open-source
+and will be uploaded
+
+488
+00:23:08,280 --> 00:23:10,590
+to a repository shortly.
+
+489
+00:23:10,590 --> 00:23:13,830
+And one thing we didn't get,
+go into, but is interesting,
+
+490
+00:23:13,830 --> 00:23:15,900
+is gaining persistence
+and there's a footnote
+
+491
+00:23:15,900 --> 00:23:18,300
+which you can check to see about that.
+
+492
+00:23:18,300 --> 00:23:22,413
+So I think it's time for the
+demo of the fall payload.
+
+493
+00:23:27,300 --> 00:23:29,430
+- So, as you can see,
+
+494
+00:23:29,430 --> 00:23:33,153
+we start by entering to the
+admin panel of the router.
+
+495
+00:23:34,230 --> 00:23:36,570
+Here is the one IP address and,
+
+496
+00:23:36,570 --> 00:23:38,670
+if we go to the administration port,
+
+497
+00:23:38,670 --> 00:23:40,230
+we can check that Telnet.
+
+498
+00:23:40,230 --> 00:23:41,673
+It's not enabled by default.
+
+499
+00:23:44,580 --> 00:23:47,962
+However, we can try to use
+standard, but, obviously,
+
+500
+00:23:47,962 --> 00:23:49,045
+it will fail.
+
+501
+00:23:54,447 --> 00:23:57,293
+And we can also check if
+the standard port is opened,
+
+502
+00:24:03,000 --> 00:24:03,833
+but it's not.
+
+503
+00:24:05,550 --> 00:24:08,730
+So now we run our exploit that
+will begin by building the
+
+504
+00:24:08,730 --> 00:24:09,690
+second stage,
+
+505
+00:24:09,690 --> 00:24:14,163
+and then we'll send the SIP
+message to enable TelNet.
+
+506
+00:24:15,450 --> 00:24:19,680
+Now, the Telnet port is opened
+on the device and we can use
+
+507
+00:24:19,680 --> 00:24:21,843
+the shell to upload the second stage.
+
+508
+00:24:32,400 --> 00:24:35,130
+So this is rewriting the command handler
+
+509
+00:24:35,130 --> 00:24:36,360
+and when it finishes,
+
+510
+00:24:36,360 --> 00:24:38,403
+we'll have a new command on the router.
+
+511
+00:24:43,290 --> 00:24:46,710
+And, as Octavio said before,
+this command is a port scanner
+
+512
+00:24:46,710 --> 00:24:49,173
+so we can use it to
+scan the router itself.
+
+513
+00:24:51,930 --> 00:24:56,670
+That now has done enabled
+also alongside this interface,
+
+514
+00:24:56,670 --> 00:24:57,633
+web interface.
+
+515
+00:25:00,660 --> 00:25:03,562
+And we can choose another device
+on the network and scan it
+
+516
+00:25:03,562 --> 00:25:06,273
+with nmap as a ground proof.
+
+517
+00:25:09,480 --> 00:25:13,230
+So this device has some open
+ports and we can replicate
+
+518
+00:25:13,230 --> 00:25:15,213
+this scan using the router this time.
+
+519
+00:25:20,987 --> 00:25:24,393
+And it works.
+
+520
+00:25:24,393 --> 00:25:27,393
+(audience clapping)
+
+521
+00:25:33,450 --> 00:25:36,630
+So, once we managed to
+pwn this router model,
+
+522
+00:25:36,630 --> 00:25:39,030
+we decided to try to pwn other models,
+
+523
+00:25:39,030 --> 00:25:40,803
+but using this same vulnerability.
+
+524
+00:25:41,730 --> 00:25:44,430
+The first thing that got
+our attention was that,
+
+525
+00:25:44,430 --> 00:25:46,620
+among these commands that were available
+
+526
+00:25:46,620 --> 00:25:50,280
+in the command line, that was
+available for talent and UART,
+
+527
+00:25:50,280 --> 00:25:51,480
+there were a subset of them
+
+528
+00:25:51,480 --> 00:25:53,790
+that were called Tenda's commands
+
+529
+00:25:53,790 --> 00:25:58,426
+and, as you recall, this
+router maker is Nexxt and Tenda
+
+530
+00:25:58,426 --> 00:26:00,090
+is another manufacturer.
+
+531
+00:26:00,090 --> 00:26:04,770
+So this was interesting
+and we decided to search
+
+532
+00:26:04,770 --> 00:26:07,557
+for the hardware specs of
+Nexxt and Tenda devices
+
+533
+00:26:07,557 --> 00:26:11,178
+and we found that many
+of them are based on SOCs
+
+534
+00:26:11,178 --> 00:26:15,120
+from Realtek from the
+same family, the RTL819X.
+
+535
+00:26:15,120 --> 00:26:17,130
+Here, you can see on the left,
+
+536
+00:26:17,130 --> 00:26:19,680
+the device that we were
+doing our research on and,
+
+537
+00:26:19,680 --> 00:26:24,123
+on the right, the Tenda AC5
+also has so from this family.
+
+538
+00:26:25,230 --> 00:26:27,750
+So we downloaded the
+framework images and we found
+
+539
+00:26:27,750 --> 00:26:29,290
+that they're running eCos 2
+
+540
+00:26:31,170 --> 00:26:34,900
+and we managed to found another
+vendor that uses it SOCs
+
+541
+00:26:35,929 --> 00:26:39,270
+and run eCos on their
+devices and when we looked
+
+542
+00:26:39,270 --> 00:26:42,030
+at the user interface
+to configure the router
+
+543
+00:26:42,030 --> 00:26:44,550
+for the browser, we found
+that they were very similar
+
+544
+00:26:44,550 --> 00:26:46,983
+and only deferring on the branding.
+
+545
+00:26:47,850 --> 00:26:51,900
+Moreover, many of these devices
+are very similar physically,
+
+546
+00:26:51,900 --> 00:26:53,700
+even on their packaging.
+
+547
+00:26:53,700 --> 00:26:54,960
+So all of this suggests
+
+548
+00:26:54,960 --> 00:26:57,300
+that these are OEM-manufactured devices,
+
+549
+00:26:57,300 --> 00:27:00,273
+maybe manufactured by
+one or two companies.
+
+550
+00:27:01,590 --> 00:27:04,500
+So all these routers are bit
+alike and we wanted to know
+
+551
+00:27:04,500 --> 00:27:08,220
+if they could be pwned alike
+so we manually search it for,
+
+552
+00:27:08,220 --> 00:27:10,590
+search for the presence
+of the vulnerability
+
+553
+00:27:10,590 --> 00:27:13,080
+in these firmwares and
+it was on many of them,
+
+554
+00:27:13,080 --> 00:27:15,450
+but before we moved onto
+pwning all the routers,
+
+555
+00:27:15,450 --> 00:27:17,850
+we decided to disclose this vulnerability.
+
+556
+00:27:17,850 --> 00:27:19,819
+And we reflected on
+the fact that this was,
+
+557
+00:27:19,819 --> 00:27:21,090
+that this vulnerability was shared
+
+558
+00:27:21,090 --> 00:27:24,660
+by many different
+vendors, but this feature,
+
+559
+00:27:24,660 --> 00:27:28,110
+the CPLG functionality,
+is kind of on limits,
+
+560
+00:27:28,110 --> 00:27:30,180
+but it's part of the network stack.
+
+561
+00:27:30,180 --> 00:27:32,220
+So we thought that it was
+unlikely to have been written
+
+562
+00:27:32,220 --> 00:27:34,230
+by one of the vendors and we decided
+
+563
+00:27:34,230 --> 00:27:36,480
+to contact Realtek directly.
+
+564
+00:27:36,480 --> 00:27:39,330
+And they quickly confirmed
+that the vulnerability was part
+
+565
+00:27:39,330 --> 00:27:43,140
+of this very SDK for eCos
+space router, SOCs ports,
+
+566
+00:27:43,140 --> 00:27:46,487
+and repeaters, and this meant
+that all vendors that use
+
+567
+00:27:46,487 --> 00:27:49,890
+this SDK and running costs
+on their devices might have
+
+568
+00:27:49,890 --> 00:27:53,490
+this vulnerability if
+they don't review the code
+
+569
+00:27:53,490 --> 00:27:54,723
+that Realtek provides.
+
+570
+00:27:55,740 --> 00:27:58,710
+So this motivated us to automate
+firmware analysis to try
+
+571
+00:27:58,710 --> 00:28:00,693
+to detect more vulnerable devices.
+
+572
+00:28:03,900 --> 00:28:07,290
+- So, if we take a look at
+the vulnerable snippet again,
+
+573
+00:28:07,290 --> 00:28:09,840
+we can see that it has a
+pretty recognizable structure.
+
+574
+00:28:09,840 --> 00:28:12,180
+There are basically two
+calls to string chart looking
+
+575
+00:28:12,180 --> 00:28:15,900
+for spaces in a given input
+and there is string copy,
+
+576
+00:28:15,900 --> 00:28:18,690
+which copies everything after
+the second space to the buffer
+
+577
+00:28:18,690 --> 00:28:22,380
+on the stack and we thought
+it may be possible to create
+
+578
+00:28:22,380 --> 00:28:23,613
+a signature for this.
+
+579
+00:28:24,540 --> 00:28:28,230
+So, if we think in terms
+of the pattern that we want
+
+580
+00:28:28,230 --> 00:28:32,250
+to detect, we basically want
+to detect calls to string copy,
+
+581
+00:28:32,250 --> 00:28:34,860
+but again, given a raw firmware image,
+
+582
+00:28:34,860 --> 00:28:36,450
+we don't know which
+function is the string copy
+
+583
+00:28:36,450 --> 00:28:39,430
+so we just want to detect
+calls to any function
+
+584
+00:28:41,070 --> 00:28:42,480
+which takes two arguments,
+
+585
+00:28:42,480 --> 00:28:44,640
+the first one being a buffer on the stack.
+
+586
+00:28:44,640 --> 00:28:48,973
+And we can check whether a
+call has the first argument,
+
+587
+00:28:48,973 --> 00:28:49,806
+a stack buffer
+
+588
+00:28:49,806 --> 00:28:52,683
+using Ghidra's intermediate
+presentation API.
+
+589
+00:28:53,645 --> 00:28:57,480
+And from there, we can check
+that the second argument comes
+
+590
+00:28:57,480 --> 00:28:59,760
+from a call to a
+different function, again,
+
+591
+00:28:59,760 --> 00:29:02,580
+with two arguments, the
+second one being constants.
+
+592
+00:29:02,580 --> 00:29:06,150
+We repeat this last
+step again and we check
+
+593
+00:29:06,150 --> 00:29:09,120
+that the first argument to
+that previous call also comes
+
+594
+00:29:09,120 --> 00:29:11,010
+to a call to the same function,
+
+595
+00:29:11,010 --> 00:29:14,160
+which we hope will be string char.
+
+596
+00:29:14,160 --> 00:29:19,160
+And lastly, we check that
+this constant's values equals
+
+597
+00:29:19,170 --> 00:29:21,960
+a hex 20, which is asking for space.
+
+598
+00:29:21,960 --> 00:29:24,330
+And, if we find such a code pattern,
+
+599
+00:29:24,330 --> 00:29:28,170
+we basically assume that F
+corresponds to string charge,
+
+600
+00:29:28,170 --> 00:29:29,310
+corresponds to string copy,
+
+601
+00:29:29,310 --> 00:29:32,250
+and that the firmware
+is indeed vulnerable.
+
+602
+00:29:32,250 --> 00:29:35,443
+So we end up trying to
+detect this pattern using
+
+603
+00:29:35,443 --> 00:29:38,340
+a Ghidra script and, basically,
+
+604
+00:29:38,340 --> 00:29:41,700
+scanning the whole code
+for this code pattern will
+
+605
+00:29:41,700 --> 00:29:45,600
+be very time-consuming on
+top of the Ghidra analysis
+
+606
+00:29:45,600 --> 00:29:47,130
+that needs to run first.
+
+607
+00:29:47,130 --> 00:29:50,520
+So in order to narrow down the
+search, their search space,
+
+608
+00:29:50,520 --> 00:29:53,280
+we only look for this pattern
+within all the functions
+
+609
+00:29:53,280 --> 00:29:55,950
+that reference SIP-related strings,
+
+610
+00:29:55,950 --> 00:30:00,660
+such as M equals audio or
+SIP invite or any of those,
+
+611
+00:30:00,660 --> 00:30:04,200
+but there's a big problem that
+needs to be sorted out first
+
+612
+00:30:04,200 --> 00:30:06,390
+and that's that, in
+order to be able to get
+
+613
+00:30:06,390 --> 00:30:08,430
+the steering references right,
+
+614
+00:30:08,430 --> 00:30:11,940
+we need to be able to
+calculate the loading address
+
+615
+00:30:11,940 --> 00:30:12,843
+for the kernel.
+
+616
+00:30:13,680 --> 00:30:17,850
+In our case, when we
+manually reverse this device,
+
+617
+00:30:17,850 --> 00:30:21,120
+we got the loading address
+from the UART output,
+
+618
+00:30:21,120 --> 00:30:23,700
+but if we want to do this
+statically, we cannot.
+
+619
+00:30:23,700 --> 00:30:25,200
+I mean, if we want to automate this,
+
+620
+00:30:25,200 --> 00:30:26,700
+we must do it statically.
+
+621
+00:30:26,700 --> 00:30:30,543
+We cannot go out and buy any
+device that we want to scan.
+
+622
+00:30:31,680 --> 00:30:34,320
+So if we look at the
+UART output, once again,
+
+623
+00:30:34,320 --> 00:30:38,010
+we can see that at some
+stage in the boot process,
+
+624
+00:30:38,010 --> 00:30:40,170
+the kernel needs to be
+decompressed and someone
+
+625
+00:30:40,170 --> 00:30:42,480
+is responsible for both
+decompressing the kernel
+
+626
+00:30:42,480 --> 00:30:45,423
+and deciding where the kernel
+will be loaded in memory.
+
+627
+00:30:46,260 --> 00:30:50,220
+So we reverse engineer the
+boot loader and we found
+
+628
+00:30:50,220 --> 00:30:51,870
+this piece of code.
+
+629
+00:30:51,870 --> 00:30:55,485
+Again, the names were added
+by ourselves and we can see
+
+630
+00:30:55,485 --> 00:30:56,318
+that there's a function,
+
+631
+00:30:56,318 --> 00:30:58,680
+which we have called "Decompress Kernel,"
+
+632
+00:30:58,680 --> 00:31:00,780
+which takes the kernel loading address
+
+633
+00:31:00,780 --> 00:31:05,160
+and it gets called right in
+between the call to "Print F,"
+
+634
+00:31:05,160 --> 00:31:10,080
+which prints the debug messages
+we were seeing earlier.
+
+635
+00:31:10,080 --> 00:31:12,993
+So once again, if we try to
+detect this call pattern,
+
+636
+00:31:13,950 --> 00:31:17,430
+we can make use of the fact
+that there are several calls
+
+637
+00:31:17,430 --> 00:31:20,070
+to "Print F" and that we know the offsets
+
+638
+00:31:20,070 --> 00:31:23,253
+between these strings
+that are being referenced.
+
+639
+00:31:24,180 --> 00:31:25,013
+Wait.
+
+640
+00:31:27,780 --> 00:31:30,480
+So we want to detect a code
+pattern that looks like this,
+
+641
+00:31:30,480 --> 00:31:33,180
+several calls to the same
+function using those SIP strings
+
+642
+00:31:33,180 --> 00:31:37,830
+as arguments, and in
+between the first two calls,
+
+643
+00:31:37,830 --> 00:31:40,050
+a call to a different function which takes
+
+644
+00:31:40,050 --> 00:31:43,110
+it to list one argument,
+but because we don't know
+
+645
+00:31:43,110 --> 00:31:45,120
+the loading address for
+the boot loader either,
+
+646
+00:31:45,120 --> 00:31:45,953
+we don't know.
+
+647
+00:31:45,953 --> 00:31:49,260
+We cannot get the string
+references right so we need to rely
+
+648
+00:31:49,260 --> 00:31:52,773
+on the offsets that I
+just said we already know.
+
+649
+00:31:53,820 --> 00:31:57,330
+So we want to detect this call
+pattern and we must make sure
+
+650
+00:31:57,330 --> 00:32:00,330
+that the difference in
+offset between the calls
+
+651
+00:32:00,330 --> 00:32:03,090
+to the function F match
+the difference in offsets
+
+652
+00:32:03,090 --> 00:32:06,360
+between the strings that
+it should be printing.
+
+653
+00:32:06,360 --> 00:32:08,130
+And, if we find a matching piece of code,
+
+654
+00:32:08,130 --> 00:32:11,940
+then we assume that the first
+argument to the second call
+
+655
+00:32:11,940 --> 00:32:13,503
+is the kernel loading address.
+
+656
+00:32:14,730 --> 00:32:17,280
+And in order to do this, we use Capstone,
+
+657
+00:32:17,280 --> 00:32:20,280
+which is basically works and
+disassembles instructions.
+
+658
+00:32:20,280 --> 00:32:23,790
+It's much lower level
+than Ghidra's IR API,
+
+659
+00:32:23,790 --> 00:32:26,100
+but it was good enough
+because the analysis
+
+660
+00:32:26,100 --> 00:32:28,770
+that we were conducting
+was rather primitive.
+
+661
+00:32:28,770 --> 00:32:31,560
+And, by the way, there's
+also an alternative approach
+
+662
+00:32:31,560 --> 00:32:33,840
+for figuring out the current
+loading errors aesthetically,
+
+663
+00:32:33,840 --> 00:32:34,860
+which is in the footnote,
+
+664
+00:32:34,860 --> 00:32:38,283
+but we tried that and it
+didn't work in our device.
+
+665
+00:32:39,210 --> 00:32:43,483
+So we automated all of
+this and then coded, like,
+
+666
+00:32:43,483 --> 00:32:45,420
+a higher level script which involved
+
+667
+00:32:45,420 --> 00:32:48,540
+the Capstone script first to
+detect the loading address,
+
+668
+00:32:48,540 --> 00:32:52,650
+load the binary into Ghidra,
+and then run the second scripts
+
+669
+00:32:52,650 --> 00:32:54,990
+which detects the vulnerable function call
+
+670
+00:32:54,990 --> 00:32:56,820
+and all of that is open-source and, again,
+
+671
+00:32:56,820 --> 00:33:00,900
+will be available in
+the repo in a short time
+
+672
+00:33:00,900 --> 00:33:02,580
+after this talk.
+
+673
+00:33:02,580 --> 00:33:05,070
+So we run this device, this scan,
+
+674
+00:33:05,070 --> 00:33:08,910
+against the models that
+we through, you know,
+
+675
+00:33:08,910 --> 00:33:11,460
+basically Googling for
+devices using this cheap,
+
+676
+00:33:11,460 --> 00:33:15,450
+or devices using this OS we identified.
+
+677
+00:33:15,450 --> 00:33:18,111
+For vendors, we run the
+script against all models.
+
+678
+00:33:18,111 --> 00:33:22,950
+From these four vendors, we
+identified 13 vulnerable models
+
+679
+00:33:22,950 --> 00:33:27,240
+which had, at the time
+of making this project,
+
+680
+00:33:27,240 --> 00:33:30,600
+we noticed had amounted
+to over 100,000 sales
+
+681
+00:33:30,600 --> 00:33:34,560
+in Latin America alone,
+in one eCommerce alone.
+
+682
+00:33:34,560 --> 00:33:36,990
+Not only that, but they
+were actively being sold
+
+683
+00:33:36,990 --> 00:33:41,670
+because a few months in,
+30K more devices were sold,
+
+684
+00:33:41,670 --> 00:33:44,760
+but then the guys at Faraday,
+
+685
+00:33:44,760 --> 00:33:46,652
+with the help of Daniel Delfino
+
+686
+00:33:46,652 --> 00:33:48,720
+and Phil DaRosa who's
+here in the audience,
+
+687
+00:33:48,720 --> 00:33:50,310
+basically figured out a way
+
+688
+00:33:50,310 --> 00:33:54,540
+to detect more potentially
+vulnerable devices provided
+
+689
+00:33:54,540 --> 00:33:59,540
+that these devices expose the
+HTTP interface through one.
+
+690
+00:33:59,940 --> 00:34:04,940
+So this gave us 63,000
+more devices to look at,
+
+691
+00:34:06,300 --> 00:34:08,340
+or where more devices
+in the world to look at,
+
+692
+00:34:08,340 --> 00:34:10,770
+not different models, but again,
+
+693
+00:34:10,770 --> 00:34:15,180
+these are only the devices that
+are exporting the, or, yeah,
+
+694
+00:34:15,180 --> 00:34:17,310
+exporting the HTTP interface through one,
+
+695
+00:34:17,310 --> 00:34:18,873
+which is much lower bound.
+
+696
+00:34:19,890 --> 00:34:23,130
+We started digging up through
+those models individually
+
+697
+00:34:23,130 --> 00:34:26,440
+and again, we noticed that
+there were many brands,
+
+698
+00:34:26,440 --> 00:34:30,000
+many devices from those brands,
+and they all looked alike.
+
+699
+00:34:30,000 --> 00:34:33,270
+They all used the same
+cheap and everything.
+
+700
+00:34:33,270 --> 00:34:38,270
+More so, they physically
+resembled one another and,
+
+701
+00:34:38,280 --> 00:34:41,220
+after running the script
+on more of these devices,
+
+702
+00:34:41,220 --> 00:34:46,200
+we managed to identify 31 models
+from 19 vendors including,
+
+703
+00:34:46,200 --> 00:34:49,080
+well, Tenda, of course,
+D-Link, Zyxel, and, well,
+
+704
+00:34:49,080 --> 00:34:49,913
+a few more.
+
+705
+00:34:51,480 --> 00:34:53,970
+Well, if you, in case you have a device
+
+706
+00:34:53,970 --> 00:34:54,840
+that looks like that,
+
+707
+00:34:54,840 --> 00:34:57,900
+or if the web interface looks like that,
+
+708
+00:34:57,900 --> 00:35:00,390
+you can download a few more
+from the vendor's website
+
+709
+00:35:00,390 --> 00:35:04,830
+or hit that endpoint which
+these devices provide to dump
+
+710
+00:35:04,830 --> 00:35:07,500
+the firmware and running through our tool
+
+711
+00:35:07,500 --> 00:35:10,683
+and please let us know if you
+find more vulnerable devices.
+
+712
+00:35:11,940 --> 00:35:14,040
+So, with that being said,
+
+713
+00:35:14,040 --> 00:35:16,290
+we can move on to the
+takeaways of this talk.
+
+714
+00:35:18,300 --> 00:35:21,720
+- So as a recap, we started
+researching on a router
+
+715
+00:35:21,720 --> 00:35:24,957
+that was top-selling in
+Argentina and we found
+
+716
+00:35:24,957 --> 00:35:27,720
+the vulnerability in an
+undocumented functionality.
+
+717
+00:35:27,720 --> 00:35:29,460
+This vulnerability can allow an attacker
+
+718
+00:35:29,460 --> 00:35:32,670
+to achieve remote code execution
+without user intervention
+
+719
+00:35:32,670 --> 00:35:35,547
+in this router and
+through the one interface
+
+720
+00:35:35,547 --> 00:35:39,630
+and it can be disabled via
+the router's web interface.
+
+721
+00:35:39,630 --> 00:35:42,810
+It can only be disabled via
+the command line which is kind
+
+722
+00:35:42,810 --> 00:35:46,260
+of difficult for a normal
+user and, even in that case,
+
+723
+00:35:46,260 --> 00:35:48,447
+this configuration does
+not persist and when
+
+724
+00:35:48,447 --> 00:35:51,003
+the router resets, it
+becomes vulnerable again.
+
+725
+00:35:51,960 --> 00:35:53,370
+So why does this matter?
+
+726
+00:35:53,370 --> 00:35:55,065
+Well, because it was a
+hidden attack surface.
+
+727
+00:35:55,065 --> 00:35:57,960
+There was no place in the
+documentation that mentioned
+
+728
+00:35:57,960 --> 00:36:01,470
+this feature and the fact
+that it ended up being
+
+729
+00:36:01,470 --> 00:36:04,860
+on Realtek's SDK meant
+that it affected very small
+
+730
+00:36:04,860 --> 00:36:08,220
+from many different vendors
+and it also shows a slide
+
+731
+00:36:08,220 --> 00:36:10,530
+on the fact that vendors
+don't do source code review
+
+732
+00:36:10,530 --> 00:36:12,989
+because the maturity of
+these devices that use
+
+733
+00:36:12,989 --> 00:36:15,153
+this SDK ended up being vulnerable.
+
+734
+00:36:16,230 --> 00:36:17,790
+So you might be wondering, well,
+
+735
+00:36:17,790 --> 00:36:20,880
+you found these stack buffer
+overflow on a cheap router,
+
+736
+00:36:20,880 --> 00:36:23,760
+but expensive routers should
+be more harder, right?
+
+737
+00:36:23,760 --> 00:36:27,390
+Well, at least for these vendors
+and especially for Tenda,
+
+738
+00:36:27,390 --> 00:36:29,280
+which is the one that
+has the highest number
+
+739
+00:36:29,280 --> 00:36:30,750
+of devices effective.
+
+740
+00:36:30,750 --> 00:36:33,030
+The expensive router models might offer
+
+741
+00:36:33,030 --> 00:36:34,650
+the users more functionalities
+
+742
+00:36:34,650 --> 00:36:37,530
+such as configuring your
+router with your phone,
+
+743
+00:36:37,530 --> 00:36:40,290
+using the cloud, and things like that,
+
+744
+00:36:40,290 --> 00:36:42,300
+but they are also based
+on this SDK and have
+
+745
+00:36:42,300 --> 00:36:44,010
+the vulnerability.
+
+746
+00:36:44,010 --> 00:36:47,070
+And you might be also wondering
+what Enterprise routers
+
+747
+00:36:47,070 --> 00:36:48,210
+should be more harder, right?
+
+748
+00:36:48,210 --> 00:36:50,910
+Because these are all home great routers.
+
+749
+00:36:50,910 --> 00:36:51,743
+And for that,
+
+750
+00:36:51,743 --> 00:36:54,270
+we refer you to the latest
+Flashback Talk Team,
+
+751
+00:36:54,270 --> 00:36:57,570
+where they found a vulnerability
+in the BPM functionality
+
+752
+00:36:57,570 --> 00:36:59,730
+of a Cisco router and it's
+stack buffer overflow,
+
+753
+00:36:59,730 --> 00:37:01,530
+pretty similar to the one we found,
+
+754
+00:37:01,530 --> 00:37:03,720
+and they discuss other
+similar vulnerabilities,
+
+755
+00:37:03,720 --> 00:37:05,670
+but in Enterprise routers.
+
+756
+00:37:05,670 --> 00:37:09,000
+So although the security of
+internet-connected devices
+
+757
+00:37:09,000 --> 00:37:10,830
+has improved recently,
+
+758
+00:37:10,830 --> 00:37:13,383
+buffer overflows can
+still be found on 2022.
+
+759
+00:37:14,850 --> 00:37:16,110
+And you might be wondering, well,
+
+760
+00:37:16,110 --> 00:37:18,900
+why hasn't this been
+reported yet despite being
+
+761
+00:37:18,900 --> 00:37:20,910
+a classic stack path overflow?
+
+762
+00:37:20,910 --> 00:37:23,460
+Well, these are our faults
+
+763
+00:37:23,460 --> 00:37:25,620
+from a manufacturer's point of view.
+
+764
+00:37:25,620 --> 00:37:27,330
+They don't have a security mindset.
+
+765
+00:37:27,330 --> 00:37:30,390
+In fact, when we reported
+this vulnerability to Realtek,
+
+766
+00:37:30,390 --> 00:37:32,490
+they thought that the only
+thing an attacker could achieve
+
+767
+00:37:32,490 --> 00:37:36,210
+by exploiting it was to reset
+the router and that it will
+
+768
+00:37:36,210 --> 00:37:38,910
+be very hard for an attacker
+to achieve code execution
+
+769
+00:37:38,910 --> 00:37:40,160
+using this vulnerability.
+
+770
+00:37:41,130 --> 00:37:42,600
+From (indistinct) point of view,
+
+771
+00:37:42,600 --> 00:37:45,000
+it is clear that they don't
+review the source code provided
+
+772
+00:37:45,000 --> 00:37:46,200
+by Realtek.
+
+773
+00:37:46,200 --> 00:37:48,360
+From a researcher's point of view,
+
+774
+00:37:48,360 --> 00:37:50,570
+we think that the fact
+that this binary image
+
+775
+00:37:50,570 --> 00:37:52,830
+is a giant blow composed of software
+
+776
+00:37:52,830 --> 00:37:54,210
+from many different origins
+
+777
+00:37:54,210 --> 00:37:57,750
+and in which applying function
+signatures is difficult.
+
+778
+00:37:57,750 --> 00:38:00,030
+Might be a little bit daunting.
+
+779
+00:38:00,030 --> 00:38:01,860
+And from the user's point of view, well,
+
+780
+00:38:01,860 --> 00:38:04,803
+they don't even know that their
+routers have this feature.
+
+781
+00:38:06,180 --> 00:38:08,280
+So, after we reported this vulnerability,
+
+782
+00:38:08,280 --> 00:38:13,050
+it was assigned CVE-2022-27255
+and we had Realtek patch
+
+783
+00:38:13,050 --> 00:38:15,570
+this vulnerability on March the 25th,
+
+784
+00:38:15,570 --> 00:38:18,330
+but to the best of our
+knowledge and up to this date,
+
+785
+00:38:18,330 --> 00:38:21,630
+no vendor has released patch
+versions of their frameworks.
+
+786
+00:38:21,630 --> 00:38:22,710
+And even after that,
+
+787
+00:38:22,710 --> 00:38:25,650
+users will still have
+to update their devices
+
+788
+00:38:25,650 --> 00:38:28,140
+to fix these issues, so we
+think this vulnerability will
+
+789
+00:38:28,140 --> 00:38:29,340
+be around for some time.
+
+790
+00:38:30,750 --> 00:38:33,630
+So, to conclude, IoT devices
+can have vulnerabilities
+
+791
+00:38:33,630 --> 00:38:36,450
+and undocumented functionalities
+and this makes it harder
+
+792
+00:38:36,450 --> 00:38:38,880
+to audit them and code introduced down
+
+793
+00:38:38,880 --> 00:38:42,030
+the supply chain might never
+get reviewed by the vendors.
+
+794
+00:38:42,030 --> 00:38:44,850
+And when these devices
+are OEM manufacturers,
+
+795
+00:38:44,850 --> 00:38:46,050
+while they end up sharing code,
+
+796
+00:38:46,050 --> 00:38:49,020
+and this means that they
+also share vulnerabilities.
+
+797
+00:38:49,020 --> 00:38:51,060
+And from an attacker's point of view,
+
+798
+00:38:51,060 --> 00:38:52,470
+this is a perfect scenario
+
+799
+00:38:52,470 --> 00:38:54,600
+because they can find high impact bugs
+
+800
+00:38:54,600 --> 00:38:57,400
+with little prior knowledge
+and with little investments.
+
+801
+00:38:58,320 --> 00:39:00,210
+So here are some references
+
+802
+00:39:00,210 --> 00:39:02,970
+if you want to dig a little
+bit deeper on the topics we've
+
+803
+00:39:02,970 --> 00:39:06,053
+covered on the talk and,
+well, thank you very much.
+
+804
+00:39:06,053 --> 00:39:07,835
+And if there, anyone has questions.
+
+805
+00:39:07,835 --> 00:39:10,835
+(audience cheering)
+

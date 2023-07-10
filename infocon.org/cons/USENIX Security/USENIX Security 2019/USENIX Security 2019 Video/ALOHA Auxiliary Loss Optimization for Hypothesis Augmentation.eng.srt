@@ -1,0 +1,1812 @@
+﻿1
+00:00:10,590 --> 00:00:15,870
+yeah so my name is Ethan Rudd I'm from
+
+2
+00:00:13,320 --> 00:00:17,610
+the Sophos data science team and today
+
+3
+00:00:15,870 --> 00:00:19,860
+I'm going to be sharing this talk Aloha
+
+4
+00:00:17,610 --> 00:00:22,560
+auxilary loss optimization for
+
+5
+00:00:19,860 --> 00:00:24,300
+hypothesis augmentation this has nothing
+
+6
+00:00:22,560 --> 00:00:26,160
+to do with the Aloha Network protocols
+
+7
+00:00:24,300 --> 00:00:28,140
+but it's a wonderful acronym and it
+
+8
+00:00:26,160 --> 00:00:32,040
+allows me to get in some nice Hawaiian
+
+9
+00:00:28,140 --> 00:00:34,470
+art throughout the slides so what's this
+
+10
+00:00:32,040 --> 00:00:37,260
+talk about well at the high level
+
+11
+00:00:34,470 --> 00:00:38,910
+machine learning malware detectors are
+
+12
+00:00:37,260 --> 00:00:41,790
+typically trained using a single label
+
+13
+00:00:38,910 --> 00:00:44,370
+per example per malicious example or per
+
+14
+00:00:41,790 --> 00:00:46,440
+benign example with an Associated 0-1
+
+15
+00:00:44,370 --> 00:00:49,410
+label but there are lots of other
+
+16
+00:00:46,440 --> 00:00:52,320
+labeling sources labels other metadata
+
+17
+00:00:49,410 --> 00:00:54,989
+etc that's really available in existing
+
+18
+00:00:52,320 --> 00:00:57,780
+feeds and so we'd like to explore how we
+
+19
+00:00:54,990 --> 00:01:00,360
+can use this to create a better malware
+
+20
+00:00:57,780 --> 00:01:03,240
+detector so in sort of these
+
+21
+00:01:00,360 --> 00:01:04,470
+before-and-after photos on the left hand
+
+22
+00:01:03,240 --> 00:01:07,470
+side here I have sort of a de facto
+
+23
+00:01:04,470 --> 00:01:09,360
+industry standard of a neural network of
+
+24
+00:01:07,470 --> 00:01:12,210
+a deep neural network used for malware
+
+25
+00:01:09,360 --> 00:01:14,520
+classification for each sample there's
+
+26
+00:01:12,210 --> 00:01:17,460
+one output there's one label and there's
+
+27
+00:01:14,520 --> 00:01:19,798
+one loss function and this yields
+
+28
+00:01:17,460 --> 00:01:21,658
+actually pretty good detection
+
+29
+00:01:19,799 --> 00:01:23,090
+performance when you train it on the
+
+30
+00:01:21,659 --> 00:01:25,439
+right data I mean there are a lot of
+
+31
+00:01:23,090 --> 00:01:27,869
+commercial pipelines that are built on
+
+32
+00:01:25,439 --> 00:01:30,869
+this type of model however we can
+
+33
+00:01:27,869 --> 00:01:33,600
+actually do better than this and saw our
+
+34
+00:01:30,869 --> 00:01:36,299
+Aloha approach here for each sample uses
+
+35
+00:01:33,600 --> 00:01:39,210
+many outputs mini labels and mini loss
+
+36
+00:01:36,299 --> 00:01:41,700
+functions before I dive into the guts of
+
+37
+00:01:39,210 --> 00:01:43,079
+how Aloha works since we have people
+
+38
+00:01:41,700 --> 00:01:44,789
+from all sorts of fields I wanted to
+
+39
+00:01:43,079 --> 00:01:46,259
+take a minute to review sort of the
+
+40
+00:01:44,789 --> 00:01:49,380
+state of malware detection and where
+
+41
+00:01:46,259 --> 00:01:51,240
+we're at so up until around 2015 malware
+
+42
+00:01:49,380 --> 00:01:54,240
+detectors were generally signature
+
+43
+00:01:51,240 --> 00:01:56,548
+driven with a few exceptions in around
+
+44
+00:01:54,240 --> 00:02:01,259
+2015 machine learning for malware
+
+45
+00:01:56,549 --> 00:02:03,780
+detection sort of came around and got it
+
+46
+00:02:01,259 --> 00:02:07,740
+got into a lot of companies a lot of
+
+47
+00:02:03,780 --> 00:02:10,259
+pipelines etc so most of the most of the
+
+48
+00:02:07,740 --> 00:02:13,170
+detectors now are a hybrid of ml and
+
+49
+00:02:10,258 --> 00:02:16,079
+signature approaches and these can use
+
+50
+00:02:13,170 --> 00:02:17,940
+either static or dynamic features for
+
+51
+00:02:16,080 --> 00:02:20,849
+this talk we're focused on detection of
+
+52
+00:02:17,940 --> 00:02:22,109
+static portable executables but the
+
+53
+00:02:20,849 --> 00:02:23,670
+technique that I'm about to outline
+
+54
+00:02:22,110 --> 00:02:29,790
+could apply to a lot of
+
+55
+00:02:23,670 --> 00:02:32,488
+current malware types so detection using
+
+56
+00:02:29,790 --> 00:02:35,459
+machine learning for for malware is
+
+57
+00:02:32,489 --> 00:02:38,880
+built on binary classifiers like deep
+
+58
+00:02:35,459 --> 00:02:41,250
+neural networks other common approaches
+
+59
+00:02:38,880 --> 00:02:44,069
+use gradient boosted decision machines
+
+60
+00:02:41,250 --> 00:02:45,360
+with with binary outputs that said we're
+
+61
+00:02:44,069 --> 00:02:46,738
+going to focus on neural networks
+
+62
+00:02:45,360 --> 00:02:50,010
+throughout this quarters throughout this
+
+63
+00:02:46,739 --> 00:02:51,840
+talk and these detectors are trained on
+
+64
+00:02:50,010 --> 00:02:54,630
+millions to hundreds of millions of
+
+65
+00:02:51,840 --> 00:02:56,569
+labeled samples the classifiers are also
+
+66
+00:02:54,630 --> 00:02:58,709
+periodically retrained to reflect
+
+67
+00:02:56,569 --> 00:03:01,440
+evolving threat landscapes so they're
+
+68
+00:02:58,709 --> 00:03:02,819
+not just trained once they're new
+
+69
+00:03:01,440 --> 00:03:05,010
+versions are rolled out over and over
+
+70
+00:03:02,819 --> 00:03:07,319
+and over again and the trained
+
+71
+00:03:05,010 --> 00:03:09,030
+classifiers can be used in a variety of
+
+72
+00:03:07,319 --> 00:03:11,399
+contexts they can be deployed on
+
+73
+00:03:09,030 --> 00:03:13,709
+customer endpoints or in security
+
+74
+00:03:11,400 --> 00:03:14,730
+operations centers or in the cloud it
+
+75
+00:03:13,709 --> 00:03:18,090
+doesn't really matter for the purposes
+
+76
+00:03:14,730 --> 00:03:19,679
+of this talk so as I said we need
+
+77
+00:03:18,090 --> 00:03:22,739
+millions and millions and millions of
+
+78
+00:03:19,680 --> 00:03:24,780
+labeled samples so how do we get these
+
+79
+00:03:22,739 --> 00:03:27,330
+labeled samples well a common approach
+
+80
+00:03:24,780 --> 00:03:29,310
+is to use vendor aggregation services or
+
+81
+00:03:27,330 --> 00:03:32,280
+threat intelligence feeds which take
+
+82
+00:03:29,310 --> 00:03:35,850
+multiple sources for prediction and use
+
+83
+00:03:32,280 --> 00:03:37,829
+those so a vendor or aggregation service
+
+84
+00:03:35,850 --> 00:03:39,390
+for example will take all the vendors
+
+85
+00:03:37,829 --> 00:03:42,630
+throughout the industry basically and
+
+86
+00:03:39,390 --> 00:03:45,089
+say for each malware sample how are
+
+87
+00:03:42,630 --> 00:03:47,519
+these labeled by all of the vendors and
+
+88
+00:03:45,090 --> 00:03:49,829
+then especially as we give some time for
+
+89
+00:03:47,519 --> 00:03:52,320
+them black lists white lists to settle
+
+90
+00:03:49,829 --> 00:03:55,170
+down once we aggregate we can get a
+
+91
+00:03:52,320 --> 00:03:58,620
+pretty good aggregate label of malicious
+
+92
+00:03:55,170 --> 00:04:01,048
+and benign for each sample so the way
+
+93
+00:03:58,620 --> 00:04:03,780
+the deep neural network detector works
+
+94
+00:04:01,049 --> 00:04:07,560
+during training is we take some feature
+
+95
+00:04:03,780 --> 00:04:09,870
+ization of a malicious or benign sample
+
+96
+00:04:07,560 --> 00:04:12,720
+we passed that through the network using
+
+97
+00:04:09,870 --> 00:04:15,299
+a forward pass we get an output score
+
+98
+00:04:12,720 --> 00:04:17,668
+and then we compare that against the
+
+99
+00:04:15,299 --> 00:04:20,760
+ground truth label using a loss function
+
+100
+00:04:17,668 --> 00:04:22,770
+we evaluate the loss and then we update
+
+101
+00:04:20,760 --> 00:04:25,110
+our network so as to minimize that loss
+
+102
+00:04:22,770 --> 00:04:27,599
+and we do this for lots and lots and
+
+103
+00:04:25,110 --> 00:04:30,510
+lots and lots of samples so we have a
+
+104
+00:04:27,600 --> 00:04:32,940
+network with learned parameters that
+
+105
+00:04:30,510 --> 00:04:35,010
+work well for classification when we go
+
+106
+00:04:32,940 --> 00:04:36,980
+to deploy we simply have to distribute
+
+107
+00:04:35,010 --> 00:04:40,190
+these parameters to whatever our
+
+108
+00:04:36,980 --> 00:04:42,530
+scenario use-cases and this serves to
+
+109
+00:04:40,190 --> 00:04:44,510
+predict whether a given file on the
+
+110
+00:04:42,530 --> 00:04:49,729
+endpoint or on in whatever our use case
+
+111
+00:04:44,510 --> 00:04:52,340
+is malicious or benign so that's sort of
+
+112
+00:04:49,730 --> 00:04:54,430
+the standard workflow but as I alluded
+
+113
+00:04:52,340 --> 00:04:56,419
+to earlier there are actually a lot more
+
+114
+00:04:54,430 --> 00:04:59,300
+labels that we can get a lot more
+
+115
+00:04:56,420 --> 00:05:01,510
+sources that we can get labels from with
+
+116
+00:04:59,300 --> 00:05:04,190
+these vendor aggregation services alone
+
+117
+00:05:01,510 --> 00:05:06,110
+we're actually creating this aggregate
+
+118
+00:05:04,190 --> 00:05:08,630
+label we have from the services
+
+119
+00:05:06,110 --> 00:05:11,420
+themselves individual vendor detections
+
+120
+00:05:08,630 --> 00:05:13,880
+the number of vendor detection x' the
+
+121
+00:05:11,420 --> 00:05:16,280
+detection names by vendor at the very
+
+122
+00:05:13,880 --> 00:05:18,560
+least so can we craft some sort of
+
+123
+00:05:16,280 --> 00:05:21,169
+auxilary labels and learn from these
+
+124
+00:05:18,560 --> 00:05:24,080
+during the optimization process well the
+
+125
+00:05:21,170 --> 00:05:24,830
+answer is indeed yes we can and so how
+
+126
+00:05:24,080 --> 00:05:28,310
+do we do this
+
+127
+00:05:24,830 --> 00:05:30,289
+well it's actually fairly simple we add
+
+128
+00:05:28,310 --> 00:05:34,520
+additional outputs to our neural network
+
+129
+00:05:30,290 --> 00:05:36,230
+as well as additional loss functions to
+
+130
+00:05:34,520 --> 00:05:37,630
+account for these additional labels and
+
+131
+00:05:36,230 --> 00:05:40,880
+then we train our network accordingly
+
+132
+00:05:37,630 --> 00:05:42,800
+this approach has two advantages one of
+
+133
+00:05:40,880 --> 00:05:44,960
+the advantages that we can actually
+
+134
+00:05:42,800 --> 00:05:47,180
+prune our auxiliary output paths and
+
+135
+00:05:44,960 --> 00:05:49,400
+prove sorry and prune our associated
+
+136
+00:05:47,180 --> 00:05:51,080
+parameters so that when we got a deploy
+
+137
+00:05:49,400 --> 00:05:52,450
+we don't actually have to change
+
+138
+00:05:51,080 --> 00:05:55,340
+anything with the deployment
+
+139
+00:05:52,450 --> 00:05:58,340
+infrastructure and we can nominally get
+
+140
+00:05:55,340 --> 00:06:01,070
+better performance for our for our
+
+141
+00:05:58,340 --> 00:06:02,719
+detectors but if we do have the
+
+142
+00:06:01,070 --> 00:06:05,210
+capability of changing our deployment
+
+143
+00:06:02,720 --> 00:06:07,310
+infrastructure we can also use the
+
+144
+00:06:05,210 --> 00:06:10,070
+auxiliary outputs to deliver additional
+
+145
+00:06:07,310 --> 00:06:13,370
+functionality to the same network that's
+
+146
+00:06:10,070 --> 00:06:16,460
+just been trained once so for this work
+
+147
+00:06:13,370 --> 00:06:18,980
+we used the following labeling sources
+
+148
+00:06:16,460 --> 00:06:21,890
+we used an aggregate malicious and
+
+149
+00:06:18,980 --> 00:06:24,410
+benign label we used the net number of
+
+150
+00:06:21,890 --> 00:06:27,140
+vendors detections within our feed we
+
+151
+00:06:24,410 --> 00:06:30,260
+used detections from nine selected
+
+152
+00:06:27,140 --> 00:06:33,860
+vendors and then we used malware
+
+153
+00:06:30,260 --> 00:06:35,980
+attributes malware attribute tags for 11
+
+154
+00:06:33,860 --> 00:06:38,420
+tags and these basically described
+
+155
+00:06:35,980 --> 00:06:41,060
+malicious samples in terms of semantic
+
+156
+00:06:38,420 --> 00:06:43,820
+content they're binary tags they're not
+
+157
+00:06:41,060 --> 00:06:45,920
+mutually exclusive and actually they
+
+158
+00:06:43,820 --> 00:06:47,990
+were we derived these and published a
+
+159
+00:06:45,920 --> 00:06:50,450
+paper on these called semantic malware
+
+160
+00:06:47,990 --> 00:06:52,550
+attribute relevance tagging or smart
+
+161
+00:06:50,450 --> 00:06:56,060
+which I will refer to you at the end
+
+162
+00:06:52,550 --> 00:07:00,080
+here but that that goes over how the
+
+163
+00:06:56,060 --> 00:07:02,960
+tags were derived so for every single
+
+164
+00:07:00,080 --> 00:07:06,740
+label we also have an auxilary loss
+
+165
+00:07:02,960 --> 00:07:09,469
+function so for our main loss we use
+
+166
+00:07:06,740 --> 00:07:14,150
+just a binary cross-entropy loss for our
+
+167
+00:07:09,470 --> 00:07:16,970
+count loss we use a poisson loss then
+
+168
+00:07:14,150 --> 00:07:19,810
+for our vendor and tag losses we use
+
+169
+00:07:16,970 --> 00:07:22,940
+sums over binary cross-entropy losses
+
+170
+00:07:19,810 --> 00:07:25,850
+our total loss then becomes the main
+
+171
+00:07:22,940 --> 00:07:28,040
+task malicious benign loss plus a
+
+172
+00:07:25,850 --> 00:07:32,810
+constant times the sum of all of our
+
+173
+00:07:28,040 --> 00:07:35,840
+other losses so during training we have
+
+174
+00:07:32,810 --> 00:07:37,820
+multiple output paths we have multiple
+
+175
+00:07:35,840 --> 00:07:40,549
+labels and we have multiple loss
+
+176
+00:07:37,820 --> 00:07:42,409
+functions the loss is evaluated by these
+
+177
+00:07:40,550 --> 00:07:45,080
+loss functions are then aggregated and
+
+178
+00:07:42,410 --> 00:07:47,180
+then we use back propagation to update
+
+179
+00:07:45,080 --> 00:07:49,880
+all of our parameters and while I
+
+180
+00:07:47,180 --> 00:07:52,940
+mentioned that we can use the other
+
+181
+00:07:49,880 --> 00:07:55,669
+outputs to do other things for the
+
+182
+00:07:52,940 --> 00:07:59,090
+purposes of detection alone and for
+
+183
+00:07:55,669 --> 00:08:00,380
+deployment we do not need to change our
+
+184
+00:07:59,090 --> 00:08:02,929
+infrastructure at all
+
+185
+00:08:00,380 --> 00:08:04,850
+so deployment looks the exact same as
+
+186
+00:08:02,930 --> 00:08:07,760
+sort of the standard industry use case
+
+187
+00:08:04,850 --> 00:08:09,650
+we have a neural network which takes in
+
+188
+00:08:07,760 --> 00:08:13,969
+some feature is malicious or benign
+
+189
+00:08:09,650 --> 00:08:15,679
+sample and then does prediction so I've
+
+190
+00:08:13,970 --> 00:08:17,960
+outlined the technique but now let's see
+
+191
+00:08:15,680 --> 00:08:20,120
+how it works so in order to do this we
+
+192
+00:08:17,960 --> 00:08:22,190
+collected a data set of approximately
+
+193
+00:08:20,120 --> 00:08:25,639
+nine million training samples with
+
+194
+00:08:22,190 --> 00:08:29,440
+100,000 validation samples and 7.7
+
+195
+00:08:25,639 --> 00:08:32,020
+million test samples our test datasets
+
+196
+00:08:29,440 --> 00:08:34,338
+consisted of files that were collected
+
+197
+00:08:32,020 --> 00:08:37,789
+temporarily after the training data set
+
+198
+00:08:34,339 --> 00:08:39,440
+so this prevents us from from cheating
+
+199
+00:08:37,789 --> 00:08:41,929
+if you will during the course of our
+
+200
+00:08:39,440 --> 00:08:43,700
+evaluation and the feature ization
+
+201
+00:08:41,929 --> 00:08:46,670
+scheme that we used was consistent with
+
+202
+00:08:43,700 --> 00:08:49,850
+that derived by Josh Sachs and
+
+203
+00:08:46,670 --> 00:08:54,290
+Konstantin Berlin the paper referencing
+
+204
+00:08:49,850 --> 00:08:59,450
+that is is in slide so when we went to
+
+205
+00:08:54,290 --> 00:09:02,329
+compare performance we fit different
+
+206
+00:08:59,450 --> 00:09:04,370
+combinations of loss functions
+
+207
+00:09:02,330 --> 00:09:05,990
+sorry would fit networks trained with
+
+208
+00:09:04,370 --> 00:09:08,959
+different combinations of lost functions
+
+209
+00:09:05,990 --> 00:09:11,750
+and for each of these combinations we
+
+210
+00:09:08,959 --> 00:09:13,579
+fit five runs with random
+
+211
+00:09:11,750 --> 00:09:15,320
+initializations and random mini-batch
+
+212
+00:09:13,580 --> 00:09:18,290
+orderings to get sort of a statistical
+
+213
+00:09:15,320 --> 00:09:21,020
+view of performance so when we go to
+
+214
+00:09:18,290 --> 00:09:22,880
+analyze performance we do this via what
+
+215
+00:09:21,020 --> 00:09:25,760
+are called receiving operator operating
+
+216
+00:09:22,880 --> 00:09:27,500
+characteristics curves receiver
+
+217
+00:09:25,760 --> 00:09:30,230
+operating characteristics curves or ROC
+
+218
+00:09:27,500 --> 00:09:31,640
+curves and for those that might be from
+
+219
+00:09:30,230 --> 00:09:34,580
+slightly different fields I'll just
+
+220
+00:09:31,640 --> 00:09:36,500
+explain real quick how this works so on
+
+221
+00:09:34,580 --> 00:09:38,240
+the x-axis we have a false positive rate
+
+222
+00:09:36,500 --> 00:09:40,250
+on the y-axis we have a true positive
+
+223
+00:09:38,240 --> 00:09:42,709
+rate and basically what these curves are
+
+224
+00:09:40,250 --> 00:09:44,990
+saying is out what threshold in terms of
+
+225
+00:09:42,709 --> 00:09:47,300
+false positive rate can we deploy and
+
+226
+00:09:44,990 --> 00:09:49,940
+get its tection orate shown by our true
+
+227
+00:09:47,300 --> 00:09:52,550
+positive rate so the idea is to have the
+
+228
+00:09:49,940 --> 00:09:55,130
+curves further up and to the left
+
+229
+00:09:52,550 --> 00:09:57,020
+that indicates better performance but
+
+230
+00:09:55,130 --> 00:09:59,209
+for our use cases specifically we want
+
+231
+00:09:57,020 --> 00:10:02,480
+to be able to do very very well at
+
+232
+00:09:59,209 --> 00:10:04,729
+extremely low false positive rates so
+
+233
+00:10:02,480 --> 00:10:07,399
+the net area under the curve does matter
+
+234
+00:10:04,730 --> 00:10:09,380
+but what really matters is as we get
+
+235
+00:10:07,399 --> 00:10:11,089
+into the really low FPR region which is
+
+236
+00:10:09,380 --> 00:10:14,660
+one of the reasons why these curves are
+
+237
+00:10:11,089 --> 00:10:18,410
+on a log scale so when we add our count
+
+238
+00:10:14,660 --> 00:10:20,569
+loss to our main malware loss we get a
+
+239
+00:10:18,410 --> 00:10:23,839
+substantial bump in performance both in
+
+240
+00:10:20,570 --> 00:10:25,579
+terms of the AUC but also more
+
+241
+00:10:23,839 --> 00:10:28,329
+importantly in the relevant region
+
+242
+00:10:25,579 --> 00:10:32,000
+towards low fpr's
+
+243
+00:10:28,329 --> 00:10:34,160
+when we add our vendor losses we see
+
+244
+00:10:32,000 --> 00:10:35,480
+sort of the same effect not quite so
+
+245
+00:10:34,160 --> 00:10:38,240
+much of a bump in terms of area under
+
+246
+00:10:35,480 --> 00:10:39,770
+the curve but we do see at lower false
+
+247
+00:10:38,240 --> 00:10:40,990
+positive rates we get actually a more
+
+248
+00:10:39,770 --> 00:10:44,420
+dramatic bump
+
+249
+00:10:40,990 --> 00:10:47,000
+similarly for our tags and then when we
+
+250
+00:10:44,420 --> 00:10:49,520
+combine everything together we see that
+
+251
+00:10:47,000 --> 00:10:53,630
+we get improved performance even over
+
+252
+00:10:49,520 --> 00:10:57,020
+any of those additional losses or sorry
+
+253
+00:10:53,630 --> 00:10:59,570
+over any one additional loss we get not
+
+254
+00:10:57,020 --> 00:11:02,000
+only a bump in area under the curve
+
+255
+00:10:59,570 --> 00:11:06,079
+which seems to be statistically non
+
+256
+00:11:02,000 --> 00:11:09,170
+negligible but we also see a dramatic
+
+257
+00:11:06,079 --> 00:11:11,270
+bump in terms of the in terms of the
+
+258
+00:11:09,170 --> 00:11:13,250
+detection rate at low false positive
+
+259
+00:11:11,270 --> 00:11:15,650
+rates we also see two modes of
+
+260
+00:11:13,250 --> 00:11:16,820
+improvement one sort of it around
+
+261
+00:11:15,650 --> 00:11:19,220
+to the negative thirds ten to the
+
+262
+00:11:16,820 --> 00:11:20,960
+negative two false positive rate which
+
+263
+00:11:19,220 --> 00:11:23,830
+we believe is mostly driven by the count
+
+264
+00:11:20,960 --> 00:11:27,170
+loss and then we see
+
+265
+00:11:23,830 --> 00:11:28,400
+additionally the this very low false
+
+266
+00:11:27,170 --> 00:11:30,680
+positive rate improvement which we
+
+267
+00:11:28,400 --> 00:11:33,500
+believe is mostly driven by these multi
+
+268
+00:11:30,680 --> 00:11:34,849
+objective binary cross entropy losses we
+
+269
+00:11:33,500 --> 00:11:38,060
+further see that we have reduced
+
+270
+00:11:34,850 --> 00:11:41,660
+variance in terms of our in terms of our
+
+271
+00:11:38,060 --> 00:11:43,369
+overall our se curve across all these
+
+272
+00:11:41,660 --> 00:11:47,120
+different initializations which is also
+
+273
+00:11:43,370 --> 00:11:48,500
+also useful so okay we see that there
+
+274
+00:11:47,120 --> 00:11:51,339
+are some improvements but what's really
+
+275
+00:11:48,500 --> 00:11:54,529
+driving these is it's um
+
+276
+00:11:51,339 --> 00:11:57,050
+is it some strange regularization effect
+
+277
+00:11:54,529 --> 00:11:58,700
+or is it due to the network's ability to
+
+278
+00:11:57,050 --> 00:12:01,250
+correlate information from all these
+
+279
+00:11:58,700 --> 00:12:03,470
+labels well to test this we added some
+
+280
+00:12:01,250 --> 00:12:05,870
+auxilary loss functions on non
+
+281
+00:12:03,470 --> 00:12:07,610
+informative targets that is targets that
+
+282
+00:12:05,870 --> 00:12:09,740
+don't carry any additional information
+
+283
+00:12:07,610 --> 00:12:12,440
+from the labels that we already have and
+
+284
+00:12:09,740 --> 00:12:15,350
+what we found is there was no bump
+
+285
+00:12:12,440 --> 00:12:17,390
+whatsoever so this provides us some
+
+286
+00:12:15,350 --> 00:12:21,080
+evidence that the aloha gains come from
+
+287
+00:12:17,390 --> 00:12:23,439
+actual correlations that the network
+
+288
+00:12:21,080 --> 00:12:26,510
+itself is learning between these
+
+289
+00:12:23,440 --> 00:12:29,540
+heterogeneous labeling sources and
+
+290
+00:12:26,510 --> 00:12:31,370
+heterogeneous labels so we see that
+
+291
+00:12:29,540 --> 00:12:32,930
+adding auxilary optimization objectives
+
+292
+00:12:31,370 --> 00:12:35,990
+and training does noticeably improve
+
+293
+00:12:32,930 --> 00:12:37,910
+performance of an ml malware detector it
+
+294
+00:12:35,990 --> 00:12:39,290
+seems to be largely a result of the
+
+295
+00:12:37,910 --> 00:12:41,420
+neural networks ability to correlate
+
+296
+00:12:39,290 --> 00:12:44,360
+information across labels not a
+
+297
+00:12:41,420 --> 00:12:47,029
+regularization effect an Aloha network
+
+298
+00:12:44,360 --> 00:12:50,510
+can be trained and deployed with minimal
+
+299
+00:12:47,029 --> 00:12:53,209
+changes to existing infrastructure or we
+
+300
+00:12:50,510 --> 00:12:55,670
+can actually use the additional outputs
+
+301
+00:12:53,209 --> 00:12:57,589
+for applications for novel applications
+
+302
+00:12:55,670 --> 00:12:59,750
+like endpoint detection response and
+
+303
+00:12:57,589 --> 00:13:02,150
+manage detection response so as an
+
+304
+00:12:59,750 --> 00:13:03,740
+example if we wanted to use the tags to
+
+305
+00:13:02,150 --> 00:13:05,900
+describe not only is the sample
+
+306
+00:13:03,740 --> 00:13:08,300
+malicious or benign but what type of
+
+307
+00:13:05,900 --> 00:13:10,040
+malware is in this sample for an analyst
+
+308
+00:13:08,300 --> 00:13:12,260
+usage we could do that with the same
+
+309
+00:13:10,040 --> 00:13:13,699
+network representation and we don't only
+
+310
+00:13:12,260 --> 00:13:15,830
+have to Train it once if we want to say
+
+311
+00:13:13,700 --> 00:13:17,870
+an application like that in the cloud or
+
+312
+00:13:15,830 --> 00:13:19,459
+in his sock but maybe didn't want to
+
+313
+00:13:17,870 --> 00:13:21,290
+change our deployment infrastructure on
+
+314
+00:13:19,459 --> 00:13:24,380
+the endpoints where we're only doing the
+
+315
+00:13:21,290 --> 00:13:25,849
+detection so before taking Q&A I just
+
+316
+00:13:24,380 --> 00:13:28,790
+wanted to point you guys towards several
+
+317
+00:13:25,850 --> 00:13:31,370
+derivative works and related research
+
+318
+00:13:28,790 --> 00:13:34,520
+works by both our own group but also by
+
+319
+00:13:31,370 --> 00:13:36,500
+by others as well so actually I came
+
+320
+00:13:34,520 --> 00:13:37,490
+across a blog post a few weeks ago by
+
+321
+00:13:36,500 --> 00:13:39,830
+this fellow
+
+322
+00:13:37,490 --> 00:13:43,370
+Jason Trust who actually took our loja
+
+323
+00:13:39,830 --> 00:13:45,020
+scheme and employed it for domain
+
+324
+00:13:43,370 --> 00:13:47,450
+generation algorithm detection it's a
+
+325
+00:13:45,020 --> 00:13:50,930
+very good piece of work I recommend it
+
+326
+00:13:47,450 --> 00:13:52,610
+Microsoft Research had a paper called Mt
+
+327
+00:13:50,930 --> 00:13:54,620
+net which actually did a similar
+
+328
+00:13:52,610 --> 00:13:57,530
+approach to ours they used two
+
+329
+00:13:54,620 --> 00:14:01,010
+categorical cross entropy losses and all
+
+330
+00:13:57,530 --> 00:14:03,410
+their outputs were were softmax outputs
+
+331
+00:14:01,010 --> 00:14:06,170
+so they had a detection as well as a as
+
+332
+00:14:03,410 --> 00:14:08,949
+well as a Microsoft family name
+
+333
+00:14:06,170 --> 00:14:12,020
+prediction and they also did theirs on a
+
+334
+00:14:08,950 --> 00:14:13,850
+on dynamic features so they actually
+
+335
+00:14:12,020 --> 00:14:16,460
+found similar things to what we found
+
+336
+00:14:13,850 --> 00:14:18,020
+and so it's really cool to see us
+
+337
+00:14:16,460 --> 00:14:21,620
+substantiating their work in them
+
+338
+00:14:18,020 --> 00:14:24,260
+substantiating our work to the tagging
+
+339
+00:14:21,620 --> 00:14:26,030
+paper that I mentioned the this paper
+
+340
+00:14:24,260 --> 00:14:28,310
+describes the approach that we used for
+
+341
+00:14:26,030 --> 00:14:30,020
+malware tagging I'm not going to go into
+
+342
+00:14:28,310 --> 00:14:31,339
+in too much detail but I want to steer
+
+343
+00:14:30,020 --> 00:14:34,400
+you guys in that direction in case
+
+344
+00:14:31,340 --> 00:14:35,810
+you're you're curious about that this
+
+345
+00:14:34,400 --> 00:14:37,579
+paper a mixed objective optimization
+
+346
+00:14:35,810 --> 00:14:41,300
+network was one that I actually did a
+
+347
+00:14:37,580 --> 00:14:44,240
+few years ago on a vision data set for
+
+348
+00:14:41,300 --> 00:14:45,410
+facial attribute detection and what's
+
+349
+00:14:44,240 --> 00:14:47,630
+sort of interesting about this is it
+
+350
+00:14:45,410 --> 00:14:50,600
+uses the same a similar approach for a
+
+351
+00:14:47,630 --> 00:14:53,270
+much much different data and modality so
+
+352
+00:14:50,600 --> 00:14:56,450
+you know it's very cool to see that this
+
+353
+00:14:53,270 --> 00:14:59,660
+works across a lot of different data
+
+354
+00:14:56,450 --> 00:15:01,550
+modalities finally there's a paper
+
+355
+00:14:59,660 --> 00:15:04,010
+learning from context that our group put
+
+356
+00:15:01,550 --> 00:15:05,599
+out where we use multi view learning
+
+357
+00:15:04,010 --> 00:15:07,280
+instead of a multi objective learning
+
+358
+00:15:05,600 --> 00:15:09,620
+basically turning the aloha approach on
+
+359
+00:15:07,280 --> 00:15:12,020
+its heads we could potentially trivially
+
+360
+00:15:09,620 --> 00:15:14,690
+combine this approach with the aloha
+
+361
+00:15:12,020 --> 00:15:17,689
+approach so as I said I'm with the
+
+362
+00:15:14,690 --> 00:15:18,890
+Sophos data science team were a really
+
+363
+00:15:17,690 --> 00:15:20,990
+great team of researchers were
+
+364
+00:15:18,890 --> 00:15:22,760
+submitting work to a lot of Industry
+
+365
+00:15:20,990 --> 00:15:24,320
+conferences a lot of academic
+
+366
+00:15:22,760 --> 00:15:26,600
+conferences as well a lot of great
+
+367
+00:15:24,320 --> 00:15:28,670
+venues so if you like what I saw what
+
+368
+00:15:26,600 --> 00:15:31,820
+you saw please please check us out
+
+369
+00:15:28,670 --> 00:15:33,979
+here's our group and lastly I'd just
+
+370
+00:15:31,820 --> 00:15:35,540
+like to acknowledge both sofas for
+
+371
+00:15:33,980 --> 00:15:37,520
+funding this research and promoting it
+
+372
+00:15:35,540 --> 00:15:39,530
+as well as my co-authors and
+
+373
+00:15:37,520 --> 00:15:41,030
+collaborators this was really a team
+
+374
+00:15:39,530 --> 00:15:42,110
+effort and so I want to give them their
+
+375
+00:15:41,030 --> 00:15:44,120
+due
+
+376
+00:15:42,110 --> 00:15:48,580
+and now I guess we have time for a
+
+377
+00:15:44,120 --> 00:15:48,580
+couple questions thanks Eden thank you
+
+378
+00:15:48,640 --> 00:15:51,730
+[Music]
+
+379
+00:15:52,600 --> 00:15:57,890
+thank you for the presentation first of
+
+380
+00:15:55,640 --> 00:16:00,890
+all I want to say I can see a benefit of
+
+381
+00:15:57,890 --> 00:16:03,319
+aggregating the labels so because it
+
+382
+00:16:00,890 --> 00:16:05,240
+kind of protects against Agnos in those
+
+383
+00:16:03,320 --> 00:16:08,870
+individual neighbors so my question is
+
+384
+00:16:05,240 --> 00:16:10,760
+do you think Aloha makes a life of an
+
+385
+00:16:08,870 --> 00:16:14,170
+attacker who wants to poison your data
+
+386
+00:16:10,760 --> 00:16:16,760
+set easier because those small
+
+387
+00:16:14,170 --> 00:16:18,380
+accidentally those functions are easier
+
+388
+00:16:16,760 --> 00:16:21,260
+to attack than an aggregate those
+
+389
+00:16:18,380 --> 00:16:23,570
+function so if an attacker wants the
+
+390
+00:16:21,260 --> 00:16:25,519
+attack like poison your data set it's
+
+391
+00:16:23,570 --> 00:16:26,990
+actually attacking those small functions
+
+392
+00:16:25,519 --> 00:16:29,450
+is easier so what do you think about
+
+393
+00:16:26,990 --> 00:16:31,970
+that um so that's a good question I
+
+394
+00:16:29,450 --> 00:16:33,440
+haven't thought a lot about this but my
+
+395
+00:16:31,970 --> 00:16:36,620
+intuition would actually suggest that
+
+396
+00:16:33,440 --> 00:16:38,480
+it's not necessarily easier because you
+
+397
+00:16:36,620 --> 00:16:40,640
+have to actually attack from a data
+
+398
+00:16:38,480 --> 00:16:44,000
+poisoning perspective you have to attack
+
+399
+00:16:40,640 --> 00:16:45,829
+every single loss function so you're not
+
+400
+00:16:44,000 --> 00:16:47,930
+just attacking one if you poisoned the
+
+401
+00:16:45,829 --> 00:16:50,870
+data and it it influences 1 loss
+
+402
+00:16:47,930 --> 00:16:53,989
+function specifically you know it might
+
+403
+00:16:50,870 --> 00:16:56,000
+not influence other loss functions so
+
+404
+00:16:53,990 --> 00:16:58,520
+you know it's something that I would
+
+405
+00:16:56,000 --> 00:17:01,880
+have to I would have to experiment with
+
+406
+00:16:58,520 --> 00:17:03,649
+to fully answer answer the question but
+
+407
+00:17:01,880 --> 00:17:05,780
+my intuition would actually tell me that
+
+408
+00:17:03,649 --> 00:17:07,130
+it would be harder to attack a multi
+
+409
+00:17:05,780 --> 00:17:10,339
+objective technique than a single
+
+410
+00:17:07,130 --> 00:17:13,760
+objective technique ok thank you thank
+
+411
+00:17:10,339 --> 00:17:17,418
+you I eaten thank you this is Roger she
+
+412
+00:17:13,760 --> 00:17:19,400
+Gupta from Avast I in the very nice work
+
+413
+00:17:17,419 --> 00:17:21,290
+of like looking at different objective
+
+414
+00:17:19,400 --> 00:17:23,449
+functions and different data sources to
+
+415
+00:17:21,290 --> 00:17:25,790
+do it I was kind of lost in your rock
+
+416
+00:17:23,449 --> 00:17:27,500
+curves because then while I really
+
+417
+00:17:25,790 --> 00:17:29,690
+appreciate looking at rock curves with
+
+418
+00:17:27,500 --> 00:17:32,090
+low false positive rates I mean at the
+
+419
+00:17:29,690 --> 00:17:36,320
+left end of it the true positive rates
+
+420
+00:17:32,090 --> 00:17:38,600
+are are very very small so the the part
+
+421
+00:17:36,320 --> 00:17:40,520
+that so it's really interesting is sort
+
+422
+00:17:38,600 --> 00:17:42,260
+of on the or where you are getting to
+
+423
+00:17:40,520 --> 00:17:43,220
+true positive rates of 95 not
+
+424
+00:17:42,260 --> 00:17:44,870
+hundred-percent
+
+425
+00:17:43,220 --> 00:17:47,419
+and where your false positive rate is
+
+426
+00:17:44,870 --> 00:17:50,809
+around 1% and but that over that region
+
+427
+00:17:47,419 --> 00:17:52,460
+the gains aren't as much yeah I mean
+
+428
+00:17:50,809 --> 00:17:53,850
+it's a you know it's a fair point and I
+
+429
+00:17:52,460 --> 00:17:57,180
+would point out the
+
+430
+00:17:53,850 --> 00:17:59,879
+the true positive rates the detection
+
+431
+00:17:57,180 --> 00:18:01,440
+rates what constitutes a good detection
+
+432
+00:17:59,880 --> 00:18:04,080
+rate varies depending on the context
+
+433
+00:18:01,440 --> 00:18:07,140
+that you'd want to employ your technique
+
+434
+00:18:04,080 --> 00:18:13,050
+so really I mean a better detection rate
+
+435
+00:18:07,140 --> 00:18:14,670
+anywhere is is progress right now what's
+
+436
+00:18:13,050 --> 00:18:16,830
+considered commercially viable it
+
+437
+00:18:14,670 --> 00:18:18,690
+depends on the application but even if
+
+438
+00:18:16,830 --> 00:18:20,550
+we're below where we might want to
+
+439
+00:18:18,690 --> 00:18:23,760
+deploy a good detector at a given F
+
+440
+00:18:20,550 --> 00:18:25,919
+sorry I'd given false positive rate that
+
+441
+00:18:23,760 --> 00:18:28,470
+might work very very well for an EDR and
+
+442
+00:18:25,920 --> 00:18:30,120
+analyst application so you know it
+
+443
+00:18:28,470 --> 00:18:33,480
+really depends a lot on the application
+
+444
+00:18:30,120 --> 00:18:36,030
+but I would say that if you look if you
+
+445
+00:18:33,480 --> 00:18:37,980
+look fairly consistently along this
+
+446
+00:18:36,030 --> 00:18:41,820
+curve for example we see a we see quite
+
+447
+00:18:37,980 --> 00:18:43,890
+the gain of greater than well we we see
+
+448
+00:18:41,820 --> 00:18:47,100
+a gain over the baseline in pretty much
+
+449
+00:18:43,890 --> 00:18:51,030
+all regions of the curve so yeah I mean
+
+450
+00:18:47,100 --> 00:18:53,399
+I think it's a fair point though let's
+
+451
+00:18:51,030 --> 00:18:54,139
+thank Ethan thank you very much thank
+
+452
+00:18:53,400 --> 00:18:58,229
+you
+
+453
+00:18:54,140 --> 00:18:58,229
+[Applause]
+

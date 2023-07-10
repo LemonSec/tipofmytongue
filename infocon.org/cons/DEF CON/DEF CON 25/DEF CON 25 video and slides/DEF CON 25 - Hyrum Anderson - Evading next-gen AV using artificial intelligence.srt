@@ -1,0 +1,955 @@
+﻿00:00:00.100-->00:00:05.539
+>> What an honor it is to be
+here um at at Def Con, I'm
+grateful to uh be able to share
+
+00:00:05.539-->00:00:12.479
+with you some research. We're
+going to do three things. First
+uh we're releasing a tool to
+
+00:00:12.479-->00:00:17.851
+attack next-gen AV and you can
+find it GitHub address. I'm
+gonna describe it today and
+
+00:00:17.851-->00:00:22.856
+demonstrate it and and show you
+how to use it. So uh first,
+let's uh set the stage. Today
+
+00:00:25.025-->00:00:30.030
+we're going to be talking about
+uh evading next-gen AV that uses
+static analysis for detecting
+
+00:00:34.101-->00:00:39.106
+Windows PE malware. And uh to
+motivate this, let's first talk
+about uh rules and how one might
+
+00:00:41.174-->00:00:46.179
+write a rule to uh to detect
+malware. So on this little chart
+here, I've plotted a bunch of
+
+00:00:48.482-->00:00:55.389
+totally fictitious red dots and
+blue dots. Which are meant to
+represent uh files. As described
+
+00:00:55.389-->00:01:00.327
+by first um, file size and
+second by the number of registry
+keys contained you know strings
+
+00:01:02.629-->00:01:07.634
+containing the file. Um,
+[laughter] A feature of this
+presentation. And then I'm gonna
+
+00:01:15.142-->00:01:20.480
+just by hand create a yara rule
+which I have in that black box
+there. That sort of defines this
+
+00:01:20.480-->00:01:26.219
+region of this feature space,
+file size number of strings,
+that cordons off all of the
+
+00:01:26.219-->00:01:31.625
+malware in my data set. So this
+is nice but of course it's real
+easy to break. And and if I just
+
+00:01:31.625-->00:01:36.263
+you know take my my malware
+sample and maybe add some bytes
+to to the end of the file that
+
+00:01:36.263-->00:01:42.636
+has no uh d- d- does not break
+either the the format, the PE
+file format and doesn't break
+
+00:01:42.636-->00:01:46.940
+the function of the malware,
+then then I can break this rule.
+So what makes machine learning
+
+00:01:46.940-->00:01:52.446
+maybe harder to break? Harder to
+attack? And um I guess there are
+a couple reasons and and one is
+
+00:01:52.446-->00:01:56.750
+that you you can kind of think
+of uh the machine learning as
+the much more sophisticated and
+
+00:01:56.750-->00:02:01.421
+and graceful rule and uh it
+learns these complex
+relationships from the data
+
+00:02:01.421-->00:02:06.960
+automatically and uh it it and
+further more it kind of instead
+of presenting this sort of
+
+00:02:06.960-->00:02:11.965
+brittle uh cliff from malicious
+to benign, there's sort of this
+smooth territory where uh the
+
+00:02:14.134-->00:02:19.806
+the machine learning uh model
+can uh tell you about its
+confidence. Uh that that a
+
+00:02:19.806-->00:02:25.679
+sample is either malicious
+benign. And this is important
+because um this allows sort of a
+
+00:02:25.679-->00:02:30.651
+graceful degradation if one
+modifies a malware sample,
+there's sort of this graceful
+
+00:02:30.651-->00:02:36.223
+fall off from malicious to
+benign. So that that can make it
+hard. So can we break machine
+
+00:02:36.223-->00:02:42.829
+learning? Uh well the the short
+answer is, yes we can. But the
+idea for a windows PE is that we
+
+00:02:42.829-->00:02:47.834
+like to uh input a file that are
+model knows is malicious with
+high confidence. And make a few
+
+00:02:51.371-->00:02:56.376
+subtle changes to the bytes on
+disk modifying elements that
+don't break the PE file format
+
+00:02:59.179-->00:03:04.051
+or don't break the behavior of
+the malware. And then trick our
+model into thinking that's
+
+00:03:04.051-->00:03:09.056
+that's benign. So, it's actually
+become quite fashionable to
+break machine learning. In uh,
+
+00:03:12.025-->00:03:17.030
+in recent years. And uh this
+will be a constant reminder to
+keep me on my toes. Look at how
+
+00:03:19.032-->00:03:24.337
+fast at that. If you haven't
+seen this image yet, this is
+sort of famous in the uh image
+
+00:03:24.337-->00:03:31.011
+domain that one can take uh uh
+an image of a bus for example
+that uh uh image recognition
+
+00:03:31.011-->00:03:36.450
+computer vision model knows is a
+bus with high confidence and
+change the pixels ever so
+
+00:03:36.450-->00:03:42.522
+slightly and now even though
+there's no difference to your
+eye now the model thinks it's an
+
+00:03:42.522-->00:03:47.527
+ostrich with high confidence.
+And uh this is you know fun for
+images, um but there's kind of
+
+00:03:49.563-->00:03:53.900
+three take aways whether images
+or not from this kind of
+adverserial machine learning
+
+00:03:53.900-->00:03:58.905
+research. And the first is that
+all machine learning models have
+blind spots. So nex-gen AV buzz
+
+00:04:00.907-->00:04:07.447
+word uh we do it at my company
+Endgame uh they have blind
+spots. Number two is depending
+
+00:04:07.447-->00:04:11.852
+on how much knowledge an
+attacker has about your your
+model, they can actually be
+
+00:04:11.852-->00:04:17.557
+really convenient to exploit.
+And um, uh the the talk we're
+we're doing today, the research
+
+00:04:17.557-->00:04:22.996
+I'm presenting to your today is
+actually the in in the category
+of in the least convenient, the
+
+00:04:22.996-->00:04:28.168
+most inconvenient spot for the
+attacker to attack. And uh sort
+of a third attack take away is
+
+00:04:28.168-->00:04:33.173
+is a little scary and that's
+that if I find for my model this
+sort of bus ostrich confusion
+
+00:04:35.775-->00:04:42.048
+example, there's a decent chance
+that it will also work against
+your model. So then the attacker
+
+00:04:42.048-->00:04:46.453
+doesn't really need often need
+to attack your model in order to
+find some success for the
+
+00:04:46.453-->00:04:51.458
+invasion against your model. And
+that keeps people up at night.
+Alright so, that's for images.
+
+00:04:54.728-->00:05:01.668
+That's for images for bus
+ostrich. The thing about this um
+really how this works is that in
+
+00:05:01.668-->00:05:07.040
+most cases there are two things,
+the attacker knows everything
+about your model. He sort of has
+
+00:05:07.040-->00:05:10.977
+the source code to the model. He
+knows the weights, he knows the
+parameters. And in fact it has
+
+00:05:10.977-->00:05:14.981
+to be a special kind of model
+like deep learning and neural
+nets that are fully
+
+00:05:14.981-->00:05:21.421
+differentiable. And given that
+for my image of a bus I can
+actually ask the model, what
+
+00:05:21.421-->00:05:26.793
+would confuse you the most? Tell
+me which pixels I should change
+to confuse you the most. And
+
+00:05:26.793-->00:05:30.864
+will happily give you an answer.
+And buy changing those few
+pixels the good news is by
+
+00:05:30.864-->00:05:36.970
+changing pixels I have not
+broken what it means to be an
+image. But let's think about
+
+00:05:36.970-->00:05:41.975
+applying this now to PE malware.
+If I were to present some model
+with bytes from a malware system
+
+00:05:44.711-->00:05:49.649
+and ask it what bytes or what
+feature should I change, and I
+you know I I change those bytes
+
+00:05:49.649-->00:05:56.223
+on disk, well at worst I've
+totally broken the PE file
+format. And at at best I've
+
+00:05:56.223-->00:06:02.262
+broken what the malware was in-
+was intended to do. So two
+things, requires full knowledge.
+
+00:06:02.262-->00:06:07.033
+You have to know everything
+about a deep learning mode and
+um the samples it generates are
+
+00:06:07.033-->00:06:13.440
+not necessarily malware in fact
+are not necessarily PE files. So
+kind of cooler attack that's
+
+00:06:13.440-->00:06:17.444
+based on a black box so it
+doesn't need to be deep
+learning, it can be any sort of
+
+00:06:17.444-->00:06:22.148
+machine learning model that
+reports a score to you. Has been
+investigated by my
+
+00:06:22.148-->00:06:27.387
+co-researchers at the University
+of Virginia and essentially it's
+based on genetic algorithms and
+
+00:06:27.387-->00:06:30.991
+just in a nut shell, you know
+these are based on the
+evolutionary principles of
+
+00:06:30.991-->00:06:36.863
+survival of the fittest and I
+start with uh uh a big batch of
+malware and um and sort of breed
+
+00:06:36.863-->00:06:42.702
+it with benign ware. So elements
+of a malicious sample will will
+take structures or elements in
+
+00:06:42.702-->00:06:48.908
+this case for for PDF malware.
+And it will insert elements
+randomly. Mutate sort of the the
+
+00:06:48.908-->00:06:54.481
+DNA of the malware and uh pass
+it back to the the machine
+learning model and if I see that
+
+00:06:54.481-->00:06:58.652
+this decreasing it's score, well
+then I'm gonna keep that malware
+sample around for the next
+
+00:06:58.652-->00:07:05.158
+round. The the next generation
+of of breeding. And um after
+doing this ya know for two weeks
+
+00:07:05.158-->00:07:10.196
+you can evade these kind of
+classifiers. Now the the
+difficulty of this however, two
+
+00:07:10.196-->00:07:15.302
+things, I have to have a model
+that reports a score. It has to
+give me a number between zero
+
+00:07:15.302-->00:07:21.107
+and one. Not just malicious or
+benign, it has to say, 90
+percent malicious or 20 percent
+
+00:07:21.107-->00:07:26.112
+malicious, right? And secondly,
+um there in this process, it's
+very possible, quite possible
+
+00:07:29.049-->00:07:33.620
+that some mutated variant of
+malware actually doesn't co-
+doesn't do the malicious
+
+00:07:33.620-->00:07:39.592
+behavior. So uh my colleagues at
+University of Virginia have used
+um a sandbox in Oracle to make
+
+00:07:39.592-->00:07:43.930
+sure that before mutation and
+then after mutation that
+behavior is not changed. And
+
+00:07:43.930-->00:07:50.036
+that can be quite expensive and
+is why why this kind of attack
+can take so long. So I'm setting
+
+00:07:50.036-->00:07:54.474
+the stage here, I hope you
+realized, uh I'm trying to paint
+a picture by why this is hard
+
+00:07:54.474-->00:08:01.047
+for PE malware to attack machine
+learning, uh we want to avoid
+requiring full knowledge about
+
+00:08:01.047-->00:08:04.918
+um, you know a deep learning
+model or any other kind of model
+in fact we don't want to care
+
+00:08:04.918-->00:08:10.023
+what kind of model we're
+attacking or even that it is a
+machine learning model. Secondly
+
+00:08:10.023-->00:08:16.296
+we want to make sure that
+whatever malware we produce by
+attacking this model maintains
+
+00:08:16.296-->00:08:22.268
+file format and maintains
+functionality. And thirdly, we
+don't want to, we want to avoid
+
+00:08:22.268-->00:08:26.306
+the the expenses of running
+things through a sandbox to to
+to check to see if they are uh
+
+00:08:26.306-->00:08:31.311
+where possible. So our goal is
+to de- design an AI buzz word in
+the title but true. Design an
+
+00:08:34.681-->00:08:40.887
+artificially intelligent agent
+that will learn to byte, it will
+play a game against your machine
+
+00:08:40.887-->00:08:45.892
+learning model. Um it will it
+will choose mutations that are
+known to preserve file format
+
+00:08:48.995-->00:08:53.867
+and function and uh for this
+we're gonna turn to
+reinforcement learning and to do
+
+00:08:53.867-->00:08:59.205
+that I'm gonna hopefully not
+insult your retro childhood or
+or current retro lifestyle and
+
+00:08:59.205-->00:09:04.544
+explain to you the game of Atari
+Breakout in uh two sentences. So
+this is a game where you uh move
+
+00:09:04.544-->00:09:09.783
+a paddle left to right and um
+you you hope to to bounce a ball
+with your paddle and uh make it
+
+00:09:09.783-->00:09:14.921
+launch towards a brick and every
+time you knock down a brick um
+you you get a you get a reward
+
+00:09:14.921-->00:09:21.761
+for for knocking down that
+brick, right? So um how would I
+build an AI agent for this based
+
+00:09:21.761-->00:09:27.000
+on machine learning? Well one
+way to do that that has been
+done by the folks at open AI is
+
+00:09:27.000-->00:09:31.004
+to wrap it in so called uh a
+reinforcement learning
+framework. And it's actually
+
+00:09:31.004-->00:09:36.376
+really simple. So I've got a a
+screen shot from my you know my
+environment that includes the
+
+00:09:36.376-->00:09:42.015
+display of the Atari uh output.
+It includes an ability to
+manipulate the paddle left to
+
+00:09:42.015-->00:09:46.352
+right or do nothing and there's
+some scoring mechanism. It gives
+me a reward every time I know
+
+00:09:46.352-->00:09:52.592
+down a brick. And then I train
+an agent, on the on the bottom
+side. And here the agent learns
+
+00:09:52.592-->00:09:57.664
+through some sort of delayed
+feedback. So given a state of
+the environment which is
+
+00:09:57.664-->00:10:03.803
+literally like a screenshot of
+the of Atari game place, where
+it supposedly can learn the
+
+00:10:03.803-->00:10:09.008
+position of the ball and of the
+bricks and of the paddle, it
+needs to choose the best action.
+
+00:10:09.008-->00:10:14.881
+Choose to left or choose to
+right. And based on that
+eventually it may re- receive
+
+00:10:14.881-->00:10:19.886
+some sort of reward for for
+doing an an action that resulted
+in in a a reward. So um the the
+
+00:10:22.255-->00:10:26.726
+basic idea here is after playing
+thousands and thousands of
+games, then the agent can learn
+
+00:10:26.726-->00:10:32.532
+and answer the question, you
+know, what action is most useful
+given a screenshot from Atari
+
+00:10:32.532-->00:10:38.071
+game play. So this is uh a fun
+problem and is, you can actually
+go and download uh an AI for
+
+00:10:38.071-->00:10:43.076
+Atari for from that website at
+open AI that will be better than
+you at Atari Breakout. Um we're
+
+00:10:46.012-->00:10:51.484
+gonna change this to play a new
+game. Let me first describe to
+you the why we we've wrapped
+
+00:10:51.484-->00:10:56.556
+this in uh reinforcement
+learning. So in the Atari
+example, when I move my paddle
+
+00:10:56.556-->00:10:58.992
+right there is no reward for
+that, I get no points, right?
+But I move it again right by by
+
+00:10:58.992-->00:11:00.927
+chance um move it left you know
+by chance, move it right and and
+by some stroke of luck the ball
+
+00:11:00.927-->00:11:05.765
+bounces of my paddle, again no
+points. I move right again but
+eventually that ball goes and
+
+00:11:05.765-->00:11:10.770
+breaks a break and I get some
+point. Now in isolation, none of
+these moves were actually useful
+
+00:11:19.412-->00:11:24.417
+and resulted in a reward, but
+because I got this sort of
+eventual reward for all of my
+
+00:11:26.853-->00:11:31.858
+moves, I'm gonna distribute and
+I'm gonna sort of reward that
+sequence of actions as having
+
+00:11:33.927-->00:11:39.065
+provided some kind of useful
+benefit. And so this is the same
+things, this this very same
+
+00:11:39.065-->00:11:45.805
+concept we're gonna use to break
+next-gen AV. So here's the new
+game. Instead of a screenshot of
+
+00:11:45.805-->00:11:52.111
+Atari uh Atari pixels, we'll
+have a malware sample. The
+scoring mechanism will be my
+
+00:11:52.111-->00:11:58.084
+next-gen AV. It will give me a
+score uh sorry instead of a
+score it's going to say, yes, I
+
+00:11:58.084-->00:12:04.991
+believe you're malware or no, I
+believe you're benign ware. And
+the agent now will learn to
+
+00:12:04.991-->00:12:09.996
+select from a buffet of options
+that are known to preserve the
+file format and the function of
+
+00:12:12.398-->00:12:17.337
+the malware by manipulating
+static the binary and disk. And
+by playing thousands and
+
+00:12:17.337-->00:12:22.442
+thousands of games, the hope is
+that that uh the agent can sort
+of, sort of learn like basic
+
+00:12:22.442-->00:12:28.815
+ideas that given this kind of
+malware sample I should um add
+an import or I should append to
+
+00:12:28.815-->00:12:33.820
+the overlay or I should um you
+know I should create a new entry
+point and use a trampoline to
+
+00:12:33.820-->00:12:38.291
+get to the old entry point.
+Things like that that can sort
+of hide the the presence of
+
+00:12:38.291-->00:12:43.830
+malicious activity by sort of
+creating camouflage in the
+binary. So we are releasing a
+
+00:12:43.830-->00:12:50.403
+tool um to to do this and you
+can go to uh GitHub endgame inc
+gym malware and download some
+
+00:12:50.403-->00:12:56.943
+very rudimentary code to do just
+this. Um we have provided the
+following sort of uh the the
+
+00:12:56.943-->00:13:01.881
+following elements of this game
+play. This literally is a gym
+that can be used in the open AI
+
+00:13:04.317-->00:13:10.056
+framework for creating your own
+reinforcement learning agent.
+And we provided some uh some
+
+00:13:10.056-->00:13:16.362
+some very basic ones in there to
+begin with. But it works like
+this. So in the case of Atari
+
+00:13:16.362-->00:13:21.534
+the state was a screenshot. In
+our case the state will be a
+feature vector that sort of
+
+00:13:21.534-->00:13:26.539
+summarizes poorly, but you know,
+uh coarsely the the state of the
+malware. So what is what is the
+
+00:13:29.308-->00:13:35.815
+malware look like that that I'm
+using to attack the the next-gen
+AV. That's that feature vector
+
+00:13:35.815-->00:13:39.852
+is based on you know, general
+file information, header info,
+section characteristics,
+
+00:13:39.852-->00:13:44.991
+imported strings uh file byte
+and file entropy. Things
+actually that are often used in
+
+00:13:44.991-->00:13:50.697
+in uh static malware
+classification by next-gen AV.
+Now we're gonna feed that into a
+
+00:13:50.697-->00:13:55.535
+neural network that will learn
+this uh state, so given this
+state what's what's my best
+
+00:13:55.535-->00:14:00.640
+action. The actions that I can
+choose, right now we've included
+just you know our buffet has
+
+00:14:00.640-->00:14:07.580
+just a few options. I can uh
+create an entry point, create
+session, I can add um add bytes
+
+00:14:07.580-->00:14:12.285
+in places that don't break the
+file format. Uh or
+functionality. Or modify things
+
+00:14:12.285-->00:14:17.890
+that are not know, so you know
+these um item potent operations
+of of uh packing and unpacking
+
+00:14:17.890-->00:14:22.195
+don't change the behavior of the
+malware, but change how it is
+presented to a to a malware
+
+00:14:22.195-->00:14:26.899
+classier. And we're using the
+the very cool tool called uh
+LIEF, the library to uh
+
+00:14:26.899-->00:14:33.239
+instrument execute formats by
+Quarkslab, so shout out to them.
+And um finally, we are also you
+
+00:14:33.239-->00:14:38.244
+know included in this free pose
+is sort of a toy next-gen AV you
+know, it's a decent toy. It's
+
+00:14:38.244-->00:14:44.851
+worth while to attack and see
+how it performs. Um the key here
+is that this game doesn't care
+
+00:14:44.851-->00:14:51.090
+what you put in that black box.
+It could be our toy model, you
+could rip it out put in your own
+
+00:14:51.090-->00:14:56.229
+next-gen AV model. It could be a
+traditional antivirus agent or
+whatever. At the end of the day
+
+00:14:56.229-->00:15:01.267
+you just have to retro fit it so
+that it will report a zero or a
+one. One for malicious. Zero for
+
+00:15:01.267-->00:15:06.272
+benign. Alright so let me just
+demonstrate how this worked on a
+on a a some samples here, but uh
+
+00:15:09.942-->00:15:15.314
+first, just to drive home how
+hard this is, you know, I have
+the agent has a very incomplete
+
+00:15:15.314-->00:15:21.120
+state of of the world. The the
+malware he inspects into a
+feature vector that is that is
+
+00:15:21.120-->00:15:26.125
+and and not at all perfect, um,
+uh he uh his actions are are
+still caustic in nature. So for
+
+00:15:29.228-->00:15:34.333
+like Atari game play I can say
+move right, but I don't know how
+far the paddle's gonna move
+
+00:15:34.333-->00:15:37.770
+right. There's a similar thing
+here, I'll say add an import,
+but it's going to choose
+
+00:15:37.770-->00:15:43.276
+randomly from a list of known
+benign imports. So there's this
+random nature and um and further
+
+00:15:43.276-->00:15:47.747
+right I know nothing about the
+model I'm attacking. So this
+might be a little bit like you
+
+00:15:47.747-->00:15:52.752
+trying to um solve um you know a
+maze, or traverse a maze without
+a map and wearing kaleidoscope
+
+00:15:55.721-->00:16:00.159
+glasses and um and while
+intoxicated, which which I
+probably described a lot of your
+
+00:16:00.159-->00:16:04.630
+day jobs. I don't know, but.
+This is a really really
+difficult problem. Nevertheless
+
+00:16:04.630-->00:16:09.769
+we hope that we can we can
+learn. So uh, you can probably
+can't see this. I'm gonna dist-
+
+00:16:09.769-->00:16:14.307
+whoa. I can hardly see that, so
+what I'm showing here, this is
+the output and and I two
+
+00:16:14.307-->00:16:18.845
+examples at at first the model
+is just total totally guessing
+at random and getting no where.
+
+00:16:18.845-->00:16:24.016
+And after I wait for several
+minutes, the model through his
+exploration process catched a
+
+00:16:24.016-->00:16:29.922
+lucky break and he creates a new
+entry point which evades the
+machine model on that malware
+
+00:16:29.922-->00:16:36.863
+sample and he updates how he
+learns to evade that model. And
+by getting lucky enough many
+
+00:16:36.863-->00:16:41.434
+many times over tens of
+thousands of games, then you
+know, with this sort of
+
+00:16:41.434-->00:16:46.439
+rudimentary model that we put in
+place, um we can begin to learn
+to break next-gen AV. So here
+
+00:16:48.708-->00:16:53.713
+are the results. In one minute.
+Uh given a batch of malware
+samples, that neither the agent
+
+00:16:55.982-->00:17:01.420
+nor the model have ever before
+seen, we could modify those
+samples with our agent that has
+
+00:17:01.420-->00:17:07.260
+learned to play the game against
+the next-gen AV. And 60 percent
+of those snuck past.
+
+00:17:07.260-->00:17:11.764
+Furthermore, do you remember
+how, I don't necessarily have to
+attack your model? To bypass a
+
+00:17:11.764-->00:17:17.370
+different model? We uploaded
+those samples to virus total
+both the pre-modification and
+
+00:17:17.370-->00:17:23.542
+the post-modification.
+Pre-modification, 35 out of 62
+caught those samples. After our
+
+00:17:23.542-->00:17:28.381
+agent got a hold of them uh
+there were 10 additional
+antivirus engines that whiffed
+
+00:17:28.381-->00:17:33.786
+on those malware samples. So
+that's pretty cool um we also
+ran sort of random mutations. We
+
+00:17:33.786-->00:17:37.490
+want to make sure our agent was
+learning something and not just
+getting lucky all the time. So
+
+00:17:37.490-->00:17:41.694
+we did the lucky experiment and
+you know it turns out lucky is
+pretty good to, but we uh the
+
+00:17:41.694-->00:17:48.501
+agent's about 50 percent than
+lucky. Alright, we're done. The
+summary is this. You can go to
+
+00:17:48.501-->00:17:54.340
+GitHub end game inc. gym malware
+and try this game for yourself
+uh no knowledge of the target
+
+00:17:54.340-->00:17:59.478
+model is needed. Will manipulate
+raw binaries and produce new
+binaries this world has never
+
+00:17:59.478-->00:18:06.052
+seen. Um some fraction of which
+may evade your machine model. I
+hope that people contribute and
+
+00:18:06.052-->00:18:11.357
+make it better. We use these
+things at end game to help
+Harden our models. Um stepping
+
+00:18:11.357-->00:18:15.394
+back a moment, it turns out that
+machine learning is actually
+fully robust, even under direct
+
+00:18:15.394-->00:18:20.466
+attack, the machine learning
+models warded off most of these
+attacks. Nevertheless, all
+
+00:18:20.466-->00:18:25.471
+models have blind spots. So
+don't buy into the hype. And
+with that. Thank you. [applause]
+

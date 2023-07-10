@@ -1,0 +1,2024 @@
+﻿1
+00:00:00,030 --> 00:00:02,879
+alright let's get started hello everyone
+
+2
+00:00:02,879 --> 00:00:04,259
+my name is Justin Taft and I'm a
+
+3
+00:00:04,259 --> 00:00:06,990
+security kisara NCC group today I'm
+
+4
+00:00:06,990 --> 00:00:08,610
+proud to present some research I've done
+
+5
+00:00:08,610 --> 00:00:11,099
+on GP security we're going to focus on
+
+6
+00:00:11,099 --> 00:00:12,870
+exploring shared memory to the juniel
+
+7
+00:00:12,870 --> 00:00:15,179
+GPU this morning bility actually
+
+8
+00:00:15,179 --> 00:00:16,890
+affected multiple devices such as the
+
+9
+00:00:16,890 --> 00:00:19,980
+Nexus 5x and 6 so it's going to be some
+
+10
+00:00:19,980 --> 00:00:21,740
+pretty cool stuff into this presentation
+
+11
+00:00:21,740 --> 00:00:25,380
+as a quick overview we're going to
+
+12
+00:00:25,380 --> 00:00:27,660
+discuss shared memory internals we're
+
+13
+00:00:27,660 --> 00:00:28,769
+going to see how shared memory is
+
+14
+00:00:28,769 --> 00:00:30,539
+actually configure it setup and dive bit
+
+15
+00:00:30,539 --> 00:00:32,610
+into the hardware then we're going to
+
+16
+00:00:32,610 --> 00:00:34,350
+discuss what the GPU command processor
+
+17
+00:00:34,350 --> 00:00:36,360
+is and see how put the role in
+
+18
+00:00:36,360 --> 00:00:37,920
+exploiting this vulnerability and
+
+19
+00:00:37,920 --> 00:00:40,050
+finally we're actually dig into the
+
+20
+00:00:40,050 --> 00:00:42,660
+details about the vulnerability and I do
+
+21
+00:00:42,660 --> 00:00:44,820
+live demonstrations and join how we
+
+22
+00:00:44,820 --> 00:00:47,539
+could I gain root access
+
+23
+00:00:47,570 --> 00:00:51,120
+so shared memory what is it if you talk
+
+24
+00:00:51,120 --> 00:00:52,680
+to you and software engineer they're
+
+25
+00:00:52,680 --> 00:00:54,360
+going to tell you that is the region of
+
+26
+00:00:54,360 --> 00:00:56,250
+physical memory shared between two more
+
+27
+00:00:56,250 --> 00:00:58,469
+processes a common examples this is
+
+28
+00:00:58,469 --> 00:01:00,930
+dynamic libraries so instead of loading
+
+29
+00:01:00,930 --> 00:01:02,879
+a dynamic library multiple times at your
+
+30
+00:01:02,879 --> 00:01:04,769
+memory you load it once then they share
+
+31
+00:01:04,769 --> 00:01:06,750
+the memories between multiple processes
+
+32
+00:01:06,750 --> 00:01:08,850
+this cuts down on memory usage for the
+
+33
+00:01:08,850 --> 00:01:09,860
+computer
+
+34
+00:01:09,860 --> 00:01:12,000
+additionally shared memory is used for
+
+35
+00:01:12,000 --> 00:01:14,729
+inter process communication and when you
+
+36
+00:01:14,729 --> 00:01:16,320
+have two processes I want to communicate
+
+37
+00:01:16,320 --> 00:01:17,280
+well with each other
+
+38
+00:01:17,280 --> 00:01:19,770
+you could message same memory page into
+
+39
+00:01:19,770 --> 00:01:21,119
+both processes and read and write values
+
+40
+00:01:21,119 --> 00:01:23,549
+so this is very quick and has a low
+
+41
+00:01:23,549 --> 00:01:27,900
+overhead if you ask a hardware engineer
+
+42
+00:01:27,900 --> 00:01:29,189
+what's shared memory you're going to get
+
+43
+00:01:29,189 --> 00:01:31,140
+a low different response so the region
+
+44
+00:01:31,140 --> 00:01:32,520
+of physical memory share between two
+
+45
+00:01:32,520 --> 00:01:34,619
+more hardware components in our case
+
+46
+00:01:34,619 --> 00:01:37,470
+we're going to be discussing the GPU and
+
+47
+00:01:37,470 --> 00:01:40,079
+CPU sharing memory to system memory
+
+48
+00:01:40,079 --> 00:01:43,920
+aka RAM and generally this is used to
+
+49
+00:01:43,920 --> 00:01:45,329
+transfer information back and forth
+
+50
+00:01:45,329 --> 00:01:48,119
+between devices such as textures for
+
+51
+00:01:48,119 --> 00:01:52,649
+video graphics so as a quick overview of
+
+52
+00:01:52,649 --> 00:01:54,479
+the hardware involved with shared memory
+
+53
+00:01:54,479 --> 00:01:56,399
+there's a couple of missing pieces here
+
+54
+00:01:56,399 --> 00:01:57,659
+but this is basically what we need to
+
+55
+00:01:57,659 --> 00:02:00,200
+cover for the actual vulnerability and
+
+56
+00:02:00,200 --> 00:02:02,340
+basically the important thing to take
+
+57
+00:02:02,340 --> 00:02:03,780
+away from the slides are these two
+
+58
+00:02:03,780 --> 00:02:06,600
+devices called the MMU and iommu these
+
+59
+00:02:06,600 --> 00:02:09,060
+translate virtual addresses or device
+
+60
+00:02:09,060 --> 00:02:12,150
+adjusters to the physical address where
+
+61
+00:02:12,150 --> 00:02:13,530
+the actually memory
+
+62
+00:02:13,530 --> 00:02:17,790
+and system rent and basically the blog
+
+63
+00:02:17,790 --> 00:02:21,270
+will look exploits this exploits the
+
+64
+00:02:21,270 --> 00:02:24,300
+setup so let's discuss a little bit more
+
+65
+00:02:24,300 --> 00:02:27,780
+about the MMU and what they are so MMU
+
+66
+00:02:27,780 --> 00:02:29,760
+stands for memory management unit if
+
+67
+00:02:29,760 --> 00:02:31,050
+they're hard component that CPU
+
+68
+00:02:31,050 --> 00:02:32,640
+interacts with an excessive memory
+
+69
+00:02:32,640 --> 00:02:34,860
+usually this is what's in the same die
+
+70
+00:02:34,860 --> 00:02:36,959
+is the CPU before the external component
+
+71
+00:02:36,959 --> 00:02:39,330
+benign anymore again its main role is to
+
+72
+00:02:39,330 --> 00:02:41,100
+translate virtue of Justice to physical
+
+73
+00:02:41,100 --> 00:02:43,560
+addresses so for example if you have a
+
+74
+00:02:43,560 --> 00:02:45,600
+process and you try to access an area of
+
+75
+00:02:45,600 --> 00:02:48,150
+memory that's not mapped to it the MMU
+
+76
+00:02:48,150 --> 00:02:50,100
+was signal to CPU there was invalid
+
+77
+00:02:50,100 --> 00:02:52,410
+operation and then the kernel could
+
+78
+00:02:52,410 --> 00:02:54,720
+decide what to do such as raising a
+
+79
+00:02:54,720 --> 00:02:58,410
+segfault signal to the process
+
+80
+00:02:58,410 --> 00:03:00,690
+additionally the MMU enforces a page
+
+81
+00:03:00,690 --> 00:03:03,300
+table entry flags such as rewritten F X
+
+82
+00:03:03,300 --> 00:03:05,850
+cube so again if you try to write to a
+
+83
+00:03:05,850 --> 00:03:09,090
+read-only page then the MMU would signal
+
+84
+00:03:09,090 --> 00:03:12,440
+the CPU saying this can't happen and the
+
+85
+00:03:12,440 --> 00:03:14,610
+kernel can decide what to do such as
+
+86
+00:03:14,610 --> 00:03:17,810
+raising a Exe bad access signal to the
+
+87
+00:03:17,810 --> 00:03:21,329
+process so the main thing to take away
+
+88
+00:03:21,329 --> 00:03:23,519
+from the slide is that the MMD's are
+
+89
+00:03:23,519 --> 00:03:26,730
+used to enforce security basically
+
+90
+00:03:26,730 --> 00:03:28,980
+Tamarac sandbox processes will one
+
+91
+00:03:28,980 --> 00:03:30,320
+another so they can't write to you
+
+92
+00:03:30,320 --> 00:03:35,730
+arbitrary memory regions so now we're
+
+93
+00:03:35,730 --> 00:03:38,820
+discuss what the iommu is it's called
+
+94
+00:03:38,820 --> 00:03:40,320
+the input-output memory memory
+
+95
+00:03:40,320 --> 00:03:42,900
+management and it's very similar to the
+
+96
+00:03:42,900 --> 00:03:46,260
+MMU Allah so basically the iommu is a
+
+97
+00:03:46,260 --> 00:03:47,820
+hardware component the GPU interacts
+
+98
+00:03:47,820 --> 00:03:49,950
+with one excess of memory and it can be
+
+99
+00:03:49,950 --> 00:03:51,570
+configured to map an address range to
+
+100
+00:03:51,570 --> 00:03:53,400
+system memory which can be used by the
+
+101
+00:03:53,400 --> 00:03:57,690
+CPU please note that the term iommu is
+
+102
+00:03:57,690 --> 00:03:59,549
+not something specific to the GPU that
+
+103
+00:03:59,549 --> 00:04:02,040
+could be multiple i am i there could be
+
+104
+00:04:02,040 --> 00:04:03,959
+multiple i/o mm use on a like
+
+105
+00:04:03,959 --> 00:04:06,000
+motherboard for instance for this case
+
+106
+00:04:06,000 --> 00:04:09,260
+were discussing the GPU iommu and
+
+107
+00:04:09,260 --> 00:04:12,660
+basically what the iommu is responsible
+
+108
+00:04:12,660 --> 00:04:14,820
+is preventing direct memory attacks by
+
+109
+00:04:14,820 --> 00:04:17,070
+limiting what memory the actual hardware
+
+110
+00:04:17,070 --> 00:04:21,500
+could and interact with
+
+111
+00:04:22,019 --> 00:04:24,940
+so cool that's basically what shared
+
+112
+00:04:24,940 --> 00:04:26,860
+memory is how do we actually set up
+
+113
+00:04:26,860 --> 00:04:28,960
+shared memory with the GPU with Adreno
+
+114
+00:04:28,960 --> 00:04:31,890
+GPU first thing we have to discuss is
+
+115
+00:04:31,890 --> 00:04:34,090
+interfacing with the graphics driver and
+
+116
+00:04:34,090 --> 00:04:36,190
+this is actually pretty simple
+
+117
+00:04:36,190 --> 00:04:38,590
+so the gino graphics driver exposes a
+
+118
+00:04:38,590 --> 00:04:41,710
+device file flash lost Katie ESL 3d0
+
+119
+00:04:41,710 --> 00:04:44,560
+and basically you interact with this
+
+120
+00:04:44,560 --> 00:04:45,970
+device file by sending IO control
+
+121
+00:04:45,970 --> 00:04:48,700
+command and file has global read and
+
+122
+00:04:48,700 --> 00:04:50,110
+write permissions so pretty much any
+
+123
+00:04:50,110 --> 00:04:53,140
+process on pumpkin talk to it you write
+
+124
+00:04:53,140 --> 00:04:54,880
+might run into some issues where there's
+
+125
+00:04:54,880 --> 00:04:56,980
+selinux that prevents certain processes
+
+126
+00:04:56,980 --> 00:04:58,870
+from interacting but again it s you
+
+127
+00:04:58,870 --> 00:05:02,050
+Linus enable then pretty much anyone can
+
+128
+00:05:02,050 --> 00:05:06,490
+interact with the file so here's an
+
+129
+00:05:06,490 --> 00:05:07,360
+example
+
+130
+00:05:07,360 --> 00:05:09,550
+io Patrol commands that we could use to
+
+131
+00:05:09,550 --> 00:05:11,620
+map shape memory and just make a shirt
+
+132
+00:05:11,620 --> 00:05:12,750
+can everyone see that in the back
+
+133
+00:05:12,750 --> 00:05:16,960
+awesome thank you so it's a simple
+
+134
+00:05:16,960 --> 00:05:19,620
+structure that we send to the i/o pachow
+
+135
+00:05:19,620 --> 00:05:22,360
+command we have a host point here which
+
+136
+00:05:22,360 --> 00:05:25,330
+points to the CPU virtual address that
+
+137
+00:05:25,330 --> 00:05:27,040
+we want to share again we're sharing
+
+138
+00:05:27,040 --> 00:05:31,030
+pages of memory for own 4096 bytes and
+
+139
+00:05:31,030 --> 00:05:34,200
+this host partner must be page aligned
+
+140
+00:05:34,200 --> 00:05:36,970
+the next thing we specify is how many
+
+141
+00:05:36,970 --> 00:05:38,830
+pages or how many bytes you want to
+
+142
+00:05:38,830 --> 00:05:41,290
+share and this has to be multiple of the
+
+143
+00:05:41,290 --> 00:05:46,630
+page size then there's a tribute meant
+
+144
+00:05:46,630 --> 00:05:48,310
+type which specifies what type of
+
+145
+00:05:48,310 --> 00:05:50,230
+mapping we want to create in this
+
+146
+00:05:50,230 --> 00:05:52,750
+instance route own of the driver that we
+
+147
+00:05:52,750 --> 00:05:54,070
+want to Maps and memory that's already
+
+148
+00:05:54,070 --> 00:05:56,470
+owned by the process into the GPU memory
+
+149
+00:05:56,470 --> 00:06:01,230
+address and finally we have the GPU
+
+150
+00:06:01,230 --> 00:06:04,390
+address attribute and this gets updated
+
+151
+00:06:04,390 --> 00:06:08,050
+by the iokit roll call when it's a soft
+
+152
+00:06:08,050 --> 00:06:10,420
+way to feed and this will point to the
+
+153
+00:06:10,420 --> 00:06:12,820
+GPUs actual device address where the
+
+154
+00:06:12,820 --> 00:06:15,430
+mapping is there's a bunch of other
+
+155
+00:06:15,430 --> 00:06:17,680
+different methods you could do there's
+
+156
+00:06:17,680 --> 00:06:19,480
+one called ion buffer or a good shark or
+
+157
+00:06:19,480 --> 00:06:20,920
+you could carve out a huge chunk of
+
+158
+00:06:20,920 --> 00:06:24,430
+memory does continue continuous and yeah
+
+159
+00:06:24,430 --> 00:06:27,640
+if you probably the source code or the
+
+160
+00:06:27,640 --> 00:06:29,230
+kernel for the travel you could see
+
+161
+00:06:29,230 --> 00:06:32,639
+Alice see all the different types
+
+162
+00:06:32,639 --> 00:06:35,800
+cool so that was a shared memory it's
+
+163
+00:06:35,800 --> 00:06:37,840
+very straight board let's talk about the
+
+164
+00:06:37,840 --> 00:06:41,289
+GPU command processor and what it is so
+
+165
+00:06:41,289 --> 00:06:43,600
+the GPU command processor processes
+
+166
+00:06:43,600 --> 00:06:45,370
+instructions in order to draw graphics
+
+167
+00:06:45,370 --> 00:06:46,840
+and configure internal settings of the
+
+168
+00:06:46,840 --> 00:06:50,259
+GPU and higher level API such as OpenGL
+
+169
+00:06:50,259 --> 00:06:52,990
+provide instruction abstraction for
+
+170
+00:06:52,990 --> 00:06:54,280
+implementation details
+
+171
+00:06:54,280 --> 00:06:57,340
+so generally OpenGL has something called
+
+172
+00:06:57,340 --> 00:06:59,680
+a user mode driver and it basically
+
+173
+00:06:59,680 --> 00:07:02,229
+contains a bunch of vendor specific code
+
+174
+00:07:02,229 --> 00:07:04,479
+in order to generate these instructions
+
+175
+00:07:04,479 --> 00:07:06,580
+for the command processor so whenever
+
+176
+00:07:06,580 --> 00:07:08,500
+you say like draw like a rectangle on
+
+177
+00:07:08,500 --> 00:07:10,330
+the screen the user mode driver will go
+
+178
+00:07:10,330 --> 00:07:11,530
+ahead and create a bunch of these
+
+179
+00:07:11,530 --> 00:07:14,740
+instructions to the for the GPU and then
+
+180
+00:07:14,740 --> 00:07:16,060
+send them off to the driver to actually
+
+181
+00:07:16,060 --> 00:07:19,090
+process so as you can get these command
+
+182
+00:07:19,090 --> 00:07:20,169
+processor instructions are not
+
+183
+00:07:20,169 --> 00:07:23,560
+standardized GPU manufacturers can
+
+184
+00:07:23,560 --> 00:07:25,090
+decide whatever types of instructions
+
+185
+00:07:25,090 --> 00:07:26,620
+they want to buy it they can make they
+
+186
+00:07:26,620 --> 00:07:29,139
+just have to you just have to like
+
+187
+00:07:29,139 --> 00:07:31,389
+follow the opengl like specification or
+
+188
+00:07:31,389 --> 00:07:32,280
+whatever
+
+189
+00:07:32,280 --> 00:07:34,930
+graphics a very high that they want to
+
+190
+00:07:34,930 --> 00:07:38,380
+be compatible with and one thing to note
+
+191
+00:07:38,380 --> 00:07:40,360
+is that through the GPU command
+
+192
+00:07:40,360 --> 00:07:42,580
+processor the G knows M mu is actually
+
+193
+00:07:42,580 --> 00:07:44,020
+configured on boot-up through the
+
+194
+00:07:44,020 --> 00:07:46,150
+command processor it generates a bunch
+
+195
+00:07:46,150 --> 00:07:50,020
+of commands to do this so let's go ahead
+
+196
+00:07:50,020 --> 00:07:52,150
+and take a look at how we could write
+
+197
+00:07:52,150 --> 00:07:54,250
+2x2 GPU memory from the command
+
+198
+00:07:54,250 --> 00:07:56,260
+processor and again this is done through
+
+199
+00:07:56,260 --> 00:07:59,680
+the physics to the command processor all
+
+200
+00:07:59,680 --> 00:08:01,570
+we have to do is allocate
+
+201
+00:08:01,570 --> 00:08:05,340
+buffer and then we send up upward to the
+
+202
+00:08:05,340 --> 00:08:07,139
+graphics driver
+
+203
+00:08:07,139 --> 00:08:11,320
+so here the geno GPU actually provides a
+
+204
+00:08:11,320 --> 00:08:14,770
+simple command called CPU memory which
+
+205
+00:08:14,770 --> 00:08:17,199
+allows us to pass two more arguments
+
+206
+00:08:17,199 --> 00:08:19,030
+which is the target GPU address we want
+
+207
+00:08:19,030 --> 00:08:20,979
+to write q and the value that we want to
+
+208
+00:08:20,979 --> 00:08:25,260
+write so this is pretty straightforward
+
+209
+00:08:25,260 --> 00:08:27,550
+later on when it's actually time to sum
+
+210
+00:08:27,550 --> 00:08:29,620
+to commence there's a bunch of ceremony
+
+211
+00:08:29,620 --> 00:08:31,349
+desica language create some structure
+
+212
+00:08:31,349 --> 00:08:33,969
+defining how many instructions you want
+
+213
+00:08:33,969 --> 00:08:37,208
+to send and where the instructions live
+
+214
+00:08:37,208 --> 00:08:39,150
+in GPU memory
+
+215
+00:08:39,150 --> 00:08:42,240
+so normally these these command
+
+216
+00:08:42,240 --> 00:08:43,440
+processor commands you have to map into
+
+217
+00:08:43,440 --> 00:08:46,830
+the GPU first and you also have put the
+
+218
+00:08:46,830 --> 00:08:48,210
+called drawing context which you
+
+219
+00:08:48,210 --> 00:08:50,460
+associate all these command officer
+
+220
+00:08:50,460 --> 00:08:52,890
+instructions with I'm uncle into all the
+
+221
+00:08:52,890 --> 00:08:54,900
+details here but basically it's just
+
+222
+00:08:54,900 --> 00:08:58,050
+another simple IO control command used
+
+223
+00:08:58,050 --> 00:09:01,560
+to actually submit the command and one
+
+224
+00:09:01,560 --> 00:09:02,730
+thing to note is that these commands
+
+225
+00:09:02,730 --> 00:09:06,360
+actually execute in parallel so yeah
+
+226
+00:09:06,360 --> 00:09:08,580
+what it's kind of like a firing forget
+
+227
+00:09:08,580 --> 00:09:10,170
+scenario but there's actually a couple
+
+228
+00:09:10,170 --> 00:09:12,900
+command projects or commands could get
+
+229
+00:09:12,900 --> 00:09:14,339
+notified when actually finished
+
+230
+00:09:14,339 --> 00:09:18,210
+processing them cool well let's talk
+
+231
+00:09:18,210 --> 00:09:19,860
+about the vulnerability now so we talked
+
+232
+00:09:19,860 --> 00:09:21,150
+about shared memory how to set that up
+
+233
+00:09:21,150 --> 00:09:22,320
+we talked about how we could actually
+
+234
+00:09:22,320 --> 00:09:23,790
+break from the command processor into
+
+235
+00:09:23,790 --> 00:09:26,310
+you GPU memory what's the actual
+
+236
+00:09:26,310 --> 00:09:28,710
+vulnerability because as I discussed
+
+237
+00:09:28,710 --> 00:09:29,760
+earlier attack and shared memory and
+
+238
+00:09:29,760 --> 00:09:32,730
+when you try to write to read-only
+
+239
+00:09:32,730 --> 00:09:33,380
+memory
+
+240
+00:09:33,380 --> 00:09:35,550
+normally that can't happen like the MMU
+
+241
+00:09:35,550 --> 00:09:38,910
+prevents it well it turns out actually
+
+242
+00:09:38,910 --> 00:09:40,529
+got a CVE for this is that the
+
+243
+00:09:40,529 --> 00:09:42,630
+Genographic driver map memory pages
+
+244
+00:09:42,630 --> 00:09:44,880
+marked as read only by the CPU is
+
+245
+00:09:44,880 --> 00:09:47,279
+writable by the GPU so this is huge this
+
+246
+00:09:47,279 --> 00:09:49,830
+has a lot of repercussions and I'll go
+
+247
+00:09:49,830 --> 00:09:51,510
+into more details about the
+
+248
+00:09:51,510 --> 00:09:57,000
+vulnerability so here's a basically
+
+249
+00:09:57,000 --> 00:09:58,470
+permission check that occurs while
+
+250
+00:09:58,470 --> 00:10:01,910
+you're trying to map memory into the GPU
+
+251
+00:10:01,910 --> 00:10:03,959
+it's pretty straightforward the main
+
+252
+00:10:03,959 --> 00:10:06,120
+thing to focus on is does get user pages
+
+253
+00:10:06,120 --> 00:10:09,510
+function call what this does is it's
+
+254
+00:10:09,510 --> 00:10:11,550
+used to pen memory in place for direct
+
+255
+00:10:11,550 --> 00:10:12,959
+memory access operations
+
+256
+00:10:12,959 --> 00:10:17,040
+so you want to pen memory in place for
+
+257
+00:10:17,040 --> 00:10:18,270
+direct memory access because you don't
+
+258
+00:10:18,270 --> 00:10:20,100
+want that page to be moving around while
+
+259
+00:10:20,100 --> 00:10:21,209
+you're trying to read or write to it
+
+260
+00:10:21,209 --> 00:10:22,920
+because you could be who knows what
+
+261
+00:10:22,920 --> 00:10:24,920
+you'll be reading or writing to
+
+262
+00:10:24,920 --> 00:10:27,839
+additionally this function has some
+
+263
+00:10:27,839 --> 00:10:32,160
+internal code to verify the fly depend
+
+264
+00:10:32,160 --> 00:10:33,510
+if you're reading a writing but that
+
+265
+00:10:33,510 --> 00:10:35,220
+actually matches what the underlying
+
+266
+00:10:35,220 --> 00:10:38,190
+page flags have so basically if you're
+
+267
+00:10:38,190 --> 00:10:41,820
+trying to ask to write to a read-only
+
+268
+00:10:41,820 --> 00:10:45,170
+memory page the function one normal fail
+
+269
+00:10:45,170 --> 00:10:47,490
+however if you take a look at the line
+
+270
+00:10:47,490 --> 00:10:50,040
+above where it says and write equals the
+
+271
+00:10:50,040 --> 00:10:52,970
+flag actually gets inverted so when we
+
+272
+00:10:52,970 --> 00:10:55,129
+request to map some memory as read-only
+
+273
+00:10:55,129 --> 00:10:57,139
+that check is bypassed because it gets
+
+274
+00:10:57,139 --> 00:11:00,620
+marked as our sorry but when we ask to
+
+275
+00:11:00,620 --> 00:11:02,810
+pen that says write only the slides
+
+276
+00:11:02,810 --> 00:11:05,540
+inverted and read and it gets the check
+
+277
+00:11:05,540 --> 00:11:07,310
+passage since the actual page is
+
+278
+00:11:07,310 --> 00:11:09,220
+readable so this is how we could
+
+279
+00:11:09,220 --> 00:11:11,600
+basically say we're going to write to a
+
+280
+00:11:11,600 --> 00:11:14,899
+read-only memory page again this does
+
+281
+00:11:14,899 --> 00:11:16,819
+actual get user pages functions only
+
+282
+00:11:16,819 --> 00:11:18,620
+tends memory places and isn't
+
+283
+00:11:18,620 --> 00:11:20,379
+configuring the iommu
+
+284
+00:11:20,379 --> 00:11:23,420
+later on the iommu configuration
+
+285
+00:11:23,420 --> 00:11:25,879
+actually happens for the GPU so this is
+
+286
+00:11:25,879 --> 00:11:30,379
+where the initial memory oral request
+
+287
+00:11:30,379 --> 00:11:32,449
+rates say we want to write to the
+
+288
+00:11:32,449 --> 00:11:34,730
+methods memory as writable into the GPU
+
+289
+00:11:34,730 --> 00:11:38,089
+occurs and basically the mapping
+
+290
+00:11:38,089 --> 00:11:40,220
+continues and it gets mapped as are
+
+291
+00:11:40,220 --> 00:11:44,569
+writable so again to sum up what I just
+
+292
+00:11:44,569 --> 00:11:46,310
+explained this allows us to map
+
+293
+00:11:46,310 --> 00:11:49,670
+read-only memory pages into the GPU so
+
+294
+00:11:49,670 --> 00:11:51,620
+ok now that's all the way let's talk
+
+295
+00:11:51,620 --> 00:11:52,910
+about the exploit what can you actually
+
+296
+00:11:52,910 --> 00:11:55,339
+do because of this the very first idea I
+
+297
+00:11:55,339 --> 00:11:57,259
+had was modified dynamic libraries right
+
+298
+00:11:57,259 --> 00:11:59,050
+so when you have a dynamic library
+
+299
+00:11:59,050 --> 00:12:00,740
+typically they're shared between
+
+300
+00:12:00,740 --> 00:12:03,769
+multiple processes so you for instance
+
+301
+00:12:03,769 --> 00:12:07,579
+in a process use the functions DL open
+
+302
+00:12:07,579 --> 00:12:09,680
+and deal licen to load our dynamic
+
+303
+00:12:09,680 --> 00:12:11,569
+library and locate the symbol justice
+
+304
+00:12:11,569 --> 00:12:14,050
+then after that you could go ahead and
+
+305
+00:12:14,050 --> 00:12:16,850
+using the command processor overwrite
+
+306
+00:12:16,850 --> 00:12:19,610
+the arbitrary function such as android
+
+307
+00:12:19,610 --> 00:12:23,720
+log print and live logged up so so again
+
+308
+00:12:23,720 --> 00:12:25,160
+when you change in one process since
+
+309
+00:12:25,160 --> 00:12:26,689
+that memory shared between multiple
+
+310
+00:12:26,689 --> 00:12:28,160
+processes although others will start
+
+311
+00:12:28,160 --> 00:12:30,350
+executing those new instructions so this
+
+312
+00:12:30,350 --> 00:12:31,910
+is pretty cool
+
+313
+00:12:31,910 --> 00:12:33,680
+additionally the other reason I had
+
+314
+00:12:33,680 --> 00:12:37,009
+targeted the Android log print a symbol
+
+315
+00:12:37,009 --> 00:12:39,290
+is because this is generally just for
+
+316
+00:12:39,290 --> 00:12:40,730
+logging and it doesn't have a return
+
+317
+00:12:40,730 --> 00:12:42,230
+value and it's not going to have any
+
+318
+00:12:42,230 --> 00:12:43,819
+nasty side-effects if you overwrite it
+
+319
+00:12:43,819 --> 00:12:47,209
+so it's pretty safe to the one downside
+
+320
+00:12:47,209 --> 00:12:48,759
+with this actual attack when modifying
+
+321
+00:12:48,759 --> 00:12:50,839
+dynamic libraries that some privileged
+
+322
+00:12:50,839 --> 00:12:52,610
+binaries are statically linked so you
+
+323
+00:12:52,610 --> 00:12:55,490
+can't modify dynamic libraries in order
+
+324
+00:12:55,490 --> 00:12:57,709
+to influence operation of statically
+
+325
+00:12:57,709 --> 00:13:01,279
+linked libraries but we can do a bit
+
+326
+00:13:01,279 --> 00:13:03,589
+better if we actually think about how
+
+327
+00:13:03,589 --> 00:13:05,990
+chair libraries work it's just the MF
+
+328
+00:13:05,990 --> 00:13:06,550
+underneath
+
+329
+00:13:06,550 --> 00:13:08,830
+but hood and MF just acts as a disk
+
+330
+00:13:08,830 --> 00:13:10,390
+cache whenever you load a file into
+
+331
+00:13:10,390 --> 00:13:14,260
+memory through MF the context the
+
+332
+00:13:14,260 --> 00:13:15,550
+contents are shared between multiple
+
+333
+00:13:15,550 --> 00:13:18,660
+processes as long as nobody writes to it
+
+334
+00:13:18,660 --> 00:13:20,860
+so we could actually go ahead and modify
+
+335
+00:13:20,860 --> 00:13:23,710
+the disk cache directly we could end up
+
+336
+00:13:23,710 --> 00:13:25,390
+any file that we have read access to you
+
+337
+00:13:25,390 --> 00:13:29,350
+right into memory and when any other yes
+
+338
+00:13:29,350 --> 00:13:31,570
+so when we MF it contents of the file
+
+339
+00:13:31,570 --> 00:13:32,680
+our cache and memory for all the
+
+340
+00:13:32,680 --> 00:13:36,250
+processes to use so we could exploit
+
+341
+00:13:36,250 --> 00:13:38,770
+this by a mapping a suid binary into
+
+342
+00:13:38,770 --> 00:13:42,280
+memory and then we could overwrite the
+
+343
+00:13:42,280 --> 00:13:44,110
+instructions of the suid binary to
+
+344
+00:13:44,110 --> 00:13:47,380
+answer our own program in memory so this
+
+345
+00:13:47,380 --> 00:13:49,150
+is awesome because this allows us to
+
+346
+00:13:49,150 --> 00:13:51,220
+effectively replace one to a binary that
+
+347
+00:13:51,220 --> 00:13:52,960
+we could just read with and just put
+
+348
+00:13:52,960 --> 00:13:55,110
+whatever instructions you want into it
+
+349
+00:13:55,110 --> 00:13:57,970
+lesson to note is that changes aren't
+
+350
+00:13:57,970 --> 00:13:59,200
+actually start to disk there are any
+
+351
+00:13:59,200 --> 00:14:00,820
+cached in memory so once the device
+
+352
+00:14:00,820 --> 00:14:05,950
+reboots the changes are gone but yeah
+
+353
+00:14:05,950 --> 00:14:08,350
+that's basically the vulnerability and
+
+354
+00:14:08,350 --> 00:14:10,270
+I'm going to do something a little bit
+
+355
+00:14:10,270 --> 00:14:11,410
+risky here I'm going to try a live
+
+356
+00:14:11,410 --> 00:14:12,660
+demonstration
+
+357
+00:14:12,660 --> 00:14:15,820
+yeah I'm still tweaking this exploit to
+
+358
+00:14:15,820 --> 00:14:18,130
+make it work all the time it pretty much
+
+359
+00:14:18,130 --> 00:14:20,440
+works like five out of seven times then
+
+360
+00:14:20,440 --> 00:14:21,760
+after you put the phone in case it
+
+361
+00:14:21,760 --> 00:14:23,950
+doesn't there's there might be some
+
+362
+00:14:23,950 --> 00:14:25,810
+fancy copy and write stuff going on
+
+363
+00:14:25,810 --> 00:14:27,940
+under the hood but uh yeah let's see if
+
+364
+00:14:27,940 --> 00:14:29,560
+it works for scope it doesn't I have it
+
+365
+00:14:29,560 --> 00:14:32,790
+recorded so no worries
+
+366
+00:14:40,120 --> 00:14:41,380
+let's see if I could put this on the
+
+367
+00:14:41,380 --> 00:14:48,160
+right screen first okay I do here on the
+
+368
+00:14:48,160 --> 00:15:02,290
+second sorry okay it's going to be a
+
+369
+00:15:02,290 --> 00:15:03,700
+little weird cuz I'd pretend remote on
+
+370
+00:15:03,700 --> 00:15:08,460
+my screen five - I took my head here so
+
+371
+00:15:08,820 --> 00:15:14,830
+you part off the phone okay should be
+
+372
+00:15:14,830 --> 00:15:19,330
+booting go ahead and wait a second I
+
+373
+00:15:19,330 --> 00:15:29,230
+left you connect no actually single
+
+374
+00:15:29,230 --> 00:15:40,530
+screen here thank you do it twice yeah
+
+375
+00:15:40,530 --> 00:15:43,060
+cool so I'm here wait for this to finish
+
+376
+00:15:43,060 --> 00:15:49,560
+booting go to screen
+
+377
+00:15:49,560 --> 00:15:55,750
+cool awesome okay so the phone is just
+
+378
+00:15:55,750 --> 00:16:01,630
+booted let me login to the phone okay so
+
+379
+00:16:01,630 --> 00:16:04,150
+here is we're just doing a normal adb
+
+380
+00:16:04,150 --> 00:16:06,520
+nothing crazy we've run the run add
+
+381
+00:16:06,520 --> 00:16:09,250
+command it's a standard output AC of the
+
+382
+00:16:09,250 --> 00:16:14,320
+actual program and if we type ID you see
+
+383
+00:16:14,320 --> 00:16:17,110
+our user ID is set to 2000 our group ID
+
+384
+00:16:17,110 --> 00:16:19,780
+is also set to 2000 so this is just our
+
+385
+00:16:19,780 --> 00:16:22,300
+normal permissions so let me go ahead
+
+386
+00:16:22,300 --> 00:16:25,930
+and go to our directory where the actual
+
+387
+00:16:25,930 --> 00:16:29,260
+weight is and what you saw in the slides
+
+388
+00:16:29,260 --> 00:16:31,290
+was pretty much the essence of the
+
+389
+00:16:31,290 --> 00:16:33,700
+exploit this is just local or fried
+
+390
+00:16:33,700 --> 00:16:35,980
+version so here I can specify info file
+
+391
+00:16:35,980 --> 00:16:38,170
+that I want to read on instructions from
+
+392
+00:16:38,170 --> 00:16:43,330
+so here I'm going to read my program
+
+393
+00:16:43,330 --> 00:16:45,010
+call group shell which just simply calls
+
+394
+00:16:45,010 --> 00:16:48,070
+set user ID to zero and it executes the
+
+395
+00:16:48,070 --> 00:16:50,470
+shell then there's the upper file I'm
+
+396
+00:16:50,470 --> 00:16:52,050
+going to target the system
+
+397
+00:16:52,050 --> 00:16:57,810
+then flush run as binary okay let's see
+
+398
+00:16:57,810 --> 00:17:00,320
+if this actually goes Oh
+
+399
+00:17:00,320 --> 00:17:07,380
+each other's very quick all right I
+
+400
+00:17:07,380 --> 00:17:10,970
+think I just ran into Murphy's Law here
+
+401
+00:17:10,970 --> 00:17:13,020
+yeah let me jump to the pre-record
+
+402
+00:17:13,020 --> 00:17:14,429
+demonstration I could show you after the
+
+403
+00:17:14,429 --> 00:17:15,809
+talk in person if you'd like to see it
+
+404
+00:17:15,809 --> 00:17:17,730
+running like I said there's some fancy
+
+405
+00:17:17,730 --> 00:17:19,679
+copy-on-write stuff going on underneath
+
+406
+00:17:19,679 --> 00:17:23,490
+the hood I believe but uh any poets over
+
+407
+00:17:23,490 --> 00:17:30,650
+here sorry about this three one second
+
+408
+00:17:33,740 --> 00:17:37,859
+[Music]
+
+409
+00:17:41,570 --> 00:17:43,420
+so you
+
+410
+00:17:43,420 --> 00:17:45,370
+the same thing just a recording a
+
+411
+00:17:45,370 --> 00:17:47,170
+possession I did last night so you just
+
+412
+00:17:47,170 --> 00:17:49,120
+saw a Pollock or Nez jump a little bit
+
+413
+00:17:49,120 --> 00:17:56,350
+bored and yeah it just look like so
+
+414
+00:17:56,350 --> 00:17:58,270
+again here I'm specifying the actual
+
+415
+00:17:58,270 --> 00:18:00,070
+commander one which will go ahead and
+
+416
+00:18:00,070 --> 00:18:11,860
+overwrite the binary and then the actual
+
+417
+00:18:11,860 --> 00:18:16,750
+exploit starts running it second
+
+418
+00:18:16,750 --> 00:18:22,600
+there we go so there you go you see the
+
+419
+00:18:22,600 --> 00:18:25,870
+actual binary starting to copy over and
+
+420
+00:18:25,870 --> 00:18:27,700
+one thing that's interesting about this
+
+421
+00:18:27,700 --> 00:18:29,590
+exploit is that while it's actually
+
+422
+00:18:29,590 --> 00:18:31,300
+running if I start playing around with
+
+423
+00:18:31,300 --> 00:18:33,310
+the phone it quicker the progress moves
+
+424
+00:18:33,310 --> 00:18:35,920
+I think this is because the instructions
+
+425
+00:18:35,920 --> 00:18:37,210
+for the command processor actually get
+
+426
+00:18:37,210 --> 00:18:38,890
+forced to flush because stuff has to
+
+427
+00:18:38,890 --> 00:18:42,270
+render to the screen so while uploading
+
+428
+00:18:42,270 --> 00:18:45,930
+I'm worrying about 160 bytes per second
+
+429
+00:18:45,930 --> 00:18:48,010
+then I'm sleeping for about a hundred
+
+430
+00:18:48,010 --> 00:18:50,100
+milliseconds and just verifying actually
+
+431
+00:18:50,100 --> 00:18:53,080
+persisted in memory just so kind of out
+
+432
+00:18:53,080 --> 00:18:58,120
+there so this was just take another
+
+433
+00:18:58,120 --> 00:19:03,130
+minute yeah and in case it carries the
+
+434
+00:19:03,130 --> 00:19:04,710
+way you could discover additional
+
+435
+00:19:04,710 --> 00:19:06,850
+command processor command could either
+
+436
+00:19:06,850 --> 00:19:09,580
+finally open source driver or a lot of
+
+437
+00:19:09,580 --> 00:19:10,990
+these are actually unpacking at it so
+
+438
+00:19:10,990 --> 00:19:12,610
+you could like hook OpenGL for instance
+
+439
+00:19:12,610 --> 00:19:13,900
+and try to figure out where they're
+
+440
+00:19:13,900 --> 00:19:16,770
+constructing these instructions and
+
+441
+00:19:16,770 --> 00:19:19,570
+issue them yourself so I'll just tell
+
+442
+00:19:19,570 --> 00:19:22,050
+the actual approach just finish running
+
+443
+00:19:22,050 --> 00:19:26,680
+then when the run as command execute our
+
+444
+00:19:26,680 --> 00:19:31,090
+target program run which simply ones are
+
+445
+00:19:31,090 --> 00:19:34,420
+set user ID to zero and change the SE
+
+446
+00:19:34,420 --> 00:19:37,990
+links context to unsheltered app and
+
+447
+00:19:37,990 --> 00:19:40,600
+there you can see the user IDs there on
+
+448
+00:19:40,600 --> 00:19:43,420
+the group ID is also 0 so yeah that's
+
+449
+00:19:43,420 --> 00:19:45,130
+basically the vulnerability you could
+
+450
+00:19:45,130 --> 00:19:46,750
+through the GPU we're able to get some
+
+451
+00:19:46,750 --> 00:19:48,770
+privilege escalation
+
+452
+00:19:48,770 --> 00:20:05,360
+oh thank you thank you so much well let
+
+453
+00:20:05,360 --> 00:20:07,100
+me get the slide back of the
+
+454
+00:20:07,100 --> 00:20:08,420
+presentation back on the screen real
+
+455
+00:20:08,420 --> 00:20:19,780
+quick give you one clicking is that cool
+
+456
+00:20:19,780 --> 00:20:22,970
+so again so what the tick tick aways
+
+457
+00:20:22,970 --> 00:20:24,380
+with this talk this is actually a
+
+458
+00:20:24,380 --> 00:20:27,980
+shorter talk 25 minutes I submitted but
+
+459
+00:20:27,980 --> 00:20:30,290
+yet here's our take aways shared memory
+
+460
+00:20:30,290 --> 00:20:32,330
+target right if you have multiple
+
+461
+00:20:32,330 --> 00:20:34,010
+hardware components accessing the same
+
+462
+00:20:34,010 --> 00:20:35,720
+physical region you have to make sure
+
+463
+00:20:35,720 --> 00:20:38,660
+like security like for accessing those
+
+464
+00:20:38,660 --> 00:20:41,120
+pages synced across all devices for
+
+465
+00:20:41,120 --> 00:20:42,560
+example you probably don't want one
+
+466
+00:20:42,560 --> 00:20:44,180
+device that's only reading a memory page
+
+467
+00:20:44,180 --> 00:20:45,680
+and have another device that's ready to
+
+468
+00:20:45,680 --> 00:20:48,370
+get in this case with what occurred
+
+469
+00:20:48,370 --> 00:20:50,750
+direct memory techs are very powerful
+
+470
+00:20:50,750 --> 00:20:53,510
+so some direct memory texts actually
+
+471
+00:20:53,510 --> 00:20:55,220
+allow you to write to any physical
+
+472
+00:20:55,220 --> 00:20:56,780
+memory range in this case is a bit
+
+473
+00:20:56,780 --> 00:20:58,340
+limited we only write to the range with
+
+474
+00:20:58,340 --> 00:21:01,340
+our own process but again actually
+
+475
+00:21:01,340 --> 00:21:02,990
+affected other processes because of the
+
+476
+00:21:02,990 --> 00:21:05,990
+disk cache and does think to know about
+
+477
+00:21:05,990 --> 00:21:08,150
+this is that like mitigation such as a
+
+478
+00:21:08,150 --> 00:21:10,310
+SLR didn't come into play at all which
+
+479
+00:21:10,310 --> 00:21:13,820
+is a very nice like side of yeah which
+
+480
+00:21:13,820 --> 00:21:16,940
+is very nice to have and last thing to
+
+481
+00:21:16,940 --> 00:21:18,560
+know is that graphic security has a very
+
+482
+00:21:18,560 --> 00:21:20,600
+large attack surface where I just showed
+
+483
+00:21:20,600 --> 00:21:22,270
+here is like a the tip of the iceberg
+
+484
+00:21:22,270 --> 00:21:24,620
+there's stuff like buggy sheets shader
+
+485
+00:21:24,620 --> 00:21:27,560
+compilers - video graphics tapping clear
+
+486
+00:21:27,560 --> 00:21:30,020
+for memory and yeah it's definitely
+
+487
+00:21:30,020 --> 00:21:33,950
+going to be going to do for the research
+
+488
+00:21:33,950 --> 00:21:35,780
+into this area so if you're interested
+
+489
+00:21:35,780 --> 00:21:37,220
+in the stuff I really recommend you to
+
+490
+00:21:37,220 --> 00:21:40,070
+check out our blog at MCC group go to
+
+491
+00:21:40,070 --> 00:21:42,230
+MCC group that trust we publish our
+
+492
+00:21:42,230 --> 00:21:43,550
+research there we actually have a
+
+493
+00:21:43,550 --> 00:21:45,920
+Twitter account mcc group InfoSec I
+
+494
+00:21:45,920 --> 00:21:49,340
+believe and we let people know about
+
+495
+00:21:49,340 --> 00:21:51,440
+upcoming talks in additional research
+
+496
+00:21:51,440 --> 00:21:55,160
+and yeah so again thanks for even for
+
+497
+00:21:55,160 --> 00:21:57,230
+coming to my first black hot top and I
+
+498
+00:21:57,230 --> 00:21:58,730
+really appreciate the support
+
+499
+00:21:58,730 --> 00:22:05,690
+[Applause]
+
+500
+00:22:05,690 --> 00:22:08,010
+so are there any questions about
+
+501
+00:22:08,010 --> 00:22:14,070
+anything cool that's PV awesome
+
+502
+00:22:14,070 --> 00:22:15,510
+well I hope everyone had a awesome
+
+503
+00:22:15,510 --> 00:22:17,880
+experience at blackhat I hope I can plan
+
+504
+00:22:17,880 --> 00:22:19,620
+again in the future and look forward to
+
+505
+00:22:19,620 --> 00:22:22,219
+see you never again
+
+506
+00:22:22,240 --> 00:22:27,130
+[Applause]
+

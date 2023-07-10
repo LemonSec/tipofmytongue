@@ -1,0 +1,971 @@
+﻿1
+00:00:00,900 --> 00:00:06,610
+Post-quantum WireGuard, in short PQ-WireGuard,
+is a new VPN protocol that provides full security
+
+2
+00:00:06,610 --> 00:00:13,869
+against quantum attacks, including confidentiality,
+authenticity, perfect forward secrecy, etc.
+
+3
+00:00:13,869 --> 00:00:16,580
+It's based on the original WireGuard protocol.
+
+4
+00:00:16,580 --> 00:00:19,320
+This is a joint work of multiple people in
+the Netherlands.
+
+5
+00:00:19,320 --> 00:00:22,849
+The authors are listed here in alphabetical
+order.
+
+6
+00:00:22,849 --> 00:00:25,720
+The rest of the presentation is organized
+as follows.
+
+7
+00:00:25,720 --> 00:00:29,810
+First, we introduce the original WireGuard
+protocol, and the PQ-WireGuard protocol.
+
+8
+00:00:29,810 --> 00:00:32,430
+We briefly discuss their security properties.
+
+9
+00:00:32,430 --> 00:00:39,180
+Afterwards, we present our instantiation of
+the PQ-WireGuard protocol and its performance.
+
+10
+00:00:39,180 --> 00:00:45,910
+WireGuard is a VPN protocol presented by Donenfeld
+at NDSS 2017, and was merged into mainline
+
+11
+00:00:45,910 --> 00:00:48,190
+Linux kernel in 2020.
+
+12
+00:00:48,190 --> 00:00:52,300
+It's a simple protocol with opinionated choice
+of cryptography.
+
+13
+00:00:52,300 --> 00:00:57,599
+Supporting only one cryptographic suite avoids
+a negotiation phase, which reduces the number
+
+14
+00:00:57,600 --> 00:01:02,960
+of handshake packets and eliminates any potential
+negotiation attacks.
+
+15
+00:01:02,960 --> 00:01:08,640
+The choice of modern cryptography, for example,
+X25519 for elliptic curve Diffie-Hellman key
+
+16
+00:01:08,640 --> 00:01:12,370
+exchange, achieves high performance.
+
+17
+00:01:12,370 --> 00:01:16,950
+The WireGuard protocol considers an initiator
+Alice and a responder Bob.
+
+18
+00:01:16,950 --> 00:01:21,780
+Both Alice and Bob have a long term key pair
+generated with X25519.
+
+19
+00:01:21,780 --> 00:01:27,500
+Their long term public keys are assumed to
+be exchanged before any handshake takes place,
+
+20
+00:01:27,500 --> 00:01:30,250
+in at least an authenticated manner.
+
+21
+00:01:30,250 --> 00:01:36,620
+This assumption is practical, considering
+how VPN is set up in real world applications.
+
+22
+00:01:36,620 --> 00:01:41,470
+The core of the WireGuard protocol involves
+two rolling values that are computed locally
+
+23
+00:01:41,470 --> 00:01:44,880
+on both sides: a chaining key material, and
+a hash
+
+24
+00:01:44,880 --> 00:01:45,880
+result.
+
+25
+00:01:45,880 --> 00:01:50,280
+The chaining key material is updated by mixing
+in total 4 shared Diffie-Hellman results during
+
+26
+00:01:50,280 --> 00:01:56,350
+the handshake, and is used to generate intermediate
+encryption keys for authenticated encryption.
+
+27
+00:01:56,350 --> 00:02:01,548
+For example, a timestamp is protected with
+authenticated encryption with one such intermediate
+
+28
+00:02:01,549 --> 00:02:03,990
+key to prevent replay attacks.
+
+29
+00:02:03,990 --> 00:02:08,228
+The final session keys are also derived from
+the chaining key material when the handshake
+
+30
+00:02:08,229 --> 00:02:10,590
+finishes.
+
+31
+00:02:10,590 --> 00:02:14,829
+The hash value is similarly updated during
+the handshake, but by mixing
+
+32
+00:02:14,829 --> 00:02:18,840
+information specific to the handshake, for
+example, the timestamp, the
+
+33
+00:02:18,840 --> 00:02:21,120
+ephemeral public keys, and so on.
+
+34
+00:02:21,120 --> 00:02:26,569
+The hash result is used as the header for
+authenticated encryption throughout the handshake.
+
+35
+00:02:26,569 --> 00:02:30,339
+Both sides never send
+their chaining key material nor the hash result
+
+36
+00:02:30,340 --> 00:02:31,639
+over the wire.
+
+37
+00:02:31,639 --> 00:02:34,560
+Instead,
+they compute them independently, and should
+
+38
+00:02:34,560 --> 00:02:39,800
+derive the same values in the
+absence of active attackers.
+
+39
+00:02:39,800 --> 00:02:45,049
+To start a handshake, Alice generates an ephemeral
+X25519 key pair.
+
+40
+00:02:45,049 --> 00:02:47,200
+By
+combining Bob's long term public key with
+
+41
+00:02:47,200 --> 00:02:52,018
+her long term and ephemeral
+private key, she can compute 2 Diffie-Hellman
+
+42
+00:02:52,019 --> 00:02:56,590
+results k1 and k2,
+which are mixed into the chaining key material.
+
+43
+00:02:56,590 --> 00:03:02,760
+When Bob receives the ephemeral public key
+from Alice, he can compute k1 and k2 similarly.
+
+44
+00:03:02,760 --> 00:03:07,779
+Hence, after the first packet of the handshake,
+Alice and Bob share 2 secret Diffie-Hellman
+
+45
+00:03:07,779 --> 00:03:08,779
+results.
+
+46
+00:03:08,779 --> 00:03:12,739
+Now, to create a response, Bob generates his
+ephemeral key pair.
+
+47
+00:03:12,739 --> 00:03:18,549
+He combines his ephemeral private key with
+Alice's long term and ephemeral public keys,
+
+48
+00:03:18,549 --> 00:03:24,180
+respectively, to computes another 2 Diffie-Hellman
+results k3 and k4.
+
+49
+00:03:24,180 --> 00:03:27,180
+He mixes them into the chaining key material.
+
+50
+00:03:27,180 --> 00:03:32,689
+After Alice receives Bob's ephemeral public
+key, she can compute k3 and k4, increasing
+
+51
+00:03:32,689 --> 00:03:35,519
+the number of shared secrets to 4.
+
+52
+00:03:35,519 --> 00:03:41,159
+Alice then mixes k3 and k4 into the chaining
+key material to derive the final session keys.
+
+53
+00:03:41,159 --> 00:03:44,698
+She may now send encrypted application data
+to Bob.
+
+54
+00:03:44,699 --> 00:03:48,730
+At this point, the handshake finishes for
+Alice, but not for Bob.
+
+55
+00:03:48,730 --> 00:03:54,090
+The application data packet from Alice acts
+implicitly as the key confirmation.
+
+56
+00:03:54,090 --> 00:04:00,049
+Consequently Bob may not send any application
+data until he receives the first data packet
+
+57
+00:04:00,049 --> 00:04:02,140
+from Alice.
+
+58
+00:04:02,140 --> 00:04:05,999
+The WireGuard protocol provides the following
+security properties.
+
+59
+00:04:05,999 --> 00:04:10,900
+Key confidentiality: The established session
+key is indistinguishable from true
+
+60
+00:04:10,900 --> 00:04:13,720
+random bit strings for the attacker.
+
+61
+00:04:13,720 --> 00:04:15,959
+Perfect forward secrecy is provided.
+
+62
+00:04:15,959 --> 00:04:18,488
+Key
+uniqueness: The established session key does
+
+63
+00:04:18,488 --> 00:04:21,768
+not repeat with overwhelming probability.
+
+64
+00:04:21,769 --> 00:04:26,240
+Entity authentication: It's impossible to
+impersonate another party.
+
+65
+00:04:26,240 --> 00:04:31,979
+Identity hiding: The identities of the initiator
+and the responder are not revealed from the
+
+66
+00:04:31,979 --> 00:04:32,979
+protocol.
+
+67
+00:04:32,979 --> 00:04:37,810
+Note that an attacker might still be able
+to infer the identities from, for example,
+
+68
+00:04:37,810 --> 00:04:38,840
+IP addresses.
+
+69
+00:04:38,840 --> 00:04:43,159
+And replay attack resistance: with the timestamp.
+
+70
+00:04:43,159 --> 00:04:48,520
+Unknown key share attack resistance: The Diffie-Hellman
+result of the long term key pairs of Alice
+
+71
+00:04:48,520 --> 00:04:54,560
+and Bob is mixed into the final session keys,
+which binds the keys to their identities.
+
+72
+00:04:54,560 --> 00:05:00,259
+DoS attack mitigation: The initiation packet
+is authenticated by the Diffie-Hellman result
+
+73
+00:05:00,259 --> 00:05:03,139
+of the long term key pairs of Alice and Bob.
+
+74
+00:05:03,139 --> 00:05:08,310
+The responder will reject forged initiation
+packets before performing any expensive public
+
+75
+00:05:08,310 --> 00:05:11,120
+key computation.
+
+76
+00:05:11,120 --> 00:05:15,530
+The security of the WireGuard protocol is
+established by Dowling and Paterson in the
+
+77
+00:05:15,530 --> 00:05:21,229
+computational model, with the notion of eCK-PFS-PSK
+security.
+
+78
+00:05:21,229 --> 00:05:26,130
+This notion covers all security properties
+above, except session key uniqueness, identity
+
+79
+00:05:26,130 --> 00:05:28,760
+hiding, and DoS mitigation.
+
+80
+00:05:28,760 --> 00:05:34,069
+Donenfeld and Milner have also proven partially
+the security properties in the symbolic model,
+
+81
+00:05:34,069 --> 00:05:40,540
+but perfect forward secrecy, replay attack
+resistance, and DoS mitigation were not proven.
+
+82
+00:05:40,540 --> 00:05:44,770
+The role of pre-shared key in WireGuard is
+mainly to provide session key confidentiality
+
+83
+00:05:44,770 --> 00:05:46,750
+against quantum attacks.
+
+84
+00:05:46,750 --> 00:05:51,710
+The assumption is that by the time a sufficiently
+powerful quantum computer comes around, the
+
+85
+00:05:51,710 --> 00:05:56,729
+pre-shared key would have been erased by both
+the initiator and responder, and cannot be
+
+86
+00:05:56,729 --> 00:05:57,729
+recovered.
+
+87
+00:05:57,729 --> 00:06:02,911
+However, in most commercial scenarios where
+the VPN users do not control both ends, this
+
+88
+00:06:02,911 --> 00:06:07,000
+assumption relies on the compliance of VPN
+service providers.
+
+89
+00:06:07,000 --> 00:06:12,909
+In addition, the pre-shared key must not be
+compromised, for example, by hacking the system,
+
+90
+00:06:12,909 --> 00:06:15,129
+throughout its lifetime.
+
+91
+00:06:15,129 --> 00:06:17,330
+Those are major drawbacks of this approach.
+
+92
+00:06:17,330 --> 00:06:22,599
+Donenfeld claimed explicitly that 'post-quantum
+cryptography is not practical for use here',
+
+93
+00:06:22,599 --> 00:06:24,770
+hence the choice of pre-shared key.
+
+94
+00:06:24,770 --> 00:06:29,060
+This is not true, as we will see shortly.
+
+95
+00:06:29,060 --> 00:06:33,900
+The design rationale of PQ-WireGuard is to
+achieve quantum resistance at NIST security
+
+96
+00:06:33,900 --> 00:06:38,359
+level 3, and to retain all security properties
+of WireGuard.
+
+97
+00:06:38,360 --> 00:06:41,039
+We aim for efficient 1 round trip handshake.
+
+98
+00:06:41,039 --> 00:06:46,900
+And we'd avoid packet fragmentation, because
+fragmented packet might be dropped or be filtered
+
+99
+00:06:46,900 --> 00:06:47,909
+by firewalls.
+
+100
+00:06:47,909 --> 00:06:53,510
+Therefore, there's a packet size constraint.The
+amount of space in an IPv6 packet is limited
+
+101
+00:06:53,510 --> 00:06:58,250
+to roughly 1100 bytes for both the initiation
+and response.
+
+102
+00:06:58,250 --> 00:07:03,389
+This constraint alone prevents one from using
+many NIST candidates already.
+
+103
+00:07:03,389 --> 00:07:09,180
+As explained earlier, the WireGuard protocol
+is based on X25519, which does not have an
+
+104
+00:07:09,180 --> 00:07:12,169
+efficient and well-analyzed post-quantum replacement.
+
+105
+00:07:12,169 --> 00:07:17,580
+Therefore, we replace the Diffie-Hellman based
+key exchange by one based on KEMs.
+
+106
+00:07:17,580 --> 00:07:22,008
+In short, one replaces the long term key pair
+for identity with a
+
+107
+00:07:22,009 --> 00:07:28,400
+key pair of an IND-CCA-secure KEM, and the
+2 ephemeral key pairs with 1 key pair
+
+108
+00:07:28,400 --> 00:07:30,049
+of an IND-CPA-secure KEM.
+
+109
+00:07:30,050 --> 00:07:35,090
+Note that there's no drop-in replacement for
+the Diffie-Hellman result of the long term
+
+110
+00:07:35,090 --> 00:07:39,789
+X25519 key pairs, which is a form of non-interactive
+key exchange.
+
+111
+00:07:39,789 --> 00:07:45,990
+Not having this shared secret has some consequences,
+which we'll discuss shortly and fix.
+
+112
+00:07:45,990 --> 00:07:50,889
+In addition, to allow a straight forward security
+proof, we add an
+
+113
+00:07:50,889 --> 00:07:54,669
+explicit key confirmation message as suggested
+by Dowling and Paterson.
+
+114
+00:07:54,669 --> 00:07:59,219
+In other words, the first application data
+from Alice no longer serves
+
+115
+00:07:59,219 --> 00:08:03,139
+implicitly as key confirmation anymore.
+
+116
+00:08:03,139 --> 00:08:04,620
+The protocol looks like this.
+
+117
+00:08:04,620 --> 00:08:10,069
+For details, ehm, please refer to our paper.
+
+118
+00:08:10,069 --> 00:08:14,440
+It turns out this straight forward approach
+already achieves all but 3 of WireGuard's
+
+119
+00:08:14,440 --> 00:08:15,780
+security properties.
+
+120
+00:08:15,780 --> 00:08:18,628
+And we address the missing ones as follows.
+
+121
+00:08:18,629 --> 00:08:23,620
+Key confidentiality: The attacker can compromise
+the random number generators of Alice and
+
+122
+00:08:23,620 --> 00:08:24,620
+Bob.
+
+123
+00:08:24,620 --> 00:08:27,990
+In this case PQ-WireGuard does not achieve
+any security.
+
+124
+00:08:27,990 --> 00:08:32,919
+To mitigate this issue, we combine samples
+from the random number generator with a long
+
+125
+00:08:32,919 --> 00:08:36,969
+term secret sigma, with a pseudo-random function.
+
+126
+00:08:36,970 --> 00:08:42,850
+In practice this long term secret sigma can
+be stored, for example, on a smart card.
+
+127
+00:08:42,850 --> 00:08:48,160
+Unknown key share attack resistance: due to
+the lack of a replacement of the Diffie-Hellman
+
+128
+00:08:48,160 --> 00:08:53,410
+result of the long term key pairs, unknown
+key share attack is possible.
+
+129
+00:08:53,410 --> 00:08:59,030
+One easy fix is to mix Bob's long term public
+key into the chaining key material.
+
+130
+00:08:59,030 --> 00:09:04,390
+Here we take another approach: we set the
+default pre-shared key to the hash value of
+
+131
+00:09:04,390 --> 00:09:08,840
+xor'ing the long term public keys of Alice
+and Bob.
+
+132
+00:09:08,840 --> 00:09:14,620
+This way we also ensure that the final session
+keys are linked to the identities.
+
+133
+00:09:14,620 --> 00:09:21,790
+DoS attack mitigation: the initiation message
+cannot be authenticated without a replacement
+
+134
+00:09:21,790 --> 00:09:25,349
+of the Diffie-Hellman result of the long term
+key pairs.
+
+135
+00:09:25,350 --> 00:09:29,220
+This is not a security property in the cryptographic
+sense.
+
+136
+00:09:29,220 --> 00:09:34,810
+User who wishes to achieve the same level
+of DoS mitigation as WireGuard can set up
+
+137
+00:09:34,810 --> 00:09:36,380
+a pre-shared key.
+
+138
+00:09:36,380 --> 00:09:42,870
+With those adjustments, PQ-WireGuard retains
+all security properties of WireGuard.
+
+139
+00:09:42,870 --> 00:09:47,380
+PQ-WireGuard is proven secure both in the
+computational and symbolic model.
+
+140
+00:09:47,380 --> 00:09:51,720
+As Dowling and Paterson did for WireGuard,
+we prove the security
+
+141
+00:09:51,720 --> 00:09:55,440
+properties of PQ-WireGuard in the computational
+model with respect to
+
+142
+00:09:55,440 --> 00:09:59,080
+eCK-PFS-PSK.
+
+143
+00:09:59,080 --> 00:10:04,530
+The difference is that adversaries are allowed
+to be quantum polynomial time algorithms.
+
+144
+00:10:04,530 --> 00:10:10,699
+Our symbolic model extends that of Donenfeld
+and Milner to allow attackers to compromise
+
+145
+00:10:10,700 --> 00:10:15,630
+random number generators, and we cover all
+security properties.
+
+146
+00:10:15,630 --> 00:10:23,490
+For instantiation, in principle one can instantiate
+PQ-WireGuard with any post-quantum KEMs that
+
+147
+00:10:23,490 --> 00:10:25,860
+meet the aforementioned requirements.
+
+148
+00:10:25,860 --> 00:10:32,260
+We chose the IND-CCA-secure Classic McEliece
+for the long term key pair, and a tweaked
+
+149
+00:10:32,260 --> 00:10:36,450
+IND-CPA-secure variant of Saber for the ephemeral
+key pair.
+
+150
+00:10:36,450 --> 00:10:42,220
+Our instantiation reaches NIST security level
+3, which is roughly equivalent to AES-192
+
+151
+00:10:42,220 --> 00:10:46,760
+for quantum attackers, without increasing
+the number of packets nor incurring packet
+
+152
+00:10:46,760 --> 00:10:48,160
+fragmentation.
+
+153
+00:10:48,160 --> 00:10:53,449
+Since PQ-WireGuard protocol does not generate
+long term key pair nor sending the long term
+
+154
+00:10:53,450 --> 00:11:00,020
+public key, the drawbacks of Classic McEliece,
+namely, slow key generation and large public
+
+155
+00:11:00,020 --> 00:11:01,590
+keys, do not matter.
+
+156
+00:11:01,590 --> 00:11:06,870
+In addition, its ciphertext is very small,
+and its operations are efficient and can be
+
+157
+00:11:06,870 --> 00:11:10,730
+easily implemented in a manner that resists
+timing attacks.
+
+158
+00:11:10,730 --> 00:11:13,640
+Its decapsulation also has no failure probability.
+
+159
+00:11:13,640 --> 00:11:19,319
+Finally, it's regarded as one of the most
+conservative post-quantum KEMs, given the
+
+160
+00:11:19,320 --> 00:11:22,040
+history of cryptanalysis efforts.
+
+161
+00:11:22,040 --> 00:11:28,020
+Classic McEliece is therefore the ideal choice
+for the long term KEM,
+
+162
+00:11:28,020 --> 00:11:32,970
+With Classic McEliece fixed, the remaining
+amount of space in the packets unfortunately
+
+163
+00:11:32,970 --> 00:11:39,600
+only permits slow post-quantum KEMs, or KEMs
+without a history of sufficient cryptanalysis,
+
+164
+00:11:39,600 --> 00:11:41,380
+for the ephemeral key pair.
+
+165
+00:11:41,380 --> 00:11:48,320
+We noticed that, however, some of the lattice-based
+IND-CCA-secure KEMs almost meet the space
+
+166
+00:11:48,320 --> 00:11:49,320
+constraint.
+
+167
+00:11:49,320 --> 00:11:56,010
+We therefore picked Saber, dropped its Fujisaki-Okamoto
+transformation, since we only need IND-CPA
+
+168
+00:11:56,010 --> 00:11:57,670
+security here.
+
+169
+00:11:57,670 --> 00:12:03,560
+We then tweaked parameters of Saber to further
+compress its public key and ciphertext.
+
+170
+00:12:03,560 --> 00:12:09,469
+The final variant, which we called Dagger,
+has, ehm, higher security strength than Saber
+
+171
+00:12:09,470 --> 00:12:14,990
+because of higher compression level, but it
+has a larger failure probability for decapsulation.
+
+172
+00:12:14,990 --> 00:12:21,690
+On the protocol level, such failure probability
+means 1 in every 40 million handshakes would
+
+173
+00:12:21,690 --> 00:12:23,270
+fail.
+
+174
+00:12:23,270 --> 00:12:27,020
+This has a similar effect as a lost UDP handshake
+packet.
+
+175
+00:12:27,020 --> 00:12:33,010
+And our tweaking does not invalidate Saber's
+security reduction.
+
+176
+00:12:33,010 --> 00:12:37,830
+We implemented our instantiation of PQ-WireGuard
+as a Linux kernel module.
+
+177
+00:12:37,830 --> 00:12:44,170
+The implementations of both Classic McEliece
+and Dagger are resistant against timing attacks.
+
+178
+00:12:44,170 --> 00:12:49,540
+Classic McEliece is implemented efficiently,
+while there's some room for improvement for
+
+179
+00:12:49,540 --> 00:12:50,599
+Dagger.
+
+180
+00:12:50,600 --> 00:12:55,860
+We compare the handshake efficiency with the
+following metrics: the amount of traffic in
+
+181
+00:12:55,860 --> 00:12:59,280
+bytes, the number of exchanged packets, and
+the timespan
+
+182
+00:12:59,280 --> 00:13:00,280
+of the handshake.
+
+183
+00:13:00,280 --> 00:13:04,829
+We collected our data in both IPv4 and IPv6
+networks,
+
+184
+00:13:04,830 --> 00:13:06,800
+and the results are similar.
+
+185
+00:13:06,800 --> 00:13:10,060
+Here we only include data from an IPv6 network.
+
+186
+00:13:10,060 --> 00:13:15,530
+We compare its performance with the original
+WireGuard, and other VPN software, including
+
+187
+00:13:15,530 --> 00:13:20,180
+OpenVPN, IPsec, and PQCrypto-VPN.
+
+188
+00:13:20,180 --> 00:13:26,680
+PQCrypto-VPN is a variant of OpenVPN from
+Microsoft Research that provides confidentiality,
+
+189
+00:13:26,680 --> 00:13:31,609
+and optionally authenticity against quantum
+attacks.
+
+190
+00:13:31,610 --> 00:13:38,890
+For WireGuard, the metrics include the first
+application data packet, which serves implicitly
+
+191
+00:13:38,890 --> 00:13:40,800
+as key confirmation.
+
+192
+00:13:40,800 --> 00:13:44,329
+We use zero-length application data here.
+
+193
+00:13:44,330 --> 00:13:50,950
+Our experiments show that PQ-WireGuard increases
+client time and server time by 70% and 50%,
+
+194
+00:13:50,950 --> 00:13:56,830
+respectively, and that the computation of
+both WireGuard and PQ-WireGuard are dominated
+
+195
+00:13:56,830 --> 00:13:58,580
+by public key cryptography.
+
+196
+00:13:58,580 --> 00:14:05,050
+Therefore, the longer elapsed time on both
+sides is a direct result of migrating from
+
+197
+00:14:05,050 --> 00:14:08,729
+X25519 to Classic McEliece and Dagger.
+
+198
+00:14:08,730 --> 00:14:13,830
+We would expect that further optimization
+on the implementation can bring PQ-WireGuard
+
+199
+00:14:13,830 --> 00:14:17,260
+even closer to the performance of WireGuard.
+
+200
+00:14:17,260 --> 00:14:23,640
+When comparing with other VPN software, PQ-WireGuard
+outperforms in terms of every metric, except
+
+201
+00:14:23,640 --> 00:14:28,800
+its slightly larger traffic than that of IPsec
+using X25519.
+
+202
+00:14:28,800 --> 00:14:35,650
+PQ-WireGuard however is still 4 times faster
+than IPsec with X25519, and more than 1000
+
+203
+00:14:35,650 --> 00:14:39,660
+times faster than any OpenVPN variant.
+
+204
+00:14:39,660 --> 00:14:44,670
+This shows that PQ-WireGuard offers full protection
+against quantum attacks, while being more
+
+205
+00:14:44,670 --> 00:14:52,459
+performant than any other widely deployed
+VPN software, except for the original WireGuard.
+
+206
+00:14:52,460 --> 00:14:54,250
+This is our presentation.
+
+207
+00:14:54,250 --> 00:14:55,260
+Thank you for your attention.
+

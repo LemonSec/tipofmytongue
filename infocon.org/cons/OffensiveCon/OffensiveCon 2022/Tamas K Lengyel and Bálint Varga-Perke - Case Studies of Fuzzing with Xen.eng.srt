@@ -1,0 +1,5560 @@
+﻿1
+00:00:01,120 --> 00:00:03,679
+hey everyone great to be here
+
+2
+00:00:03,679 --> 00:00:05,839
+really happy that everyone made it
+
+3
+00:00:05,839 --> 00:00:08,000
+um my name is thomash i work at intel
+
+4
+00:00:08,000 --> 00:00:09,840
+and balint works at silent signal we're
+
+5
+00:00:09,840 --> 00:00:12,320
+gonna talk to you about case studies
+
+6
+00:00:12,320 --> 00:00:14,480
+of fuzzing with zen
+
+7
+00:00:14,480 --> 00:00:16,640
+uh please don't sue us
+
+8
+00:00:16,640 --> 00:00:18,720
+uh the tool that we're gonna be talking
+
+9
+00:00:18,720 --> 00:00:20,720
+about is called kfx
+
+10
+00:00:20,720 --> 00:00:23,519
+and it's a mouthful the project's name
+
+11
+00:00:23,519 --> 00:00:25,599
+is the full name is kernel fuzzer for
+
+12
+00:00:25,599 --> 00:00:27,119
+zen project that's what the marketing
+
+13
+00:00:27,119 --> 00:00:28,640
+department approved
+
+14
+00:00:28,640 --> 00:00:31,359
+these days we just call it kfx
+
+15
+00:00:31,359 --> 00:00:33,040
+it's effectively a full vm snapshot
+
+16
+00:00:33,040 --> 00:00:34,800
+fuzzer that's open source
+
+17
+00:00:34,800 --> 00:00:36,800
+and it integrates with afl file plus
+
+18
+00:00:36,800 --> 00:00:37,840
+plus
+
+19
+00:00:37,840 --> 00:00:40,160
+and in this talk we will have
+
+20
+00:00:40,160 --> 00:00:42,079
+effectively it's two talks in one track
+
+21
+00:00:42,079 --> 00:00:43,600
+first i will talk to you about fuzzing
+
+22
+00:00:43,600 --> 00:00:46,000
+linux retire and then balint is going to
+
+23
+00:00:46,000 --> 00:00:47,520
+talk to you about antivirus fuzzing
+
+24
+00:00:47,520 --> 00:00:49,600
+using this tool so i will talk first and
+
+25
+00:00:49,600 --> 00:00:51,920
+then body and fill switch and then
+
+26
+00:00:51,920 --> 00:00:54,559
+my part is done
+
+27
+00:00:54,559 --> 00:00:57,360
+all right let's get started so
+
+28
+00:00:57,360 --> 00:00:58,960
+in order to
+
+29
+00:00:58,960 --> 00:01:00,239
+have a little bit of background of how
+
+30
+00:01:00,239 --> 00:01:01,600
+this tool works
+
+31
+00:01:01,600 --> 00:01:04,080
+it's based on hypervisor
+
+32
+00:01:04,080 --> 00:01:06,159
+called zen and there is a feature in it
+
+33
+00:01:06,159 --> 00:01:07,760
+that i implemented called vm forking
+
+34
+00:01:07,760 --> 00:01:10,080
+that allows you to create a vm on the
+
+35
+00:01:10,080 --> 00:01:13,360
+fly from a already running one and have
+
+36
+00:01:13,360 --> 00:01:14,000
+it
+
+37
+00:01:14,000 --> 00:01:16,320
+the memory of it be populated using copy
+
+38
+00:01:16,320 --> 00:01:18,159
+on write that effectively means that the
+
+39
+00:01:18,159 --> 00:01:20,000
+fork vm starts up with no memory and you
+
+40
+00:01:20,000 --> 00:01:22,400
+start mapping in memory as you need so
+
+41
+00:01:22,400 --> 00:01:24,479
+for example for read and execute memory
+
+42
+00:01:24,479 --> 00:01:26,880
+accesses the pages are getting mapped in
+
+43
+00:01:26,880 --> 00:01:28,080
+as shared
+
+44
+00:01:28,080 --> 00:01:30,640
+and only if a page gets written in the
+
+45
+00:01:30,640 --> 00:01:32,320
+fork that's when you de-duplicate the
+
+46
+00:01:32,320 --> 00:01:34,000
+page first and that's when you actually
+
+47
+00:01:34,000 --> 00:01:36,560
+put in the changes you want to
+
+48
+00:01:36,560 --> 00:01:38,000
+this means that you can create forks
+
+49
+00:01:38,000 --> 00:01:39,600
+extremely fast and it also means that
+
+50
+00:01:39,600 --> 00:01:41,439
+you can reset these forks extremely fast
+
+51
+00:01:41,439 --> 00:01:42,720
+the only thing you need to do is throw
+
+52
+00:01:42,720 --> 00:01:44,960
+away the pages that got dirty
+
+53
+00:01:44,960 --> 00:01:47,520
+and reset the vcp registers so this is
+
+54
+00:01:47,520 --> 00:01:50,799
+obviously makes it a pretty solid base
+
+55
+00:01:50,799 --> 00:01:53,600
+for fuzzing
+
+56
+00:01:53,600 --> 00:01:54,640
+the loop
+
+57
+00:01:54,640 --> 00:01:57,360
+or the entire way of how this setup
+
+58
+00:01:57,360 --> 00:01:58,960
+works uh
+
+59
+00:01:58,960 --> 00:02:02,079
+with kfx as you boot up a regular vm on
+
+60
+00:02:02,079 --> 00:02:04,000
+zen called the parent vm
+
+61
+00:02:04,000 --> 00:02:05,600
+where you have your target code that you
+
+62
+00:02:05,600 --> 00:02:07,840
+want to fuzz and
+
+63
+00:02:07,840 --> 00:02:09,679
+in the base setup you recommend that you
+
+64
+00:02:09,679 --> 00:02:12,080
+compile your code so that there is a
+
+65
+00:02:12,080 --> 00:02:13,840
+magic cpu id at the beginning of the
+
+66
+00:02:13,840 --> 00:02:15,200
+code that you want to fuzz and there is
+
+67
+00:02:15,200 --> 00:02:17,200
+a magic cpu id at the end of the code
+
+68
+00:02:17,200 --> 00:02:18,720
+you want to fuzz
+
+69
+00:02:18,720 --> 00:02:21,040
+but you don't need a custom compiler so
+
+70
+00:02:21,040 --> 00:02:23,120
+any compiler works it's not like efl cc
+
+71
+00:02:23,120 --> 00:02:25,040
+where you have to compile things to have
+
+72
+00:02:25,040 --> 00:02:26,480
+instrumentation you're going to be using
+
+73
+00:02:26,480 --> 00:02:28,560
+the processor itself and the hypervisor
+
+74
+00:02:28,560 --> 00:02:30,319
+for for that
+
+75
+00:02:30,319 --> 00:02:32,000
+you run your code
+
+76
+00:02:32,000 --> 00:02:34,239
+the first magic cpu id hits the system
+
+77
+00:02:34,239 --> 00:02:35,840
+knows that this is where the code starts
+
+78
+00:02:35,840 --> 00:02:38,000
+that you want to do your snapshot where
+
+79
+00:02:38,000 --> 00:02:40,319
+you want to start forking you create a
+
+80
+00:02:40,319 --> 00:02:42,720
+vm that we call the sync vm
+
+81
+00:02:42,720 --> 00:02:44,640
+and in this one you actually locate in
+
+82
+00:02:44,640 --> 00:02:46,480
+the memory of that where
+
+83
+00:02:46,480 --> 00:02:48,000
+interesting functions are that you would
+
+84
+00:02:48,000 --> 00:02:49,680
+want to be notified when the fuzzer
+
+85
+00:02:49,680 --> 00:02:52,239
+actually hits those such as kernel
+
+86
+00:02:52,239 --> 00:02:53,360
+panics
+
+87
+00:02:53,360 --> 00:02:55,120
+or you have things like address
+
+88
+00:02:55,120 --> 00:02:58,400
+sanitizer undefined behavior sanitizer
+
+89
+00:02:58,400 --> 00:03:00,720
+if those functions get called that's due
+
+90
+00:03:00,720 --> 00:03:02,800
+to some bug being detected you want to
+
+91
+00:03:02,800 --> 00:03:05,200
+save those so we add a breakpoint into
+
+92
+00:03:05,200 --> 00:03:07,040
+those locations and those breakpoints
+
+93
+00:03:07,040 --> 00:03:10,239
+will act as the crash that the afl will
+
+94
+00:03:10,239 --> 00:03:11,599
+record
+
+95
+00:03:11,599 --> 00:03:13,760
+from that we create another vm called
+
+96
+00:03:13,760 --> 00:03:15,680
+the fuzz vm that's where the actual
+
+97
+00:03:15,680 --> 00:03:17,120
+fuzzing loop that's the vm that actually
+
+98
+00:03:17,120 --> 00:03:18,879
+is going to execute
+
+99
+00:03:18,879 --> 00:03:21,599
+and here the loop looks like you
+
+100
+00:03:21,599 --> 00:03:23,760
+start the fuzzing you read the input
+
+101
+00:03:23,760 --> 00:03:26,319
+that the afl generates you directly put
+
+102
+00:03:26,319 --> 00:03:28,480
+it into the memory of the fork vm
+
+103
+00:03:28,480 --> 00:03:31,599
+and you hit run you see what happens if
+
+104
+00:03:31,599 --> 00:03:32,720
+you get a
+
+105
+00:03:32,720 --> 00:03:34,720
+breakpoint that's if that's a crash
+
+106
+00:03:34,720 --> 00:03:36,080
+condition right those are the brake ones
+
+107
+00:03:36,080 --> 00:03:38,400
+that we injected into the sync functions
+
+108
+00:03:38,400 --> 00:03:40,480
+so you report a crash back to afl afl
+
+109
+00:03:40,480 --> 00:03:41,760
+saves the input
+
+110
+00:03:41,760 --> 00:03:44,239
+that reach that path and then you can go
+
+111
+00:03:44,239 --> 00:03:46,000
+investigate later what that input
+
+112
+00:03:46,000 --> 00:03:47,840
+actually does to the code
+
+113
+00:03:47,840 --> 00:03:49,840
+if you catch the magic cpu at the end
+
+114
+00:03:49,840 --> 00:03:51,040
+you know that you reach the end of the
+
+115
+00:03:51,040 --> 00:03:52,319
+code that you were interested in so you
+
+116
+00:03:52,319 --> 00:03:54,400
+can just go ahead
+
+117
+00:03:54,400 --> 00:03:56,159
+go to the next iteration if neither of
+
+118
+00:03:56,159 --> 00:03:57,360
+these happens then you get a timeout
+
+119
+00:03:57,360 --> 00:03:59,439
+that's when you trigger the path in the
+
+120
+00:03:59,439 --> 00:04:02,000
+code that somehow times out it usually
+
+121
+00:04:02,000 --> 00:04:04,159
+is a boss situation
+
+122
+00:04:04,159 --> 00:04:06,319
+after that part is done you can go and
+
+123
+00:04:06,319 --> 00:04:08,560
+analyze the run that's where the code
+
+124
+00:04:08,560 --> 00:04:10,400
+coverage information that the afl needs
+
+125
+00:04:10,400 --> 00:04:12,799
+is reported back and that is done using
+
+126
+00:04:12,799 --> 00:04:14,480
+the processor itself so we are using
+
+127
+00:04:14,480 --> 00:04:16,720
+intel processor trace xan has a feature
+
+128
+00:04:16,720 --> 00:04:18,478
+for it that can collect the execution
+
+129
+00:04:18,478 --> 00:04:20,238
+log using the processor itself which is
+
+130
+00:04:20,238 --> 00:04:21,839
+extremely fast
+
+131
+00:04:21,839 --> 00:04:23,520
+and we decode that
+
+132
+00:04:23,520 --> 00:04:25,280
+and based on that we report the coverage
+
+133
+00:04:25,280 --> 00:04:27,199
+back to afl so that it can actually fine
+
+134
+00:04:27,199 --> 00:04:29,280
+tune what direction it wants to mutate
+
+135
+00:04:29,280 --> 00:04:31,840
+the input what
+
+136
+00:04:31,840 --> 00:04:33,360
+what might be an interesting mutation to
+
+137
+00:04:33,360 --> 00:04:35,919
+try next
+
+138
+00:04:36,720 --> 00:04:38,400
+some of the design principles that i was
+
+139
+00:04:38,400 --> 00:04:39,840
+trying to get
+
+140
+00:04:39,840 --> 00:04:41,919
+into the system when i was building it
+
+141
+00:04:41,919 --> 00:04:44,080
+is to have a stable foundation
+
+142
+00:04:44,080 --> 00:04:46,000
+i've been building hypervisor-based
+
+143
+00:04:46,000 --> 00:04:48,320
+tools for close to a decade now and the
+
+144
+00:04:48,320 --> 00:04:49,520
+worst thing is when you are in the
+
+145
+00:04:49,520 --> 00:04:50,720
+middle of trying to get something
+
+146
+00:04:50,720 --> 00:04:51,919
+working and you have to worry about
+
+147
+00:04:51,919 --> 00:04:53,600
+whether the hypervisor is not exactly
+
+148
+00:04:53,600 --> 00:04:55,120
+doing what you wanted
+
+149
+00:04:55,120 --> 00:04:56,880
+so having a stable base where everything
+
+150
+00:04:56,880 --> 00:04:58,320
+is upstream where you don't have to
+
+151
+00:04:58,320 --> 00:05:00,560
+custom patch stuff in and you don't know
+
+152
+00:05:00,560 --> 00:05:03,039
+whether you did it right
+
+153
+00:05:03,039 --> 00:05:04,400
+don't have to worry about that all of
+
+154
+00:05:04,400 --> 00:05:05,919
+the features for this fuzzer are
+
+155
+00:05:05,919 --> 00:05:07,280
+upstream in zen
+
+156
+00:05:07,280 --> 00:05:09,919
+you have to compile and with expert
+
+157
+00:05:09,919 --> 00:05:11,440
+features enabled right so this is not
+
+158
+00:05:11,440 --> 00:05:12,880
+something that you would get by default
+
+159
+00:05:12,880 --> 00:05:14,639
+but it's upstream you don't have to
+
+160
+00:05:14,639 --> 00:05:16,800
+custom patch anything
+
+161
+00:05:16,800 --> 00:05:18,560
+complexity considering that this is a
+
+162
+00:05:18,560 --> 00:05:21,280
+hypervisor based buzzer is reduced
+
+163
+00:05:21,280 --> 00:05:22,960
+because there is no ingest agent that
+
+164
+00:05:22,960 --> 00:05:24,240
+you need to interact with there is no
+
+165
+00:05:24,240 --> 00:05:26,720
+synchronization with anything that
+
+166
+00:05:26,720 --> 00:05:28,560
+runs in the guest beside that cpu id
+
+167
+00:05:28,560 --> 00:05:30,240
+right you just add
+
+168
+00:05:30,240 --> 00:05:31,039
+one
+
+169
+00:05:31,039 --> 00:05:32,960
+assembly instruction to your target code
+
+170
+00:05:32,960 --> 00:05:35,120
+and that's all that's needed
+
+171
+00:05:35,120 --> 00:05:37,280
+it's fairly flexible so
+
+172
+00:05:37,280 --> 00:05:40,080
+anything that's running within that
+
+173
+00:05:40,080 --> 00:05:41,759
+vm should be fuzzable
+
+174
+00:05:41,759 --> 00:05:43,919
+and the components that we used to build
+
+175
+00:05:43,919 --> 00:05:46,160
+the system are reusable and have a
+
+176
+00:05:46,160 --> 00:05:48,000
+clearly defined role
+
+177
+00:05:48,000 --> 00:05:50,000
+and you can plug and play
+
+178
+00:05:50,000 --> 00:05:52,880
+and you can plug in any fuzzer you
+
+179
+00:05:52,880 --> 00:05:54,720
+really want so we just use the fl
+
+180
+00:05:54,720 --> 00:05:56,319
+because that's pretty standard but you
+
+181
+00:05:56,319 --> 00:05:59,280
+can really use any type of source for
+
+182
+00:05:59,280 --> 00:06:01,919
+for the fuzzing so there is actually a
+
+183
+00:06:01,919 --> 00:06:04,479
+test case where we can just pipe in dev
+
+184
+00:06:04,479 --> 00:06:06,479
+random into the vm's memory to see what
+
+185
+00:06:06,479 --> 00:06:09,280
+happens so you can use whatever fuzzer
+
+186
+00:06:09,280 --> 00:06:11,919
+you want really
+
+187
+00:06:13,680 --> 00:06:15,919
+now there are some limitations when
+
+188
+00:06:15,919 --> 00:06:18,240
+you're fuzzing with these fork vms
+
+189
+00:06:18,240 --> 00:06:20,639
+in that there is absolutely no i o of
+
+190
+00:06:20,639 --> 00:06:23,039
+any kind and the fork vm is running that
+
+191
+00:06:23,039 --> 00:06:25,039
+means that there is no disk no network
+
+192
+00:06:25,039 --> 00:06:27,280
+no screen no console not even mmi or
+
+193
+00:06:27,280 --> 00:06:28,479
+interrupts
+
+194
+00:06:28,479 --> 00:06:29,280
+that
+
+195
+00:06:29,280 --> 00:06:31,120
+fork vm is literally running just the
+
+196
+00:06:31,120 --> 00:06:32,560
+cpu and memory
+
+197
+00:06:32,560 --> 00:06:34,400
+so you have to
+
+198
+00:06:34,400 --> 00:06:36,319
+take that into consideration
+
+199
+00:06:36,319 --> 00:06:38,319
+that the code that you are fuzzing is
+
+200
+00:06:38,319 --> 00:06:41,440
+not something that is highly interactive
+
+201
+00:06:41,440 --> 00:06:44,160
+that's not possible to fuzz because if
+
+202
+00:06:44,160 --> 00:06:46,000
+it tries to reach out for an input
+
+203
+00:06:46,000 --> 00:06:47,520
+there's nothing going to be able to
+
+204
+00:06:47,520 --> 00:06:50,080
+respond to you know it trying to reach
+
+205
+00:06:50,080 --> 00:06:51,599
+out to an external party it's not
+
+206
+00:06:51,599 --> 00:06:52,639
+possible
+
+207
+00:06:52,639 --> 00:06:54,960
+but if you have a parser or some kernel
+
+208
+00:06:54,960 --> 00:06:57,520
+code that's self-contained and the input
+
+209
+00:06:57,520 --> 00:06:58,800
+that you want to fuzz is something that
+
+210
+00:06:58,800 --> 00:07:03,440
+it just received you can totally do that
+
+211
+00:07:03,440 --> 00:07:05,599
+now bug enrichment features like address
+
+212
+00:07:05,599 --> 00:07:07,440
+sanitizer an undefined behavior
+
+213
+00:07:07,440 --> 00:07:09,199
+sanitizer that's absolutely something
+
+214
+00:07:09,199 --> 00:07:11,199
+that running the guest but it's
+
+215
+00:07:11,199 --> 00:07:14,160
+compatible with kfx so you can just
+
+216
+00:07:14,160 --> 00:07:16,319
+locate where those handling functions
+
+217
+00:07:16,319 --> 00:07:18,800
+are and you can actually use these
+
+218
+00:07:18,800 --> 00:07:22,240
+in-guest features to detect more bugs
+
+219
+00:07:22,240 --> 00:07:23,199
+and
+
+220
+00:07:23,199 --> 00:07:25,680
+kind of an intuitive limitation is that
+
+221
+00:07:25,680 --> 00:07:27,360
+well your target code kind of has to run
+
+222
+00:07:27,360 --> 00:07:29,280
+within a zen vm normally right in order
+
+223
+00:07:29,280 --> 00:07:31,199
+to get to the setup stage so
+
+224
+00:07:31,199 --> 00:07:33,120
+the code needs to run normally on zen vm
+
+225
+00:07:33,120 --> 00:07:34,639
+which usually works okay but there are
+
+226
+00:07:34,639 --> 00:07:37,520
+some corner cases
+
+227
+00:07:37,840 --> 00:07:39,759
+one of those corner cases is
+
+228
+00:07:39,759 --> 00:07:41,840
+vert io
+
+229
+00:07:41,840 --> 00:07:43,759
+the reason why we are looking at vert io
+
+230
+00:07:43,759 --> 00:07:46,879
+is this is a was part of a project
+
+231
+00:07:46,879 --> 00:07:48,639
+for hardening the linux kernel in
+
+232
+00:07:48,639 --> 00:07:51,199
+preparation for tdx
+
+233
+00:07:51,199 --> 00:07:53,599
+there is a whole talk that elena gave at
+
+234
+00:07:53,599 --> 00:07:55,759
+the linux security summit last fall
+
+235
+00:07:55,759 --> 00:07:58,479
+she goes into a lot more details so what
+
+236
+00:07:58,479 --> 00:07:59,919
+i'm going to talk to you about is just a
+
+237
+00:07:59,919 --> 00:08:01,759
+small component of all of the work that
+
+238
+00:08:01,759 --> 00:08:02,960
+we did there
+
+239
+00:08:02,960 --> 00:08:05,440
+but if you've never heard of tdx this is
+
+240
+00:08:05,440 --> 00:08:07,440
+an upcoming feature where the virtual
+
+241
+00:08:07,440 --> 00:08:09,680
+machine is going to be encrypted
+
+242
+00:08:09,680 --> 00:08:12,080
+only a few pages that will be used for i
+
+243
+00:08:12,080 --> 00:08:14,960
+o with retire will be accessible to the
+
+244
+00:08:14,960 --> 00:08:16,000
+host
+
+245
+00:08:16,000 --> 00:08:17,919
+so if you have seen any type of retail
+
+246
+00:08:17,919 --> 00:08:20,639
+fuzzing that usually goes gas to host
+
+247
+00:08:20,639 --> 00:08:23,759
+and now the tdx that attacks
+
+248
+00:08:23,759 --> 00:08:25,199
+the threat model is changing and we
+
+249
+00:08:25,199 --> 00:08:26,639
+consider the host to be outside the
+
+250
+00:08:26,639 --> 00:08:29,680
+threat boundary so we want to fuzz and
+
+251
+00:08:29,680 --> 00:08:32,719
+attack the vm from host to guest right
+
+252
+00:08:32,719 --> 00:08:34,799
+so you will have only a select a few
+
+253
+00:08:34,799 --> 00:08:37,279
+pages that are accessible to the host to
+
+254
+00:08:37,279 --> 00:08:39,039
+be used for
+
+255
+00:08:39,039 --> 00:08:42,399
+implementing disk network console and we
+
+256
+00:08:42,399 --> 00:08:44,159
+want to fuss those so conceptually you
+
+257
+00:08:44,159 --> 00:08:46,399
+can think of these pages as dma
+
+258
+00:08:46,399 --> 00:08:48,480
+but there is no io mmu or anything like
+
+259
+00:08:48,480 --> 00:08:50,959
+that the host can read the other memory
+
+260
+00:08:50,959 --> 00:08:52,160
+as well those are just going to be
+
+261
+00:08:52,160 --> 00:08:56,399
+encrypted but conceptually it's like dma
+
+262
+00:08:56,560 --> 00:08:57,360
+now
+
+263
+00:08:57,360 --> 00:08:59,440
+zen doesn't support vertex and has been
+
+264
+00:08:59,440 --> 00:09:02,399
+around longer than kvm it has been
+
+265
+00:09:02,399 --> 00:09:03,519
+around even before hardware
+
+266
+00:09:03,519 --> 00:09:06,000
+virtualization existed so design has its
+
+267
+00:09:06,000 --> 00:09:06,880
+own
+
+268
+00:09:06,880 --> 00:09:09,200
+implementation for
+
+269
+00:09:09,200 --> 00:09:11,920
+implementing disk network stuff with
+
+270
+00:09:11,920 --> 00:09:13,920
+shared memory which is what we're tier
+
+271
+00:09:13,920 --> 00:09:16,880
+is as well and the two are similar in
+
+272
+00:09:16,880 --> 00:09:18,720
+concept but the protocols are totally
+
+273
+00:09:18,720 --> 00:09:20,320
+different and zen doesn't support vertio
+
+274
+00:09:20,320 --> 00:09:22,080
+so that kind of limitation that i just
+
+275
+00:09:22,080 --> 00:09:23,279
+mentioned is
+
+276
+00:09:23,279 --> 00:09:25,360
+uh means that well i can't set up
+
+277
+00:09:25,360 --> 00:09:27,360
+verteio in a zen vm because zen doesn't
+
+278
+00:09:27,360 --> 00:09:29,040
+understand it so i can't get the kernel
+
+279
+00:09:29,040 --> 00:09:31,440
+module into the state where it would
+
+280
+00:09:31,440 --> 00:09:33,120
+need to be in order to fuzz it so
+
+281
+00:09:33,120 --> 00:09:35,040
+obviously well what can we do we can't
+
+282
+00:09:35,040 --> 00:09:37,360
+use this system for that
+
+283
+00:09:37,360 --> 00:09:39,120
+and i turned this project down a couple
+
+284
+00:09:39,120 --> 00:09:40,800
+times but then i started thinking that
+
+285
+00:09:40,800 --> 00:09:41,600
+well
+
+286
+00:09:41,600 --> 00:09:44,320
+maybe we can do something crazy
+
+287
+00:09:44,320 --> 00:09:47,360
+and i figured that the idea sounds kind
+
+288
+00:09:47,360 --> 00:09:48,640
+of simple
+
+289
+00:09:48,640 --> 00:09:51,360
+let's capture the system state on kvm
+
+290
+00:09:51,360 --> 00:09:53,040
+transfer it to zen load it up and fuzz
+
+291
+00:09:53,040 --> 00:09:54,480
+it right well
+
+292
+00:09:54,480 --> 00:09:56,800
+sounds pretty straightforward but
+
+293
+00:09:56,800 --> 00:09:59,200
+um it sounds a little wacky as well so i
+
+294
+00:09:59,200 --> 00:10:01,040
+reached out to some zen developers as
+
+295
+00:10:01,040 --> 00:10:03,680
+well to you know gauge what they think
+
+296
+00:10:03,680 --> 00:10:05,920
+and this is the response i got that well
+
+297
+00:10:05,920 --> 00:10:07,440
+i don't see any show stoppers but i
+
+298
+00:10:07,440 --> 00:10:10,320
+foresee that by a thousand papercuts
+
+299
+00:10:10,320 --> 00:10:11,680
+which is um
+
+300
+00:10:11,680 --> 00:10:13,440
+always a good sign that this should be
+
+301
+00:10:13,440 --> 00:10:15,839
+an easy task to accomplish so well let's
+
+302
+00:10:15,839 --> 00:10:18,880
+let's see how this goes
+
+303
+00:10:18,880 --> 00:10:20,320
+in order to capture the system state on
+
+304
+00:10:20,320 --> 00:10:22,959
+kvm we really have a reduced set of
+
+305
+00:10:22,959 --> 00:10:24,399
+problem because we really only need to
+
+306
+00:10:24,399 --> 00:10:25,920
+capture the memory and the cpu right
+
+307
+00:10:25,920 --> 00:10:27,519
+that's the only thing we need for those
+
+308
+00:10:27,519 --> 00:10:29,920
+fork vms to actually execute so we just
+
+309
+00:10:29,920 --> 00:10:32,000
+need to find a way to dump that from kvm
+
+310
+00:10:32,000 --> 00:10:33,839
+there must be something i never really
+
+311
+00:10:33,839 --> 00:10:35,519
+dealt with kvm too much in detail but
+
+312
+00:10:35,519 --> 00:10:37,360
+there must be something you obviously
+
+313
+00:10:37,360 --> 00:10:39,279
+can save a vm on kvm so it must save
+
+314
+00:10:39,279 --> 00:10:41,120
+these states somewhere so just have to
+
+315
+00:10:41,120 --> 00:10:44,160
+find it very exactly
+
+316
+00:10:44,959 --> 00:10:46,880
+there is this qmp command that you can
+
+317
+00:10:46,880 --> 00:10:48,959
+send to the key new socket that
+
+318
+00:10:48,959 --> 00:10:51,440
+intuitively called dump guest memory
+
+319
+00:10:51,440 --> 00:10:54,160
+um which creates an elf file with the
+
+320
+00:10:54,160 --> 00:10:55,920
+memory content and the memory map so
+
+321
+00:10:55,920 --> 00:10:57,760
+perfect that's exactly what we needed
+
+322
+00:10:57,760 --> 00:10:59,200
+and there's a surprise on the commented
+
+323
+00:10:59,200 --> 00:11:01,440
+feature in this command that it actually
+
+324
+00:11:01,440 --> 00:11:03,279
+saves the cpu register state as well in
+
+325
+00:11:03,279 --> 00:11:05,839
+that elf file in an elf node that's not
+
+326
+00:11:05,839 --> 00:11:07,680
+really documented anywhere so i kind of
+
+327
+00:11:07,680 --> 00:11:09,279
+stumbled upon it but perfect it has
+
+328
+00:11:09,279 --> 00:11:10,800
+everything we needed it has the cpu and
+
+329
+00:11:10,800 --> 00:11:13,200
+memory so this is awesome this is up to
+
+330
+00:11:13,200 --> 00:11:15,839
+a really good start
+
+331
+00:11:15,839 --> 00:11:16,800
+we
+
+332
+00:11:16,800 --> 00:11:18,320
+still want to target the code
+
+333
+00:11:18,320 --> 00:11:20,240
+specifically or where we want to take
+
+334
+00:11:20,240 --> 00:11:22,720
+the snapshot right and for that we need
+
+335
+00:11:22,720 --> 00:11:25,760
+that cpuid pausing that we used
+
+336
+00:11:25,760 --> 00:11:27,760
+with kfx before that
+
+337
+00:11:27,760 --> 00:11:30,399
+allows us to pause the system
+
+338
+00:11:30,399 --> 00:11:32,399
+precisely
+
+339
+00:11:32,399 --> 00:11:34,000
+but that actually turned out to be not
+
+340
+00:11:34,000 --> 00:11:36,079
+too painful either on the top you see
+
+341
+00:11:36,079 --> 00:11:38,480
+the patch was like five lines to kvm to
+
+342
+00:11:38,480 --> 00:11:42,160
+exit out when a magic cpu id number is
+
+343
+00:11:42,160 --> 00:11:44,560
+uh executing and on the key new side is
+
+344
+00:11:44,560 --> 00:11:46,560
+also like six lines to when that exit
+
+345
+00:11:46,560 --> 00:11:48,480
+happens to just pause it so perfect this
+
+346
+00:11:48,480 --> 00:11:51,440
+is you know so far we are we are down to
+
+347
+00:11:51,440 --> 00:11:53,200
+a really good start
+
+348
+00:11:53,200 --> 00:11:55,920
+and that uh only step we have left is
+
+349
+00:11:55,920 --> 00:11:57,920
+loading the state up on zan
+
+350
+00:11:57,920 --> 00:11:59,440
+now this is where you know we would
+
+351
+00:11:59,440 --> 00:12:01,360
+start to expect that
+
+352
+00:12:01,360 --> 00:12:03,360
+death by a thousand paper cuts
+
+353
+00:12:03,360 --> 00:12:05,040
+so
+
+354
+00:12:05,040 --> 00:12:06,800
+let's start simple let's create a vm
+
+355
+00:12:06,800 --> 00:12:08,320
+that's completely empty no devices
+
+356
+00:12:08,320 --> 00:12:09,839
+attached to it this is the configuration
+
+357
+00:12:09,839 --> 00:12:11,600
+file for it that you see up there
+
+358
+00:12:11,600 --> 00:12:14,720
+it just has memory cpu no devices no vnc
+
+359
+00:12:14,720 --> 00:12:18,079
+nothing but we add the vm trace buffer
+
+360
+00:12:18,079 --> 00:12:19,680
+that's the processor trace buffer that
+
+361
+00:12:19,680 --> 00:12:20,959
+we can use to actually collect the
+
+362
+00:12:20,959 --> 00:12:22,079
+coverage
+
+363
+00:12:22,079 --> 00:12:23,279
+and then we can just load the memory
+
+364
+00:12:23,279 --> 00:12:25,360
+according to the memory map that's easy
+
+365
+00:12:25,360 --> 00:12:27,120
+and then loading the register state was
+
+366
+00:12:27,120 --> 00:12:28,959
+the only part that i ran into some
+
+367
+00:12:28,959 --> 00:12:29,839
+issues
+
+368
+00:12:29,839 --> 00:12:32,880
+in that the segment registers
+
+369
+00:12:32,880 --> 00:12:34,399
+have
+
+370
+00:12:34,399 --> 00:12:36,560
+different components it has a segment
+
+371
+00:12:36,560 --> 00:12:39,120
+base address has a segment limit and
+
+372
+00:12:39,120 --> 00:12:40,800
+what's called the attribute bytes or
+
+373
+00:12:40,800 --> 00:12:42,320
+attribute bits
+
+374
+00:12:42,320 --> 00:12:44,000
+and if you look at the format of it it's
+
+375
+00:12:44,000 --> 00:12:46,720
+all vacui and the interleaved and the
+
+376
+00:12:46,720 --> 00:12:48,000
+way that they are saved is not
+
+377
+00:12:48,000 --> 00:12:51,360
+standardized so when keemu saves it
+
+378
+00:12:51,360 --> 00:12:53,680
+the attribute bytes it actually saves it
+
+379
+00:12:53,680 --> 00:12:56,240
+in a 32-bit value but those
+
+380
+00:12:56,240 --> 00:12:57,760
+interleaved things like the segment
+
+381
+00:12:57,760 --> 00:12:59,040
+limit and the base address are just
+
+382
+00:12:59,040 --> 00:13:01,040
+maxed out so those are zero
+
+383
+00:13:01,040 --> 00:13:04,160
+and zen is expecting all that data in a
+
+384
+00:13:04,160 --> 00:13:06,079
+packed structure there's absolutely no
+
+385
+00:13:06,079 --> 00:13:08,160
+documentation about that on the zen side
+
+386
+00:13:08,160 --> 00:13:10,160
+so kyogre had to figure out from you
+
+387
+00:13:10,160 --> 00:13:12,079
+know why is it not taking it
+
+388
+00:13:12,079 --> 00:13:13,200
+and
+
+389
+00:13:13,200 --> 00:13:14,720
+you know it was already starting to be
+
+390
+00:13:14,720 --> 00:13:16,639
+pretty obscure so right i got this one
+
+391
+00:13:16,639 --> 00:13:18,160
+working so let's
+
+392
+00:13:18,160 --> 00:13:20,560
+try to get it working and to the biggest
+
+393
+00:13:20,560 --> 00:13:23,600
+surprise it just works so
+
+394
+00:13:23,600 --> 00:13:26,320
+this was like holy all right
+
+395
+00:13:26,320 --> 00:13:28,000
+you know it's live
+
+396
+00:13:28,000 --> 00:13:30,320
+what you see here is me creating that vm
+
+397
+00:13:30,320 --> 00:13:32,560
+with that configuration file
+
+398
+00:13:32,560 --> 00:13:33,680
+and
+
+399
+00:13:33,680 --> 00:13:35,440
+loading with this tool called zen
+
+400
+00:13:35,440 --> 00:13:36,880
+transplant that's open source now it's
+
+401
+00:13:36,880 --> 00:13:39,519
+in the kfx repository you pass in the
+
+402
+00:13:39,519 --> 00:13:42,160
+data that was parsed out from that file
+
+403
+00:13:42,160 --> 00:13:44,320
+the registers the memory map and the vm
+
+404
+00:13:44,320 --> 00:13:46,560
+core is the actual content of the memory
+
+405
+00:13:46,560 --> 00:13:48,079
+it's loaded up according to the memory
+
+406
+00:13:48,079 --> 00:13:48,959
+map
+
+407
+00:13:48,959 --> 00:13:51,279
+and then at the end i just use stepper
+
+408
+00:13:51,279 --> 00:13:54,079
+which is an mtf single stepping
+
+409
+00:13:54,079 --> 00:13:56,480
+tool and that code just starts running
+
+410
+00:13:56,480 --> 00:13:58,720
+in the zen vm seamlessly that code is
+
+411
+00:13:58,720 --> 00:14:00,320
+not aware that it got ripped out from
+
+412
+00:14:00,320 --> 00:14:02,720
+kvm and now it's running on zen
+
+413
+00:14:02,720 --> 00:14:04,000
+has
+
+414
+00:14:04,000 --> 00:14:05,760
+absolutely no knowledge of that but it's
+
+415
+00:14:05,760 --> 00:14:08,399
+just happily chugging along so we are
+
+416
+00:14:08,399 --> 00:14:10,240
+off to a really good start here this
+
+417
+00:14:10,240 --> 00:14:12,800
+this just works
+
+418
+00:14:12,800 --> 00:14:15,440
+now let's get back to retire
+
+419
+00:14:15,440 --> 00:14:18,720
+we have a way to save the state from kvm
+
+420
+00:14:18,720 --> 00:14:20,720
+load it up and run the fuzzer
+
+421
+00:14:20,720 --> 00:14:22,639
+just have to figure out what to fuzz
+
+422
+00:14:22,639 --> 00:14:24,480
+have you ever run into that problem you
+
+423
+00:14:24,480 --> 00:14:26,480
+have the tools but well
+
+424
+00:14:26,480 --> 00:14:28,560
+what is it that you actually want to
+
+425
+00:14:28,560 --> 00:14:30,320
+fuzz
+
+426
+00:14:30,320 --> 00:14:32,240
+usually when we get a task of hey you
+
+427
+00:14:32,240 --> 00:14:35,199
+should fuzz this and you ask yeah but
+
+428
+00:14:35,199 --> 00:14:37,360
+which part you just got to hand with
+
+429
+00:14:37,360 --> 00:14:38,399
+like that
+
+430
+00:14:38,399 --> 00:14:39,680
+whole thing
+
+431
+00:14:39,680 --> 00:14:41,279
+it usually is not very helpful then you
+
+432
+00:14:41,279 --> 00:14:42,880
+actually need to put a hardness around
+
+433
+00:14:42,880 --> 00:14:45,839
+the code so
+
+434
+00:14:45,839 --> 00:14:47,440
+i don't know where it i whenever really
+
+435
+00:14:47,440 --> 00:14:49,760
+dug into it and it was not really you
+
+436
+00:14:49,760 --> 00:14:52,000
+know my life plan to ever learn about
+
+437
+00:14:52,000 --> 00:14:54,399
+retail if you watch mark's talk about
+
+438
+00:14:54,399 --> 00:14:56,720
+people who will go to extreme length to
+
+439
+00:14:56,720 --> 00:14:59,839
+not understand something i'm that guy
+
+440
+00:14:59,839 --> 00:15:02,720
+i'd much rather do something that
+
+441
+00:15:02,720 --> 00:15:04,720
+can do this automatically and revert to
+
+442
+00:15:04,720 --> 00:15:06,639
+it's kind of necessary because
+
+443
+00:15:06,639 --> 00:15:09,120
+verti will be used for as i said for all
+
+444
+00:15:09,120 --> 00:15:10,639
+this call network call console and
+
+445
+00:15:10,639 --> 00:15:12,639
+that's a lot of potential
+
+446
+00:15:12,639 --> 00:15:14,800
+code paths that need to be
+
+447
+00:15:14,800 --> 00:15:17,920
+considered as an attack surface
+
+448
+00:15:17,920 --> 00:15:19,360
+who does even
+
+449
+00:15:19,360 --> 00:15:21,120
+know how many different ways you can
+
+450
+00:15:21,120 --> 00:15:23,279
+reach parts of the kernel that will
+
+451
+00:15:23,279 --> 00:15:24,959
+start fetching stuff from desk or from
+
+452
+00:15:24,959 --> 00:15:26,880
+network right
+
+453
+00:15:26,880 --> 00:15:28,320
+you can make a guess right anyone's
+
+454
+00:15:28,320 --> 00:15:29,120
+guess
+
+455
+00:15:29,120 --> 00:15:30,560
+if you want to yell in some numbers
+
+456
+00:15:30,560 --> 00:15:32,720
+you're probably as good as anyone's
+
+457
+00:15:32,720 --> 00:15:35,199
+guess i have no idea there might be 20
+
+458
+00:15:35,199 --> 00:15:37,360
+30 100 who knows
+
+459
+00:15:37,360 --> 00:15:38,160
+and
+
+460
+00:15:38,160 --> 00:15:39,920
+if you have to do that by reviewing the
+
+461
+00:15:39,920 --> 00:15:42,800
+kernel kernel is kind of a massive
+
+462
+00:15:42,800 --> 00:15:44,959
+beast right so if you need to
+
+463
+00:15:44,959 --> 00:15:47,279
+read that and understand and
+
+464
+00:15:47,279 --> 00:15:49,600
+actually figure out which part is worth
+
+465
+00:15:49,600 --> 00:15:51,199
+fuzzing you're gonna have a bad time or
+
+466
+00:15:51,199 --> 00:15:52,800
+at least i would certainly have a bad
+
+467
+00:15:52,800 --> 00:15:55,920
+time so let's let's not do that
+
+468
+00:15:55,920 --> 00:15:57,920
+we have kind of a similar challenge in
+
+469
+00:15:57,920 --> 00:15:59,440
+in a previous engagement actually when
+
+470
+00:15:59,440 --> 00:16:01,920
+we were fuzzing xaci which is the usb 3
+
+471
+00:16:01,920 --> 00:16:04,560
+subsystem in the linux kernel
+
+472
+00:16:04,560 --> 00:16:06,839
+same thing it's a pretty massive
+
+473
+00:16:06,839 --> 00:16:09,680
+subsystem and we kind of did a source
+
+474
+00:16:09,680 --> 00:16:11,440
+called review that was painful but we
+
+475
+00:16:11,440 --> 00:16:13,279
+found some points that we could put a
+
+476
+00:16:13,279 --> 00:16:15,680
+harness around and we immediately found
+
+477
+00:16:15,680 --> 00:16:19,199
+a bunch of bugs using kfx on it
+
+478
+00:16:19,199 --> 00:16:20,800
+and
+
+479
+00:16:20,800 --> 00:16:22,480
+that was good but we were always asked
+
+480
+00:16:22,480 --> 00:16:24,560
+like did you consider all of the attack
+
+481
+00:16:24,560 --> 00:16:26,480
+surfaces that subsystem has
+
+482
+00:16:26,480 --> 00:16:28,560
+and we said well we reviewed the code
+
+483
+00:16:28,560 --> 00:16:30,399
+that's what we found but that was
+
+484
+00:16:30,399 --> 00:16:32,959
+the client was not happy about just you
+
+485
+00:16:32,959 --> 00:16:35,199
+know trusting us that we didn't miss
+
+486
+00:16:35,199 --> 00:16:36,880
+something
+
+487
+00:16:36,880 --> 00:16:39,839
+so we built this tool called dma monitor
+
+488
+00:16:39,839 --> 00:16:41,920
+which can actually hook the dma api of
+
+489
+00:16:41,920 --> 00:16:43,600
+the guest kernel that's running within
+
+490
+00:16:43,600 --> 00:16:44,720
+the vm
+
+491
+00:16:44,720 --> 00:16:47,199
+and actually remove the ept permissions
+
+492
+00:16:47,199 --> 00:16:48,800
+for the pages that are going to be used
+
+493
+00:16:48,800 --> 00:16:50,959
+for dma so that when the guest is
+
+494
+00:16:50,959 --> 00:16:53,120
+fetching data from pages that are
+
+495
+00:16:53,120 --> 00:16:55,440
+accessible to the attacker potential
+
+496
+00:16:55,440 --> 00:16:56,560
+attacker
+
+497
+00:16:56,560 --> 00:16:58,160
+we can actually log the instruction
+
+498
+00:16:58,160 --> 00:17:00,000
+pointer of what was the code that we
+
+499
+00:17:00,000 --> 00:17:01,839
+know that we saw that will actually
+
+500
+00:17:01,839 --> 00:17:03,680
+fetch data and that's the entry point to
+
+501
+00:17:03,680 --> 00:17:05,520
+the kernel then it's receiving untrusted
+
+502
+00:17:05,520 --> 00:17:07,679
+data so those are the locations that we
+
+503
+00:17:07,679 --> 00:17:09,760
+want to start reviewing the code and
+
+504
+00:17:09,760 --> 00:17:12,240
+actually start potentially fuzzing from
+
+505
+00:17:12,240 --> 00:17:14,799
+now we could really use something like
+
+506
+00:17:14,799 --> 00:17:16,480
+that for verti as well right it's very
+
+507
+00:17:16,480 --> 00:17:18,000
+similar problem we have no idea where
+
+508
+00:17:18,000 --> 00:17:20,720
+the code is that we want to fuzz and we
+
+509
+00:17:20,720 --> 00:17:22,319
+can't really ask anyone because no one
+
+510
+00:17:22,319 --> 00:17:24,079
+really knows
+
+511
+00:17:24,079 --> 00:17:25,039
+so
+
+512
+00:17:25,039 --> 00:17:27,119
+we were in luck in that there is a
+
+513
+00:17:27,119 --> 00:17:29,520
+project called kvm vmi that
+
+514
+00:17:29,520 --> 00:17:32,160
+implements introspection for kvm it's
+
+515
+00:17:32,160 --> 00:17:34,240
+not upstream like on zen but it
+
+516
+00:17:34,240 --> 00:17:35,840
+integrates with leap vmi which is what
+
+517
+00:17:35,840 --> 00:17:37,679
+we used to build kfx and this tool
+
+518
+00:17:37,679 --> 00:17:39,280
+called dma monitor as well so we could
+
+519
+00:17:39,280 --> 00:17:43,200
+lift all of this code onto kvm
+
+520
+00:17:43,200 --> 00:17:48,160
+and arrive at a system like like this
+
+521
+00:17:48,160 --> 00:17:49,919
+you boot
+
+522
+00:17:49,919 --> 00:17:52,960
+uh your vm on kvm
+
+523
+00:17:52,960 --> 00:17:56,000
+and you enable the dma debug api
+
+524
+00:17:56,000 --> 00:17:58,000
+we added a custom function there just to
+
+525
+00:17:58,000 --> 00:18:00,400
+have all the information we need about
+
+526
+00:18:00,400 --> 00:18:02,960
+when dma pages are getting mapped in and
+
+527
+00:18:02,960 --> 00:18:05,039
+on mapped from being used for for dma
+
+528
+00:18:05,039 --> 00:18:06,240
+onward io
+
+529
+00:18:06,240 --> 00:18:07,679
+so that we can hook it with the
+
+530
+00:18:07,679 --> 00:18:09,039
+hypervisor and extract all the
+
+531
+00:18:09,039 --> 00:18:10,559
+information we want
+
+532
+00:18:10,559 --> 00:18:12,320
+remove the apt permissions from all the
+
+533
+00:18:12,320 --> 00:18:15,200
+pages as they are being used for
+
+534
+00:18:15,200 --> 00:18:17,600
+for i o with the host
+
+535
+00:18:17,600 --> 00:18:20,880
+and handle the ept fault in
+
+536
+00:18:20,880 --> 00:18:23,120
+in the dma monitor tool
+
+537
+00:18:23,120 --> 00:18:25,280
+but we cannot do more than just look at
+
+538
+00:18:25,280 --> 00:18:27,200
+the instruction pointer what we can also
+
+539
+00:18:27,200 --> 00:18:29,840
+do is we can unwind the stack
+
+540
+00:18:29,840 --> 00:18:32,160
+at the point where that input is being
+
+541
+00:18:32,160 --> 00:18:33,120
+read
+
+542
+00:18:33,120 --> 00:18:35,440
+and by unwinding the stack we actually
+
+543
+00:18:35,440 --> 00:18:38,320
+have a rich source of context under
+
+544
+00:18:38,320 --> 00:18:40,480
+which that data is being fetched so it's
+
+545
+00:18:40,480 --> 00:18:42,480
+not just going to be the
+
+546
+00:18:42,480 --> 00:18:44,080
+exact line in the vertical code base
+
+547
+00:18:44,080 --> 00:18:46,160
+which might be too low level but we can
+
+548
+00:18:46,160 --> 00:18:48,960
+actually discover all the possible stack
+
+549
+00:18:48,960 --> 00:18:51,760
+calls that lead to data being fetched
+
+550
+00:18:51,760 --> 00:18:53,919
+from an untrusted source so that will
+
+551
+00:18:53,919 --> 00:18:56,559
+actually have a answer to our questions
+
+552
+00:18:56,559 --> 00:18:59,120
+of just how many ways can you can you
+
+553
+00:18:59,120 --> 00:19:00,640
+reach that
+
+554
+00:19:00,640 --> 00:19:03,760
+furthermore using this stack
+
+555
+00:19:03,760 --> 00:19:04,640
+as
+
+556
+00:19:04,640 --> 00:19:06,240
+uh as your
+
+557
+00:19:06,240 --> 00:19:09,280
+context you can actually just hash the
+
+558
+00:19:09,280 --> 00:19:12,400
+stack return pointers use it as a key in
+
+559
+00:19:12,400 --> 00:19:14,720
+a hash table and if it's a new context
+
+560
+00:19:14,720 --> 00:19:16,080
+you can you can take a snapshot
+
+561
+00:19:16,080 --> 00:19:17,440
+automatically
+
+562
+00:19:17,440 --> 00:19:20,000
+which is pretty sweet
+
+563
+00:19:20,000 --> 00:19:21,280
+here's a screenshot of how the tool
+
+564
+00:19:21,280 --> 00:19:22,240
+works
+
+565
+00:19:22,240 --> 00:19:24,400
+on the right hand side you see the
+
+566
+00:19:24,400 --> 00:19:25,840
+kernel booting so it's just the root
+
+567
+00:19:25,840 --> 00:19:27,600
+manager screen everything is totally
+
+568
+00:19:27,600 --> 00:19:29,280
+normal on the left hand side you
+
+569
+00:19:29,280 --> 00:19:31,280
+actually see that the ept calls are
+
+570
+00:19:31,280 --> 00:19:33,919
+happening you see where the vertical pci
+
+571
+00:19:33,919 --> 00:19:36,720
+device is allocating memory for using
+
+572
+00:19:36,720 --> 00:19:38,559
+used to be used with
+
+573
+00:19:38,559 --> 00:19:41,200
+vdma we remove the apt permission and
+
+574
+00:19:41,200 --> 00:19:43,200
+then we have dma accesses firing we
+
+575
+00:19:43,200 --> 00:19:45,039
+unwind the stack and we calculate the
+
+576
+00:19:45,039 --> 00:19:47,520
+stack key and when it's new we just dump
+
+577
+00:19:47,520 --> 00:19:49,679
+everything into into
+
+578
+00:19:49,679 --> 00:19:51,360
+the files that can be then loaded up for
+
+579
+00:19:51,360 --> 00:19:53,440
+zen for fuzzing the whole thing is
+
+580
+00:19:53,440 --> 00:19:56,640
+automated it's pretty sweet
+
+581
+00:19:56,640 --> 00:19:58,320
+now
+
+582
+00:19:58,320 --> 00:19:59,919
+normally for fuzzing you want to have
+
+583
+00:19:59,919 --> 00:20:01,440
+the start harness and the ant harness
+
+584
+00:20:01,440 --> 00:20:03,679
+now here we have neither right because
+
+585
+00:20:03,679 --> 00:20:04,720
+we
+
+586
+00:20:04,720 --> 00:20:06,320
+took the snapshot at the start of where
+
+587
+00:20:06,320 --> 00:20:08,400
+the memory is being fetched
+
+588
+00:20:08,400 --> 00:20:10,159
+and we have no end harness
+
+589
+00:20:10,159 --> 00:20:12,240
+it turns out we don't actually need any
+
+590
+00:20:12,240 --> 00:20:13,440
+we can actually
+
+591
+00:20:13,440 --> 00:20:16,240
+look at the stack itself right we know
+
+592
+00:20:16,240 --> 00:20:17,919
+where the code would go
+
+593
+00:20:17,919 --> 00:20:20,880
+when it's finished processing the input
+
+594
+00:20:20,880 --> 00:20:22,400
+and we can just
+
+595
+00:20:22,400 --> 00:20:24,080
+take that snapshot dump it into a
+
+596
+00:20:24,080 --> 00:20:26,880
+transplant create a fork and single step
+
+597
+00:20:26,880 --> 00:20:28,799
+it up to a number of instructions that
+
+598
+00:20:28,799 --> 00:20:30,320
+you'd consider fast enough for the
+
+599
+00:20:30,320 --> 00:20:31,919
+fuzzer to be effective so let's say you
+
+600
+00:20:31,919 --> 00:20:34,080
+know 300 000 instructions and then you
+
+601
+00:20:34,080 --> 00:20:36,320
+just check the log which one of the
+
+602
+00:20:36,320 --> 00:20:39,039
+stack return pointers were actually hit
+
+603
+00:20:39,039 --> 00:20:41,280
+and you will put a breakpoint at the top
+
+604
+00:20:41,280 --> 00:20:42,720
+one because you know that that's the
+
+605
+00:20:42,720 --> 00:20:44,320
+last stack return pointer the code would
+
+606
+00:20:44,320 --> 00:20:46,320
+normally reach under normal execution
+
+607
+00:20:46,320 --> 00:20:47,600
+well that's your end hardness right
+
+608
+00:20:47,600 --> 00:20:48,960
+there
+
+609
+00:20:48,960 --> 00:20:50,880
+and with that you have everything in
+
+610
+00:20:50,880 --> 00:20:53,039
+place and you can start fuzzing and it's
+
+611
+00:20:53,039 --> 00:20:56,400
+fully automated it's pretty sweet
+
+612
+00:20:56,400 --> 00:20:58,240
+i never actually had to figure out what
+
+613
+00:20:58,240 --> 00:21:00,000
+those kernel addresses
+
+614
+00:21:00,000 --> 00:21:00,840
+mean
+
+615
+00:21:00,840 --> 00:21:03,919
+because actually loading up and fuzzing
+
+616
+00:21:03,919 --> 00:21:06,720
+is cheap at this point
+
+617
+00:21:06,720 --> 00:21:09,280
+so the results we had for the 5.15
+
+618
+00:21:09,280 --> 00:21:13,120
+kernel this is still with rc6
+
+619
+00:21:13,120 --> 00:21:14,559
+during a normal boot and normal
+
+620
+00:21:14,559 --> 00:21:17,600
+execution you get about 126 000 dma
+
+621
+00:21:17,600 --> 00:21:20,080
+accesses under various contacts so there
+
+622
+00:21:20,080 --> 00:21:22,640
+are 13 actual instruction pointers where
+
+623
+00:21:22,640 --> 00:21:25,120
+data is being fetched but the number of
+
+624
+00:21:25,120 --> 00:21:26,880
+contexts under which data is being
+
+625
+00:21:26,880 --> 00:21:30,640
+fetched is 738 right so those are 738
+
+626
+00:21:30,640 --> 00:21:31,840
+different contacts that you would have
+
+627
+00:21:31,840 --> 00:21:33,440
+to review by hand
+
+628
+00:21:33,440 --> 00:21:35,760
+and that's that's still a lot and even
+
+629
+00:21:35,760 --> 00:21:38,080
+for fuzzing that's a lot so we actually
+
+630
+00:21:38,080 --> 00:21:40,720
+uh took 70 snapshots based on the top
+
+631
+00:21:40,720 --> 00:21:41,919
+five
+
+632
+00:21:41,919 --> 00:21:44,559
+stack frame uniqueness that will cover
+
+633
+00:21:44,559 --> 00:21:45,760
+things like
+
+634
+00:21:45,760 --> 00:21:48,080
+different system calls that lead to
+
+635
+00:21:48,080 --> 00:21:49,840
+vertio
+
+636
+00:21:49,840 --> 00:21:52,640
+page fault interrupts background threads
+
+637
+00:21:52,640 --> 00:21:54,480
+there is an unbelievable number of
+
+638
+00:21:54,480 --> 00:21:56,400
+different contacts that i never even
+
+639
+00:21:56,400 --> 00:21:58,480
+thought were possible to reach retire
+
+640
+00:21:58,480 --> 00:22:00,080
+but they did
+
+641
+00:22:00,080 --> 00:22:02,320
+so it's pretty cool we fuzzed it for two
+
+642
+00:22:02,320 --> 00:22:03,919
+weeks all of these snapshots we got you
+
+643
+00:22:03,919 --> 00:22:07,600
+know 7.5 billion fuzzing cycles
+
+644
+00:22:07,600 --> 00:22:11,120
+and drum rolls we found no issues
+
+645
+00:22:11,120 --> 00:22:14,159
+so that was kind of a bummer
+
+646
+00:22:14,159 --> 00:22:16,080
+um what this means that there was no
+
+647
+00:22:16,080 --> 00:22:17,919
+address sanitizer reached no one
+
+648
+00:22:17,919 --> 00:22:19,600
+undefined behavior in all panic nodes
+
+649
+00:22:19,600 --> 00:22:21,039
+none of those functions actually were
+
+650
+00:22:21,039 --> 00:22:22,400
+hit any of these
+
+651
+00:22:22,400 --> 00:22:23,840
+fuzzing instances
+
+652
+00:22:23,840 --> 00:22:26,240
+but we found 13 snapshots where there
+
+653
+00:22:26,240 --> 00:22:28,320
+were hangs right so the
+
+654
+00:22:28,320 --> 00:22:30,240
+code would run into an infinite loop or
+
+655
+00:22:30,240 --> 00:22:32,320
+something like that unfortunately that's
+
+656
+00:22:32,320 --> 00:22:34,640
+outside of the threat model the tdx
+
+657
+00:22:34,640 --> 00:22:36,400
+because the host is always in control of
+
+658
+00:22:36,400 --> 00:22:38,640
+when a vm is getting scheduled so a host
+
+659
+00:22:38,640 --> 00:22:40,159
+could always just choose not to schedule
+
+660
+00:22:40,159 --> 00:22:42,640
+something so the host doesn't the vm is
+
+661
+00:22:42,640 --> 00:22:44,720
+kind of not really an issue so that's
+
+662
+00:22:44,720 --> 00:22:46,240
+also a bummer
+
+663
+00:22:46,240 --> 00:22:47,200
+uh
+
+664
+00:22:47,200 --> 00:22:49,039
+interestingly out of those seven
+
+665
+00:22:49,039 --> 00:22:52,159
+snapshots 54 had very low path discovery
+
+666
+00:22:52,159 --> 00:22:54,240
+right so that's the downside of doing
+
+667
+00:22:54,240 --> 00:22:57,520
+this automatically is that you will have
+
+668
+00:22:57,520 --> 00:22:59,440
+a lot of overhead with fuzzing things
+
+669
+00:22:59,440 --> 00:23:01,120
+that you might have not considered to
+
+670
+00:23:01,120 --> 00:23:02,960
+fuzz if you did a code review
+
+671
+00:23:02,960 --> 00:23:05,919
+but in the other hand cpu time is cheap
+
+672
+00:23:05,919 --> 00:23:06,799
+and
+
+673
+00:23:06,799 --> 00:23:09,280
+if you can automate it it's
+
+674
+00:23:09,280 --> 00:23:12,880
+just the cost of doing business
+
+675
+00:23:12,880 --> 00:23:14,720
+so no bugs right that's that's the
+
+676
+00:23:14,720 --> 00:23:17,039
+bummer um
+
+677
+00:23:17,039 --> 00:23:18,720
+but it turns out that we were not the
+
+678
+00:23:18,720 --> 00:23:20,640
+first one to actually fuzz these
+
+679
+00:23:20,640 --> 00:23:22,159
+interfaces
+
+680
+00:23:22,159 --> 00:23:24,400
+with the address sanitizer is enabled
+
+681
+00:23:24,400 --> 00:23:26,000
+there's this paper that came out
+
+682
+00:23:26,000 --> 00:23:27,120
+actually a couple months after we
+
+683
+00:23:27,120 --> 00:23:29,120
+started this project uh where they
+
+684
+00:23:29,120 --> 00:23:30,240
+actually
+
+685
+00:23:30,240 --> 00:23:32,480
+fuzzed the 5.10 kernel
+
+686
+00:23:32,480 --> 00:23:34,640
+and reported all the sanitizer bugs that
+
+687
+00:23:34,640 --> 00:23:36,960
+were on that they found on the vertio
+
+688
+00:23:36,960 --> 00:23:38,960
+interfaces
+
+689
+00:23:38,960 --> 00:23:41,120
+so i figured all right well they they
+
+690
+00:23:41,120 --> 00:23:43,760
+did it this uh fuzzing on 5.10 let's you
+
+691
+00:23:43,760 --> 00:23:46,240
+know validate that this whole craziness
+
+692
+00:23:46,240 --> 00:23:47,760
+actually works and it's you know we
+
+693
+00:23:47,760 --> 00:23:49,520
+didn't find any bugs not because you
+
+694
+00:23:49,520 --> 00:23:50,640
+know
+
+695
+00:23:50,640 --> 00:23:53,440
+the system is broken and
+
+696
+00:23:53,440 --> 00:23:55,679
+we fire this up on 5.10 pick the random
+
+697
+00:23:55,679 --> 00:23:58,400
+snapshot and bugs just immediately start
+
+698
+00:23:58,400 --> 00:24:00,400
+you know shaking out so it's
+
+699
+00:24:00,400 --> 00:24:02,400
+what we were originally expecting so the
+
+700
+00:24:02,400 --> 00:24:04,159
+system works it's just these low level
+
+701
+00:24:04,159 --> 00:24:06,480
+bugs have already been fixed but you
+
+702
+00:24:06,480 --> 00:24:08,320
+know there are other sanitizers there is
+
+703
+00:24:08,320 --> 00:24:09,919
+other snapshots that can be taken under
+
+704
+00:24:09,919 --> 00:24:11,120
+contact so
+
+705
+00:24:11,120 --> 00:24:13,200
+not everything is lost so there might be
+
+706
+00:24:13,200 --> 00:24:15,600
+many more bugs to be found there
+
+707
+00:24:15,600 --> 00:24:17,200
+and you know i still consider this whole
+
+708
+00:24:17,200 --> 00:24:19,520
+thing of them because
+
+709
+00:24:19,520 --> 00:24:20,880
+first of all they open source all of
+
+710
+00:24:20,880 --> 00:24:22,720
+these so you actually have tools now to
+
+711
+00:24:22,720 --> 00:24:25,039
+target some of these interfaces that you
+
+712
+00:24:25,039 --> 00:24:26,960
+couldn't before the guys who wrote this
+
+713
+00:24:26,960 --> 00:24:29,200
+paper never released their code
+
+714
+00:24:29,200 --> 00:24:31,600
+now we have tools to actually do this
+
+715
+00:24:31,600 --> 00:24:32,559
+and
+
+716
+00:24:32,559 --> 00:24:34,240
+furthermore this
+
+717
+00:24:34,240 --> 00:24:36,720
+ability to disconnect the setup of your
+
+718
+00:24:36,720 --> 00:24:37,840
+target
+
+719
+00:24:37,840 --> 00:24:39,520
+and where you need to fuzz it i think
+
+720
+00:24:39,520 --> 00:24:42,640
+it's pretty huge because we can actually
+
+721
+00:24:42,640 --> 00:24:44,640
+snapshot systems on various setups we
+
+722
+00:24:44,640 --> 00:24:47,360
+can use schemu kvm simx or really any
+
+723
+00:24:47,360 --> 00:24:50,879
+system where you have access to
+
+724
+00:24:51,039 --> 00:24:53,120
+the system state and you can take a
+
+725
+00:24:53,120 --> 00:24:54,799
+snapshot of it load it up on design for
+
+726
+00:24:54,799 --> 00:24:55,760
+fuzzing
+
+727
+00:24:55,760 --> 00:25:00,159
+and you can achieve a lot with that
+
+728
+00:25:00,159 --> 00:25:02,559
+so that was my part of the talk thanks
+
+729
+00:25:02,559 --> 00:25:04,159
+to a whole lot of people who you know
+
+730
+00:25:04,159 --> 00:25:05,679
+made this possible
+
+731
+00:25:05,679 --> 00:25:08,559
+and now baliant is going to switch gears
+
+732
+00:25:08,559 --> 00:25:10,240
+and look at something that i never
+
+733
+00:25:10,240 --> 00:25:12,000
+considered to be you know in scope for
+
+734
+00:25:12,000 --> 00:25:12,880
+us
+
+735
+00:25:12,880 --> 00:25:16,799
+and that is fuzzing antivirus solutions
+
+736
+00:25:16,799 --> 00:25:19,440
+thank you everyone
+
+737
+00:25:24,400 --> 00:25:26,400
+so hello everyone
+
+738
+00:25:26,400 --> 00:25:29,840
+i'm balint bubarator
+
+739
+00:25:30,400 --> 00:25:32,400
+thanks to match for for this great tool
+
+740
+00:25:32,400 --> 00:25:35,840
+he's the the big brain behind it all i
+
+741
+00:25:35,840 --> 00:25:38,000
+just do a lot of testing
+
+742
+00:25:38,000 --> 00:25:41,919
+and one of my main ideas when this thing
+
+743
+00:25:41,919 --> 00:25:45,440
+came out was what if i could use this
+
+744
+00:25:45,440 --> 00:25:47,919
+tool to my really weird windows users
+
+745
+00:25:47,919 --> 00:25:51,120
+based targets namely antivirus of course
+
+746
+00:25:51,120 --> 00:25:52,880
+antivirus is a really nice set of
+
+747
+00:25:52,880 --> 00:25:54,640
+targets because it's a widespread
+
+748
+00:25:54,640 --> 00:25:57,440
+technology it's installed all over the
+
+749
+00:25:57,440 --> 00:26:00,159
+planet that all large companies
+
+750
+00:26:00,159 --> 00:26:02,640
+and in order to be able to find all the
+
+751
+00:26:02,640 --> 00:26:06,320
+nasty mother hidden inside i don't know
+
+752
+00:26:06,320 --> 00:26:08,840
+compressed compressed archives
+
+753
+00:26:08,840 --> 00:26:12,960
+or a powerpoint presentation for example
+
+754
+00:26:12,960 --> 00:26:14,799
+they need to implement really complex
+
+755
+00:26:14,799 --> 00:26:16,720
+parsers a lot of them and they are
+
+756
+00:26:16,720 --> 00:26:20,320
+usually done this uh in cnc plus plus so
+
+757
+00:26:20,320 --> 00:26:22,000
+a chance for memory corruption is pretty
+
+758
+00:26:22,000 --> 00:26:22,960
+high
+
+759
+00:26:22,960 --> 00:26:26,080
+as previous uh research showed this is
+
+760
+00:26:26,080 --> 00:26:28,240
+of course a remotely reachable attack
+
+761
+00:26:28,240 --> 00:26:30,400
+surface and just to use a fashionable
+
+762
+00:26:30,400 --> 00:26:33,200
+word it's also can be a zero click
+
+763
+00:26:33,200 --> 00:26:34,400
+because
+
+764
+00:26:34,400 --> 00:26:35,919
+these things run on i don't know
+
+765
+00:26:35,919 --> 00:26:38,960
+gateways and they can even trigger when
+
+766
+00:26:38,960 --> 00:26:41,360
+your web browser caches some fights your
+
+767
+00:26:41,360 --> 00:26:42,880
+disk that you didn't even want to
+
+768
+00:26:42,880 --> 00:26:44,000
+download
+
+769
+00:26:44,000 --> 00:26:44,799
+so
+
+770
+00:26:44,799 --> 00:26:46,159
+uh
+
+771
+00:26:46,159 --> 00:26:47,919
+but why don't we see
+
+772
+00:26:47,919 --> 00:26:50,559
+that many attacks uh on antivirus
+
+773
+00:26:50,559 --> 00:26:52,159
+software in divide well there's a
+
+774
+00:26:52,159 --> 00:26:54,720
+possibility that we just don't see them
+
+775
+00:26:54,720 --> 00:26:55,919
+but of course there are some
+
+776
+00:26:55,919 --> 00:26:57,840
+difficulties
+
+777
+00:26:57,840 --> 00:26:59,919
+anti-viruses
+
+778
+00:26:59,919 --> 00:27:01,600
+are complex software
+
+779
+00:27:01,600 --> 00:27:03,279
+similar to
+
+780
+00:27:03,279 --> 00:27:05,440
+office suit for example
+
+781
+00:27:05,440 --> 00:27:07,200
+you don't have any
+
+782
+00:27:07,200 --> 00:27:09,679
+source code with it so it's completely
+
+783
+00:27:09,679 --> 00:27:11,360
+opaque you don't have a public back
+
+784
+00:27:11,360 --> 00:27:14,480
+tracker to look for nasty developers and
+
+785
+00:27:14,480 --> 00:27:16,720
+of course the performance is not the uh
+
+786
+00:27:16,720 --> 00:27:18,080
+greatest
+
+787
+00:27:18,080 --> 00:27:19,919
+virtue of this
+
+788
+00:27:19,919 --> 00:27:22,000
+set of software but these are things
+
+789
+00:27:22,000 --> 00:27:24,320
+that that you get when you target for
+
+790
+00:27:24,320 --> 00:27:26,240
+example excel
+
+791
+00:27:26,240 --> 00:27:27,840
+what makes
+
+792
+00:27:27,840 --> 00:27:30,159
+antivirus research
+
+793
+00:27:30,159 --> 00:27:32,640
+especially frustrating is that these
+
+794
+00:27:32,640 --> 00:27:35,520
+software are really not into being
+
+795
+00:27:35,520 --> 00:27:38,320
+watched so they implement all kinds of
+
+796
+00:27:38,320 --> 00:27:41,120
+root kitty anti-debug techniques
+
+797
+00:27:41,120 --> 00:27:44,159
+in order to avoid inspection and this is
+
+798
+00:27:44,159 --> 00:27:46,399
+just what we want to do when we are
+
+799
+00:27:46,399 --> 00:27:48,240
+fuzzing in order to have some
+
+800
+00:27:48,240 --> 00:27:49,840
+information about if we are going
+
+801
+00:27:49,840 --> 00:27:53,120
+anywhere or not they also handle uh
+
+802
+00:27:53,120 --> 00:27:55,120
+quite a bit of state for example if you
+
+803
+00:27:55,120 --> 00:27:58,080
+scan the same fight twice uh the second
+
+804
+00:27:58,080 --> 00:27:58,960
+scan
+
+805
+00:27:58,960 --> 00:28:01,200
+usually won't trigger the same code pass
+
+806
+00:28:01,200 --> 00:28:02,880
+because the
+
+807
+00:28:02,880 --> 00:28:05,440
+hash of the file is already cached
+
+808
+00:28:05,440 --> 00:28:07,600
+somewhere we know it's not malicious so
+
+809
+00:28:07,600 --> 00:28:10,000
+you can just let it through
+
+810
+00:28:10,000 --> 00:28:12,080
+see performance above
+
+811
+00:28:12,080 --> 00:28:16,080
+and last but not least and this was my
+
+812
+00:28:16,080 --> 00:28:18,640
+the starting point of this quest for me
+
+813
+00:28:18,640 --> 00:28:21,360
+is diversity so there is no such thing
+
+814
+00:28:21,360 --> 00:28:22,159
+as
+
+815
+00:28:22,159 --> 00:28:24,960
+an excel of antivirus software there are
+
+816
+00:28:24,960 --> 00:28:27,600
+many vendors many products of a single
+
+817
+00:28:27,600 --> 00:28:28,799
+vendor
+
+818
+00:28:28,799 --> 00:28:31,600
+and of course these individual products
+
+819
+00:28:31,600 --> 00:28:33,840
+can contain a lot of different uh
+
+820
+00:28:33,840 --> 00:28:36,880
+parsers so we need to automate this in
+
+821
+00:28:36,880 --> 00:28:40,480
+order to have some nice uh coverage
+
+822
+00:28:40,480 --> 00:28:42,480
+this is where kfx
+
+823
+00:28:42,480 --> 00:28:45,440
+comes into play and um
+
+824
+00:28:45,440 --> 00:28:47,440
+cannot really agree more with the with
+
+825
+00:28:47,440 --> 00:28:49,919
+the first keynote of the first day here
+
+826
+00:28:49,919 --> 00:28:53,200
+uh is uh like you yes you have to
+
+827
+00:28:53,200 --> 00:28:55,520
+understand your target but if you have
+
+828
+00:28:55,520 --> 00:28:56,240
+to
+
+829
+00:28:56,240 --> 00:28:59,279
+create like super specialized harnesses
+
+830
+00:28:59,279 --> 00:29:01,679
+for each of these targets like simontech
+
+831
+00:29:01,679 --> 00:29:04,640
+mcafee eset blah blah blah
+
+832
+00:29:04,640 --> 00:29:06,880
+then you won't have time to understand
+
+833
+00:29:06,880 --> 00:29:09,120
+the code so there would uh it would be
+
+834
+00:29:09,120 --> 00:29:11,919
+nice if you had something that that can
+
+835
+00:29:11,919 --> 00:29:14,399
+guide our manual research and and serve
+
+836
+00:29:14,399 --> 00:29:16,720
+as a spotlight or a torch that can show
+
+837
+00:29:16,720 --> 00:29:18,640
+us what our most interesting parts are
+
+838
+00:29:18,640 --> 00:29:20,000
+or maybe
+
+839
+00:29:20,000 --> 00:29:23,279
+so with kfx we uh first and foremost get
+
+840
+00:29:23,279 --> 00:29:26,640
+a reusable harness as you will see it's
+
+841
+00:29:26,640 --> 00:29:29,039
+really easy to adopt it from from linux
+
+842
+00:29:29,039 --> 00:29:31,279
+to windows and inside the product to
+
+843
+00:29:31,279 --> 00:29:33,039
+different parsers and to different
+
+844
+00:29:33,039 --> 00:29:34,640
+products
+
+845
+00:29:34,640 --> 00:29:36,960
+this tool also provides us with full
+
+846
+00:29:36,960 --> 00:29:38,799
+inspect ability so we don't really have
+
+847
+00:29:38,799 --> 00:29:40,480
+to care about anti-debug
+
+848
+00:29:40,480 --> 00:29:41,840
+
+
+849
+00:29:41,840 --> 00:29:44,399
+and we also have the full system state
+
+850
+00:29:44,399 --> 00:29:46,480
+this is also really important because
+
+851
+00:29:46,480 --> 00:29:49,360
+antivirus tends to uh be comprised of
+
+852
+00:29:49,360 --> 00:29:51,279
+many different components that are
+
+853
+00:29:51,279 --> 00:29:54,720
+interacting with each other and if you
+
+854
+00:29:54,720 --> 00:29:56,080
+don't
+
+855
+00:29:56,080 --> 00:29:58,080
+if you can't set up
+
+856
+00:29:58,080 --> 00:30:00,399
+the appropriate state
+
+857
+00:30:00,399 --> 00:30:02,159
+they will do nothing
+
+858
+00:30:02,159 --> 00:30:03,919
+and last but not least
+
+859
+00:30:03,919 --> 00:30:06,159
+there is documentation there is code
+
+860
+00:30:06,159 --> 00:30:08,240
+outside and it takes like a couple of
+
+861
+00:30:08,240 --> 00:30:11,520
+hours to set this up uh it's uh not like
+
+862
+00:30:11,520 --> 00:30:13,440
+you have to watch like a week of twitch
+
+863
+00:30:13,440 --> 00:30:15,840
+streams to build some really special
+
+864
+00:30:15,840 --> 00:30:17,840
+type of waste uh stuff which is also
+
+865
+00:30:17,840 --> 00:30:20,399
+pretty cool but this one you can
+
+866
+00:30:20,399 --> 00:30:23,840
+actually use immediately
+
+867
+00:30:23,919 --> 00:30:27,760
+so let's uh look at how we can turn our
+
+868
+00:30:27,760 --> 00:30:30,559
+idle cpu cores into cash with simon the
+
+869
+00:30:30,559 --> 00:30:32,559
+can point protection without paying
+
+870
+00:30:32,559 --> 00:30:35,879
+going to broadcom
+
+871
+00:30:36,000 --> 00:30:38,720
+so a few words about this particular
+
+872
+00:30:38,720 --> 00:30:40,640
+product it of course implements what
+
+873
+00:30:40,640 --> 00:30:42,399
+they call temper protection this is
+
+874
+00:30:42,399 --> 00:30:44,720
+their anti-debug mechanism but the
+
+875
+00:30:44,720 --> 00:30:46,640
+vendor was nice enough to provide an
+
+876
+00:30:46,640 --> 00:30:48,399
+option in the ui that you can just
+
+877
+00:30:48,399 --> 00:30:51,760
+switch it off so what's the big deal
+
+878
+00:30:51,760 --> 00:30:54,480
+the problem is that even with the temper
+
+879
+00:30:54,480 --> 00:30:57,360
+protection off you can't
+
+880
+00:30:57,360 --> 00:31:00,000
+really reach some pages inside
+
+881
+00:31:00,000 --> 00:31:02,399
+the process memory user land that we are
+
+882
+00:31:02,399 --> 00:31:04,000
+interested in
+
+883
+00:31:04,000 --> 00:31:05,200
+so
+
+884
+00:31:05,200 --> 00:31:06,720
+there is some kernel which graph
+
+885
+00:31:06,720 --> 00:31:09,120
+probably but i don't understand that
+
+886
+00:31:09,120 --> 00:31:10,159
+part
+
+887
+00:31:10,159 --> 00:31:13,760
+also which i which took me a lot of uh
+
+888
+00:31:13,760 --> 00:31:14,640
+pain
+
+889
+00:31:14,640 --> 00:31:16,240
+is that
+
+890
+00:31:16,240 --> 00:31:18,720
+simon that runs a system service called
+
+891
+00:31:18,720 --> 00:31:20,320
+ccsvc host
+
+892
+00:31:20,320 --> 00:31:22,159
+uh that
+
+893
+00:31:22,159 --> 00:31:24,320
+works really like windows is service
+
+894
+00:31:24,320 --> 00:31:28,240
+host processes uh but it also implements
+
+895
+00:31:28,240 --> 00:31:30,000
+an architecture that is really similar
+
+896
+00:31:30,000 --> 00:31:32,399
+to windows.com so there is this
+
+897
+00:31:32,399 --> 00:31:33,440
+separate
+
+898
+00:31:33,440 --> 00:31:36,480
+registry structure for the elements of
+
+899
+00:31:36,480 --> 00:31:40,399
+the software and by uuids you can load
+
+900
+00:31:40,399 --> 00:31:41,120
+up
+
+901
+00:31:41,120 --> 00:31:43,440
+stuff from different dls by calling
+
+902
+00:31:43,440 --> 00:31:45,360
+their get factory method and providing
+
+903
+00:31:45,360 --> 00:31:48,960
+that uuid but this means that you can't
+
+904
+00:31:48,960 --> 00:31:50,080
+really just
+
+905
+00:31:50,080 --> 00:31:51,600
+get a dll
+
+906
+00:31:51,600 --> 00:31:53,279
+write some harness around it and call a
+
+907
+00:31:53,279 --> 00:31:54,240
+method
+
+908
+00:31:54,240 --> 00:31:57,360
+because you when you get the object from
+
+909
+00:31:57,360 --> 00:31:59,360
+the factory you have to pass other
+
+910
+00:31:59,360 --> 00:32:01,600
+objects from other components and if you
+
+911
+00:32:01,600 --> 00:32:03,360
+don't know how that works and it's not
+
+912
+00:32:03,360 --> 00:32:05,679
+documented anywhere
+
+913
+00:32:05,679 --> 00:32:07,760
+you are out of luck
+
+914
+00:32:07,760 --> 00:32:09,440
+also there is os interference for
+
+915
+00:32:09,440 --> 00:32:12,799
+example uh because this product tries to
+
+916
+00:32:12,799 --> 00:32:15,600
+catch a mother on the network too if you
+
+917
+00:32:15,600 --> 00:32:18,000
+set a breakpoint uh somewhere in the
+
+918
+00:32:18,000 --> 00:32:20,159
+process and it's hit then you cannot
+
+919
+00:32:20,159 --> 00:32:22,159
+communicate for example with red decks
+
+920
+00:32:22,159 --> 00:32:23,840
+so you can compare your static and
+
+921
+00:32:23,840 --> 00:32:26,320
+dynamic analysis results which is quite
+
+922
+00:32:26,320 --> 00:32:29,919
+frustrating too so uh
+
+923
+00:32:29,919 --> 00:32:32,000
+i wanted to do a proof of concept to so
+
+924
+00:32:32,000 --> 00:32:34,559
+i went to the project zero backtracker
+
+925
+00:32:34,559 --> 00:32:37,519
+where tavis ormandy in 2016 published a
+
+926
+00:32:37,519 --> 00:32:40,159
+whole bunch of simon tech bugs
+
+927
+00:32:40,159 --> 00:32:42,240
+these mostly affected the so-called
+
+928
+00:32:42,240 --> 00:32:43,840
+decomposers
+
+929
+00:32:43,840 --> 00:32:46,320
+which are the modules that are able to
+
+930
+00:32:46,320 --> 00:32:47,519
+extract
+
+931
+00:32:47,519 --> 00:32:50,080
+data from different container formats so
+
+932
+00:32:50,080 --> 00:32:52,159
+to say like compressed archives
+
+933
+00:32:52,159 --> 00:32:54,640
+powerpoint presentations and whatnot
+
+934
+00:32:54,640 --> 00:32:58,159
+i choose this one with the id 823 which
+
+935
+00:32:58,159 --> 00:33:00,320
+is powerpoint misaligned the stream
+
+936
+00:33:00,320 --> 00:33:03,440
+cache remote stack buffer overflow
+
+937
+00:33:03,440 --> 00:33:05,440
+it has a really nice
+
+938
+00:33:05,440 --> 00:33:07,200
+assembly port that
+
+939
+00:33:07,200 --> 00:33:09,279
+was easily modifiable
+
+940
+00:33:09,279 --> 00:33:13,440
+and the description of the bug also
+
+941
+00:33:13,440 --> 00:33:15,760
+led me really easily to those parts
+
+942
+00:33:15,760 --> 00:33:17,840
+which are vulnerable and those parts
+
+943
+00:33:17,840 --> 00:33:19,679
+which accept input
+
+944
+00:33:19,679 --> 00:33:22,240
+from from the user from the disk so
+
+945
+00:33:22,240 --> 00:33:24,000
+these are basically the things that you
+
+946
+00:33:24,000 --> 00:33:26,480
+need when you're using kfx
+
+947
+00:33:26,480 --> 00:33:27,919
+uh so i
+
+948
+00:33:27,919 --> 00:33:29,919
+installed a windows
+
+949
+00:33:29,919 --> 00:33:33,440
+guest vm with zen and try to
+
+950
+00:33:33,440 --> 00:33:35,840
+use kfx with it the first problem that
+
+951
+00:33:35,840 --> 00:33:38,640
+we noticed uh was that
+
+952
+00:33:38,640 --> 00:33:41,919
+unlike linux windows tend to use some
+
+953
+00:33:41,919 --> 00:33:44,240
+timer interrupts to transfer control
+
+954
+00:33:44,240 --> 00:33:46,720
+from time to time from user space to
+
+955
+00:33:46,720 --> 00:33:48,640
+kernel land and we don't really want to
+
+956
+00:33:48,640 --> 00:33:51,360
+do that that's why all
+
+957
+00:33:51,360 --> 00:33:53,760
+interrupts are being masked otherwise it
+
+958
+00:33:53,760 --> 00:33:55,440
+was easy peasy
+
+959
+00:33:55,440 --> 00:33:58,320
+there is an h5 where you can
+
+960
+00:33:58,320 --> 00:33:59,919
+set where
+
+961
+00:33:59,919 --> 00:34:02,480
+you think the crash conditions are and
+
+962
+00:34:02,480 --> 00:34:04,880
+in windows the most obvious target for
+
+963
+00:34:04,880 --> 00:34:07,279
+this is the kernel level dispatch
+
+964
+00:34:07,279 --> 00:34:09,599
+exception dispatcher uh which can be
+
+965
+00:34:09,599 --> 00:34:12,960
+looked up uh by volatility and uh you
+
+966
+00:34:12,960 --> 00:34:15,199
+just place a breakpoint there and if it
+
+967
+00:34:15,199 --> 00:34:17,040
+ever hits then you get a notification on
+
+968
+00:34:17,040 --> 00:34:20,719
+your fuzzer i also mask out any
+
+969
+00:34:20,719 --> 00:34:23,199
+kernel addresses uh
+
+970
+00:34:23,199 --> 00:34:24,079
+to be
+
+971
+00:34:24,079 --> 00:34:26,000
+to not to be
+
+972
+00:34:26,000 --> 00:34:29,440
+reported to afl uh this helps with
+
+973
+00:34:29,440 --> 00:34:31,760
+stability
+
+974
+00:34:31,760 --> 00:34:34,320
+one drawback with this particular sample
+
+975
+00:34:34,320 --> 00:34:36,239
+is that it was a quite large test case
+
+976
+00:34:36,239 --> 00:34:37,839
+but as we will see
+
+977
+00:34:37,839 --> 00:34:41,199
+in the next demo uh it could be
+
+978
+00:34:41,199 --> 00:34:42,879
+circumvented so
+
+979
+00:34:42,879 --> 00:34:45,359
+here i am just ssh
+
+980
+00:34:45,359 --> 00:34:48,480
+to the windows virtual machine
+
+981
+00:34:48,480 --> 00:34:50,239
+installing openstack on windows took
+
+982
+00:34:50,239 --> 00:34:53,598
+like three months of course
+
+983
+00:34:54,800 --> 00:34:56,879
+most most hard part of the project and
+
+984
+00:34:56,879 --> 00:34:59,520
+we just attach our favorite debugger in
+
+985
+00:34:59,520 --> 00:35:01,839
+this case cdb
+
+986
+00:35:01,839 --> 00:35:05,359
+to to look inside uh the uh
+
+987
+00:35:05,359 --> 00:35:08,160
+the system level uh process as you can
+
+988
+00:35:08,160 --> 00:35:10,400
+see there are a bunch of dlls so there's
+
+989
+00:35:10,400 --> 00:35:12,240
+real complexity here you can basically
+
+990
+00:35:12,240 --> 00:35:14,960
+forget all your ctf2s and whatever and
+
+991
+00:35:14,960 --> 00:35:18,000
+we set our first breakpoint at that
+
+992
+00:35:18,000 --> 00:35:19,760
+function that we think
+
+993
+00:35:19,760 --> 00:35:22,160
+is reading up data from the disk
+
+994
+00:35:22,160 --> 00:35:24,880
+we go to the vm and initiate a virus
+
+995
+00:35:24,880 --> 00:35:27,839
+scan and we can see that this breakpoint
+
+996
+00:35:27,839 --> 00:35:29,280
+hits
+
+997
+00:35:29,280 --> 00:35:33,040
+since the test case is quite large
+
+998
+00:35:33,040 --> 00:35:35,760
+we have to hit this breakpoint multiple
+
+999
+00:35:35,760 --> 00:35:36,880
+times
+
+1000
+00:35:36,880 --> 00:35:39,680
+each time it will read up eight case
+
+1001
+00:35:39,680 --> 00:35:41,760
+from the from the file
+
+1002
+00:35:41,760 --> 00:35:45,040
+but around the sixth or seventh time
+
+1003
+00:35:45,040 --> 00:35:47,359
+we reach the point where there is that
+
+1004
+00:35:47,359 --> 00:35:50,640
+particular attribute that will cause uh
+
+1005
+00:35:50,640 --> 00:35:52,880
+our crash
+
+1006
+00:35:52,880 --> 00:35:55,280
+now we set an other breakpoint which
+
+1007
+00:35:55,280 --> 00:35:57,280
+allows us to to
+
+1008
+00:35:57,280 --> 00:36:00,560
+inspect the actual read file operation
+
+1009
+00:36:00,560 --> 00:36:01,839
+and the result of the read file
+
+1010
+00:36:01,839 --> 00:36:04,640
+operation will be stored in a local
+
+1011
+00:36:04,640 --> 00:36:07,359
+variable buffer
+
+1012
+00:36:07,359 --> 00:36:09,040
+stored at ebp
+
+1013
+00:36:09,040 --> 00:36:10,240
+plus 8
+
+1014
+00:36:10,240 --> 00:36:13,040
+as you can see all 32-bit because of
+
+1015
+00:36:13,040 --> 00:36:15,920
+legacy reasons many antivirus are
+
+1016
+00:36:15,920 --> 00:36:18,800
+still 32 bits which is
+
+1017
+00:36:18,800 --> 00:36:23,320
+makes things easier i think
+
+1018
+00:36:27,440 --> 00:36:30,960
+so now we can see that
+
+1019
+00:36:31,040 --> 00:36:32,960
+yeah something was read from the file
+
+1020
+00:36:32,960 --> 00:36:35,760
+but it's still not the buffer
+
+1021
+00:36:35,760 --> 00:36:36,480
+but
+
+1022
+00:36:36,480 --> 00:36:38,960
+i know how the buffer looks like
+
+1023
+00:36:38,960 --> 00:36:41,440
+so i will know that this will be the
+
+1024
+00:36:41,440 --> 00:36:43,680
+time
+
+1025
+00:36:45,440 --> 00:36:47,680
+oh and important point this file will
+
+1026
+00:36:47,680 --> 00:36:50,400
+not crash the target so this is like a
+
+1027
+00:36:50,400 --> 00:36:52,640
+non-malicious file i just know its
+
+1028
+00:36:52,640 --> 00:36:55,640
+contents
+
+1029
+00:36:59,119 --> 00:37:00,560
+yeah this is the
+
+1030
+00:37:00,560 --> 00:37:03,839
+buffer content that i was expecting so i
+
+1031
+00:37:03,839 --> 00:37:06,240
+write down this address
+
+1032
+00:37:06,240 --> 00:37:08,560
+this is where we will inject our new and
+
+1033
+00:37:08,560 --> 00:37:11,599
+new and new inputs
+
+1034
+00:37:17,359 --> 00:37:19,920
+after this we set a breakpoint that will
+
+1035
+00:37:19,920 --> 00:37:21,280
+trigger
+
+1036
+00:37:21,280 --> 00:37:24,160
+the snapshot creation and we also
+
+1037
+00:37:24,160 --> 00:37:27,119
+inspect the call stack in order to find
+
+1038
+00:37:27,119 --> 00:37:30,240
+a common ancestor of the file reader
+
+1039
+00:37:30,240 --> 00:37:32,720
+function and the target function that we
+
+1040
+00:37:32,720 --> 00:37:34,240
+want to crash
+
+1041
+00:37:34,240 --> 00:37:36,800
+and we set a break point uh when this
+
+1042
+00:37:36,800 --> 00:37:38,800
+common ancestor returns
+
+1043
+00:37:38,800 --> 00:37:41,200
+uh so this will be the end of our
+
+1044
+00:37:41,200 --> 00:37:42,800
+fuzzing cycle this will be the point
+
+1045
+00:37:42,800 --> 00:37:45,200
+when everything goes back to the uh
+
+1046
+00:37:45,200 --> 00:37:47,839
+beginning this way we can not just uh
+
+1047
+00:37:47,839 --> 00:37:50,320
+fuzz a single function but a function
+
+1048
+00:37:50,320 --> 00:37:52,320
+and its context
+
+1049
+00:37:52,320 --> 00:37:54,880
+and we also place a bunch of breakpoints
+
+1050
+00:37:54,880 --> 00:37:57,440
+that like common operations that can
+
+1051
+00:37:57,440 --> 00:38:00,720
+trigger device success like read file or
+
+1052
+00:38:00,720 --> 00:38:02,079
+load library
+
+1053
+00:38:02,079 --> 00:38:04,480
+we don't really want to go to pass where
+
+1054
+00:38:04,480 --> 00:38:06,320
+these things happen because everything
+
+1055
+00:38:06,320 --> 00:38:08,880
+must be in memory so this is our final
+
+1056
+00:38:08,880 --> 00:38:11,599
+breakpoint list
+
+1057
+00:38:12,720 --> 00:38:16,079
+and now we have to run kfx in so-called
+
+1058
+00:38:16,079 --> 00:38:18,160
+setup mode
+
+1059
+00:38:18,160 --> 00:38:18,960
+and
+
+1060
+00:38:18,960 --> 00:38:21,839
+just make the target reach the next
+
+1061
+00:38:21,839 --> 00:38:24,240
+breakpoint so that will trigger the
+
+1062
+00:38:24,240 --> 00:38:27,598
+snapshot creation
+
+1063
+00:38:31,359 --> 00:38:34,480
+yeah it happened and with the uh
+
+1064
+00:38:34,480 --> 00:38:36,880
+actual fuzzing we've used afl and afl
+
+1065
+00:38:36,880 --> 00:38:38,640
+plus plus more recently
+
+1066
+00:38:38,640 --> 00:38:41,040
+we just have to uh tell k effects that
+
+1067
+00:38:41,040 --> 00:38:43,680
+it should inject to that address that we
+
+1068
+00:38:43,680 --> 00:38:46,320
+copied from uh from the local variable
+
+1069
+00:38:46,320 --> 00:38:48,400
+that points the local variable
+
+1070
+00:38:48,400 --> 00:38:50,880
+and with this we'll see that in a short
+
+1071
+00:38:50,880 --> 00:38:53,920
+while the the path number will start to
+
+1072
+00:38:53,920 --> 00:38:56,560
+increase so we are doing something and
+
+1073
+00:38:56,560 --> 00:38:59,040
+eventually this approach was good enough
+
+1074
+00:38:59,040 --> 00:39:02,000
+to find the same bug that davis did so
+
+1075
+00:39:02,000 --> 00:39:03,359
+this was a
+
+1076
+00:39:03,359 --> 00:39:05,280
+nice proof of concept that this approach
+
+1077
+00:39:05,280 --> 00:39:07,760
+can work but of course we haven't found
+
+1078
+00:39:07,760 --> 00:39:10,000
+anything new yet
+
+1079
+00:39:10,000 --> 00:39:12,079
+i'm waiting for the
+
+1080
+00:39:12,079 --> 00:39:14,880
+40 counts to increase a bit like now we
+
+1081
+00:39:14,880 --> 00:39:17,839
+are free the stability is low uh because
+
+1082
+00:39:17,839 --> 00:39:20,079
+of there was a bug that uh just got
+
+1083
+00:39:20,079 --> 00:39:23,520
+fixed yesterday i think and also uh
+
+1084
+00:39:23,520 --> 00:39:26,160
+that list of windows api calls was
+
+1085
+00:39:26,160 --> 00:39:28,720
+probably uh not enough
+
+1086
+00:39:28,720 --> 00:39:30,240
+to
+
+1087
+00:39:30,240 --> 00:39:31,200
+to
+
+1088
+00:39:31,200 --> 00:39:34,000
+cover every possible parts when
+
+1089
+00:39:34,000 --> 00:39:35,280
+things can go
+
+1090
+00:39:35,280 --> 00:39:36,560
+funny
+
+1091
+00:39:36,560 --> 00:39:38,800
+so a few words about handing large
+
+1092
+00:39:38,800 --> 00:39:40,960
+inputs
+
+1093
+00:39:40,960 --> 00:39:43,280
+large inputs are not ideal for fuzzing
+
+1094
+00:39:43,280 --> 00:39:45,440
+in general because of performance
+
+1095
+00:39:45,440 --> 00:39:46,960
+reasons and
+
+1096
+00:39:46,960 --> 00:39:49,280
+they generally increase the stay stored
+
+1097
+00:39:49,280 --> 00:39:51,359
+in the process
+
+1098
+00:39:51,359 --> 00:39:54,480
+some of the i o issues may be
+
+1099
+00:39:54,480 --> 00:39:56,640
+solved by mocking
+
+1100
+00:39:56,640 --> 00:39:59,119
+like how the windows api works when it
+
+1101
+00:39:59,119 --> 00:40:01,280
+comes to device success for example
+
+1102
+00:40:01,280 --> 00:40:03,119
+logging to a console
+
+1103
+00:40:03,119 --> 00:40:06,000
+but when i try to mock all the file
+
+1104
+00:40:06,000 --> 00:40:08,960
+operations of windows well i wouldn't
+
+1105
+00:40:08,960 --> 00:40:10,720
+recommend
+
+1106
+00:40:10,720 --> 00:40:13,359
+yeah but what works around disks so if
+
+1107
+00:40:13,359 --> 00:40:15,680
+you use a rundisk driver that keeps
+
+1108
+00:40:15,680 --> 00:40:17,839
+everything that you need in memory you
+
+1109
+00:40:17,839 --> 00:40:19,280
+can actually
+
+1110
+00:40:19,280 --> 00:40:21,760
+read files from the from the disk but
+
+1111
+00:40:21,760 --> 00:40:24,319
+it's actually the ram but because we are
+
+1112
+00:40:24,319 --> 00:40:26,640
+doing full system fuzzing here all these
+
+1113
+00:40:26,640 --> 00:40:28,800
+like additional elements that you uh put
+
+1114
+00:40:28,800 --> 00:40:31,200
+into the operating system just work
+
+1115
+00:40:31,200 --> 00:40:33,680
+uh one other thing uh to highlight is
+
+1116
+00:40:33,680 --> 00:40:34,800
+that you
+
+1117
+00:40:34,800 --> 00:40:36,400
+really have to be careful with uh
+
+1118
+00:40:36,400 --> 00:40:38,640
+swapping so when memory contents are
+
+1119
+00:40:38,640 --> 00:40:41,440
+written down to disk because you think
+
+1120
+00:40:41,440 --> 00:40:43,680
+it's in memory but in fact it's not
+
+1121
+00:40:43,680 --> 00:40:46,240
+anymore and this can cause surprises but
+
+1122
+00:40:46,240 --> 00:40:48,720
+i linked an article that deals with this
+
+1123
+00:40:48,720 --> 00:40:50,640
+very problem
+
+1124
+00:40:50,640 --> 00:40:53,359
+so uh can we uh
+
+1125
+00:40:53,359 --> 00:40:56,720
+adapt this uh technique that we saw here
+
+1126
+00:40:56,720 --> 00:40:59,280
+to other parsers in the same product
+
+1127
+00:40:59,280 --> 00:41:03,119
+yes we can uh for this i uh
+
+1128
+00:41:03,119 --> 00:41:04,640
+i approached the problem basically the
+
+1129
+00:41:04,640 --> 00:41:08,000
+dumbest way i could imagine so so to
+
+1130
+00:41:08,000 --> 00:41:11,040
+make this whole uh concept easy and
+
+1131
+00:41:11,040 --> 00:41:12,800
+fully automatable
+
+1132
+00:41:12,800 --> 00:41:15,440
+uh i wrote an extension for gitra that
+
+1133
+00:41:15,440 --> 00:41:16,560
+basically
+
+1134
+00:41:16,560 --> 00:41:20,000
+calculates the cyclomatic complexity of
+
+1135
+00:41:20,000 --> 00:41:23,119
+of every function in a binary and builds
+
+1136
+00:41:23,119 --> 00:41:25,359
+a three of these functions and
+
+1137
+00:41:25,359 --> 00:41:28,560
+associates the value of the sum of the
+
+1138
+00:41:28,560 --> 00:41:32,560
+reachable functions with every node so
+
+1139
+00:41:32,560 --> 00:41:35,280
+here we can for example see that this is
+
+1140
+00:41:35,280 --> 00:41:38,000
+a virtual function table where this
+
+1141
+00:41:38,000 --> 00:41:41,040
+particular one has a much larger
+
+1142
+00:41:41,040 --> 00:41:43,359
+psychometric complexity cumulative
+
+1143
+00:41:43,359 --> 00:41:45,280
+psychopathic complexity than all the
+
+1144
+00:41:45,280 --> 00:41:47,599
+other ones so that would be a nice
+
+1145
+00:41:47,599 --> 00:41:50,000
+target for our fuzzing this combined
+
+1146
+00:41:50,000 --> 00:41:52,560
+with the rtti information which is
+
+1147
+00:41:52,560 --> 00:41:54,240
+fortunately present
+
+1148
+00:41:54,240 --> 00:41:56,240
+in these files
+
+1149
+00:41:56,240 --> 00:41:58,240
+we can really easily
+
+1150
+00:41:58,240 --> 00:42:01,359
+select these parts so our
+
+1151
+00:42:01,359 --> 00:42:03,680
+new target became the 7-zip uh
+
+1152
+00:42:03,680 --> 00:42:07,200
+decomposer i also uh could verify that
+
+1153
+00:42:07,200 --> 00:42:09,200
+uh we are targeting the right thing
+
+1154
+00:42:09,200 --> 00:42:11,119
+because the magic number matching and
+
+1155
+00:42:11,119 --> 00:42:14,319
+all the very um obvious code was was
+
+1156
+00:42:14,319 --> 00:42:16,319
+easily identified
+
+1157
+00:42:16,319 --> 00:42:19,440
+identifiable based on this which is uh a
+
+1158
+00:42:19,440 --> 00:42:21,920
+good thing because the whole binary is
+
+1159
+00:42:21,920 --> 00:42:24,160
+like a statical linked mess of
+
+1160
+00:42:24,160 --> 00:42:26,720
+everything like it has honor it has
+
+1161
+00:42:26,720 --> 00:42:29,200
+zealand it has all that stuff if you
+
+1162
+00:42:29,200 --> 00:42:31,280
+have bugs in there then you can use
+
+1163
+00:42:31,280 --> 00:42:34,319
+against simontec that's another talk
+
+1164
+00:42:34,319 --> 00:42:38,319
+now we are targeting something custom
+
+1165
+00:42:38,880 --> 00:42:39,680
+so
+
+1166
+00:42:39,680 --> 00:42:41,440
+at this point i still was in like a
+
+1167
+00:42:41,440 --> 00:42:44,800
+testing stage i just wanted to
+
+1168
+00:42:44,800 --> 00:42:48,640
+tell whether kfx and afl around it or
+
+1169
+00:42:48,640 --> 00:42:51,920
+afl plus plus can survive its own
+
+1170
+00:42:51,920 --> 00:42:53,599
+fuzzing
+
+1171
+00:42:53,599 --> 00:42:57,440
+so i just created one single small 7-zip
+
+1172
+00:42:57,440 --> 00:42:59,359
+file from the command line with basic
+
+1173
+00:42:59,359 --> 00:43:02,720
+commands i've used the afl plus plus
+
+1174
+00:43:02,720 --> 00:43:04,560
+we used intel pt that was probably the
+
+1175
+00:43:04,560 --> 00:43:07,200
+most advanced uh thing
+
+1176
+00:43:07,200 --> 00:43:09,839
+at this point we i used a single core
+
+1177
+00:43:09,839 --> 00:43:10,800
+because
+
+1178
+00:43:10,800 --> 00:43:13,520
+that's just testing and i let it run
+
+1179
+00:43:13,520 --> 00:43:15,920
+when i went to sleep
+
+1180
+00:43:15,920 --> 00:43:18,160
+so
+
+1181
+00:43:18,319 --> 00:43:22,560
+this is how the harnessing looked like
+
+1182
+00:43:25,119 --> 00:43:28,319
+i'm now placing a break point to that
+
+1183
+00:43:28,319 --> 00:43:30,880
+like large complexity
+
+1184
+00:43:30,880 --> 00:43:32,319
+function
+
+1185
+00:43:32,319 --> 00:43:34,560
+and another breakpoint right after that
+
+1186
+00:43:34,560 --> 00:43:36,960
+function that will be the harness setup
+
+1187
+00:43:36,960 --> 00:43:39,960
+breakpoint
+
+1188
+00:43:40,240 --> 00:43:44,078
+initiate a scan inside the vm
+
+1189
+00:43:44,960 --> 00:43:47,280
+and at this point we will see that
+
+1190
+00:43:47,280 --> 00:43:52,359
+our first or zeroth breakpoint hits
+
+1191
+00:43:54,640 --> 00:43:55,680
+i
+
+1192
+00:43:55,680 --> 00:43:57,920
+put a break point to the caller
+
+1193
+00:43:57,920 --> 00:44:00,880
+uh that will be our stop break point so
+
+1194
+00:44:00,880 --> 00:44:03,520
+i want to see everything that this swamp
+
+1195
+00:44:03,520 --> 00:44:05,920
+function does in this case i place our
+
+1196
+00:44:05,920 --> 00:44:08,000
+usual breakpoints
+
+1197
+00:44:08,000 --> 00:44:10,319
+for for windows apis and
+
+1198
+00:44:10,319 --> 00:44:12,720
+i'm searching memory for
+
+1199
+00:44:12,720 --> 00:44:15,680
+the contents of the file i just scanned
+
+1200
+00:44:15,680 --> 00:44:18,000
+of course it is known by me so i can do
+
+1201
+00:44:18,000 --> 00:44:19,520
+an easy scan
+
+1202
+00:44:19,520 --> 00:44:21,599
+and there are a bunch of addresses
+
+1203
+00:44:21,599 --> 00:44:24,319
+it looks like that the file contents are
+
+1204
+00:44:24,319 --> 00:44:27,200
+already scattered all around memory
+
+1205
+00:44:27,200 --> 00:44:29,599
+question is which one is the one that
+
+1206
+00:44:29,599 --> 00:44:31,839
+will be actually parsed
+
+1207
+00:44:31,839 --> 00:44:34,880
+by our target routine
+
+1208
+00:44:34,880 --> 00:44:38,160
+i just save these addresses
+
+1209
+00:44:43,839 --> 00:44:46,960
+and set up the snapshot
+
+1210
+00:44:46,960 --> 00:44:52,240
+now we go forward on a single thread
+
+1211
+00:44:55,680 --> 00:44:57,040
+and the
+
+1212
+00:44:57,040 --> 00:44:59,200
+snapshot is created
+
+1213
+00:44:59,200 --> 00:45:02,560
+now what do we do with those addresses
+
+1214
+00:45:02,560 --> 00:45:05,040
+of course i had to implement some
+
+1215
+00:45:05,040 --> 00:45:09,520
+crazy machine learning outlier detection
+
+1216
+00:45:09,680 --> 00:45:11,760
+uh it what this code basically does is
+
+1217
+00:45:11,760 --> 00:45:14,800
+to run kfx in itself
+
+1218
+00:45:14,800 --> 00:45:17,520
+uh at the injecting at the different
+
+1219
+00:45:17,520 --> 00:45:19,520
+points that are possible
+
+1220
+00:45:19,520 --> 00:45:24,160
+and we see how long the output of afl is
+
+1221
+00:45:24,160 --> 00:45:26,720
+it takes a while the video is edited
+
+1222
+00:45:26,720 --> 00:45:28,319
+from brevity
+
+1223
+00:45:28,319 --> 00:45:31,119
+but you will see in a short while that
+
+1224
+00:45:31,119 --> 00:45:34,160
+almost all addresses are like this
+
+1225
+00:45:34,160 --> 00:45:36,560
+594
+
+1226
+00:45:36,560 --> 00:45:40,480
+except this one which reached 642
+
+1227
+00:45:40,480 --> 00:45:43,440
+output lines which kind of correlates
+
+1228
+00:45:43,440 --> 00:45:47,119
+with the number of instructions executed
+
+1229
+00:45:47,119 --> 00:45:48,319
+with this
+
+1230
+00:45:48,319 --> 00:45:50,240
+we can
+
+1231
+00:45:50,240 --> 00:45:53,280
+start up afl plus plus and our paths are
+
+1232
+00:45:53,280 --> 00:45:55,200
+going up up up
+
+1233
+00:45:55,200 --> 00:45:59,720
+so this was the point when i went to bed
+
+1234
+00:46:05,040 --> 00:46:07,040
+yeah stability is
+
+1235
+00:46:07,040 --> 00:46:08,960
+sorry about that
+
+1236
+00:46:08,960 --> 00:46:12,160
+but after a while here nine hours
+
+1237
+00:46:12,160 --> 00:46:14,720
+we have 22 unique crashes
+
+1238
+00:46:14,720 --> 00:46:16,000
+which is
+
+1239
+00:46:16,000 --> 00:46:18,560
+not bad but are they real are they
+
+1240
+00:46:18,560 --> 00:46:20,560
+exploitable
+
+1241
+00:46:20,560 --> 00:46:22,079
+what's going on
+
+1242
+00:46:22,079 --> 00:46:24,640
+uh turns out that uh these 22 unique
+
+1243
+00:46:24,640 --> 00:46:28,319
+crashes uh uh come back to a single uh
+
+1244
+00:46:28,319 --> 00:46:30,319
+hip overflow
+
+1245
+00:46:30,319 --> 00:46:32,880
+that is caught at different times of
+
+1246
+00:46:32,880 --> 00:46:35,119
+execution because sometimes the free
+
+1247
+00:46:35,119 --> 00:46:36,960
+check the heap structure sometimes
+
+1248
+00:46:36,960 --> 00:46:39,920
+during malloc so it's not predictable
+
+1249
+00:46:39,920 --> 00:46:42,400
+um
+
+1250
+00:46:42,400 --> 00:46:45,839
+i couldn't find a cve for this but it is
+
+1251
+00:46:45,839 --> 00:46:48,560
+an ante now so it's that uh not present
+
+1252
+00:46:48,560 --> 00:46:50,880
+in the most recent versions
+
+1253
+00:46:50,880 --> 00:46:54,400
+uh i did a really quick uh analysis with
+
+1254
+00:46:54,400 --> 00:46:58,079
+a riven which is also a virtualization
+
+1255
+00:46:58,079 --> 00:47:00,560
+based to to analyze
+
+1256
+00:47:00,560 --> 00:47:01,839
+targets like this and with the free
+
+1257
+00:47:01,839 --> 00:47:03,599
+version you can target 32-bit
+
+1258
+00:47:03,599 --> 00:47:05,599
+applications so
+
+1259
+00:47:05,599 --> 00:47:08,000
+pretty good here we see the page fault
+
+1260
+00:47:08,000 --> 00:47:11,760
+like yeah that was it
+
+1261
+00:47:11,760 --> 00:47:14,480
+and the page fault was uh triggered by
+
+1262
+00:47:14,480 --> 00:47:16,960
+an autobonds or out of page
+
+1263
+00:47:16,960 --> 00:47:18,800
+right
+
+1264
+00:47:18,800 --> 00:47:21,839
+if we uh get back to the source of the d
+
+1265
+00:47:21,839 --> 00:47:24,319
+word that was written to it we find a
+
+1266
+00:47:24,319 --> 00:47:26,160
+loop you can see the loop because the
+
+1267
+00:47:26,160 --> 00:47:28,160
+same code is is repeating because it's
+
+1268
+00:47:28,160 --> 00:47:30,800
+not disassembled it's timeline
+
+1269
+00:47:30,800 --> 00:47:33,359
+of the execution and this loop basically
+
+1270
+00:47:33,359 --> 00:47:37,599
+uh fills up the d word uh byte by byte
+
+1271
+00:47:37,599 --> 00:47:39,839
+and if we take a look at where these
+
+1272
+00:47:39,839 --> 00:47:42,720
+bytes come from
+
+1273
+00:47:51,200 --> 00:47:54,720
+then we will easily recognize our input
+
+1274
+00:47:54,720 --> 00:47:56,319
+file
+
+1275
+00:47:56,319 --> 00:47:58,880
+so it's uh at least the content is
+
+1276
+00:47:58,880 --> 00:48:00,800
+completely controlled the size is more
+
+1277
+00:48:00,800 --> 00:48:03,040
+tricky
+
+1278
+00:48:03,040 --> 00:48:03,760
+but
+
+1279
+00:48:03,760 --> 00:48:05,520
+i haven't even investigated this too
+
+1280
+00:48:05,520 --> 00:48:07,440
+much because it's already a dead bug but
+
+1281
+00:48:07,440 --> 00:48:09,839
+it's not a totally useless bug i would
+
+1282
+00:48:09,839 --> 00:48:12,078
+say
+
+1283
+00:48:12,319 --> 00:48:16,079
+this is the fire contents yeah
+
+1284
+00:48:17,280 --> 00:48:18,480
+so
+
+1285
+00:48:18,480 --> 00:48:21,119
+unfortunately when i tried to do similar
+
+1286
+00:48:21,119 --> 00:48:23,520
+stuff with more modern versions of
+
+1287
+00:48:23,520 --> 00:48:26,240
+symantec uh i
+
+1288
+00:48:26,240 --> 00:48:28,559
+wasn't this lucky so
+
+1289
+00:48:28,559 --> 00:48:30,640
+bugs didn't just spill out out of
+
+1290
+00:48:30,640 --> 00:48:32,000
+nowhere
+
+1291
+00:48:32,000 --> 00:48:34,880
+but fortunately kfx follows the unix
+
+1292
+00:48:34,880 --> 00:48:36,000
+philosophy
+
+1293
+00:48:36,000 --> 00:48:39,040
+kind of so it does one thing and it does
+
+1294
+00:48:39,040 --> 00:48:40,000
+that well
+
+1295
+00:48:40,000 --> 00:48:41,760
+it harnesses well
+
+1296
+00:48:41,760 --> 00:48:45,520
+also with afl we got this
+
+1297
+00:48:45,520 --> 00:48:47,680
+shared memory map based
+
+1298
+00:48:47,680 --> 00:48:50,960
+inter-process communication protocol
+
+1299
+00:48:50,960 --> 00:48:51,760
+which
+
+1300
+00:48:51,760 --> 00:48:54,880
+kind of became a standard
+
+1301
+00:48:54,880 --> 00:48:56,480
+among fuzzers
+
+1302
+00:48:56,480 --> 00:49:00,240
+so integrating kfx with lib afl that
+
+1303
+00:49:00,240 --> 00:49:03,760
+allows to for example create more
+
+1304
+00:49:03,760 --> 00:49:06,000
+informed input generators that for
+
+1305
+00:49:06,000 --> 00:49:08,960
+example know about the target 5 format
+
+1306
+00:49:08,960 --> 00:49:10,000
+was
+
+1307
+00:49:10,000 --> 00:49:13,599
+similarly easy i had to submit a like 10
+
+1308
+00:49:13,599 --> 00:49:16,960
+line patch that allowed us to
+
+1309
+00:49:16,960 --> 00:49:21,200
+to specify what kind of signal
+
+1310
+00:49:21,200 --> 00:49:24,640
+libyafs should send to kfx so kfx can
+
+1311
+00:49:24,640 --> 00:49:26,400
+properly shut down the virtual machines
+
+1312
+00:49:26,400 --> 00:49:29,800
+that was it
+
+1313
+00:49:30,000 --> 00:49:31,839
+this is how it looks like
+
+1314
+00:49:31,839 --> 00:49:33,920
+there's no demo because it's it's so
+
+1315
+00:49:33,920 --> 00:49:34,880
+simple
+
+1316
+00:49:34,880 --> 00:49:37,760
+uh another limitation that we still have
+
+1317
+00:49:37,760 --> 00:49:40,000
+but we're working on it is that it still
+
+1318
+00:49:40,000 --> 00:49:43,359
+passes input files uh on the host disk
+
+1319
+00:49:43,359 --> 00:49:46,079
+so it's not that efficient that it could
+
+1320
+00:49:46,079 --> 00:49:50,160
+be but the basic like interfaces are
+
+1321
+00:49:50,160 --> 00:49:54,319
+there so you can do whatever
+
+1322
+00:49:55,359 --> 00:49:58,400
+with this talk i kind of want you to
+
+1323
+00:49:58,400 --> 00:50:00,480
+or encourage you to to take a look at
+
+1324
+00:50:00,480 --> 00:50:03,200
+antiviruses because i think this is an
+
+1325
+00:50:03,200 --> 00:50:05,280
+under-researched area there are many
+
+1326
+00:50:05,280 --> 00:50:07,520
+interesting components in this products
+
+1327
+00:50:07,520 --> 00:50:09,359
+like kernel components their memory
+
+1328
+00:50:09,359 --> 00:50:11,920
+scanners their network scanners but
+
+1329
+00:50:11,920 --> 00:50:13,839
+there can be other
+
+1330
+00:50:13,839 --> 00:50:16,000
+good targets for this kind of full
+
+1331
+00:50:16,000 --> 00:50:18,319
+system fuzzing a
+
+1332
+00:50:18,319 --> 00:50:21,280
+paranoid kind of software seem like an
+
+1333
+00:50:21,280 --> 00:50:24,160
+ideal target like games and anti-cheat
+
+1334
+00:50:24,160 --> 00:50:26,079
+engines but i'm really looking forward
+
+1335
+00:50:26,079 --> 00:50:28,559
+to have some conversations uh with you
+
+1336
+00:50:28,559 --> 00:50:30,400
+about your ideas
+
+1337
+00:50:30,400 --> 00:50:34,240
+uh and also uh the good guys at mozilla
+
+1338
+00:50:34,240 --> 00:50:36,880
+published a blog post recently about how
+
+1339
+00:50:36,880 --> 00:50:40,400
+full system fuzzing which kfx does uh
+
+1340
+00:50:40,400 --> 00:50:43,119
+can be used to find the sandbox escape
+
+1341
+00:50:43,119 --> 00:50:45,040
+so if you're a browser guy
+
+1342
+00:50:45,040 --> 00:50:46,559
+you're in a better position because you
+
+1343
+00:50:46,559 --> 00:50:48,079
+usually have source code and all that
+
+1344
+00:50:48,079 --> 00:50:51,119
+ um and also you have this tool
+
+1345
+00:50:51,119 --> 00:50:53,760
+available easy to set up i also wrote a
+
+1346
+00:50:53,760 --> 00:50:56,400
+blog post about how to how i tried to
+
+1347
+00:50:56,400 --> 00:50:59,760
+harness firefox i did manage to harness
+
+1348
+00:50:59,760 --> 00:51:00,800
+but
+
+1349
+00:51:00,800 --> 00:51:01,680
+the
+
+1350
+00:51:01,680 --> 00:51:03,520
+message format was in the way and i only
+
+1351
+00:51:03,520 --> 00:51:06,079
+spent like a weekend on it but if you
+
+1352
+00:51:06,079 --> 00:51:08,240
+your game is firefox you definitely can
+
+1353
+00:51:08,240 --> 00:51:09,040
+do
+
+1354
+00:51:09,040 --> 00:51:10,720
+things with it uh
+
+1355
+00:51:10,720 --> 00:51:14,160
+actually the guys at the nyx fuzzer
+
+1356
+00:51:14,160 --> 00:51:16,160
+already had their prototypes submitted
+
+1357
+00:51:16,160 --> 00:51:18,559
+to mozilla for them to use
+
+1358
+00:51:18,559 --> 00:51:21,280
+in order to find ipc bugs
+
+1359
+00:51:21,280 --> 00:51:23,280
+which is great
+
+1360
+00:51:23,280 --> 00:51:24,559
+so
+
+1361
+00:51:24,559 --> 00:51:26,960
+in summary uh i
+
+1362
+00:51:26,960 --> 00:51:29,119
+my main point is that uh
+
+1363
+00:51:29,119 --> 00:51:31,599
+virtual machine introspection based
+
+1364
+00:51:31,599 --> 00:51:35,040
+analyzes tools are like game changers
+
+1365
+00:51:35,040 --> 00:51:37,280
+for for offensive research
+
+1366
+00:51:37,280 --> 00:51:40,400
+we can touch parts of applications which
+
+1367
+00:51:40,400 --> 00:51:42,960
+were which you wouldn't even touch with
+
+1368
+00:51:42,960 --> 00:51:44,800
+a 10 foot pole at the rise because it
+
+1369
+00:51:44,800 --> 00:51:46,000
+was so
+
+1370
+00:51:46,000 --> 00:51:48,800
+nasty and hard to reach and the
+
+1371
+00:51:48,800 --> 00:51:51,599
+other hurdles were in the way and with
+
+1372
+00:51:51,599 --> 00:51:54,000
+this tool everything is just a process
+
+1373
+00:51:54,000 --> 00:51:57,359
+that you can do whatever with
+
+1374
+00:51:57,359 --> 00:51:58,160
+so
+
+1375
+00:51:58,160 --> 00:52:00,400
+and in particular kfx
+
+1376
+00:52:00,400 --> 00:52:03,359
+is an easy to use tool that implements
+
+1377
+00:52:03,359 --> 00:52:04,800
+uh with a
+
+1378
+00:52:04,800 --> 00:52:07,440
+vm based introspection capabilities that
+
+1379
+00:52:07,440 --> 00:52:09,520
+is really easy to integrate
+
+1380
+00:52:09,520 --> 00:52:11,520
+to your tools
+
+1381
+00:52:11,520 --> 00:52:13,680
+so tomas please
+
+1382
+00:52:13,680 --> 00:52:16,000
+come join me
+
+1383
+00:52:16,000 --> 00:52:20,160
+uh this was our talk thank you everyone
+
+1384
+00:52:28,319 --> 00:52:31,040
+yeah the tool is there so take a picture
+
+1385
+00:52:31,040 --> 00:52:32,559
+if you want to start playing with it
+
+1386
+00:52:32,559 --> 00:52:34,240
+tonight
+
+1387
+00:52:34,240 --> 00:52:36,880
+this is us on twitter and we'll be
+
+1388
+00:52:36,880 --> 00:52:39,520
+around for questions and a close
+
+1389
+00:52:39,520 --> 00:52:43,960
+proximity of the beer stations
+
+1390
+00:52:46,160 --> 00:52:50,118
+thank you thanks everyone
+

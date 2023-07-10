@@ -1,0 +1,2115 @@
+﻿00:00:00.033,00:00:04.938
+>>First, uh, we’re not going to
+let you, um, deal with a, uh,
+hangover very well right now.
+
+00:00:04.938,00:00:10.577
+We’re going to start with, uh,
+Joe, who’s going to talk about
+fuzzing, yeah? Good stuff. Let’s
+
+00:00:10.577,00:00:15.582
+give our first big, er, big
+round of applause [Applause]
+Good luck. >>Thank you. This is
+
+00:00:17.684,00:00:22.689
+like the worst, uh Sorry [short
+silence] Cool. Um, my name is
+Joe Rozner, uh, and this is
+
+00:00:31.565,00:00:36.570
+Re-targetable Grammar Based, uh,
+Test Case Generation. So I want
+to start off with a story. Um,
+
+00:00:44.711,00:00:49.716
+about how we got to where we are
+today. And ultimately the lesson
+of the story is that testing
+
+00:00:59.493,00:01:04.431
+parsers is really hard. About 4
+years ago, uh, at my current
+company, I started implementing,
+
+00:01:09.002,00:01:14.007
+uh, a Sequel runtime and parser
+for a handful of different
+dialects of Sequel. And the goal
+
+00:01:18.045,00:01:23.050
+of this was to evaluate Sequel
+queries and determine whether or
+not they were dangerous. And in
+
+00:01:27.354,00:01:34.361
+doing this, we built out, uh,
+mostly black box implementations
+of, you know, the vast majority
+
+00:01:34.361,00:01:40.968
+of the Sequel dialects out
+there. And, all told, it was
+something like 35,000 lines of
+
+00:01:40.968,00:01:47.374
+ANTLR definition. Um, so this is
+like grammar definition where
+you are defining what makes a
+
+00:01:47.374,00:01:53.513
+language, and you pass it into a
+program, and it will generate
+you a parser that can recognize
+
+00:01:53.513,00:01:58.518
+that language. Most of this was
+done through looking at poorly
+written documentation. It’s not
+
+00:02:02.322,00:02:07.828
+documentation about how the
+system itself works, but
+documentation for a developer
+
+00:02:07.828,00:02:13.300
+trying to learn how to write Sql
+queries and what’s valid. Uh,
+typically they’re, they’re
+
+00:02:13.30-->000:02:19.573
+incomplete. They don’t have the
+information you need, and you’re
+kind of fumbling around trying
+
+00:02:19.573,00:02:24.578
+to figure out just what it is
+that’s correct, and what makes
+it correct. Things will be
+
+00:02:29.816,00:02:34.321
+contradictory, and you never
+really know what the answer is.
+And in a lot of cases these are
+
+00:02:34.321,00:02:39.993
+closed source systems, um, DB2,
+Oracle, MS Sequel, uh, so you
+can’t just, like, go to the
+
+00:02:39.993,00:02:44.998
+source code for them. Now, we
+used ANTLR, um, but most of
+these tools, uh, like Bison or
+
+00:02:48.668,00:02:53.674
+Yak, um, things like that, they
+will use an [LR style parser or
+curser descent parser which is
+
+00:02:57.21-->000:03:02.149
+vastly different than what ANTLR
+uses. ANTLR uses Allstar parser,
+which is, uh, a top down parser,
+
+00:03:05.185,00:03:10.190
+and so the way that the actual
+algorithm works and you
+recognize a language from this
+
+00:03:12.759,00:03:19.433
+grammar, is going to be
+different, and that leads to all
+sorts of weird cases where you
+
+00:03:19.433,00:03:24.738
+might have 2 grammars that are
+identical in terms of
+definition, but they’re going to
+
+00:03:24.738,00:03:29.743
+recognized differently because
+of the algorithm that’s being
+used. And, most of the time
+
+00:03:33.547,00:03:40.087
+these lack public test cases
+because they’re closed source
+software, the vendors don’t care
+
+00:03:40.087,00:03:44.825
+if you can verify that what they
+did is correct, they just
+provide their software and wait
+
+00:03:44.825,00:03:49.830
+for you to complain, and uh,
+then they fix it maybe. So this
+issue that we ran into is, is
+
+00:03:52.966,00:03:59.272
+really what gave birth to this
+idea and where it came from, but
+the security use cases for it
+
+00:03:59.272,00:04:04.244
+are what vastly expanded the
+scope and kind of further drove
+the usefulness that I’ve found
+
+00:04:04.244,00:04:09.249
+and why this had kind of come to
+be. So it’s a few different
+problem areas in parsing when
+
+00:04:13.553,00:04:18.892
+you’re trying to verify whether
+your parser is correct, uh, and
+we’re going to talk about 3 of
+
+00:04:18.892,00:04:23.897
+them here. The first is overfit
+and underfit implementations.
+So, the goal of a parser is to
+
+00:04:27.434,00:04:33.673
+recognize a language. And the
+question of overfit and underfit
+is “Am I correctly accepting and
+
+00:04:33.673,00:04:39.780
+correctly rejecting sentences
+that are part of that language?”
+So if I have the reference
+
+00:04:39.78-->000:04:45.886
+implementation, and it accepts
+something that mine doesn’t, I’m
+now underfit. I do not recognize
+
+00:04:45.886,00:04:51.591
+the same language that the
+reference implementation does.
+And if it doesn’t recognize
+
+00:04:51.591,00:04:57.197
+something that I do, then I’m
+overfit and I still don’t
+recognize the same language that
+
+00:04:57.197,00:05:02.135
+it does. And this is a problem
+that is specifically based- not
+specifically based, but it’s a,
+
+00:05:06.039,00:05:12.045
+it’s a problem that’s
+exacerbated by poor
+documentation and not having a
+
+00:05:12.045,00:05:17.784
+firm understanding of what is
+correct and the internals of how
+the parser works. Because,
+
+00:05:17.784,00:05:22.789
+without understanding exactly
+what the algorithm is that it’s
+going through, and what it’s
+
+00:05:25.058,00:05:30.630
+using to determine, you know,
+whether or not the sentence is
+correct, it’s really hard to
+
+00:05:30.63-->000:05:35.535
+replicate that same behavior and
+get to the point where you have
+something that is going to
+
+00:05:35.535,00:05:41.908
+represent the same language. And
+so without having, like, public
+grammars, and without knowing
+
+00:05:41.908,00:05:47.347
+about the algorithm, you’re
+limited to reverse engineering.
+And experimentation with the
+
+00:05:47.347,00:05:52.352
+reference. Trying out things,
+trying to discover what sort of
+behavior it’s using, and
+
+00:05:56.423,00:06:00.260
+basically just trial and error
+until you can get to that point
+where you really understand,
+
+00:06:00.26-->000:06:05.265
+“Okay, this is how I need to
+define this section of the
+language and-and go on from
+
+00:06:05.265,00:06:11.071
+there. As I’ve already said,
+there, there’s differences in
+parsing algorithms, um, if
+
+00:06:11.071,00:06:14.074
+you’ve ever tried to, like,
+reverse engineer, like, one of
+these like, generated parsers,
+
+00:06:14.074,00:06:20.213
+it’s, it’s basically impossible.
+It’s a giant state machine built
+out of go-to’s essentially. And
+
+00:06:20.213,00:06:24.718
+you just kind of have this state
+where you’re constantly mutating
+it, and it’s a really bad time.
+
+00:06:24.718,00:06:31.291
+Like you just, you shouldn’t do
+it. Um, and in these different
+parsing algorithms, they
+
+00:06:31.291,00:06:34.894
+typically have different
+behavior for a handful of
+different properties. Things
+
+00:06:34.894,00:06:40.133
+like ambiguity, are two
+different production rules going
+to be interpreted differently?
+
+00:06:40.133,00:06:45.905
+Uh, do you have left recursion?
+Are you going to continually go
+and repeat a specific rule? Um,
+
+00:06:45.905,00:06:50.910
+and precedents, you know. How
+are you expressing precedents
+for operators? Uh, these are all
+
+00:06:52.912,00:06:57.817
+things that every single parser
+generator you use is going to
+handle differently. And so
+
+00:06:57.817,00:07:02.422
+taking a grammar from one to
+another is going to behave very
+differently in all of these
+
+00:07:02.422,00:07:07.427
+areas. And the worst part about
+all of this is that universally
+proving two context free
+
+00:07:09.929,00:07:16.736
+grammars are identical is, uh,
+undecidable. This is a problem
+that for the general case is not
+
+00:07:16.736,00:07:22.642
+decidable and you cannot write
+an algorithm that does this
+thing. Now we can, we can slim
+
+00:07:22.642,00:07:27.180
+down this problem and we can
+take a subset of it and we can
+maybe do it for that, but in the
+
+00:07:27.18-->000:07:32.185
+general case, this is not
+something that we can do. The
+next problem you worry about are
+
+00:07:36.389,00:07:41.294
+tree generation flaws. So once
+you’ve recognized a sentence in
+a language, typically your goal
+
+00:07:41.294,00:07:46.299
+is to create a parse tree, or an
+abstract syntax tree. And
+basically what this does is it
+
+00:07:49.402,00:07:54.407
+shows the syntactic relationship
+between various components, or
+tokens, of that sentence. So
+
+00:07:56.743,00:08:03.183
+it’s has some kind of root node,
+which is the top point of the
+tree, and going down there, this
+
+00:08:03.183,00:08:08.188
+provides context for what a
+specific token is and how it
+relates to every other token in
+
+00:08:11.658,00:08:16.663
+that sentence. And the whole
+process of building trees and
+working with trees is super
+
+00:08:19.165,00:08:24.170
+complicated as you move from
+generator to generator, runtime
+to runtime. Um. Most parsers
+
+00:08:27.04-->000:08:32.779
+will require, uh, manual tree
+construction, and this is
+something that has kind of
+
+00:08:32.779,00:08:38.985
+gotten better recently in newer,
+uh, tools like ANTLR, but
+typically you’ll have a
+
+00:08:38.985,00:08:43.356
+production rule which it will
+try to recognize, and when it
+does, you will then run a block
+
+00:08:43.356,00:08:48.428
+of code. And that code is
+responsible for building up a
+node and then inserting it into
+
+00:08:48.428,00:08:53.433
+the rest of the nodes at the
+right point to build that
+representation. And this is
+
+00:08:56.136,00:09:01.041
+typically the point where you’re
+going to see things like, if you
+recognize a number, you’re going
+
+00:09:01.041,00:09:06.746
+to parse that into a numeric
+representation for the language
+you’re in. So the number 1234
+
+00:09:06.746,00:09:11.651
+gets read as decimal and
+converted into an integer in
+the, the language you’re
+
+00:09:11.651,00:09:18.425
+building this in. And we’ll come
+into, you know, issues with that
+specifically, shortly. Uh, this
+
+00:09:18.425,00:09:25.198
+is an example, uh, of something
+like this. This is a lalrpop,
+which is, uh, a parser generator
+
+00:09:25.198,00:09:31.838
+for Rust. And basically on the
+left-hand side of the equals,
+uh, arrow you have the different
+
+00:09:31.838,00:09:35.208
+production rules, and so this is
+what it’s trying to match and
+this is what it’s trying to
+
+00:09:35.208,00:09:41.014
+recognize. And on the right
+side, you have the action that’s
+being called. So for each one of
+
+00:09:41.014,00:09:46.019
+these going down, these are all
+alternates, so it’s going to try
+to match- oh. Sorry about that.
+
+00:09:49.355,00:09:53.726
+I’m trying to juggle two laptops
+until I can get speaker notes,
+and it’s, uh, not going so well.
+
+00:09:53.726,00:09:58.731
+Um, so these are, uh, these are
+all production rules. And each
+one of these is an alternate, so
+
+00:10:01.034,00:10:06.039
+it’s going to try to match one
+of these. And everything on the
+left of the arrow is going to be
+
+00:10:08.408,00:10:12.112
+a rule, everything on the right
+is an action. So once it
+recognizes it, it calls the
+
+00:10:12.112,00:10:17.417
+action, and that is what builds
+up the tree as it goes down or
+up depending on the algorithm
+
+00:10:17.417,00:10:22.422
+that’s being used and whether
+it’s top down or bottom up. The
+third problem is unsafe and
+
+00:10:25.525,00:10:30.530
+incorrect use of validated
+input, so once you’ve recognized
+a sentence and you think you
+
+00:10:32.765,00:10:38.738
+understand what it’s doing, um,
+what are you doing with it?
+Typically recognition isn’t,
+
+00:10:38.738,00:10:43.042
+like, the only step, it’s
+typically the first step. And
+many more steps you will take to
+
+00:10:43.042,00:10:47.247
+use that information. And so,
+most parsers will say, “Yes,
+this is a sentence,” but don’t
+
+00:10:47.247,00:10:49.249
+necessarily say, “Yes, this is
+safe,” or “The information here
+is okay to use.” So the only
+
+00:10:49.249,00:10:54.254
+goal of a parser is to ensure
+that a sentence is a member of
+that language. And so once
+
+00:10:59.993,00:11:04.998
+you’ve recognized it, you have
+numbers, you have strings. What
+do you do with those strings
+
+00:11:09.402,00:11:15.041
+later? Um, and essentially what
+this comes down to is if you can
+get past the parser with
+
+00:11:15.041,00:11:21.281
+something that is syntactically
+valid, but is still something
+dangerous- maybe down the line
+
+00:11:21.281,00:11:26.286
+you copy this to a buffer
+somewhere, it’s just back to any
+other kind of typical
+
+00:11:28.621,00:11:34.761
+vulnerability exploitation at
+that point. Um, smashing the
+stack, logic flaws, um, it, and
+
+00:11:34.761,00:11:39.666
+it, it’s that simple. And it’s
+like your, your goal is to get
+past that point, it’s the
+
+00:11:39.666,00:11:44.671
+gatekeeper. Um. Reasons why this
+is especially bad is that a lot
+of, defining grammar is really
+
+00:11:47.874,00:11:51.411
+hard when you have, like,
+complex languages, so you’ll
+have places where you might have
+
+00:11:51.411,00:11:56.883
+opaque tokens where you say, “I
+need to read in a character
+set.” For instance, like in an
+
+00:11:56.883,00:12:00.987
+regex, um, but I’m just going to
+read that in as a string,
+anything between like two square
+
+00:12:00.987,00:12:05.525
+brackets. And then later on I’m
+going to go ahead and figure out
+what that actually does. And
+
+00:12:05.525,00:12:10.597
+this is super common. You’ll see
+it all over real parsers. Um, so
+you might recognize this as a
+
+00:12:10.597,00:12:16.235
+sentence in the language, but
+this small subsection of that,
+you’re not going to understand,
+
+00:12:16.235,00:12:21.240
+like, what it’s actually doing,
+or whether or not it has some,
+like, bad, uh, value in it. So
+
+00:12:23.776,00:12:28.715
+these opaque tokens are, are
+kind of rough, um, and this
+ultimately leads to parsers not
+
+00:12:28.715,00:12:32.885
+really having a lot of semantic,
+uh, information about the
+language they’re recognizing.
+
+00:12:32.885,00:12:37.624
+And there’s just not really a
+good solution to this in many
+cases, because of the tooling
+
+00:12:37.624,00:12:43.363
+and because of the complexity of
+the languages. And if you
+subscribe to the link sec
+
+00:12:43.363,00:12:47.400
+concept, you know, we should be
+working to reduce the complexity
+to make this an easier problem
+
+00:12:47.40-->000:12:54.374
+so that some of these could go
+away. So how do we test this?
+It’s great that we’ve identified
+
+00:12:54.374,00:13:00.546
+the problem areas, but how do we
+do better? How do we ensure that
+our parser that we’re building
+
+00:13:00.546,00:13:04.817
+is going to be a faithful
+representation of another
+reference implementation?
+
+00:13:04.817,00:13:09.822
+Typically it comes down to just
+getting more test cases and
+getting to the point where you
+
+00:13:12.158,00:13:17.163
+feel comfortable that your
+parser is recognizing the same
+set of sentences that another
+
+00:13:19.599,00:13:24.604
+is. Um, and to do this you need
+a s**tload of, uh, sentences.
+Like a massive amount. Like it,
+
+00:13:28.041,00:13:34.313
+having 10-->0 100-->0 like 1-->000-->0
+like, just really isn’t enough,
+especially for large, uh,
+
+00:13:34.313,00:13:40.286
+languages. So writing them by
+hand just really isn’t a viable
+option. Like, there’s no way
+
+00:13:40.286,00:13:45.124
+you’re going to have enough
+variety and enough targeted, uh,
+sentences that can cover that.
+
+00:13:45.124,00:13:51.130
+Like it’s, it’s just not
+realistic unless you people just
+cranking these out all day for,
+
+00:13:51.13-->000:13:57.937
+for hours. Um. So something that
+we ended up doing was crawling
+the web, and, and looking at,
+
+00:13:57.937,00:14:03.509
+like, stack overflow and just
+pulling out really bad examples,
+going to open source projects
+
+00:14:03.509,00:14:09.182
+and grabbing them out of there.
+And this is great because you
+can get a lot up until a certain
+
+00:14:09.182,00:14:15.922
+point, but you have no guarantee
+that you’re exercising different
+areas of it. You don’t know
+
+00:14:15.922,00:14:20.893
+really what your breadth is, how
+deep you’re going, and there’s
+not really good code coverage
+
+00:14:20.893,00:14:27.700
+tools for this. So you’re kind
+of just assuming that you have
+all of this coverage, but at the
+
+00:14:27.70-->000:14:34.640
+end of the day, you don’t really
+know, and even within a specific
+tree, like the individual values
+
+00:14:34.64-->000:14:40.379
+for tokens, just variation in
+that one space, may have
+significant impact depending on
+
+00:14:40.379,00:14:46.352
+what the application is doing
+with that value afterward. So
+the need to generate test cases
+
+00:14:46.352,00:14:51.557
+at a much higher rate is
+ultimately what I arrived at.
+Um, and so the way to do this
+
+00:14:51.557,00:14:58.498
+typically is using a fuzzer. And
+there’s a few different styles
+of fuzzing that are pretty
+
+00:14:58.498,00:15:03.436
+common today. Um, and all of
+these sort of had issues with
+the style of testing that we
+
+00:15:06.205,00:15:10.209
+were trying to accomplish. So
+I’m going to walk through, uh,
+why that is and where these
+
+00:15:10.209,00:15:15.214
+types of fuzzing are good for
+and how we can get to a point
+where we have something that is
+
+00:15:19.452,00:15:26.392
+more targeted for this and maybe
+be used for these more
+traditional types of fuzzing to
+
+00:15:26.392,00:15:32.799
+augment them and make them more
+effective in what they do. So
+one of the most common ones
+
+00:15:32.799,00:15:38.604
+you’ll see today is, uh, is AFL,
+you know, this is, like, the hot
+fuzzer right now. Um, and, and
+
+00:15:38.604,00:15:44.844
+basically what this does is it
+focuses on path exploration and
+code coverage to make sure that
+
+00:15:44.844,00:15:49.849
+you are targeting as much of the
+application as possible. Uh,
+this isn’t aware of any
+
+00:15:53.019,00:15:58.024
+semantics or syntax, it is
+implemented, not in a dumb, bad
+way, but it’s dumb in terms of
+
+00:16:00.159,00:16:05.164
+how it tries to explore. So it
+instruments the application, and
+watches as it goes through it.
+
+00:16:08.768,00:16:15.708
+It will take some kind of seed
+value and it mutates that. And
+it determines whether or not
+
+00:16:15.708,00:16:20.880
+that mutation allows it to
+explore new areas, and if it
+does, it saves that and it
+
+00:16:20.88-->000:16:25.384
+continues down that path, an if
+it doesn’t, it throws it away as
+something that’s not
+
+00:16:25.384,00:16:30.389
+interesting. And then it repeats
+this process billions of times,
+over and over, uh, until you
+
+00:16:32.859,00:16:39.799
+stop it, basically, and bugs
+fall out. Um, so this can take a
+lot of time because it’s using
+
+00:16:39.799,00:16:45.004
+random mutation, and it’s not
+very targeted, and it’s whole
+goal is kind of to, like,
+
+00:16:45.004,00:16:50.009
+explore. So you might spend a
+lot of time in, in uninteresting
+code paths, um, and there, there
+
+00:16:52.511,00:16:58.651
+are some, uh, ways to help kind
+of guide it and, and cut off
+certain areas, um, in some of
+
+00:16:58.651,00:17:03.589
+these types of fuzzers, but for
+the most part it’s a very random
+process. And in the case of
+
+00:17:07.46-->000:17:14.233
+trying to evaluate, uh, the
+specific types of tests that we
+want to is whether two parsers
+
+00:17:14.233,00:17:19.272
+are implemented the same, it’s
+not immediately clear how to
+build a really good test harness
+
+00:17:19.272,00:17:23.843
+using something like AFL to do
+that. Um, like the way that it
+determines whether or not
+
+00:17:23.843,00:17:28.848
+something’s interesting is by
+hooking the sigabrt and sigkill,
+uh, signals, and then waiting
+
+00:17:31.083,00:17:36.122
+for the program to essentially,
+like, crash or terminate. And so
+getting the semantic information
+
+00:17:36.122,00:17:42.561
+that we want to about whether
+something is underfit or
+overfit, or, you know, why did
+
+00:17:42.561,00:17:47.567
+this test case succeed or fail
+and how does it compare to this
+other thing. It’s not really
+
+00:17:49.969,00:17:54.473
+immediately clear how you would
+encode that information into
+something like a test harness
+
+00:17:54.473,00:18:01.013
+for this. And there’s a great
+blog post, um, showing some of
+these cases where AFL actually
+
+00:18:01.013,00:18:07.086
+can be, uh, used in some cases
+like this. Um, so basically, uh,
+the link at the bottom here
+
+00:18:07.086,00:18:13.392
+walks through, uh, taking the
+string “Hello” and passing
+mutations of that into a image
+
+00:18:13.392,00:18:18.397
+viewer. And basically getting
+from the point of the string
+“Hello” to valid jpegs. And I
+
+00:18:20.90-->000:18:25.071
+have a few quotes that I want to
+share, uh, from this. And
+basically just kind of showing,
+
+00:18:25.071,00:18:30.876
+you know, where this is helpful
+and where this isn’t helpful for
+this type of, uh, task. So, “The
+
+00:18:30.876,00:18:36.282
+first image hit after about 6
+hours on an 8-core system.” And
+this is actually pretty good and
+
+00:18:36.282,00:18:40.987
+pretty surprising. Going from
+nothing but the string “Hello”
+to something that is a
+
+00:18:40.987,00:18:47.960
+syntactically valid jpeg is,
+like, pretty good. I mean, this
+is not crazy hardware, it’s
+
+00:18:47.96-->000:18:53.499
+something that, you know, anyone
+probably in this room has access
+to. Uh, and anyone who’s a real
+
+00:18:53.499,00:18:58.504
+adversary trying to find bugs,
+like this is no problem to get
+access to. “Certain types of
+
+00:19:01.04-->000:19:06.679
+automatically executed checks
+with a large search space may
+pose an insurmountable obstacle
+
+00:19:06.679,00:19:11.517
+to the fuzzer.” And this is
+ultimately, like, the real crux
+of the problem, is that if you
+
+00:19:11.517,00:19:16.389
+have something like this in your
+application where you’re
+comparing some section of a
+
+00:19:16.389,00:19:21.927
+sentence for a very specific
+value, a tool like AFL is going
+to do a really poor job of
+
+00:19:21.927,00:19:28.401
+figuring out what it takes to
+get past this check. Because
+it’s using random mutation, it
+
+00:19:28.401,00:19:33.773
+doesn’t know what it needs to do
+to get to the string hacked by
+p1gZ here. Uh, so, there’s other
+
+00:19:33.773,00:19:39.979
+types of fuzzers do a really
+good job of this, and we’ll talk
+about those in a second, but
+
+00:19:39.979,00:19:45.017
+this is a super common pattern
+you’re going to see in cases
+like shotgun parsers, binary
+
+00:19:45.017,00:19:50.022
+file formats, um, and so things
+like checksums, magic numbers,
+offsets into files, um, these
+
+00:19:52.558,00:19:57.263
+are all things that you, you
+don’t want to spend time,
+really, exercising a lot of
+
+00:19:57.263,00:20:00.733
+that, because you want to get
+past that typically to the point
+where something interesting will
+
+00:20:00.733,00:20:06.005
+happen. I mean there are cases
+where just the code here might
+be interesting, but you really
+
+00:20:06.005,00:20:11.010
+want to be able to get past
+that. “In practical terms, this
+mean that AFL fuzz won’t have as
+
+00:20:14.914,00:20:21.120
+much luck ‘inventing’ PNG files
+or non-trivial HTML documents
+from scratch.” And the reason is
+
+00:20:21.12-->000:20:26.125
+because these are very, very
+syntactic and complex file
+formats. There are aspects of it
+
+00:20:31.53-->000:20:35.634
+where things need to be in the
+right place in the right order,
+and simply moving things around
+
+00:20:35.634,00:20:41.440
+won’t produce usable input. And
+so this is one of the areas that
+I’m really hoping to improve,
+
+00:20:41.44-->000:20:47.012
+uh, by releasing this code
+today. The next type of fuzzing
+we’re talking about is
+
+00:20:47.012,00:20:51.717
+instrumentation and solving. Uh,
+and if you follow any of the CGC
+stuff, a lot of the solutions
+
+00:20:51.717,00:20:56.722
+that were, uh, built for that
+used this approach as part of
+their solution. And like AFL,
+
+00:20:59.658,00:21:04.230
+like these also will focus on
+path exploration and code
+coverage, but they do so in a
+
+00:21:04.23-->000:21:10.302
+different way. Rather than
+trying different mutations, they
+convert the problem into
+
+00:21:10.302,00:21:15.207
+something that they can execute
+some amount of, and when they
+get to a point where there’s
+
+00:21:15.207,00:21:21.447
+some kind of input or something
+that is, uh, nondeterministic,
+they convert that over into, uh,
+
+00:21:21.447,00:21:25.718
+a symbolic value. And then you
+use something like a
+satisfiability solver to
+
+00:21:25.718,00:21:32.458
+identify what it will take to
+move past that branching point.
+Um, generate me a value that
+
+00:21:32.458,00:21:37.963
+will take each path and will
+allow me to explore those. So
+this is how you would solve that
+
+00:21:37.963,00:21:43.269
+problem of very specific
+strings, um, where you need to
+know or check sums or anything
+
+00:21:43.269,00:21:48.674
+like that where you need to know
+how to get past this step.
+‘Cause it will provide something
+
+00:21:48.674,00:21:53.779
+that will solve that problem for
+you, and then generate you an
+input that matches that. This
+
+00:21:53.779,00:21:58.884
+still doesn’t care about syntax
+or semantics, it still has no
+real concept of what any of that
+
+00:21:58.884,00:22:03.122
+is, or what the language is,
+even for that matter. It’s just
+trying to figure out how to get
+
+00:22:03.122,00:22:08.594
+deeper into the program, or to a
+point that you want in that
+program. Even with these, uh,
+
+00:22:08.594,00:22:14.200
+there’s still not typically easy
+to build test harnesses for, uh,
+a lot of this is still
+
+00:22:14.20-->000:22:18.304
+automated, um, but you could
+probably hack into a lot of more
+interesting stuff in it if you
+
+00:22:18.304,00:22:23.309
+wanted. Great examples of this
+are, uh, KLEE open source
+software. Um, there’s, uh, like
+
+00:22:25.611,00:22:31.150
+the Mayhem paper, which is
+really great and you should go
+read it if you haven’t. And then
+
+00:22:31.15-->000:22:36.155
+the, the last big type that
+we’ll be talking about today is
+grammar based. And this isn’t a
+
+00:22:39.258,00:22:43.629
+new concept. It’s something that
+has existed and there are a
+handful of projects out there
+
+00:22:43.629,00:22:47.333
+that do it, um, but there’s a
+whole bunch of problems with the
+proaches- with the approaches
+
+00:22:47.333,00:22:52.805
+that have been built in terms of
+what we were looking for. So
+what these do is it takes a
+
+00:22:52.805,00:22:57.142
+grammar file and it will
+generate you input that is
+syntactically correct based on
+
+00:22:57.142,00:23:03.048
+that grammar file. And some of
+the problems with this are that
+they typically provide their own
+
+00:23:03.048,00:23:07.586
+grammar language. So when you
+define a grammar, you have to
+write it in their language. And
+
+00:23:07.586,00:23:13.559
+if you have 1-->0 15,000 lines of
+grammar for a specific language,
+do you really want to go and
+
+00:23:13.559,00:23:18.797
+translate all of that definition
+over to another language? You’re
+doing it by hand typically,
+
+00:23:18.797,00:23:23.702
+which means that you might make
+mistakes, you might define
+something that’s not the same,
+
+00:23:23.702,00:23:30.609
+and just the semantics of that
+language may not translate very
+well to the new language for
+
+00:23:30.609,00:23:35.614
+this fuzzer. These are mostly
+targeted toward regular and
+context free languages. Uh, and
+
+00:23:38.183,00:23:43.756
+this is fine, uh, a lot of
+languages do fall into that
+category, but for more complex
+
+00:23:43.756,00:23:49.528
+languages, things like really
+complex binary file formats, uh,
+contact sensitive languages,
+
+00:23:49.528,00:23:54.533
+like these are just not
+applicable, and they’re not
+going to help you. Um, they’re
+
+00:23:54.533,00:24:00.572
+typically not byte oriented, so
+you’re kind of limited to a lot
+of text-based, uh, languages,
+
+00:24:00.572,00:24:05.444
+and so you’re limited in what
+you can do with these, and the
+use cases even have for them.
+
+00:24:05.444,00:24:10.449
+Mozilla’s published Dharma,
+which is their tool. Um, I
+believe it’s primarily used for
+
+00:24:12.885,00:24:18.390
+testing out, uh, recognition of
+things like CSS, HTML,
+Javascript, and ensuring that,
+
+00:24:18.39-->000:24:24.797
+uh, things don’t, uh, break as
+they test their browser. But
+these are like the main types
+
+00:24:24.797,00:24:29.802
+you’ll see, and we’re going to
+expand on the grammar based one
+shortly. And last, I’m talking a
+
+00:24:32.805,00:24:39.478
+lot about traditional test case
+generation, and just how you
+will go about, uh, actually
+
+00:24:39.478,00:24:44.483
+testing and using what you
+generate as your input. And so I
+already said there’s a lot of
+
+00:24:48.02-->000:24:54.526
+inflexibility with being able to
+design complex test cases, and
+using those in a meaningful way
+
+00:24:54.526,00:24:59.965
+to compare 2 different
+implementations, or ask
+questions about how closely one
+
+00:24:59.965,00:25:05.170
+matches to another, or what’s
+being done with that. And you’re
+kind of limited just to kind of
+
+00:25:05.17-->000:25:10.642
+does the application crash, and
+identifying a few different
+things within it. You also don’t
+
+00:25:10.642,00:25:14.580
+get a lot of flexibility in
+defining a feedback loop. And
+this kind of falls into the
+
+00:25:14.58-->000:25:19.618
+prior discussion. Um, you can’t
+really feed in more than like,
+you know, does this explore
+
+00:25:19.618,00:25:24.790
+more, or does this, um, did this
+do something interesting? And so
+being able to have more
+
+00:25:24.79-->000:25:31.497
+flexibility around that is
+something that’s really nice.
+And so, there aren’t many tools
+
+00:25:31.497,00:25:36.502
+out there that do some parts of
+this, but we can do better.
+Ideally we want something that’s
+
+00:25:40.372,00:25:45.144
+more flexible, something that we
+can really program our own test
+harnesses, something that we can
+
+00:25:45.144,00:25:50.649
+do whatever we want- we can
+design a test that does whatever
+we want for any case that we
+
+00:25:50.649,00:25:55.854
+might have. We want to be able
+to use the grammars that we’ve
+already written. Why should we
+
+00:25:55.854,00:26:00.392
+have to translate these?
+Especially by hand to something
+that isn’t used by, like, almost
+
+00:26:00.392,00:26:04.630
+anyone. And isn’t going to
+provide any meaningful value to
+us other than our test
+
+00:26:04.63-->000:26:09.635
+generation. Um. It should be
+expressive enough for everything
+that most of the other fuzzers
+
+00:26:11.87-->000:26:16.775
+out there do right now, so
+covering context-free and
+regular, but we want to support
+
+00:26:16.775,00:26:22.448
+contact-sensitive. We want to do
+text and binary. We want the
+ability to kind of provide value
+
+00:26:22.448,00:26:27.453
+for any kind of language that we
+can think about, and might want
+to test. Being embeddable from
+
+00:26:29.988,00:26:36.295
+any language that we might want
+to use. I don’t want to have to
+go out into C specifically and
+
+00:26:36.295,00:26:40.732
+write this. If I’m building
+something in Python or Ruby, I
+want to just be able to call
+
+00:26:40.732,00:26:46.371
+this directly. If I have
+functionality around the parser
+generator that I’m using in that
+
+00:26:46.371,00:26:52.778
+language, I want do be able to
+do it directly in there. I don’t
+want to have to go and build a
+
+00:26:52.778,00:26:56.915
+whole separate ecosystem to
+bring this over to somewhere
+else. And we should focus on as
+
+00:26:56.915,00:27:01.353
+much code reuse as possible. You
+know? If I have a whole bunch of
+components built, I don’t want
+
+00:27:01.353,00:27:04.723
+to reinvent the wheel every
+single time I want to design a
+new test or I want to do
+
+00:27:04.723,00:27:09.728
+something new with this. And so
+the project I’m sharing today
+isn’t the first, it’s not the
+
+00:27:13.832,00:27:19.938
+most feature complete, or even
+the most novel solution to this,
+um, but it is more flexible and
+
+00:27:19.938,00:27:24.810
+it is more extensible, and it is
+something that can get to the
+point where it is most of those
+
+00:27:24.81-->000:27:29.815
+things. So I want to share with
+you Synfuzz. Um, I’m releasing
+it today, and basically this is
+
+00:27:32.417,00:27:37.422
+a platform for building test
+generation and test harnesses
+and test fuzz- uh, fuzzers. It’s
+
+00:27:42.294,00:27:47.533
+organized like this: at the
+center you have an intermediate
+representation, which is a bunch
+
+00:27:47.533,00:27:52.204
+of data structures and some
+helper functions that allow you
+to construct complex grammars.
+
+00:27:52.204,00:27:57.809
+Outside of that you will have
+your various front ends, for
+your different parser generators
+
+00:27:57.809,00:28:04.550
+and combinator libraries. So
+things like ANTLR and Ragel and
+EBNF, BISON, and essentially
+
+00:28:04.55-->000:28:10.422
+what these do is you take a
+grammar file and with these
+front ends, it parses them, and
+
+00:28:10.422,00:28:15.427
+it translates them into the
+intermediate representation. The
+test harnesses are reusable
+
+00:28:17.829,00:28:23.769
+components that you design, and
+these can be as simple or as
+complex as you want. You have
+
+00:28:23.769,00:28:28.206
+the full availability of any
+programming language you want to
+use, and you can design a test
+
+00:28:28.206,00:28:34.079
+to do whatever you want with
+these. And so you consume the
+intermediate representation; you
+
+00:28:34.079,00:28:38.584
+give it a starting rule that is
+the root of your tree, and it
+will start generating you parse
+
+00:28:38.584,00:28:43.589
+trees, and then from the parse
+trees will generate you
+sentences based on that. Ideally
+
+00:28:45.891,00:28:51.597
+the only piece that you as a
+user will have to build is a
+test harness, and the reason
+
+00:28:51.597,00:28:56.969
+being that it likely is going to
+be something that’s non-trivial.
+Um, there probably could be
+
+00:28:56.969,00:29:02.507
+very, uh, reasonable components
+for this, and that would make
+the job easier for you, but that
+
+00:29:02.507,00:29:07.512
+is, uh, ideally the only piece
+that needs to be built, uh, for
+you. ANTLR is currently the only
+
+00:29:10.449,00:29:17.122
+front end that I’ve written, um,
+but I’m planning to expand
+pretty heavily out from there.
+
+00:29:17.122,00:29:22.127
+This is a list of a handful of
+the, uh, features that you get,
+so like most combinator
+
+00:29:25.097,00:29:30.002
+libraries you’re going to get
+uh, a lot of logical, uh,
+operations, as well as
+
+00:29:30.002,00:29:36.508
+quantification, um, specific
+values for, uh, generating
+specific types of values. Right
+
+00:29:36.508,00:29:42.681
+now everything is byte oriented,
+uh so it has Unicode support,
+but it will, uh, output to a
+
+00:29:42.681,00:29:47.686
+byte stream. Using the framework
+is something like this. Uh, the
+core is written in Rust, but the
+
+00:29:53.025,00:29:57.863
+plan is to release C bindings
+that can be brought into
+basically any language. But
+
+00:29:57.863,00:30:02.868
+essentially the way this works
+is you bring in a grammar file
+and you read it, you pass it
+
+00:30:02.868,00:30:09.374
+into a generate rules function,
+and it will take that grammar
+and parse that into all of the
+
+00:30:09.374,00:30:14.379
+rules that are expressed by that
+grammar. You then provide it a
+root node, and tell it to
+
+00:30:17.249,00:30:22.254
+generate, and then you spit out
+the, uh, generated string, and
+do whatever you want with it.
+
+00:30:24.856,00:30:29.728
+Uh, any communication is
+available with this, whether you
+want to use sockets, pipes,
+
+00:30:29.728,00:30:36.334
+files, um, it builds across
+platform and can likely target
+most embedded platforms, uh,
+
+00:30:36.334,00:30:41.239
+which is cool, so if you wanted
+to do anything with this, you
+know, pretty much anywhere you
+
+00:30:41.239,00:30:47.612
+can. And I have a quick demo.
+And if you’d like a live demo,
+you can catch me afterward and I
+
+00:30:47.612,00:30:53.385
+can show you more. Um, but
+essentially what this does is
+you’ll see here, I basically
+
+00:30:53.385,00:30:58.390
+have a wile loop. That is really
+hard to read, I’m sorry. Uh, is
+any of that legible? Cool. I’m
+
+00:31:14.139,00:31:20.979
+not allowed to plug my laptop
+in, but uh, I will walk- I will
+talk you through it, and if
+
+00:31:20.979,00:31:25.984
+you’d like to see it, I can show
+you after. Um, but basically the
+way that it works is I have a
+
+00:31:30.155,00:31:36.895
+wile loop here, and it’s calling
+the program, and what it’s doing
+is it’s generating a string and
+
+00:31:36.895,00:31:43.735
+then passing that into ANTLR’s
+parsing tool, where you specify
+grammar and a root node, and it
+
+00:31:43.735,00:31:49.341
+will try to recognize that
+language and then visualize the
+parse tree that it’s, uh,
+
+00:31:49.341,00:31:55.480
+building. And in this case I’m
+generating, um, dot, so like so
+like graphics files, and so it’s
+
+00:31:55.48-->000:32:01.186
+basically just running through
+trying to generate new lines
+every single time, and you can
+
+00:32:01.186,00:32:05.757
+see that it gives me a nice
+little parse tree here. Uh,
+it’ll happen again. And again,
+
+00:32:05.757,00:32:10.762
+and again, uh. It might be kind
+of slow, but, uh, so this is
+like you see it’s a totally
+
+00:32:13.865,00:32:18.870
+different tree, um, it’s bigger,
+it has different values in it,
+structure is different. Um, and
+
+00:32:21.306,00:32:26.311
+so the generation is actually
+very fast, the slow part right
+here is parsing it for, uh, for
+
+00:32:30.615,00:32:37.322
+ANTLR itself. But, um, it is
+multithreaded, the thread is
+safe, and so you could spread
+
+00:32:37.322,00:32:44.329
+this out as horizontal as you
+want to, um, and put as much
+power, you know, on this as you
+
+00:32:44.329,00:32:49.334
+want to build test cases. Uh,
+and that’s probably pointless to
+keep showing because no one can
+
+00:32:52.003,00:32:58.343
+read any of it. [Audience
+laughs] Where is that? Full
+screen. So designing test
+
+00:32:58.343,00:33:03.281
+harnesses. You know, this is the
+part that you probably will care
+about. Um, and so let’s see a
+
+00:33:06.852,00:33:11.857
+few different ways we might want
+to design test harnesses for
+something like this. This first
+
+00:33:14.092,00:33:19.097
+most common case is does it
+crash? Um, this is what most
+fuzzers will do, and why you’re
+
+00:33:22.234,00:33:27.239
+probably using a fuzzer in the
+first place is “I want to know
+when this crash is and identify
+
+00:33:30.108,00:33:36.014
+whether this is something that’s
+exploitable.” Uh, so basically
+the way this works is you will
+
+00:33:36.014,00:33:41.219
+start the process, you will
+generate a string of some sort,
+and you will feed that into the
+
+00:33:41.219,00:33:46.224
+application. Uh, you have to
+listen for the SIGSEGV or a
+SIGABRT, uh, signals, and
+
+00:33:48.393,00:33:53.999
+basically just watch for it to
+crash. Um, when it does hit core
+files and you investigate the
+
+00:33:53.999,00:33:57.869
+crash, get your
+right/what/where, see if it’s
+something that’s meaningful to
+
+00:33:57.869,00:34:03.408
+you, um, so this is like the
+most basic case, and something
+that like you will get with any
+
+00:34:03.408,00:34:09.981
+other fuzzer. Um, it’s pretty
+straightforward, pretty simple,
+um, there’s tons of examples out
+
+00:34:09.981,00:34:15.654
+there for it, you basically just
+register a SIG action handler on
+the unix side, and wait for it
+
+00:34:15.654,00:34:22.394
+to do one of those things. Now
+we get into the more interesting
+cases. And these are the cases,
+
+00:34:22.394,00:34:29.367
+uh, that really gave birth to
+this project. So identifying
+whether a reimplementation of a
+
+00:34:29.367,00:34:34.372
+grammar is overfit for a
+reference implementation. To do
+this, you would generate a test
+
+00:34:37.075,00:34:42.647
+case using your own
+reimplementation grammar, and
+you find an oracle within the
+
+00:34:42.647,00:34:47.953
+reference implementation that
+specifies whether you’re
+getting, uh, something that is
+
+00:34:47.953,00:34:54.292
+either accepted and is valid,
+whether there is a syntactic
+error, or there’s some kind of
+
+00:34:54.292,00:35:00.532
+runtime error that’s happening,
+uh, not because of a failure in
+parsing and understanding the
+
+00:35:00.532,00:35:07.005
+sentence, but of failure because
+of something happening in the
+runtime itself. You feed the
+
+00:35:07.005,00:35:13.812
+test case in, and then you
+categorize what comes out. So if
+it succeeds, everything is good.
+
+00:35:13.812,00:35:18.283
+You have a sentence that’s
+valid, your parser recognizes it
+and the reference recognizes it.
+
+00:35:18.283,00:35:23.288
+If there is a failure, if the
+failure is a syntax error in the
+reference implementation, your
+
+00:35:27.425,00:35:32.430
+parser is overfit. You are
+recognizing things that the
+reference does not. And that’s
+
+00:35:34.866,00:35:41.006
+an indication that you probably
+need to redefine your grammar
+and change, uh, it be more like
+
+00:35:41.006,00:35:46.945
+that. And it should kind of give
+you an idea of like where those
+problems are, so you might kind
+
+00:35:46.945,00:35:51.983
+of guide you toward what
+specifically is causing that,
+and you can manually go and, and
+
+00:35:51.983,00:35:56.621
+change it to identify whether or
+not it’s meaningful, or modify
+the sentence that it spits out
+
+00:35:56.621,00:36:02.227
+so you can identify maybe why
+you’re wrong, um, but there’s
+not really good tooling around
+
+00:36:02.227,00:36:07.298
+doing that yet, other than
+trying to get good error
+messages from the reference and
+
+00:36:07.298,00:36:11.469
+parser error messages are
+usually pretty terrible so
+you’re kind of on your own for
+
+00:36:11.469,00:36:17.475
+that one. If the failure’s a
+runtime error, uh, it may or may
+not be a sign of being overfit
+
+00:36:17.475,00:36:22.681
+or underfit. This is especially
+common because of the opaque
+tokens that I spoke about.
+
+00:36:22.681,00:36:28.253
+Basically it might recognize
+something that, like, is
+syntactically valid, but, like,
+
+00:36:28.253,00:36:32.657
+one of the tokens in there is
+just totally, like, bats**t
+insane, and, like it recognized
+
+00:36:32.657,00:36:37.929
+it because it uses an opaque
+token in that place. Um, it also
+could just be an environmental
+
+00:36:37.929,00:36:44.636
+thing. So like, in uh, in the
+case of like my sequel, if
+you’ve ever written queries for
+
+00:36:44.636,00:36:51.076
+it, you’re probably very used to
+these types of errors. Uh, the
+top one is a syntactic error.
+
+00:36:51.076,00:36:58.049
+Uh, you see the top query here,
+select star from a where id, and
+a bunch of carrots, 3, and this
+
+00:36:58.049,00:37:03.188
+tells you specifically this is a
+syntax error. This did not
+parse, and it tells you, like,
+
+00:37:03.188,00:37:09.194
+exactly where it is. So this is
+an example of the case where
+your parser, if it generated
+
+00:37:09.194,00:37:14.199
+this, like, is just wrong. Like
+that, that should never happen.
+Uh, below that, however, is a
+
+00:37:16.234,00:37:23.141
+runtime error, where select star
+from a where fakecolumn equals
+3, uh, this is, uh, a runtime
+
+00:37:23.141,00:37:28.146
+error because one of the tables
+referenced here doesn’t exist.
+And so this is something that
+
+00:37:30.415,00:37:35.420
+the parser passed, and generated
+something that is likely a valid
+sentence in that language, but
+
+00:37:37.555,00:37:43.595
+because of the environmental
+issues with what it is doing
+with that sentence, it wasn’t
+
+00:37:43.595,00:37:48.833
+able to do that. And so this is
+probably a false positive in
+that case. And so having the
+
+00:37:48.833,00:37:53.471
+oracle that can tell you about
+these things, allows you to
+really cut down on false
+
+00:37:53.471,00:37:58.476
+positives and, uh, in this case.
+The next is underfit. Uh, this
+is the other big problem that
+
+00:38:01.012,00:38:06.017
+you will likely worry about. Uh,
+so to do this you generate a
+test case from the reference,
+
+00:38:08.119,00:38:11.289
+and this is something you can
+only do if you have the
+reference implementation
+
+00:38:11.289,00:38:17.162
+grammar. So in the case of like
+mysql or post grass sqlite you
+have that grammar definition.
+
+00:38:17.162,00:38:21.766
+And this is something that is
+open sourced. For something
+like, you know, DB2, oracle, MS
+
+00:38:21.766,00:38:26.671
+Sequel, this isn’t a viable
+option. You can’t do that
+because you don’t have the
+
+00:38:26.671,00:38:32.644
+source code for that grammar.
+But you would parse it with the
+reimplementation once it
+
+00:38:32.644,00:38:39.150
+generated a test case from the
+reference, and see if your
+parser can read it. And then you
+
+00:38:39.15-->000:38:43.521
+categorize it. If it fails, then
+the reimplementation is
+underfit. You’ve generated a
+
+00:38:43.521,00:38:50.328
+sentence that is valid in the
+reference implementation, that
+is not valid in yours. If it
+
+00:38:50.328,00:38:57.068
+succeeds, then your
+implementation is likely correct
+for that sentence and that
+
+00:38:57.068,00:39:02.006
+section of the grammar that you
+have used. Uh, so what’s ready
+today? Uh, the code is up here.
+
+00:39:08.012,00:39:14.652
+It will made unprivate, uh,
+after this. Uh, crates are
+available for people who want to
+
+00:39:14.652,00:39:20.558
+use Rust, uh, and bindings will
+be released, uh, over the
+remainder of the year for as
+
+00:39:20.558,00:39:25.230
+many languages as people are
+interested in and I have time to
+build or other people have time
+
+00:39:25.23-->000:39:31.035
+to build. Um, MIT licensed, you
+can submit pole requests and I
+will happily accept them. Uh,
+
+00:39:31.035,00:39:36.641
+right now you get an ANTLR4
+front end, it mostly is
+functional, there are a few
+
+00:39:36.641,00:39:42.347
+little things that aren’t
+supported yet, um, but you can
+get the vast majority of, uh,
+
+00:39:42.347,00:39:47.352
+many of the common types of
+parsers you will generate with
+ANTLR. What’s next? There’s a
+
+00:39:50.288,00:39:57.028
+lot. Uh, the biggest area right
+now that’s a huge issue is
+dealing with cycle detection and
+
+00:39:57.028,00:40:02.500
+forced progression. So with
+recursive grammars, which are
+pretty common, uh, it does a
+
+00:40:02.50-->000:40:08.439
+really bad job with ensuring
+that it doesn’t get stuck in a
+loop, uh, because it’s
+
+00:40:08.439,00:40:13.911
+essentially building a graph
+and, like, walking that. Uh, so
+getting cycle detection in there
+
+00:40:13.911,00:40:19.550
+to, to move forward and not get
+stuck, uh, is, is at the top of
+the list. Basically it will just
+
+00:40:19.55-->000:40:26.190
+run and then get a stack
+overflow and basically crash.
+Uh, but for a lot of more
+
+00:40:26.19-->000:40:28.893
+simpler grammars, like you’re
+not going to have a problem
+here, and this is immediately
+
+00:40:28.893,00:40:35.233
+useful now. Uh, like I said,
+exposing a CAPI and language
+bindings, um, it’s built in Rust
+
+00:40:35.233,00:40:40.638
+but, like, this will be
+available, um, I think early
+plans for languages right now
+
+00:40:40.638,00:40:45.643
+are going to be to, uh, to Java
+and probably go, um, probably
+Python and Ruby as well in the
+
+00:40:48.88-->000:40:55.453
+near future. The negation logic
+exists, but, uh, not great, um.
+The problem with negation is
+
+00:40:55.453,00:41:02.026
+it’s not always clear exactly
+like what the opposite of
+something like, of one of the
+
+00:41:02.026,00:41:06.531
+common denominators is, and so
+pretty much everything has
+negation logic right now, but it
+
+00:41:06.531,00:41:12.203
+could be better. Um, you don’t
+get quite as much entropy as I’d
+like, and so, um, if you’re
+
+00:41:12.203,00:41:18.242
+using a lot of negation, um, you
+might just not get as much
+variation. Uh, contact-sensitive
+
+00:41:18.242,00:41:24.482
+support, and being able to do,
+um, introspective things on the
+day that it’s being generated,
+
+00:41:24.482,00:41:28.753
+so if you need to generate
+checksums that are valid, um,
+things like that, having support
+
+00:41:28.753,00:41:33.758
+to do that. Um, as I said, it’s
+all byte oriented right now, I
+might be interested in building
+
+00:41:36.761,00:41:40.298
+out bit level support. Um,
+there’s a lot of, like, wire
+protocols that, that have some
+
+00:41:40.298,00:41:45.970
+of that and, uh, it would be
+useful for that. Additional
+front ends, this is the big one
+
+00:41:45.97-->000:41:52.844
+also, um, bringing support for
+more platforms, is a real goal
+to make this significantly more
+
+00:41:52.844,00:41:58.416
+useful. And then grammar
+coverage information. How much
+of this grammar have I explored?
+
+00:41:58.416,00:42:04.589
+Uh, and how much time have I
+spent in a specific area? And
+then being able to reuse a tree
+
+00:42:04.589,00:42:10.294
+and change individual tokens so
+I can just change the areas that
+are going to be dynamic in that,
+
+00:42:10.294,00:42:17.068
+and really, really hammer
+sections of code if I really
+care about that. Again, this is
+
+00:42:17.068,00:42:22.073
+the link, uh, if you’re
+interested in the code. And
+questions? [Audience applauds]
+
+00:42:26.377,00:42:31.382
+[Off-mic question] Uh, sure. So
+how do you implement in oracle?
+Um, basically it comes down to
+
+00:42:43.194,00:42:47.031
+the integration that you build
+into your test harness. So in
+the case of my sequel, um, we’re
+
+00:42:47.031,00:42:51.602
+literally using the my sequel
+library, that is like the
+client, and the error messages
+
+00:42:51.602,00:42:53.604
+coming out of that will provide
+us the oracle and we just do
+comparison and for what is being
+
+00:42:53.604,00:42:55.606
+provided there. Um, that’s
+something you’re going to have
+to find if you have source code
+
+00:42:55.606,00:42:57.608
+if possible, if there’s
+something you can do to inspect
+the binary or, like the memory
+
+00:42:57.608,00:43:03.514
+space or just get meaningful
+output of it, um, it usually
+just comes down to just finding
+
+00:43:03.514,00:43:08.519
+something in there, and if you
+can’t, then you’re kind of just
+f**ked. Yeah? [Off-mic question]
+
+00:43:24.235,00:43:29.240
+Uh, I don’t yet. Um, the plan is
+to start doing some of that
+research and putting that
+
+00:43:33.077,00:43:39.884
+together. Um, this is something
+that I’ve been working on for
+last, like, 8 months or so, and
+
+00:43:39.884,00:43:44.889
+it’s at the point now where it’s
+usable in a meaningful way for
+us, um, but like I said, part of
+
+00:43:47.091,00:43:52.930
+the problem for us was building
+the test harnesses that gave us
+meaningful feedback, but I do
+
+00:43:52.93-->000:43:57.935
+plan to start doing evaluation
+of that and I want to have
+something published, probably
+
+00:44:00.538,00:44:05.543
+next year, um, to actually find
+out whether or not, like, this
+actually is useful and provides
+
+00:44:11.916,00:44:13.451
+more value than something like
+that. Anyone else? Cool. Thank
+you. [music outro]
+

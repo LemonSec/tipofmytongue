@@ -1,0 +1,2656 @@
+﻿1
+00:00:00,000 --> 00:00:06,899
+without any further ado I'd like to
+
+2
+00:00:01,949 --> 00:00:08,610
+introduce the speakers for today we're
+
+3
+00:00:06,899 --> 00:00:10,620
+going to do monsters and middleboxes
+
+4
+00:00:08,610 --> 00:00:13,079
+I'm introducing Gabby and Luke from
+
+5
+00:00:10,620 --> 00:00:23,820
+CloudFlare so please give them a warm
+
+6
+00:00:13,080 --> 00:00:25,590
+welcome thank you thanks for the little
+
+7
+00:00:23,820 --> 00:00:27,300
+introduction and thank you to everyone
+
+8
+00:00:25,590 --> 00:00:29,099
+for sticking with us throughout the a/v
+
+9
+00:00:27,300 --> 00:00:32,910
+setup turns out it takes a lot of
+
+10
+00:00:29,099 --> 00:00:36,090
+engineers to make AV work and with that
+
+11
+00:00:32,910 --> 00:00:38,429
+let's get started so hi everyone thanks
+
+12
+00:00:36,090 --> 00:00:41,219
+for joining us today and we're excited
+
+13
+00:00:38,430 --> 00:00:43,230
+to share our work on detecting HTTP
+
+14
+00:00:41,219 --> 00:00:45,149
+interception and to show you the tools
+
+15
+00:00:43,230 --> 00:00:46,680
+that we've built to detect the monsters
+
+16
+00:00:45,149 --> 00:00:50,640
+in the middle we observe on cloud
+
+17
+00:00:46,680 --> 00:00:52,980
+players network so hi everybody I'm Rick
+
+18
+00:00:50,640 --> 00:00:54,960
+valensa I'm a recent PhD graduate from
+
+19
+00:00:52,980 --> 00:00:56,760
+the University of Pennsylvania and I'm
+
+20
+00:00:54,960 --> 00:00:59,190
+now a systems engineer on the cloud
+
+21
+00:00:56,760 --> 00:01:01,230
+player cryptography team and I'm Gabi
+
+22
+00:00:59,190 --> 00:01:03,209
+Fisher I'm a recent masters graduate
+
+23
+00:01:01,230 --> 00:01:05,039
+from Stanford University and I'm also
+
+24
+00:01:03,210 --> 00:01:09,390
+now systems engineer at CloudFlare on
+
+25
+00:01:05,040 --> 00:01:11,640
+the workers team so today's talk will
+
+26
+00:01:09,390 --> 00:01:14,100
+start with an overview of what HTTP
+
+27
+00:01:11,640 --> 00:01:16,740
+interception is in common sources of
+
+28
+00:01:14,100 --> 00:01:18,539
+monster in the middle activity next
+
+29
+00:01:16,740 --> 00:01:21,210
+we'll cover a technique that we use the
+
+30
+00:01:18,540 --> 00:01:23,040
+detect HTTP interception on inbound
+
+31
+00:01:21,210 --> 00:01:25,770
+traffic to cloud players network and
+
+32
+00:01:23,040 --> 00:01:27,960
+then we'll end our talk by sharing the
+
+33
+00:01:25,770 --> 00:01:29,610
+tools that we built to detect HTTP
+
+34
+00:01:27,960 --> 00:01:31,529
+interception and observe these
+
+35
+00:01:29,610 --> 00:01:35,369
+interception patterns on our global
+
+36
+00:01:31,530 --> 00:01:37,200
+network to make sure everyone is on the
+
+37
+00:01:35,369 --> 00:01:39,210
+same page let's quickly do an overview
+
+38
+00:01:37,200 --> 00:01:42,270
+of how a monster in the middle could
+
+39
+00:01:39,210 --> 00:01:43,829
+intercept HTTP traffic let's start with
+
+40
+00:01:42,270 --> 00:01:46,579
+the default case that a lot of us are
+
+41
+00:01:43,829 --> 00:01:49,380
+familiar with a normal HTTP connection
+
+42
+00:01:46,579 --> 00:01:51,449
+here a client first performs a TLS
+
+43
+00:01:49,380 --> 00:01:53,699
+handshake with a server negotiates a
+
+44
+00:01:51,450 --> 00:01:56,729
+shared symmetric key and then transmits
+
+45
+00:01:53,700 --> 00:01:59,670
+HTTP encrypted contents using the
+
+46
+00:01:56,729 --> 00:02:00,719
+symmetric key before the client performs
+
+47
+00:01:59,670 --> 00:02:02,430
+a TLS handshake
+
+48
+00:02:00,719 --> 00:02:04,320
+the server must prove its identity
+
+49
+00:02:02,430 --> 00:02:07,020
+through the client by presenting its
+
+50
+00:02:04,320 --> 00:02:08,940
+certificate which is issued using the
+
+51
+00:02:07,020 --> 00:02:12,079
+root certificate of a widely trusted
+
+52
+00:02:08,940 --> 00:02:12,079
+certificate authority
+
+53
+00:02:12,780 --> 00:02:16,740
+now let's see what happens when a TLS
+
+54
+00:02:14,880 --> 00:02:20,400
+connection between a client and a server
+
+55
+00:02:16,740 --> 00:02:21,930
+goes through a third party this third
+
+56
+00:02:20,400 --> 00:02:24,390
+party in the middle is either Hardware
+
+57
+00:02:21,930 --> 00:02:26,880
+called a middle box or software called
+
+58
+00:02:24,390 --> 00:02:29,250
+middleware it sits between the client
+
+59
+00:02:26,880 --> 00:02:31,380
+and the server proxying traffic between
+
+60
+00:02:29,250 --> 00:02:34,709
+a client and its intended destination in
+
+61
+00:02:31,380 --> 00:02:36,870
+this case example.com the middle box
+
+62
+00:02:34,709 --> 00:02:38,520
+cannot read encrypted HTTP traffic
+
+63
+00:02:36,870 --> 00:02:40,350
+between the clients and the server
+
+64
+00:02:38,520 --> 00:02:42,450
+since this traffic is encrypted with the
+
+65
+00:02:40,350 --> 00:02:44,040
+symmetric key that only the client and
+
+66
+00:02:42,450 --> 00:02:46,230
+server know because they are the only
+
+67
+00:02:44,040 --> 00:02:51,570
+two to have negotiated it during the TLS
+
+68
+00:02:46,230 --> 00:02:53,609
+handshake if someone wanted to set up a
+
+69
+00:02:51,570 --> 00:02:56,220
+middle box or middleware to intercept
+
+70
+00:02:53,610 --> 00:02:59,790
+HTTP traffic the following setup is
+
+71
+00:02:56,220 --> 00:03:01,920
+necessary first the middle box needs its
+
+72
+00:02:59,790 --> 00:03:04,560
+own root certificate so it can issue its
+
+73
+00:03:01,920 --> 00:03:06,030
+own certificates if the interceptor
+
+74
+00:03:04,560 --> 00:03:08,670
+wants to intercept traffic from the
+
+75
+00:03:06,030 --> 00:03:10,560
+client to the example.com server the
+
+76
+00:03:08,670 --> 00:03:12,899
+Interceptor can present its own issued
+
+77
+00:03:10,560 --> 00:03:15,120
+certificate for example.com and try to
+
+78
+00:03:12,900 --> 00:03:17,430
+trick the client into thinking that its
+
+79
+00:03:15,120 --> 00:03:19,549
+certificate corresponds to the real one
+
+80
+00:03:17,430 --> 00:03:21,930
+for example.com
+
+81
+00:03:19,549 --> 00:03:24,120
+the client would hypothetically perform
+
+82
+00:03:21,930 --> 00:03:26,400
+a TLS handshake with the Interceptor not
+
+83
+00:03:24,120 --> 00:03:28,950
+the end server such that the Interceptor
+
+84
+00:03:26,400 --> 00:03:30,840
+could negotiate a symmetric key with the
+
+85
+00:03:28,950 --> 00:03:33,268
+client and then be able to decrypt the
+
+86
+00:03:30,840 --> 00:03:34,980
+clients traffic this approach fails
+
+87
+00:03:33,269 --> 00:03:36,900
+however because the client will not
+
+88
+00:03:34,980 --> 00:03:40,230
+trust the interceptors root certificate
+
+89
+00:03:36,900 --> 00:03:42,360
+by default instead a client would likely
+
+90
+00:03:40,230 --> 00:03:43,530
+receive a warning which says that the
+
+91
+00:03:42,360 --> 00:03:46,079
+certificate that the middle box
+
+92
+00:03:43,530 --> 00:03:47,700
+presented was not issued by a trusted
+
+93
+00:03:46,079 --> 00:03:51,930
+root certificate like that of a
+
+94
+00:03:47,700 --> 00:03:53,940
+certificate authority to prevent this
+
+95
+00:03:51,930 --> 00:03:56,130
+morning from happening something seeking
+
+96
+00:03:53,940 --> 00:03:58,680
+to someone seeking to intercept HTTP
+
+97
+00:03:56,130 --> 00:04:01,260
+traffic must make the client trust the
+
+98
+00:03:58,680 --> 00:04:03,480
+interceptors root certificate this
+
+99
+00:04:01,260 --> 00:04:05,429
+practice of getting the clients a trust
+
+100
+00:04:03,480 --> 00:04:08,429
+and install the interceptors root
+
+101
+00:04:05,430 --> 00:04:12,329
+certificate is the crux of most HTTP
+
+102
+00:04:08,430 --> 00:04:14,310
+interception practices now the
+
+103
+00:04:12,329 --> 00:04:16,650
+interceptors self issued certificate for
+
+104
+00:04:14,310 --> 00:04:18,810
+example.com appears to be trustworthy
+
+105
+00:04:16,649 --> 00:04:21,089
+and the client will perform a TLS
+
+106
+00:04:18,810 --> 00:04:23,039
+handshake with the Interceptor meaning
+
+107
+00:04:21,089 --> 00:04:25,489
+that the Interceptor can decrypt the
+
+108
+00:04:23,039 --> 00:04:28,020
+clients HTTPS content
+
+109
+00:04:25,490 --> 00:04:30,180
+the Interceptor typically then Rhian
+
+110
+00:04:28,020 --> 00:04:32,099
+crypts the clients content by performing
+
+111
+00:04:30,180 --> 00:04:34,620
+a TLS handshake with the real server and
+
+112
+00:04:32,099 --> 00:04:38,219
+re encrypting the clients HTTP content
+
+113
+00:04:34,620 --> 00:04:39,990
+when sending it to the server now the
+
+114
+00:04:38,219 --> 00:04:42,240
+middle box can inspect and modify the
+
+115
+00:04:39,990 --> 00:04:43,919
+inner HTTP content between the client
+
+116
+00:04:42,240 --> 00:04:48,930
+and the server with the out errors
+
+117
+00:04:43,919 --> 00:04:50,818
+showing up on either end now that we
+
+118
+00:04:48,930 --> 00:04:52,710
+know what HTTP interception looks like
+
+119
+00:04:50,819 --> 00:04:54,419
+we're going to cover a few examples of
+
+120
+00:04:52,710 --> 00:04:55,549
+these monsters in the middle commonly
+
+121
+00:04:54,419 --> 00:04:57,930
+seen on the Internet
+
+122
+00:04:55,550 --> 00:04:59,969
+our first monster in the middle is this
+
+123
+00:04:57,930 --> 00:05:01,710
+rather bureaucratic looking one it
+
+124
+00:04:59,969 --> 00:05:03,240
+represents proxies like antivirus
+
+125
+00:05:01,710 --> 00:05:06,870
+software in corporate or government
+
+126
+00:05:03,240 --> 00:05:08,759
+proxies these proxies of several goals
+
+127
+00:05:06,870 --> 00:05:10,650
+including protecting clients by
+
+128
+00:05:08,759 --> 00:05:13,349
+detecting malware or command and control
+
+129
+00:05:10,650 --> 00:05:14,758
+traffic or protecting a corporation by
+
+130
+00:05:13,349 --> 00:05:17,610
+detecting and preventing data
+
+131
+00:05:14,759 --> 00:05:19,560
+exfiltration these types of proxy is
+
+132
+00:05:17,610 --> 00:05:24,539
+also have a nefarious side and can be
+
+133
+00:05:19,560 --> 00:05:25,949
+used to censor or spy on clients even
+
+134
+00:05:24,539 --> 00:05:27,840
+when these middle boxes are meant to
+
+135
+00:05:25,949 --> 00:05:29,370
+improve the security of connections they
+
+136
+00:05:27,840 --> 00:05:32,429
+can increase the attack surface of an
+
+137
+00:05:29,370 --> 00:05:34,349
+HTTP connection some examples of this
+
+138
+00:05:32,430 --> 00:05:37,110
+are vulnerabilities and Kaspersky
+
+139
+00:05:34,349 --> 00:05:40,409
+antivirus software and blue code one of
+
+140
+00:05:37,110 --> 00:05:41,789
+the most popular corporate proxies these
+
+141
+00:05:40,409 --> 00:05:43,919
+proxies can also be used for malicious
+
+142
+00:05:41,789 --> 00:05:47,159
+means in recent news the Kazakh
+
+143
+00:05:43,919 --> 00:05:49,289
+government forced the Kazakh ISP to make
+
+144
+00:05:47,159 --> 00:05:51,810
+clients install root certificates so
+
+145
+00:05:49,289 --> 00:05:54,469
+that they could intercept HTTP traffic
+
+146
+00:05:51,810 --> 00:05:57,330
+to social media websites like Facebook
+
+147
+00:05:54,469 --> 00:05:58,979
+cosmic ISPs encouraged users to install
+
+148
+00:05:57,330 --> 00:06:00,688
+this root certificate by saying it would
+
+149
+00:05:58,979 --> 00:06:02,878
+protect them from fraud or hacking
+
+150
+00:06:00,689 --> 00:06:04,770
+attempts or illegal content but really
+
+151
+00:06:02,879 --> 00:06:07,500
+the set up allows the Kazakh government
+
+152
+00:06:04,770 --> 00:06:12,419
+to potentially spy on citizens is
+
+153
+00:06:07,500 --> 00:06:14,069
+everyday online activity our next
+
+154
+00:06:12,419 --> 00:06:16,258
+monster in the middle is this grifter
+
+155
+00:06:14,069 --> 00:06:19,349
+over here it represents adware or
+
+156
+00:06:16,259 --> 00:06:21,569
+malware and these intercept HTTP
+
+157
+00:06:19,349 --> 00:06:24,240
+connections to inject ads into webpages
+
+158
+00:06:21,569 --> 00:06:29,279
+or even try to steal and exploit private
+
+159
+00:06:24,240 --> 00:06:31,680
+data one example of this is search
+
+160
+00:06:29,279 --> 00:06:33,750
+awesome adware especially a well-known
+
+161
+00:06:31,680 --> 00:06:35,430
+example of adware is superfish whose
+
+162
+00:06:33,750 --> 00:06:38,930
+root certificate was shipped by default
+
+163
+00:06:35,430 --> 00:06:38,930
+with many Lenovo devices
+
+164
+00:06:40,170 --> 00:06:45,240
+the third class of interceptors are
+
+165
+00:06:42,730 --> 00:06:47,470
+poorly implemented and often unnecessary
+
+166
+00:06:45,240 --> 00:06:56,680
+proxies that increase a connections
+
+167
+00:06:47,470 --> 00:07:01,300
+attack surface strap there we go so an
+
+168
+00:06:56,680 --> 00:07:02,830
+example of this I find really oops this
+
+169
+00:07:01,300 --> 00:07:04,390
+is what happened to me of av troubles
+
+170
+00:07:02,830 --> 00:07:05,280
+right before you give a talk but it will
+
+171
+00:07:04,390 --> 00:07:10,390
+be fine
+
+172
+00:07:05,280 --> 00:07:11,830
+cool so a third class of interceptors
+
+173
+00:07:10,390 --> 00:07:13,780
+are poorly implemented and often
+
+174
+00:07:11,830 --> 00:07:16,690
+unnecessary proxies that increase a
+
+175
+00:07:13,780 --> 00:07:18,700
+connections attack surface any TLS
+
+176
+00:07:16,690 --> 00:07:20,920
+terminating forward proxy whether it's
+
+177
+00:07:18,700 --> 00:07:22,840
+well-intentioned or not risks leaving
+
+178
+00:07:20,920 --> 00:07:26,500
+private information and opens the door
+
+179
+00:07:22,840 --> 00:07:28,299
+the spoofing an example of this if I
+
+180
+00:07:26,500 --> 00:07:30,490
+really interesting is Sennheiser
+
+181
+00:07:28,300 --> 00:07:32,050
+headphones whose head setup software
+
+182
+00:07:30,490 --> 00:07:34,300
+installed a root certificate on
+
+183
+00:07:32,050 --> 00:07:39,190
+computers as part of a syncing protocol
+
+184
+00:07:34,300 --> 00:07:40,750
+between headphones a computer the
+
+185
+00:07:39,190 --> 00:07:42,040
+private key for this root start was
+
+186
+00:07:40,750 --> 00:07:45,130
+weakly protected using the passphrase
+
+187
+00:07:42,040 --> 00:07:47,770
+sign Heiser CC so guessing it was almost
+
+188
+00:07:45,130 --> 00:07:50,260
+as easy as 1-2-3 and literally rhymes
+
+189
+00:07:47,770 --> 00:07:51,039
+with it if an attacker learned this
+
+190
+00:07:50,260 --> 00:07:52,870
+passphrase
+
+191
+00:07:51,040 --> 00:07:54,910
+they could use the root certificates
+
+192
+00:07:52,870 --> 00:07:57,760
+private key to issue fraudulent
+
+193
+00:07:54,910 --> 00:07:59,770
+certificates for any web site so these
+
+194
+00:07:57,760 --> 00:08:01,539
+headphones is bad software dramatically
+
+195
+00:07:59,770 --> 00:08:06,760
+increase the attack surface of a
+
+196
+00:08:01,540 --> 00:08:08,820
+customer's computer a final type of HTTP
+
+197
+00:08:06,760 --> 00:08:11,440
+interception is through reverse proxies
+
+198
+00:08:08,820 --> 00:08:13,360
+unlike other forms of proxies reverse
+
+199
+00:08:11,440 --> 00:08:15,100
+proxies don't require a client to
+
+200
+00:08:13,360 --> 00:08:17,020
+install a new root certificate
+
+201
+00:08:15,100 --> 00:08:19,840
+since clients connect directly to the
+
+202
+00:08:17,020 --> 00:08:21,700
+reverse proxy reverse proxies are
+
+203
+00:08:19,840 --> 00:08:24,219
+usually deployed to improve the security
+
+204
+00:08:21,700 --> 00:08:26,110
+performance the reliability of their
+
+205
+00:08:24,220 --> 00:08:28,330
+customers and sites by providing
+
+206
+00:08:26,110 --> 00:08:33,220
+features like load balancing and modern
+
+207
+00:08:28,330 --> 00:08:35,260
+TLS however they're not also immune to
+
+208
+00:08:33,220 --> 00:08:37,720
+of ulnar abilities as examples over
+
+209
+00:08:35,260 --> 00:08:39,400
+recent years have shown cloud beat
+
+210
+00:08:37,720 --> 00:08:41,260
+against CloudFlare was one incident that
+
+211
+00:08:39,400 --> 00:08:43,569
+had the potential to expose private
+
+212
+00:08:41,260 --> 00:08:45,970
+customer data and other major CD ends
+
+213
+00:08:43,570 --> 00:08:46,350
+like Akamai and f5 have had their own
+
+214
+00:08:45,970 --> 00:08:50,430
+share
+
+215
+00:08:46,350 --> 00:08:51,780
+of incidents now that we have a good
+
+216
+00:08:50,430 --> 00:08:53,819
+sense of the different types of monsters
+
+217
+00:08:51,780 --> 00:08:55,860
+in the middle on the internet and the
+
+218
+00:08:53,820 --> 00:08:57,630
+risks that they pose Luke was going to
+
+219
+00:08:55,860 --> 00:09:00,930
+explain how we actually can detect when
+
+220
+00:08:57,630 --> 00:09:06,689
+HTTPS interception occurs so that will
+
+221
+00:09:00,930 --> 00:09:08,579
+hand us over great so now we'll describe
+
+222
+00:09:06,690 --> 00:09:10,230
+how a server can detect when an incoming
+
+223
+00:09:08,580 --> 00:09:12,720
+client connection may have been
+
+224
+00:09:10,230 --> 00:09:16,710
+intercepted using a technique described
+
+225
+00:09:12,720 --> 00:09:18,780
+by tumeric and others into 2017 paper so
+
+226
+00:09:16,710 --> 00:09:20,550
+in this example we have a chrome client
+
+227
+00:09:18,780 --> 00:09:22,650
+connecting through a middle box to the
+
+228
+00:09:20,550 --> 00:09:26,010
+server and the middle box is using open
+
+229
+00:09:22,650 --> 00:09:27,480
+SSL as their TLS library to intercept
+
+230
+00:09:26,010 --> 00:09:30,090
+the connection and read the plaintext
+
+231
+00:09:27,480 --> 00:09:31,860
+HTTP content the middle box acts as a
+
+232
+00:09:30,090 --> 00:09:35,010
+server and terminates the TLS connection
+
+233
+00:09:31,860 --> 00:09:37,260
+from the chrome client and then it
+
+234
+00:09:35,010 --> 00:09:39,750
+establishes a new TLS connection using
+
+235
+00:09:37,260 --> 00:09:42,569
+open SSL to re-encrypt the HTTP traffic
+
+236
+00:09:39,750 --> 00:09:44,430
+to the server the first thing to note is
+
+237
+00:09:42,570 --> 00:09:47,340
+the chrome CLS library leaves
+
+238
+00:09:44,430 --> 00:09:49,020
+differently than open SSL does so from
+
+239
+00:09:47,340 --> 00:09:51,440
+the server's perspective it looks like
+
+240
+00:09:49,020 --> 00:09:54,780
+an open SSL client is connecting to it
+
+241
+00:09:51,440 --> 00:09:56,370
+however the inner HTTP contains a user
+
+242
+00:09:54,780 --> 00:10:01,170
+agent header claiming that the traffic
+
+243
+00:09:56,370 --> 00:10:02,880
+is originating from a Chrome browser so
+
+244
+00:10:01,170 --> 00:10:04,579
+if the server sees a chrome user agent
+
+245
+00:10:02,880 --> 00:10:06,990
+paired with an open SSL TLS connection
+
+246
+00:10:04,580 --> 00:10:09,980
+the this is an indication that the
+
+247
+00:10:06,990 --> 00:10:12,450
+connection might have been intercepted
+
+248
+00:10:09,980 --> 00:10:14,370
+so let's dive into these mismatched user
+
+249
+00:10:12,450 --> 00:10:16,890
+agent headers and TLS parameters
+
+250
+00:10:14,370 --> 00:10:19,290
+in-depth so we can easily fingerprint
+
+251
+00:10:16,890 --> 00:10:22,020
+HTTP clients by reading and parsing the
+
+252
+00:10:19,290 --> 00:10:24,209
+user agent HTTP header so in this
+
+253
+00:10:22,020 --> 00:10:26,280
+example the user agent header indicates
+
+254
+00:10:24,210 --> 00:10:29,310
+that the connection is from Chrome
+
+255
+00:10:26,280 --> 00:10:32,310
+version 75 generated generated from Mac
+
+256
+00:10:29,310 --> 00:10:35,640
+OSX Mojave well this header can be
+
+257
+00:10:32,310 --> 00:10:37,770
+spoofed by bots or or other browsers
+
+258
+00:10:35,640 --> 00:10:40,330
+most popular browsers can be identified
+
+259
+00:10:37,770 --> 00:10:42,560
+with this header
+
+260
+00:10:40,330 --> 00:10:45,030
+[Music]
+
+261
+00:10:42,560 --> 00:10:46,469
+mmm-hmm identifying the tls client
+
+262
+00:10:45,030 --> 00:10:48,449
+behind a connection is a bit more
+
+263
+00:10:46,470 --> 00:10:51,330
+challenging since there's no fuel than
+
+264
+00:10:48,450 --> 00:10:52,830
+TOS that identifies the library however
+
+265
+00:10:51,330 --> 00:10:54,570
+there's been a great deal of work over
+
+266
+00:10:52,830 --> 00:10:56,610
+the past decade and doing TLS
+
+267
+00:10:54,570 --> 00:11:01,110
+fingerprinting based on the TLS client
+
+268
+00:10:56,610 --> 00:11:03,360
+hello message so ristic started looking
+
+269
+00:11:01,110 --> 00:11:05,580
+at finger at TLS fingerprinting a decade
+
+270
+00:11:03,360 --> 00:11:08,700
+ago and the state of the art has been
+
+271
+00:11:05,580 --> 00:11:10,770
+improving sense so in 2015 Lee brother
+
+272
+00:11:08,700 --> 00:11:12,720
+s'en collected and published hundreds of
+
+273
+00:11:10,770 --> 00:11:15,420
+key last fingerprints for various CLS
+
+274
+00:11:12,720 --> 00:11:16,980
+clients Blake Anderson and others at
+
+275
+00:11:15,420 --> 00:11:18,630
+Cisco have done some really great work
+
+276
+00:11:16,980 --> 00:11:20,340
+in automatically generating TLS
+
+277
+00:11:18,630 --> 00:11:23,189
+fingerprints from data observed on
+
+278
+00:11:20,340 --> 00:11:24,990
+Cisco's networks and as of 2019
+
+279
+00:11:23,190 --> 00:11:28,890
+they've started publishing a subset of
+
+280
+00:11:24,990 --> 00:11:31,350
+their observed fingerprints weekly the
+
+281
+00:11:28,890 --> 00:11:32,910
+ja3 project from Salesforce developed a
+
+282
+00:11:31,350 --> 00:11:35,640
+TLS fingerprint there was succinct
+
+283
+00:11:32,910 --> 00:11:37,560
+enough to fit inside a tweet and the TLS
+
+284
+00:11:35,640 --> 00:11:39,660
+fingerprint project collects and
+
+285
+00:11:37,560 --> 00:11:41,849
+publishes fingerprints from TLS clients
+
+286
+00:11:39,660 --> 00:11:43,650
+connecting to the UC Boulder campus
+
+287
+00:11:41,850 --> 00:11:45,540
+network and they provide an easy
+
+288
+00:11:43,650 --> 00:11:50,610
+interface for tracking clusters of
+
+289
+00:11:45,540 --> 00:11:52,290
+fingerprints so let's look at all at how
+
+290
+00:11:50,610 --> 00:11:56,160
+all these methods fingerprint TLS
+
+291
+00:11:52,290 --> 00:11:59,760
+clients so RFC 52:46 describes the
+
+292
+00:11:56,160 --> 00:12:01,650
+typical TLS 1.2 handshake so the client
+
+293
+00:11:59,760 --> 00:12:03,930
+starts the handshake by sending the
+
+294
+00:12:01,650 --> 00:12:05,579
+client hello message which advertises
+
+295
+00:12:03,930 --> 00:12:07,079
+the list of parameters that it supports
+
+296
+00:12:05,580 --> 00:12:09,630
+and is willing to negotiate for the
+
+297
+00:12:07,080 --> 00:12:11,640
+connection the server responds with the
+
+298
+00:12:09,630 --> 00:12:13,710
+server hello message indicating which
+
+299
+00:12:11,640 --> 00:12:16,530
+parameters it chooses along with its
+
+300
+00:12:13,710 --> 00:12:18,030
+certificate and key exchange value the
+
+301
+00:12:16,530 --> 00:12:20,640
+client responds with its key exchange
+
+302
+00:12:18,030 --> 00:12:21,750
+value and the finished message and then
+
+303
+00:12:20,640 --> 00:12:24,780
+both sides can send an encrypted
+
+304
+00:12:21,750 --> 00:12:26,700
+application data so we're interested in
+
+305
+00:12:24,780 --> 00:12:28,640
+TLS fingerprinting based on the client
+
+306
+00:12:26,700 --> 00:12:32,910
+hello message so let's see how that's
+
+307
+00:12:28,640 --> 00:12:34,680
+structured so this message contains
+
+308
+00:12:32,910 --> 00:12:36,480
+fields including the clients protocol
+
+309
+00:12:34,680 --> 00:12:38,219
+version the set of cipher Suites and
+
+310
+00:12:36,480 --> 00:12:39,990
+cryptographic algorithms that is willing
+
+311
+00:12:38,220 --> 00:12:43,860
+to negotiate as well as various
+
+312
+00:12:39,990 --> 00:12:45,660
+extensions so while some fields of the
+
+313
+00:12:43,860 --> 00:12:48,210
+client hello are random like the session
+
+314
+00:12:45,660 --> 00:12:49,890
+ID and the client random nonce many are
+
+315
+00:12:48,210 --> 00:12:53,460
+static and they're never changed for a
+
+316
+00:12:49,890 --> 00:12:55,199
+particular version of a TLS library so
+
+317
+00:12:53,460 --> 00:12:57,480
+we can use these fields to a fingerprint
+
+318
+00:12:55,200 --> 00:12:59,710
+implementation
+
+319
+00:12:57,480 --> 00:13:02,020
+so let's take a look at the fields of
+
+320
+00:12:59,710 --> 00:13:05,140
+two client hello messages one generated
+
+321
+00:13:02,020 --> 00:13:06,400
+by Chrome and the other by open SSL so
+
+322
+00:13:05,140 --> 00:13:08,949
+if we look at the list of ciphers which
+
+323
+00:13:06,400 --> 00:13:11,350
+sent sent by you to client we can see
+
+324
+00:13:08,950 --> 00:13:15,190
+the chrome sends 17 cipher Suites in
+
+325
+00:13:11,350 --> 00:13:16,930
+open SSL sends 48 the list of supported
+
+326
+00:13:15,190 --> 00:13:19,180
+groups that they send are almost the
+
+327
+00:13:16,930 --> 00:13:20,890
+same but chrome sends this extra value
+
+328
+00:13:19,180 --> 00:13:23,709
+the grease value at the start of the
+
+329
+00:13:20,890 --> 00:13:25,600
+list a grease value is also prevented
+
+330
+00:13:23,710 --> 00:13:28,420
+prepended to the start of the list of
+
+331
+00:13:25,600 --> 00:13:29,740
+cyprus tweets you notice so chrome sends
+
+332
+00:13:28,420 --> 00:13:32,620
+these grease ciphers which don't
+
+333
+00:13:29,740 --> 00:13:34,480
+actually represent valid algorithms to
+
+334
+00:13:32,620 --> 00:13:36,310
+ensure that servers and middle boxes
+
+335
+00:13:34,480 --> 00:13:39,660
+don't break when they come across values
+
+336
+00:13:36,310 --> 00:13:42,010
+as they don't recognize so if we see a
+
+337
+00:13:39,660 --> 00:13:44,680
+client hello message with these 17
+
+338
+00:13:42,010 --> 00:13:46,240
+cipher suites in this exact order along
+
+339
+00:13:44,680 --> 00:13:47,979
+with this set of groups and extensions
+
+340
+00:13:46,240 --> 00:13:49,720
+with the grease cipher suite prevented
+
+341
+00:13:47,980 --> 00:13:51,580
+to each list then we can reasonably
+
+342
+00:13:49,720 --> 00:13:58,150
+assume that it was generated by Chrome's
+
+343
+00:13:51,580 --> 00:13:59,680
+TLS library and not by open SSL so now
+
+344
+00:13:58,150 --> 00:14:01,600
+that we know how to LS fingerprinting
+
+345
+00:13:59,680 --> 00:14:05,620
+works we can get to the HTTP
+
+346
+00:14:01,600 --> 00:14:07,660
+interception detection process so the
+
+347
+00:14:05,620 --> 00:14:10,150
+first step is the constructed database
+
+348
+00:14:07,660 --> 00:14:11,829
+of known browser fingerprints these can
+
+349
+00:14:10,150 --> 00:14:13,750
+be constructed manually by operating
+
+350
+00:14:11,830 --> 00:14:15,100
+both a client and a server and then
+
+351
+00:14:13,750 --> 00:14:17,650
+logging the connection parameters
+
+352
+00:14:15,100 --> 00:14:22,420
+including the HTTP user agent and the
+
+353
+00:14:17,650 --> 00:14:24,430
+TLS fingerprint next for an incoming
+
+354
+00:14:22,420 --> 00:14:25,959
+request from a client we can check if
+
+355
+00:14:24,430 --> 00:14:28,390
+the user agent matches anything in our
+
+356
+00:14:25,959 --> 00:14:29,500
+database if not then we can't say
+
+357
+00:14:28,390 --> 00:14:31,060
+anything about whether or not the
+
+358
+00:14:29,500 --> 00:14:33,550
+connection is intercepted and we should
+
+359
+00:14:31,060 --> 00:14:36,130
+collect more fingerprints if we do have
+
+360
+00:14:33,550 --> 00:14:37,750
+a match then we can compare the TLS
+
+361
+00:14:36,130 --> 00:14:39,760
+fingerprint of the requests to the
+
+362
+00:14:37,750 --> 00:14:42,130
+expected fingerprint in our database if
+
+363
+00:14:39,760 --> 00:14:43,380
+they match then it's unlikely that we
+
+364
+00:14:42,130 --> 00:14:45,610
+have a monster in the middle here
+
+365
+00:14:43,380 --> 00:14:47,529
+however if the fingerprints don't match
+
+366
+00:14:45,610 --> 00:14:49,300
+then it's likely that either our
+
+367
+00:14:47,529 --> 00:14:51,640
+fingerprint database is incomplete or
+
+368
+00:14:49,300 --> 00:14:53,560
+outdated or the connection was indeed
+
+369
+00:14:51,640 --> 00:14:56,290
+intercepted so we have a likely monster
+
+370
+00:14:53,560 --> 00:14:58,329
+in the middle we can go a few steps
+
+371
+00:14:56,290 --> 00:15:03,550
+further and actually try to identify the
+
+372
+00:14:58,330 --> 00:15:04,780
+responsible middle box too so we're
+
+373
+00:15:03,550 --> 00:15:06,430
+finally ready to talk about the tools
+
+374
+00:15:04,780 --> 00:15:08,540
+that we've built a cloud player for
+
+375
+00:15:06,430 --> 00:15:11,060
+doing HTTP interception detection
+
+376
+00:15:08,540 --> 00:15:13,160
+so we built an open-source library
+
+377
+00:15:11,060 --> 00:15:15,920
+written and go for this purpose which we
+
+378
+00:15:13,160 --> 00:15:17,180
+call monster in the middle engine some
+
+379
+00:15:15,920 --> 00:15:19,189
+of the initial goals we had when
+
+380
+00:15:17,180 --> 00:15:21,380
+developing this project are first for it
+
+381
+00:15:19,190 --> 00:15:22,970
+to be maintainable so fingerprints in
+
+382
+00:15:21,380 --> 00:15:25,310
+the database quickly go stale as
+
+383
+00:15:22,970 --> 00:15:26,900
+browsers are updated and it's time
+
+384
+00:15:25,310 --> 00:15:29,660
+consuming to generate and vet new
+
+385
+00:15:26,900 --> 00:15:31,209
+fingerprints manually so we hope to be
+
+386
+00:15:29,660 --> 00:15:32,930
+able to automatically generate and
+
+387
+00:15:31,210 --> 00:15:34,490
+fingerprints that we trust from
+
+388
+00:15:32,930 --> 00:15:38,359
+connections observed from cloud floors
+
+389
+00:15:34,490 --> 00:15:39,800
+network much like cisco is doing now we
+
+390
+00:15:38,360 --> 00:15:41,660
+also wanted the fingerprint format that
+
+391
+00:15:39,800 --> 00:15:44,599
+we use to be flexible to model a variety
+
+392
+00:15:41,660 --> 00:15:45,980
+of browser behavior for instance some
+
+393
+00:15:44,600 --> 00:15:47,390
+implementations change the order of
+
+394
+00:15:45,980 --> 00:15:49,670
+cipher suites based on available
+
+395
+00:15:47,390 --> 00:15:52,250
+hardware on the device so we'd like to
+
+396
+00:15:49,670 --> 00:15:54,170
+capture that we also plan to support
+
+397
+00:15:52,250 --> 00:15:56,570
+alternative static TLS fingerprint
+
+398
+00:15:54,170 --> 00:15:58,849
+formats like jaw 3 and TLS fingerprint
+
+399
+00:15:56,570 --> 00:16:03,170
+that are already widely adopted in the
+
+400
+00:15:58,850 --> 00:16:05,360
+community and we also wanted the library
+
+401
+00:16:03,170 --> 00:16:07,670
+to be fast so performance was a priority
+
+402
+00:16:05,360 --> 00:16:10,610
+so we wanted to be able to deploy it at
+
+403
+00:16:07,670 --> 00:16:12,709
+scale so and we actually showed that we
+
+404
+00:16:10,610 --> 00:16:14,720
+can do this by deploying it on a 5%
+
+405
+00:16:12,710 --> 00:16:20,030
+sample of TLS client hellos on
+
+406
+00:16:14,720 --> 00:16:22,550
+CloudFlare so this probably makes you
+
+407
+00:16:20,030 --> 00:16:24,650
+wonder ok what is clouds are seeing when
+
+408
+00:16:22,550 --> 00:16:26,359
+it comes to https interception on the
+
+409
+00:16:24,650 --> 00:16:29,000
+public Internet
+
+410
+00:16:26,360 --> 00:16:31,160
+so aggregating data from this 5% traffic
+
+411
+00:16:29,000 --> 00:16:33,470
+sample we've also exposed a public
+
+412
+00:16:31,160 --> 00:16:35,600
+dashboard that gives insight into the
+
+413
+00:16:33,470 --> 00:16:38,210
+practice of HTTP interception as
+
+414
+00:16:35,600 --> 00:16:40,010
+observed by our network this dashboard
+
+415
+00:16:38,210 --> 00:16:41,930
+is called Malcolm which technically
+
+416
+00:16:40,010 --> 00:16:44,420
+stands for measuring active listeners
+
+417
+00:16:41,930 --> 00:16:46,760
+connection observers legitimate monitors
+
+418
+00:16:44,420 --> 00:16:48,170
+but really this is Loki a chance for us
+
+419
+00:16:46,760 --> 00:16:51,280
+to reference our favorite favorite
+
+420
+00:16:48,170 --> 00:16:54,740
+2000's family sitcom and Bryan Cranston
+
+421
+00:16:51,280 --> 00:16:56,360
+this dashboard allows for filtering over
+
+422
+00:16:54,740 --> 00:16:59,510
+a number of fields including browser
+
+423
+00:16:56,360 --> 00:17:02,000
+operating system and the type of HTTP
+
+424
+00:16:59,510 --> 00:17:04,550
+interception tool out of those that
+
+425
+00:17:02,000 --> 00:17:06,470
+we've been able to identify so let's see
+
+426
+00:17:04,550 --> 00:17:08,980
+some examples of this dashboard in
+
+427
+00:17:06,470 --> 00:17:08,980
+action
+
+428
+00:17:09,240 --> 00:17:13,929
+so here we show the overall HTTP
+
+429
+00:17:12,250 --> 00:17:16,809
+interception rates from the traffic
+
+430
+00:17:13,929 --> 00:17:18,130
+sample over a 30 day period so the
+
+431
+00:17:16,809 --> 00:17:19,750
+orange shows a percentage of traffic
+
+432
+00:17:18,130 --> 00:17:22,419
+that we do believe has been intercepted
+
+433
+00:17:19,750 --> 00:17:24,760
+based on our heuristic so this shows
+
+434
+00:17:22,419 --> 00:17:27,789
+that just about 17% of traffic has been
+
+435
+00:17:24,760 --> 00:17:29,740
+flattened the green shows traffic that
+
+436
+00:17:27,789 --> 00:17:32,410
+we do not believe to be intercepted and
+
+437
+00:17:29,740 --> 00:17:33,789
+the blue shows traffic that we're not
+
+438
+00:17:32,410 --> 00:17:36,669
+sure about because their fingerprint
+
+439
+00:17:33,789 --> 00:17:38,260
+database is incomplete or out-of-date so
+
+440
+00:17:36,669 --> 00:17:41,140
+you might be wondering about this large
+
+441
+00:17:38,260 --> 00:17:42,309
+spike that you see here so this is
+
+442
+00:17:41,140 --> 00:17:44,140
+actually from when I updated the
+
+443
+00:17:42,309 --> 00:17:46,139
+reference browser fingerprints that are
+
+444
+00:17:44,140 --> 00:17:48,730
+we're using in our production database
+
+445
+00:17:46,140 --> 00:17:52,179
+and then the gradual increase of the
+
+446
+00:17:48,730 --> 00:17:54,460
+blue bar as time progresses shows that
+
+447
+00:17:52,179 --> 00:17:57,039
+our fingerprint database is going out of
+
+448
+00:17:54,460 --> 00:17:58,720
+date so we have more and more unknown so
+
+449
+00:17:57,039 --> 00:18:00,700
+making these updates automatic is a big
+
+450
+00:17:58,720 --> 00:18:06,789
+to-do for this project so that we plan
+
+451
+00:18:00,700 --> 00:18:09,010
+to do soon our dashboard also allows for
+
+452
+00:18:06,789 --> 00:18:11,260
+filtering by fields like browser and
+
+453
+00:18:09,010 --> 00:18:13,539
+operating system so here in this video
+
+454
+00:18:11,260 --> 00:18:16,390
+we're gonna first filter by traffic that
+
+455
+00:18:13,539 --> 00:18:18,490
+we do believe to be intercepted and then
+
+456
+00:18:16,390 --> 00:18:21,549
+we'll see the breakdown of intercepted
+
+457
+00:18:18,490 --> 00:18:23,200
+connections with a chrome user agent we
+
+458
+00:18:21,549 --> 00:18:26,440
+see that out of all the chrome traffic
+
+459
+00:18:23,200 --> 00:18:29,919
+Android and Windows phones tend to be to
+
+460
+00:18:26,440 --> 00:18:31,480
+have the most intercepted traffic and
+
+461
+00:18:29,919 --> 00:18:33,460
+you can also clear the filters and
+
+462
+00:18:31,480 --> 00:18:35,289
+started into an investigation of HTTPS
+
+463
+00:18:33,460 --> 00:18:37,990
+and reception so we encourage you to
+
+464
+00:18:35,289 --> 00:18:39,580
+check out the dashboard and we plan to
+
+465
+00:18:37,990 --> 00:18:41,710
+add more features to the dashboard soon
+
+466
+00:18:39,580 --> 00:18:44,049
+like filtering by country so you can
+
+467
+00:18:41,710 --> 00:18:49,179
+examine Kazakhstan and in depth if you
+
+468
+00:18:44,049 --> 00:18:51,010
+want to so let's conclude with some
+
+469
+00:18:49,179 --> 00:18:53,169
+takeaways from the talk the first
+
+470
+00:18:51,010 --> 00:18:54,970
+takeaway is that TLS terminated up
+
+471
+00:18:53,169 --> 00:18:57,220
+terminating middleboxes pose serious
+
+472
+00:18:54,970 --> 00:18:59,440
+threats to network security even if
+
+473
+00:18:57,220 --> 00:19:00,909
+they're not inherently malicious the
+
+474
+00:18:59,440 --> 00:19:03,700
+best case for Enda and connections
+
+475
+00:19:00,909 --> 00:19:04,270
+security is to avoid HTTP interception
+
+476
+00:19:03,700 --> 00:19:07,210
+altogether
+
+477
+00:19:04,270 --> 00:19:09,610
+whether you're ality the reality is that
+
+478
+00:19:07,210 --> 00:19:11,020
+it's sometimes unavoidable in these
+
+479
+00:19:09,610 --> 00:19:12,789
+cases middleboxes
+
+480
+00:19:11,020 --> 00:19:14,559
+performing interception should be held
+
+481
+00:19:12,789 --> 00:19:17,650
+at the same security standards as
+
+482
+00:19:14,559 --> 00:19:19,840
+browsers the second takeaway from the
+
+483
+00:19:17,650 --> 00:19:22,600
+talk is that heuristics based on HTTP
+
+484
+00:19:19,840 --> 00:19:25,959
+and TLS fingerprints can be effective at
+
+485
+00:19:22,600 --> 00:19:27,699
+protecting HTTPS interception detecting
+
+486
+00:19:25,960 --> 00:19:30,490
+women exception occurs is the first step
+
+487
+00:19:27,700 --> 00:19:32,110
+to holding middleboxes accountable this
+
+488
+00:19:30,490 --> 00:19:33,580
+is especially important for clients who
+
+489
+00:19:32,110 --> 00:19:36,219
+may not even know that their connection
+
+490
+00:19:33,580 --> 00:19:41,260
+is being intercepted as in the case of
+
+491
+00:19:36,220 --> 00:19:43,059
+the citizens of Kazakhstan finally we
+
+492
+00:19:41,260 --> 00:19:44,470
+encourage feedback and feature requests
+
+493
+00:19:43,059 --> 00:19:46,299
+for our open source tool in public
+
+494
+00:19:44,470 --> 00:19:50,559
+dashboard so please check them out
+
+495
+00:19:46,299 --> 00:19:53,440
+PRS are welcome PR is welcomed and with
+
+496
+00:19:50,559 --> 00:19:55,418
+that we can take any questions and feel
+
+497
+00:19:53,440 --> 00:19:58,350
+free to ask us in person or to tweet at
+
+498
+00:19:55,419 --> 00:19:58,350
+us thank you
+
+499
+00:19:59,660 --> 00:20:06,259
+[Applause]
+
+500
+00:20:08,250 --> 00:20:12,360
+how our questions handle here do we just
+
+501
+00:20:10,510 --> 00:20:15,340
+pick them do we choose your audience oh
+
+502
+00:20:12,360 --> 00:20:17,260
+yeah and I guess we have a mic everyone
+
+503
+00:20:15,340 --> 00:20:20,709
+should go up to a mic and line up and
+
+504
+00:20:17,260 --> 00:20:22,299
+ask questions there hear me yeah
+
+505
+00:20:20,710 --> 00:20:24,610
+a question like let's say you have a
+
+506
+00:20:22,299 --> 00:20:26,320
+like a Firefox browser right and it has
+
+507
+00:20:24,610 --> 00:20:27,969
+got all the root certificates already
+
+508
+00:20:26,320 --> 00:20:30,299
+stored in the binary and it can be
+
+509
+00:20:27,970 --> 00:20:34,690
+modified so in that case when you have a
+
+510
+00:20:30,299 --> 00:20:38,350
+how do you how can you exploit this MIT
+
+511
+00:20:34,690 --> 00:20:40,720
+M if all the well-known certificates
+
+512
+00:20:38,350 --> 00:20:42,820
+already in the binary and you can't add
+
+513
+00:20:40,720 --> 00:20:44,620
+anymore you can't go and add above in
+
+514
+00:20:42,820 --> 00:20:44,889
+our root certificate or something like
+
+515
+00:20:44,620 --> 00:20:47,949
+that
+
+516
+00:20:44,890 --> 00:20:50,500
+so then as long as people get CS and
+
+517
+00:20:47,950 --> 00:20:58,059
+certificates so how can the attacker
+
+518
+00:20:50,500 --> 00:21:00,820
+still like to MIT M understood this if a
+
+519
+00:20:58,059 --> 00:21:02,530
+binary has a preset list of trusted root
+
+520
+00:21:00,820 --> 00:21:04,629
+certificates like that of certificate
+
+521
+00:21:02,530 --> 00:21:07,690
+authorities how could an interceptor
+
+522
+00:21:04,630 --> 00:21:09,669
+encourage a client to install a new root
+
+523
+00:21:07,690 --> 00:21:11,710
+certificate that can issue fraudulent
+
+524
+00:21:09,669 --> 00:21:13,990
+certificates was that the question is
+
+525
+00:21:11,710 --> 00:21:16,330
+that let's say you don't take any other
+
+526
+00:21:13,990 --> 00:21:18,400
+set of care so Firefox would only look
+
+527
+00:21:16,330 --> 00:21:20,260
+at its own certificates and then the
+
+528
+00:21:18,400 --> 00:21:22,960
+roots are decayed list we do not look at
+
+529
+00:21:20,260 --> 00:21:24,730
+any other place in that case somebody
+
+530
+00:21:22,960 --> 00:21:26,860
+cannot just claim to be example.com
+
+531
+00:21:24,730 --> 00:21:29,640
+right because it has to be signed by a
+
+532
+00:21:26,860 --> 00:21:29,639
+well-known CA
+
+533
+00:21:30,060 --> 00:21:34,470
+tastes like on browsers like operating
+
+534
+00:21:32,970 --> 00:21:36,930
+systems you can actually just change
+
+535
+00:21:34,470 --> 00:21:38,420
+whatever root certificates you trust and
+
+536
+00:21:36,930 --> 00:21:40,680
+you can actually add your own and
+
+537
+00:21:38,420 --> 00:21:43,800
+typically applications will follow that
+
+538
+00:21:40,680 --> 00:21:45,570
+trusted root certificate list that is
+
+539
+00:21:43,800 --> 00:21:49,200
+implemented as part of the operating
+
+540
+00:21:45,570 --> 00:21:55,409
+system so it's derived from that ok next
+
+541
+00:21:49,200 --> 00:21:56,850
+question over there so in this case I
+
+542
+00:21:55,410 --> 00:22:00,240
+think you are to talk to an interception
+
+543
+00:21:56,850 --> 00:22:03,149
+between browsers and servers so how
+
+544
+00:22:00,240 --> 00:22:05,790
+about server-to-server communication how
+
+545
+00:22:03,150 --> 00:22:06,270
+do you detect that that's a really good
+
+546
+00:22:05,790 --> 00:22:09,149
+question
+
+547
+00:22:06,270 --> 00:22:12,810
+so detecting server to server HTTP
+
+548
+00:22:09,150 --> 00:22:14,580
+interception yeah so you should be able
+
+549
+00:22:12,810 --> 00:22:17,580
+to do something similar if it's a TLS
+
+550
+00:22:14,580 --> 00:22:19,260
+connection then then one side has to
+
+551
+00:22:17,580 --> 00:22:21,149
+operate as a client and one as the
+
+552
+00:22:19,260 --> 00:22:24,390
+server beginning if you gather
+
+553
+00:22:21,150 --> 00:22:25,500
+fingerprints for the client in that case
+
+554
+00:22:24,390 --> 00:22:29,120
+and you should be able to do something
+
+555
+00:22:25,500 --> 00:22:34,290
+similar if it's yeah if they're using
+
+556
+00:22:29,120 --> 00:22:36,810
+yeah if it's HTTP yeah okay thanks okay
+
+557
+00:22:34,290 --> 00:22:38,610
+I'm gonna go in this order so is there
+
+558
+00:22:36,810 --> 00:22:42,510
+someone at the mic over there you're
+
+559
+00:22:38,610 --> 00:22:44,399
+good hi yeah is there a client ad in
+
+560
+00:22:42,510 --> 00:22:45,960
+front of the browser so the user can
+
+561
+00:22:44,400 --> 00:22:50,940
+detect that their connection that's been
+
+562
+00:22:45,960 --> 00:22:53,400
+man-in-the-middle so so this this could
+
+563
+00:22:50,940 --> 00:22:57,270
+be I mean one easy thing to do in the
+
+564
+00:22:53,400 --> 00:22:59,220
+browser would be to to just say okay
+
+565
+00:22:57,270 --> 00:23:01,710
+we're seeing a certificate signed by
+
+566
+00:22:59,220 --> 00:23:04,230
+something that isn't in our default list
+
+567
+00:23:01,710 --> 00:23:06,300
+of root certificates sort of display a
+
+568
+00:23:04,230 --> 00:23:08,550
+warning then so that would be that would
+
+569
+00:23:06,300 --> 00:23:11,909
+be one thing or the server after it does
+
+570
+00:23:08,550 --> 00:23:13,139
+this this detection could send something
+
+571
+00:23:11,910 --> 00:23:16,140
+back to the client
+
+572
+00:23:13,140 --> 00:23:19,080
+but right now yes so there there are
+
+573
+00:23:16,140 --> 00:23:22,230
+some ways to do this we also have a site
+
+574
+00:23:19,080 --> 00:23:24,210
+called man in the MIT MDOT watch that a
+
+575
+00:23:22,230 --> 00:23:26,430
+client can connect to and just and then
+
+576
+00:23:24,210 --> 00:23:28,140
+the server displays whether or not it
+
+577
+00:23:26,430 --> 00:23:32,070
+believes intercept or the connection has
+
+578
+00:23:28,140 --> 00:23:34,140
+been intercepted thank you yeah hi
+
+579
+00:23:32,070 --> 00:23:35,330
+where should we deploy the detection
+
+580
+00:23:34,140 --> 00:23:38,570
+tool
+
+581
+00:23:35,330 --> 00:23:40,220
+I mean I feel like we're we out at least
+
+582
+00:23:38,570 --> 00:23:41,629
+okay the question for small ism where
+
+583
+00:23:40,220 --> 00:23:43,940
+should we deploy the detection tool that
+
+584
+00:23:41,630 --> 00:23:47,510
+we built at least for us where we
+
+585
+00:23:43,940 --> 00:23:50,060
+deployed it was in our infrastructure
+
+586
+00:23:47,510 --> 00:23:51,440
+that collects like a basically a sample
+
+587
+00:23:50,060 --> 00:23:52,960
+of all of the requests inbound to our
+
+588
+00:23:51,440 --> 00:23:56,090
+network we use it for internal research
+
+589
+00:23:52,960 --> 00:23:57,830
+and like anonymize it of course but we
+
+590
+00:23:56,090 --> 00:24:00,050
+use that we actually use the library
+
+591
+00:23:57,830 --> 00:24:01,760
+there if it detects any patterns that
+
+592
+00:24:00,050 --> 00:24:04,970
+could correspond to inbound connections
+
+593
+00:24:01,760 --> 00:24:07,430
+to cloud players Network being monstered
+
+594
+00:24:04,970 --> 00:24:08,960
+in the middle so something that you
+
+595
+00:24:07,430 --> 00:24:10,610
+could use it for us if you'd like to see
+
+596
+00:24:08,960 --> 00:24:12,770
+what inbound traffic to your server
+
+597
+00:24:10,610 --> 00:24:14,360
+looks like and identify if it's ever
+
+598
+00:24:12,770 --> 00:24:16,400
+been intercepted that could be a useful
+
+599
+00:24:14,360 --> 00:24:17,929
+place for using this tool and I think
+
+600
+00:24:16,400 --> 00:24:20,630
+this tool is best used in a data
+
+601
+00:24:17,930 --> 00:24:22,700
+analysis context right and just just add
+
+602
+00:24:20,630 --> 00:24:25,250
+so caddy server which is an open-source
+
+603
+00:24:22,700 --> 00:24:27,920
+server implementation has a version of
+
+604
+00:24:25,250 --> 00:24:29,630
+this man in the middle detection built
+
+605
+00:24:27,920 --> 00:24:31,970
+into it so it's different from the
+
+606
+00:24:29,630 --> 00:24:33,260
+library that we built but it's an
+
+607
+00:24:31,970 --> 00:24:36,320
+earlier version based off the same
+
+608
+00:24:33,260 --> 00:24:38,600
+research paper so so if you're deploying
+
+609
+00:24:36,320 --> 00:24:41,120
+caddy server you can enable this this
+
+610
+00:24:38,600 --> 00:24:42,350
+feature as well so hopefully we'll we'll
+
+611
+00:24:41,120 --> 00:24:43,840
+develop this tool to the point where
+
+612
+00:24:42,350 --> 00:24:47,709
+it's just easy to incorporate into
+
+613
+00:24:43,840 --> 00:24:51,139
+normal server software Thanks
+
+614
+00:24:47,710 --> 00:24:53,720
+next question do we have anyone left
+
+615
+00:24:51,140 --> 00:24:55,970
+microphone over there okay so if this
+
+616
+00:24:53,720 --> 00:25:03,230
+microphone first off congratulations on
+
+617
+00:24:55,970 --> 00:25:05,330
+graduating loop high so the graphs that
+
+618
+00:25:03,230 --> 00:25:06,950
+you showed about percentage of
+
+619
+00:25:05,330 --> 00:25:11,179
+interception was the denominator
+
+620
+00:25:06,950 --> 00:25:14,440
+connections or devices and assuming that
+
+621
+00:25:11,180 --> 00:25:17,600
+it was connections do you think that
+
+622
+00:25:14,440 --> 00:25:19,190
+that's more or less or equivalent
+
+623
+00:25:17,600 --> 00:25:21,080
+li-like interesting two devices like do
+
+624
+00:25:19,190 --> 00:25:22,790
+we know if the behavior of the devices
+
+625
+00:25:21,080 --> 00:25:24,560
+that are being intercepted leads to
+
+626
+00:25:22,790 --> 00:25:26,330
+perhaps more TLS connection so it's
+
+627
+00:25:24,560 --> 00:25:28,310
+really like a small number of devices
+
+628
+00:25:26,330 --> 00:25:33,830
+that accounts for a large amount of
+
+629
+00:25:28,310 --> 00:25:36,470
+bandwidth or so so you're so you're
+
+630
+00:25:33,830 --> 00:25:39,080
+asking if if we think the the breakdown
+
+631
+00:25:36,470 --> 00:25:40,460
+of connections is is for like of all
+
+632
+00:25:39,080 --> 00:25:42,710
+they're all the requests that we get
+
+633
+00:25:40,460 --> 00:25:44,330
+yeah well where the graphs was their
+
+634
+00:25:42,710 --> 00:25:45,980
+breakdown of connections or a breakdown
+
+635
+00:25:44,330 --> 00:25:46,740
+of devices like what's your denominator
+
+636
+00:25:45,980 --> 00:25:48,990
+at that graph
+
+637
+00:25:46,740 --> 00:25:51,809
+oh it's breakdown over total connections
+
+638
+00:25:48,990 --> 00:25:55,440
+yeah over total connections is assuming
+
+639
+00:25:51,809 --> 00:25:57,840
+that do you think that the devices that
+
+640
+00:25:55,440 --> 00:26:00,480
+are being intercepted have basically
+
+641
+00:25:57,840 --> 00:26:02,250
+similar number of connections to non
+
+642
+00:26:00,480 --> 00:26:05,010
+interception devices or is this perhaps
+
+643
+00:26:02,250 --> 00:26:08,220
+inflating or deflating the relative
+
+644
+00:26:05,010 --> 00:26:09,840
+actual like amount of devices or people
+
+645
+00:26:08,220 --> 00:26:13,080
+being intercepted by looking at it at
+
+646
+00:26:09,840 --> 00:26:14,070
+connections instead of devices yes it
+
+647
+00:26:13,080 --> 00:26:15,870
+does
+
+648
+00:26:14,070 --> 00:26:17,639
+yeah correct me if I'm wrong yeah it
+
+649
+00:26:15,870 --> 00:26:21,330
+does it does look like certain devices
+
+650
+00:26:17,640 --> 00:26:22,740
+are intercepted more than others there's
+
+651
+00:26:21,330 --> 00:26:23,970
+a lot of variants here and you can you
+
+652
+00:26:22,740 --> 00:26:28,320
+can check it out on the dashboard we
+
+653
+00:26:23,970 --> 00:26:31,110
+haven't we haven't done a lot of digging
+
+654
+00:26:28,320 --> 00:26:32,939
+to see exactly which devices are the
+
+655
+00:26:31,110 --> 00:26:35,969
+Moose intercepted and stuff so that's
+
+656
+00:26:32,940 --> 00:26:41,100
+some future future stuff that we think
+
+657
+00:26:35,970 --> 00:26:42,120
+would be really interesting thank you we
+
+658
+00:26:41,100 --> 00:26:45,419
+have connections in all three
+
+659
+00:26:42,120 --> 00:26:50,729
+microphones so go on this cue again are
+
+660
+00:26:45,420 --> 00:26:52,500
+you asking so please come find his
+
+661
+00:26:50,730 --> 00:26:53,960
+absolute tweet of us talk to us to be
+
+662
+00:26:52,500 --> 00:26:56,060
+happy to answer them in person thank you
+
+663
+00:26:53,960 --> 00:26:59,760
+thank you
+
+664
+00:26:56,060 --> 00:26:59,760
+[Applause]
+

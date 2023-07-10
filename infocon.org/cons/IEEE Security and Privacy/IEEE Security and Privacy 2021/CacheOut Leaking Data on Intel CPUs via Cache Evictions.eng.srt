@@ -1,0 +1,696 @@
+﻿1
+00:00:00,520 --> 00:00:05,900
+Hello, everyone, I am Stephan, and I am going to talk about: "CacheOut: Leaking Data on Intel CPUs via Cache Evictions."
+
+2
+00:00:05,900 --> 00:00:09,900
+But before I'll do that let's cover some background first.
+
+3
+00:00:09,900 --> 00:00:13,420
+Let's take a traditional system from about twenty to thirty years ago.
+
+4
+00:00:13,420 --> 00:00:23,119
+You will find that it has a CPU with very few registers that are fast to access, large main memory that is slower to access, and finally disk storage that can be pretty large, but really slow to access.
+
+5
+00:00:23,120 --> 00:00:30,580
+And a common trend that we have been seeing is that CPUs actually advance at a much faster pace than your main memory and disk storage.
+
+6
+00:00:30,580 --> 00:00:34,580
+And this has actually led to the increasing performance gap that you see here.
+
+7
+00:00:34,580 --> 00:00:36,580
+So, how do we overcome that?
+
+8
+00:00:36,580 --> 00:00:40,580
+Well, we have a cache hierarchy that keeps copies of the data close to the CPU.
+
+9
+00:00:40,580 --> 00:00:42,940
+So we have a level one cache, that is small and fast.
+
+10
+00:00:42,940 --> 00:00:46,000
+We have a level two cache that is a bit larger, but a bit slower to access.
+
+11
+00:00:46,000 --> 00:00:52,000
+And finally, we have a level three cache that can be pretty large, but is also pretty slow to access, but still faster than your main memory.
+
+12
+00:00:52,000 --> 00:00:58,000
+So to keep in mind: caches are faster to access, but they are also smaller in size.
+
+13
+00:00:58,000 --> 00:01:02,000
+So now that we understand caches, let's have a look at what happened in 2018.
+
+14
+00:01:02,000 --> 00:01:07,320
+You may have actually have seen any of these three logos, because these are the Meltdown, Spectre and Foreshadow logos.
+
+15
+00:01:07,320 --> 00:01:13,320
+And in 2018, two classes of attacks got disclosed, namely: speculative and transient execution attacks.
+
+16
+00:01:13,320 --> 00:01:18,020
+So let's take our basic cache hierarchy again, and introduce an execution core.
+
+17
+00:01:18,020 --> 00:01:23,740
+One important property to talk about is that the cache is actually shared among security domains.
+
+18
+00:01:23,740 --> 00:01:31,740
+So if we have the Linux operating system or UEFI firmware, maybe a hypervisor and virtual machines, all of these share the L1d cache.
+
+19
+00:01:31,740 --> 00:01:38,839
+And to properly isolate those applications from each other, the core will prevent applications from crossing security domains.
+
+20
+00:01:38,840 --> 00:01:45,660
+So, if we have our operating system here and we have a malicious application, and it tries to read something from the operating system.
+
+21
+00:01:45,660 --> 00:01:49,940
+What will happen is that the execution core will abort that operation and induce a fault.
+
+22
+00:01:49,940 --> 00:01:53,940
+And because of this, we also call this operation a faulty load.
+
+23
+00:01:53,940 --> 00:01:58,280
+What Meltdown shows is that there is actually enough time for an attacker to leak that data.
+
+24
+00:01:58,280 --> 00:02:04,800
+So, we have our operating system here, and in this case, the operating system has some data stored in the L1d cache.
+
+25
+00:02:04,800 --> 00:02:16,800
+And now, a malicious attacker can simply use a faulty load to actually read that data out of the L1d cache and then use a side-channel attack to siphon out that data.
+
+26
+00:02:16,800 --> 00:02:23,120
+And this can all happen before the execution core gets to abort the faulty load and actually induce a fault.
+
+27
+00:02:23,120 --> 00:02:29,120
+So this is actually a hardware vulnerability that affects many generations of Intel CPUs.
+
+28
+00:02:29,120 --> 00:02:35,820
+And because of that it was covered all over the news, it had a huge public impact and this prompted a wide mitigation effort.
+
+29
+00:02:35,820 --> 00:02:41,820
+In fact, if you buy a modern Intel CPU nowadays, you will find that it is no longer possible to leak from the cache.
+
+30
+00:02:41,820 --> 00:02:43,820
+So that was 2018.
+
+31
+00:02:43,820 --> 00:02:52,200
+What happened in 2019 is that a new class of attacks got disclosed, namely: Microarchitectural Data Sampling attacks, or MDS in short.
+
+32
+00:02:52,200 --> 00:02:54,839
+So it actually turns out there are more buffers.
+
+33
+00:02:54,840 --> 00:02:58,100
+You have a fill buffer, a store buffer and a load port.
+
+34
+00:02:58,100 --> 00:03:02,400
+And again, all of these are actually shared among different security domains.
+
+35
+00:03:02,400 --> 00:03:10,580
+So, we have our operating system, we have our UEFI firmware, we even have a hypervisor and virtual machine, and all of these share these buffers.
+
+36
+00:03:10,580 --> 00:03:14,580
+So what MDS does, it actually targets these internal CPU buffers.
+
+37
+00:03:14,580 --> 00:03:20,420
+And to understand how it does that, we basically look at how that works.
+
+38
+00:03:20,420 --> 00:03:30,420
+So basically with MDS, you can, similar to Meltdown, use a faulty or assisting load to basically access other people's data present in the CPU buffers.
+
+39
+00:03:30,420 --> 00:03:35,859
+And the way you would do that, is by basically dereferencing a NULL pointer under speculation.
+
+40
+00:03:35,860 --> 00:03:40,060
+And this actually works across processes, VMs and Intel SGX.
+
+41
+00:03:40,060 --> 00:03:43,680
+That's pretty severe too, so it was also all over the news.
+
+42
+00:03:43,680 --> 00:03:47,320
+In fact, it had very similar consequences as Meltdown.
+
+43
+00:03:47,320 --> 00:03:51,320
+Hence, why it was sometimes dubbed the second Meltdown.
+
+44
+00:03:51,320 --> 00:03:54,260
+So MDS actually samples data passing through the buffers.
+
+45
+00:03:54,260 --> 00:04:01,660
+What it means is that if the victim runs on the execution core, and performs a load, it will fetch the data from the L2 cache.
+
+46
+00:04:01,660 --> 00:04:10,000
+And here, the attacker can use a faulty load to basically extract the data from the fill buffer, and then siphon it out using a side-channel attack.
+
+47
+00:04:10,000 --> 00:04:16,000
+As the data goes onward to the load that is being executed on the execution core.
+
+48
+00:04:16,000 --> 00:04:20,240
+This also means that with MDS, you are just sampling whatever is passing by a the time.
+
+49
+00:04:20,240 --> 00:04:24,240
+So if we have the orange dot, you will just see the orange dot from the fill buffer.
+
+50
+00:04:25,180 --> 00:04:29,180
+And if we have the blue dot here, then you will just see the blue dot from the fill buffer.
+
+51
+00:04:30,100 --> 00:04:35,040
+And then, finally, if we have this green dot, you will just see the green dot from the fill buffer.
+
+52
+00:04:35,040 --> 00:04:39,620
+This just means that whatever is passing by at the time, that is what you will actually extract using MDS.
+
+53
+00:04:40,300 --> 00:04:43,420
+And that is really like drinking from a fire hose.
+
+54
+00:04:43,420 --> 00:04:46,380
+Because you actually just get whatever data is in flight.
+
+55
+00:04:46,380 --> 00:04:50,219
+And this also means that you actually have no control over what you are actually getting.
+
+56
+00:04:50,220 --> 00:04:52,780
+And hence the name: "Microarchitectural Data Sampling."
+
+57
+00:04:52,780 --> 00:04:59,299
+Because Microarchitectural Data Sampling means that you are just sampling data from these microarchitectural buffers.
+
+58
+00:04:59,300 --> 00:05:02,640
+So how did Intel mitigate MDS?
+
+59
+00:05:02,640 --> 00:05:08,640
+So the problem is really that if you switch processes, some data may be lingering around in these buffers.
+
+60
+00:05:08,640 --> 00:05:18,960
+So ideally you would fix the leakage itself, so you can no longer perform an MDS attack, but your customers already have vulnerable hardware, so how would you patch those CPUs?
+
+61
+00:05:18,960 --> 00:05:26,380
+So Intel released a microcode update that basically patches the verw instruction to flush these internal CPU buffers.
+
+62
+00:05:26,380 --> 00:05:36,380
+And now when we switch between processes, the operating system will issue that instruction to clear those buffers, such that the data is no longer available to the attacker.
+
+63
+00:05:36,380 --> 00:05:39,420
+And this brings us to the CacheOut attack.
+
+64
+00:05:39,420 --> 00:05:43,080
+So, let's have a closer look at the mitigations for MDS.
+
+65
+00:05:43,080 --> 00:05:50,080
+The mitigation is to flush the internal CPU buffers, but this does not really fix the root cause behind MDS!
+
+66
+00:05:50,080 --> 00:05:53,180
+You can still leak data from those buffers, in fact.
+
+67
+00:05:53,180 --> 00:05:56,860
+You just have to find a way to get data inside those buffers.
+
+68
+00:05:56,860 --> 00:05:59,240
+And this bring us to a really important question.
+
+69
+00:05:59,240 --> 00:06:03,760
+Are ad-hoc countermeasures like flushing buffers sufficient as a mitigation?
+
+70
+00:06:03,760 --> 00:06:13,760
+And as a bonus: can we perhaps get some more control, so that we are not like the girl here drinking from a fire hose, but more like this cat drinking from a steady stream of water.
+
+71
+00:06:13,760 --> 00:06:17,000
+So, let's have a look at some observations.
+
+72
+00:06:17,000 --> 00:06:21,300
+The RIDL paper mentions that: "Evicting the previous cache lines from the L1d cache...
+
+73
+00:06:21,300 --> 00:06:27,160
+... the processor has to write them back through the memory hierarchy and will do so through the line fill buffer.
+
+74
+00:06:27,160 --> 00:06:33,160
+And so what this really means is that evicting the cache forces data into the fill buffer.
+
+75
+00:06:33,160 --> 00:06:39,160
+And ZombieLoad even reports a 0.1 bytes per second leakage despite these mitigations.
+
+76
+00:06:39,160 --> 00:06:42,200
+And this residual leakage is actually worrisome.
+
+77
+00:06:42,200 --> 00:06:50,840
+So what we would expect is, if we take our diagram here, is that there is an orange path for the eviction from the L1d cache to the L2 cache.
+
+78
+00:06:50,840 --> 00:06:56,840
+And what we found with CacheOut, is that there is actually a data path for eviction that goes through the line fill buffer.
+
+79
+00:06:56,840 --> 00:06:59,799
+And keep in mind, the line fill buffer is still leaky.
+
+80
+00:06:59,800 --> 00:07:02,700
+So if we can actually get some data in there, we can actually leak it.
+
+81
+00:07:02,700 --> 00:07:05,380
+So, to exemplify that:
+
+82
+00:07:05,380 --> 00:07:19,740
+Let's say we have some data in the L1d cache, if we can somehow evict that into the fill buffer, then we actually can use a faulty load to leak it, and then siphon it out using a side-channel attack, as it goes on its way to the L2 cache.
+
+83
+00:07:19,740 --> 00:07:23,740
+So how can we actually exploit this new data path?
+
+84
+00:07:23,740 --> 00:07:29,420
+So CacheOut targets data at rest, and I'll basically show you in this diagram what I will mean by that.
+
+85
+00:07:29,420 --> 00:07:40,740
+So, we have a victim here running on the execution core, and the victim loads something from the L2 cache and it passes through the fill buffer, and what really happens there is that a copy is also stored in the L1d cache.
+
+86
+00:07:40,740 --> 00:07:44,740
+As it goes onward to the load that is performed by the execution core.
+
+87
+00:07:44,740 --> 00:07:54,740
+Now, the operating system runs and issues a verw instruction to clear those buffers there. So the attacker can no longer extract the data from those buffers.
+
+88
+00:07:54,740 --> 00:08:01,640
+And now the operating system basically can wait a bit and this is really to show that you can target data at rest.
+
+89
+00:08:01,640 --> 00:08:03,640
+And now the attacker runs.
+
+90
+00:08:03,640 --> 00:08:10,919
+And the attacker will now load its own data into the cache to fill it, and to basically make sure that there is no room left for the victim's data.
+
+91
+00:08:10,920 --> 00:08:20,080
+And by doing this, it basically evicts the data into the fill buffer, where it can then use a faulty load to leak that data, while it is being evicted to the L2 cache.
+
+92
+00:08:20,080 --> 00:08:24,900
+So to compare this: MDS targets in-flight data.
+
+93
+00:08:24,900 --> 00:08:35,780
+So, we have our execution core performing a load, it fetches the data from the L2 cache and while it is at the fill buffer, the attacker has an opportunity to read that data from the fill buffer.
+
+94
+00:08:35,780 --> 00:08:37,780
+And then it just continues onward
+
+95
+00:08:37,780 --> 00:08:39,780
+to the load instruction that is being performed
+
+96
+00:08:39,780 --> 00:08:41,780
+on the execution core.
+
+97
+00:08:43,500 --> 00:08:46,140
+So what are some properties that we have found for CacheOut?
+
+98
+00:08:46,140 --> 00:08:50,880
+We actually found that CacheOut can leak data at 2.85 KiB/s.
+
+99
+00:08:50,880 --> 00:08:56,120
+And because we target data in the L1d cache, we can actually target data that is at rest.
+
+100
+00:08:56,120 --> 00:09:01,300
+And thanks to the evictions, we can also select what data we want to leak in particular.
+
+101
+00:09:01,300 --> 00:09:07,300
+And finally, we managed to defeat the verw mitigation that is put in place for MDS.
+
+102
+00:09:07,300 --> 00:09:09,900
+In fact, we exploited it to even improve CacheOut.
+
+103
+00:09:09,900 --> 00:09:10,800
+How did we do that?
+
+104
+00:09:10,800 --> 00:09:16,800
+Well, we found that if we flush buffers before starting CacheOut, you can actually use that to improve the signal.
+
+105
+00:09:17,700 --> 00:09:23,460
+So, we conjecture this is basically because you remove unrelated data from the buffers.
+
+106
+00:09:23,460 --> 00:09:24,960
+Well, thanks, Intel!
+
+107
+00:09:24,960 --> 00:09:27,820
+We actually have an instruction that does that, it is verw.
+
+108
+00:09:27,820 --> 00:09:31,200
+So we actually managed to use their countermeasures against them.
+
+109
+00:09:32,320 --> 00:09:38,660
+And CacheOut also made a big splash in the news, and to show why, we will actually have to look at what we can attack using CacheOut.
+
+110
+00:09:38,900 --> 00:09:42,900
+So, we have our attacker in user space, what can we actually attack?
+
+111
+00:09:42,900 --> 00:09:45,900
+We actually managed to leak AES and RSA keys.
+
+112
+00:09:45,900 --> 00:09:48,760
+We can leak neural network weights across processes.
+
+113
+00:09:48,760 --> 00:09:54,480
+And, we can even target KASLR and kernel stack canaries from the operating system.
+
+114
+00:09:54,480 --> 00:09:59,280
+And all of this works across virtual machines, and you can even target the hypervisor.
+
+115
+00:10:00,560 --> 00:10:04,040
+Actually, there is a very little left in the CPU that we cannot leak.
+
+116
+00:10:05,360 --> 00:10:08,400
+In fact, the only thing that I did not mention is Intel SGX.
+
+117
+00:10:08,400 --> 00:10:11,900
+So can we somehow use CacheOut to exploit Intel SGX?
+
+118
+00:10:11,900 --> 00:10:13,900
+So what is Intel SGX even?
+
+119
+00:10:13,900 --> 00:10:24,819
+Intel SGX stands for Software Guard eXtensions, and it allows developers to partition their code into enclaves that cannot be read by anyone, like it cannot be read by the applications or by the operating system.
+
+120
+00:10:24,820 --> 00:10:27,460
+The only component that is really trusted is the processor.
+
+121
+00:10:27,460 --> 00:10:36,980
+And to guarantee that all of this is happening, that your enclave is actually running on a genuine system that is uncompromised and is fully up-to-date, it also has a feature called remote attestation.
+
+122
+00:10:37,860 --> 00:10:42,860
+And if you pass remote attestation, you know for sure that you are running on genuine Intel hardware.
+
+123
+00:10:43,620 --> 00:10:51,380
+So, one thing we decided to do, is to look at if we can dump memory from SGX enclaves using CacheOut.
+
+124
+00:10:51,380 --> 00:10:58,040
+So to exemplify this, we actually put a picture of the Mona Lisa inside an SGX enclave.
+
+125
+00:10:58,040 --> 00:11:01,939
+And then we simply used CacheOut to extract the Mona Lisa out of the enclave.
+
+126
+00:11:01,940 --> 00:11:08,840
+And, in fact, as you can see here, we quite successfully did so, which means that we can quite successfully dump entire SGX enclaves.
+
+127
+00:11:09,740 --> 00:11:11,700
+So, can we do even better than that?
+
+128
+00:11:11,700 --> 00:11:15,200
+Well, that is why we want to attack the remote attestation process.
+
+129
+00:11:15,520 --> 00:11:17,540
+So, what is remote attestation?
+
+130
+00:11:17,540 --> 00:11:22,180
+I told you before that it basically attests that the enclave is running on genuine Intel hardware.
+
+131
+00:11:22,520 --> 00:11:23,240
+How does that work?
+
+132
+00:11:23,240 --> 00:11:29,840
+Well, the user enclave produces a report, that it forwards to the CPU, and the CPU then uses the attestation key to sign it.
+
+133
+00:11:30,660 --> 00:11:37,540
+And now, it produces a quote that gets sent back to the user enclave, which it can then send to the remote client, basically the enclave developer,
+
+134
+00:11:37,540 --> 00:11:45,199
+and the enclave developer can then use the Intel Attestation Service to verify that the enclave was indeed running on genuine Intel hardware.
+
+135
+00:11:45,660 --> 00:11:50,480
+What this really means is that all trust is based on this single attestation key, that you see here.
+
+136
+00:11:50,480 --> 00:11:54,100
+And, in fact, we used CacheOut to leak that key.
+
+137
+00:11:54,100 --> 00:11:56,960
+So with the attestation key in our hands,
+
+138
+00:11:56,960 --> 00:11:59,620
+we can just fabricate and sign our own quotes,
+
+139
+00:11:59,900 --> 00:12:04,500
+and Intel cannot really tell who signed that quote, simply because of Enhanced Privacy ID,
+
+140
+00:12:04,500 --> 00:12:06,720
+or EPID, which ensures pseudonymity.
+
+141
+00:12:06,720 --> 00:12:12,560
+Basically, if you have a quote the signature cannot be linked back to the particular CPU instance that signed it.
+
+142
+00:12:12,560 --> 00:12:16,060
+It can just be linked back to an entire group of CPUs.
+
+143
+00:12:16,060 --> 00:12:18,939
+And this means that your hacker privacy is guaranteed.
+
+144
+00:12:19,620 --> 00:12:25,140
+What this also means is that a single compromised key erodes the trust in the entire SGX ecosystem.
+
+145
+00:12:25,980 --> 00:12:35,760
+And it also means that, as a hacker, you basically have no longer any need for an actual SGX machine to sign quotes, because with the key in your hands, you can do this on an AMD or an Arm machine too.
+
+146
+00:12:36,920 --> 00:12:39,180
+So, we were thinking a bit about this.
+
+147
+00:12:39,180 --> 00:12:42,060
+And we implemented Attestation as a Service.
+
+148
+00:12:42,060 --> 00:12:49,040
+So we implemented a Twitter bot, that basically signs your tweet as if it is a quote,
+
+149
+00:12:49,040 --> 00:12:51,740
+and with the mentality of: "If you tweet it, we will sign it."
+
+150
+00:12:51,740 --> 00:12:56,800
+And it actually signed 100+ quotes within two hours, until it got blocked by Github.
+
+151
+00:12:56,800 --> 00:13:02,479
+And, while we released our paper, Intel also released countermeasures.
+
+152
+00:13:02,480 --> 00:13:08,220
+But we found that even a month after that happened, the key was still trusted.
+
+153
+00:13:08,220 --> 00:13:16,740
+And the simple reason why is because to restore the confidentiality in SGX, you basically have to install BIOS updates to restore the trust.
+
+154
+00:13:16,740 --> 00:13:18,860
+And this can take some time.
+
+155
+00:13:18,860 --> 00:13:22,780
+So Intel actually leaves a month of time for users to do that.
+
+156
+00:13:23,680 --> 00:13:30,079
+So the only way to prevent abuse of our Twitter bot, is for us to hardcode our MRSIGNER and MRENCLAVE fields.
+
+157
+00:13:30,080 --> 00:13:34,220
+So as you can see here, we have the: "When good enclaves go bad."
+
+158
+00:13:34,220 --> 00:13:39,880
+If you trust that, I think you have a worse issue to solve as an enclave developer.
+
+159
+00:13:39,880 --> 00:13:42,120
+So to summarize:
+
+160
+00:13:42,120 --> 00:13:46,800
+What we found is a new data path for eviction from the cache, that goes through the line fill buffer.
+
+161
+00:13:46,800 --> 00:13:51,060
+And we have exploited this path in CacheOut, to basically leak data at rest,
+
+162
+00:13:51,060 --> 00:13:53,060
+with the ability to select data,
+
+163
+00:13:53,060 --> 00:13:57,000
+and with leakage rates of 2.85 KiB/s.
+
+164
+00:13:57,660 --> 00:14:01,260
+And we also showed that we can actually bypass the verw mitigation.
+
+165
+00:14:02,320 --> 00:14:07,060
+And we can use this to leak data across processes, VMs, and even Intel SGX.
+
+166
+00:14:07,940 --> 00:14:12,740
+But more importantly, what we showed is that CacheOut breaches SGX' confidentiality.
+
+167
+00:14:12,740 --> 00:14:16,660
+It basically allows an attacker to masquerade as a legitimate SGX enclave.
+
+168
+00:14:16,660 --> 00:14:18,380
+So how do you fix this?
+
+169
+00:14:18,380 --> 00:14:21,240
+Well, there is a microcode update that is available since June 20th.
+
+170
+00:14:21,240 --> 00:14:26,760
+So patch your machine, and make sure you don't trust any keys that have been issued before that.
+
+171
+00:14:27,840 --> 00:14:32,300
+So that was our talk about: "CacheOut: Leaking Data on Intel CPUs via Cache Evictions."
+
+172
+00:14:32,300 --> 00:14:36,819
+If you want more information, you can visit our website: https://cacheoutattack.com.
+
+173
+00:14:36,820 --> 00:14:38,820
+You can reach out to me on Twitter.
+
+174
+00:14:38,820 --> 00:14:43,460
+And with that, I thank you for your time, and I'll glady take any questions.
+

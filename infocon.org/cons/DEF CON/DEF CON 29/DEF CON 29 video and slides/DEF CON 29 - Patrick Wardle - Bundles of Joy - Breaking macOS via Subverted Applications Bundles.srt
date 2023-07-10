@@ -1,0 +1,3995 @@
+﻿1
+00:00:03,810 --> 00:00:06,860
+- Aloha and welcome to Bundles of Joy.
+
+2
+00:00:06,860 --> 00:00:08,980
+I'll talk about breaking macOS
+
+3
+00:00:08,980 --> 00:00:11,343
+via Subverted Application Bundles.
+
+4
+00:00:12,370 --> 00:00:13,640
+My name is Patrick Wardle,
+
+5
+00:00:13,640 --> 00:00:17,310
+I am the creator of the
+Mac Security Tool Suite
+
+6
+00:00:17,310 --> 00:00:20,130
+and Security Website, Objective-See.
+
+7
+00:00:20,130 --> 00:00:23,717
+Also the organizer of the
+Mac Security Conference,
+
+8
+00:00:23,717 --> 00:00:26,640
+"Objective by the Sea,"
+and also the author
+
+9
+00:00:26,640 --> 00:00:29,273
+of the "Art of Mac Malware" analysis book.
+
+10
+00:00:31,080 --> 00:00:34,100
+So today, we're gonna be talking
+about an interesting flaw
+
+11
+00:00:34,100 --> 00:00:37,470
+that affected all recent
+versions of macOS.
+
+12
+00:00:37,470 --> 00:00:38,810
+We're gonna start by looking
+
+13
+00:00:38,810 --> 00:00:42,130
+at various anti-infection mechanisms
+
+14
+00:00:42,130 --> 00:00:44,700
+that the flaw was able to sidestep.
+
+15
+00:00:44,700 --> 00:00:47,630
+We'll then dive into the flaw,
+
+16
+00:00:47,630 --> 00:00:50,130
+looking at it root cause analysis.
+
+17
+00:00:50,130 --> 00:00:53,410
+We'll then talk about the
+discovery of it being exploited
+
+18
+00:00:53,410 --> 00:00:57,113
+as zero-day in the wild
+to distribute malware.
+
+19
+00:00:58,215 --> 00:01:00,320
+And we'll then dive into protections
+
+20
+00:01:00,320 --> 00:01:02,590
+and detection mechanisms
+
+21
+00:01:02,590 --> 00:01:05,990
+that we deployed while
+awaiting Apples patch.
+
+22
+00:01:05,990 --> 00:01:07,470
+And then finally, we'll wrap up
+
+23
+00:01:07,470 --> 00:01:09,700
+by analyzing Apples Patch to see
+
+24
+00:01:09,700 --> 00:01:14,253
+how they ultimately addressed,
+fixed, patched the flaw.
+
+25
+00:01:16,260 --> 00:01:18,013
+So first some background,
+
+26
+00:01:20,620 --> 00:01:24,390
+the main way that Mac users are infected,
+
+27
+00:01:24,390 --> 00:01:29,390
+come infected with malware is
+via user assisted techniques.
+
+28
+00:01:29,640 --> 00:01:33,100
+These are methods that
+require user assistant,
+
+29
+00:01:33,100 --> 00:01:34,960
+user interactions.
+
+30
+00:01:34,960 --> 00:01:37,880
+I'm sure many of us here
+are familiar with these,
+
+31
+00:01:37,880 --> 00:01:39,743
+but a brief review.
+
+32
+00:01:40,710 --> 00:01:42,720
+We've probably all heard
+about malicious websites
+
+33
+00:01:42,720 --> 00:01:45,510
+that display popups, for example,
+
+34
+00:01:45,510 --> 00:01:48,010
+claiming your flash player is out of date.
+
+35
+00:01:48,010 --> 00:01:51,450
+If you download and run,
+what you believe is perhaps
+
+36
+00:01:51,450 --> 00:01:53,590
+the required flash update,
+
+37
+00:01:53,590 --> 00:01:56,500
+your system may become
+infected with malware.
+
+38
+00:01:56,500 --> 00:02:01,500
+Adversaries also, do things
+like, poisoned search results,
+
+39
+00:02:02,280 --> 00:02:05,800
+infect popular websites
+that users may browse to
+
+40
+00:02:05,800 --> 00:02:08,090
+in order to distribute malware.
+
+41
+00:02:08,090 --> 00:02:11,910
+Finally, hackers are very
+fond of pirating applications,
+
+42
+00:02:11,910 --> 00:02:14,050
+but then injecting malicious code,
+
+43
+00:02:14,050 --> 00:02:17,020
+trojanizing these applications,
+so when users download
+
+44
+00:02:17,020 --> 00:02:20,700
+and run them, they will
+be infected with malware.
+
+45
+00:02:20,700 --> 00:02:23,490
+But really the main takeaway
+that kind of ties all
+
+46
+00:02:23,490 --> 00:02:25,570
+these approaches together is there
+
+47
+00:02:25,570 --> 00:02:28,860
+is explicit user interaction required.
+
+48
+00:02:28,860 --> 00:02:29,693
+And in some sense,
+
+49
+00:02:29,693 --> 00:02:32,373
+the users ultimately infecting themselves.
+
+50
+00:02:33,880 --> 00:02:37,240
+Now, Macs become ever more
+popular, ever more prevalent,
+
+51
+00:02:37,240 --> 00:02:41,210
+so do these attacks, just more Mac malware
+
+52
+00:02:41,210 --> 00:02:43,350
+and adware than ever.
+
+53
+00:02:43,350 --> 00:02:47,460
+And Apple rightfully realized
+that as we just mentioned,
+
+54
+00:02:47,460 --> 00:02:51,370
+the majority of ways that
+Macs were getting infected
+
+55
+00:02:51,370 --> 00:02:56,370
+was by user assisted, user
+interaction based malware attacks
+
+56
+00:02:57,240 --> 00:02:59,970
+and infection vectors,
+they really decided,
+
+57
+00:02:59,970 --> 00:03:02,250
+we need to do something
+to protect the users
+
+58
+00:03:02,250 --> 00:03:04,020
+from themselves.
+
+59
+00:03:04,020 --> 00:03:06,270
+And you know, I'm a critic of Apple,
+
+60
+00:03:06,270 --> 00:03:07,900
+but in this case, yeah,
+
+61
+00:03:07,900 --> 00:03:10,480
+I think that was definitely
+the right approach.
+
+62
+00:03:10,480 --> 00:03:12,340
+So we're briefly gonna
+look at three technologies,
+
+63
+00:03:12,340 --> 00:03:15,510
+three anti-infection mechanisms.
+
+64
+00:03:15,510 --> 00:03:19,527
+File quarantine, gatekeeper
+and notarization requirements.
+
+65
+00:03:19,527 --> 00:03:21,820
+And they know that these
+are all aimed at protecting
+
+66
+00:03:21,820 --> 00:03:23,820
+the user from infecting themselves.
+
+67
+00:03:23,820 --> 00:03:26,870
+The goal is, if the user
+is tricked or coerced
+
+68
+00:03:26,870 --> 00:03:29,410
+into running something,
+the operating system
+
+69
+00:03:29,410 --> 00:03:31,920
+will first intercept that launch,
+
+70
+00:03:31,920 --> 00:03:34,650
+that application launched,
+that process execution
+
+71
+00:03:34,650 --> 00:03:38,493
+and examine it to make
+sure that it's not malware.
+
+72
+00:03:40,450 --> 00:03:44,150
+Now, we first need to talk
+about the quarantine attribute.
+
+73
+00:03:44,150 --> 00:03:46,050
+Quarantine attribute is
+something that is added
+
+74
+00:03:46,050 --> 00:03:50,470
+to most essentially all downloaded items,
+
+75
+00:03:50,470 --> 00:03:53,410
+either by the application that's
+downloading it for example,
+
+76
+00:03:53,410 --> 00:03:56,070
+the browser or the operating system.
+
+77
+00:03:56,070 --> 00:03:59,130
+And it is an extended
+attribute that basically tells
+
+78
+00:03:59,130 --> 00:04:03,500
+the operating system, Hey,
+this item is from the internet.
+
+79
+00:04:03,500 --> 00:04:07,770
+When the user then goes to
+launch the item, for example,
+
+80
+00:04:07,770 --> 00:04:10,950
+launch the application that
+they've just downloaded,
+
+81
+00:04:10,950 --> 00:04:13,030
+the operating system will see
+if the quarantine attribute
+
+82
+00:04:13,030 --> 00:04:14,350
+has been added.
+
+83
+00:04:14,350 --> 00:04:17,980
+And if so, it will then
+perform a variety of checks,
+
+84
+00:04:17,980 --> 00:04:20,230
+gatekeeper, notarization,
+file quarantine checks
+
+85
+00:04:20,230 --> 00:04:21,950
+on that item.
+
+86
+00:04:21,950 --> 00:04:24,370
+So the quarantine actually,
+it's kind of the catalyst
+
+87
+00:04:24,370 --> 00:04:25,960
+for those checks.
+
+88
+00:04:25,960 --> 00:04:29,820
+You can examine if a file
+has a quarantine attribute
+
+89
+00:04:29,820 --> 00:04:33,580
+via the "xattr" command, as
+you can see on the slide,
+
+90
+00:04:33,580 --> 00:04:37,570
+downloaded some malware from
+the internet and as expected
+
+91
+00:04:37,570 --> 00:04:39,770
+the browser and the operating system slap
+
+92
+00:04:39,770 --> 00:04:42,080
+that quarantine attribute on the item.
+
+93
+00:04:42,080 --> 00:04:44,670
+So if we were to go
+launch this application,
+
+94
+00:04:44,670 --> 00:04:46,730
+the operating system would perform all
+
+95
+00:04:46,730 --> 00:04:49,633
+its anti-infection
+mechanisms, it's checks.
+
+96
+00:04:51,770 --> 00:04:54,580
+So the the first anti-infection mechanism
+
+97
+00:04:54,580 --> 00:04:57,763
+that Apple introduced was
+all the way back in 2007.
+
+98
+00:05:00,230 --> 00:05:02,530
+Yeah. Way, way back. (chuckles)
+
+99
+00:05:02,530 --> 00:05:07,100
+And this technology was...
+it's named "File Quarantine"
+
+100
+00:05:07,100 --> 00:05:11,390
+and in a nutshell, it
+basically will display a prompt
+
+101
+00:05:11,390 --> 00:05:12,730
+to the user saying two things,
+
+102
+00:05:12,730 --> 00:05:15,170
+first, Hey, the item
+you're about to launch
+
+103
+00:05:15,170 --> 00:05:16,950
+is from the internet.
+
+104
+00:05:16,950 --> 00:05:21,493
+And two, it is an executable application.
+
+105
+00:05:22,400 --> 00:05:25,120
+This is important because
+which number of malware
+
+106
+00:05:25,120 --> 00:05:28,420
+it will attempt to masquerade
+as a benign file types.
+
+107
+00:05:28,420 --> 00:05:29,990
+On the slide, we have an example,
+
+108
+00:05:29,990 --> 00:05:32,650
+this is Wind Tail, that was a distributed
+
+109
+00:05:32,650 --> 00:05:37,450
+as a malicious application,
+but used a application icon
+
+110
+00:05:37,450 --> 00:05:40,400
+to masquerade as a PowerPoint document.
+
+111
+00:05:40,400 --> 00:05:43,380
+The idea from the malware
+author's point of view
+
+112
+00:05:43,380 --> 00:05:46,480
+is the users might be
+tricked into launching this
+
+113
+00:05:46,480 --> 00:05:49,840
+because they thought it was a
+benign PowerPoint application.
+
+114
+00:05:49,840 --> 00:05:52,010
+However, a file quarantine
+would jump in the way
+
+115
+00:05:52,010 --> 00:05:54,170
+and say, Hey, wait a minute, user,
+
+116
+00:05:54,170 --> 00:05:57,890
+just to make you aware of this,
+just to make sure you know
+
+117
+00:05:57,890 --> 00:06:00,640
+that this is actually an
+application and if you run it,
+
+118
+00:06:00,640 --> 00:06:02,150
+you might infect yourself.
+
+119
+00:06:02,150 --> 00:06:05,330
+So a good warning, but
+the problem as is the case
+
+120
+00:06:05,330 --> 00:06:09,470
+with most warnings, users
+would simply click allow open,
+
+121
+00:06:09,470 --> 00:06:11,570
+thus, still infecting themselves.
+
+122
+00:06:11,570 --> 00:06:14,230
+So Apple had to take the next step.
+
+123
+00:06:14,230 --> 00:06:16,160
+And that next step was gatekeeper,
+
+124
+00:06:16,160 --> 00:06:19,210
+which was introduced in 2012.
+
+125
+00:06:19,210 --> 00:06:22,810
+In a nutshell, gatekeeper will
+block unsigned applications
+
+126
+00:06:22,810 --> 00:06:26,640
+from running, basically, when
+the user launches an item
+
+127
+00:06:26,640 --> 00:06:28,920
+that they've downloaded from the internet,
+
+128
+00:06:28,920 --> 00:06:30,670
+the operating system will intercept that
+
+129
+00:06:30,670 --> 00:06:33,880
+and gatekeeper will check to
+see if it's validly signed.
+
+130
+00:06:33,880 --> 00:06:36,020
+If it's not, it will block that.
+
+131
+00:06:36,020 --> 00:06:38,650
+That was a good approach
+because at the time,
+
+132
+00:06:38,650 --> 00:06:41,133
+when the majority of Mac
+malware was unsigned.
+
+133
+00:06:42,110 --> 00:06:44,330
+Of course the shortcoming
+was that malware authors
+
+134
+00:06:44,330 --> 00:06:46,600
+simply began signing their malware.
+
+135
+00:06:46,600 --> 00:06:51,120
+It's pretty easy to
+fraudulently obtain or steal
+
+136
+00:06:51,120 --> 00:06:55,060
+a legitimate code signing a developer ID,
+
+137
+00:06:55,060 --> 00:06:56,990
+which would then allow
+you to sign your malware,
+
+138
+00:06:56,990 --> 00:07:00,883
+which would then allow you to
+bypass or sidestep gatekeeper.
+
+139
+00:07:01,850 --> 00:07:04,020
+So Apple had to respond yet again,
+
+140
+00:07:04,020 --> 00:07:07,220
+which they did in 2019
+with the introduction
+
+141
+00:07:07,220 --> 00:07:08,877
+of notarization.
+
+142
+00:07:08,877 --> 00:07:11,560
+Notarization will block any application
+
+143
+00:07:11,560 --> 00:07:14,470
+that has not been
+explicitly verified, scanned
+
+144
+00:07:14,470 --> 00:07:16,883
+and approved by Apple proper.
+
+145
+00:07:17,870 --> 00:07:20,340
+So on this slide, we see kind
+of a conceptual overview.
+
+146
+00:07:20,340 --> 00:07:23,070
+Imagine your developer
+creating a application,
+
+147
+00:07:23,070 --> 00:07:26,000
+you compile it, you now have
+to submit that application
+
+148
+00:07:26,000 --> 00:07:30,110
+to Apple, where they will scan
+and verify the application.
+
+149
+00:07:30,110 --> 00:07:32,320
+If they don't detect any malicious code,
+
+150
+00:07:32,320 --> 00:07:35,580
+they will then give it
+their stamp of approval,
+
+151
+00:07:35,580 --> 00:07:37,790
+they will then notarize this.
+
+152
+00:07:37,790 --> 00:07:39,530
+At runtime then, when you distribute
+
+153
+00:07:39,530 --> 00:07:42,970
+this now, notarized application,
+it will be allowed to run.
+
+154
+00:07:42,970 --> 00:07:46,830
+The idea is malware authors
+will, A- either not submit
+
+155
+00:07:46,830 --> 00:07:50,410
+their applications to
+Apple for verification,
+
+156
+00:07:50,410 --> 00:07:52,150
+or if they do, Apple will detect
+
+157
+00:07:52,150 --> 00:07:56,810
+that they contain malicious
+code and does not notarize them.
+
+158
+00:07:56,810 --> 00:07:57,700
+This means that even then,
+
+159
+00:07:57,700 --> 00:07:59,860
+if the malware authors successfully trick
+
+160
+00:07:59,860 --> 00:08:03,910
+the users into attempting
+to run their malicious code,
+
+161
+00:08:03,910 --> 00:08:06,500
+the operating system will be
+like, whoa, wait a minute,
+
+162
+00:08:06,500 --> 00:08:09,240
+this is not notarized, I will block it.
+
+163
+00:08:09,240 --> 00:08:12,400
+And in reality, this does work very well.
+
+164
+00:08:12,400 --> 00:08:13,700
+We can see on the slide,
+
+165
+00:08:13,700 --> 00:08:17,500
+some hackers slid into my
+DM's bemoaning the fact
+
+166
+00:08:17,500 --> 00:08:20,160
+that notarization had essentially ruined
+
+167
+00:08:20,160 --> 00:08:21,723
+their entire operation.
+
+168
+00:08:23,890 --> 00:08:27,320
+Let's now talk about an
+interesting flaw though,
+
+169
+00:08:27,320 --> 00:08:31,770
+that was able to very
+neatly sidestep fleet bypass
+
+170
+00:08:31,770 --> 00:08:34,830
+all of these anti-infection mechanisms.
+
+171
+00:08:34,830 --> 00:08:37,490
+And as it was a logic flaw did so
+
+172
+00:08:37,490 --> 00:08:39,903
+in a hundred percent reliable manner.
+
+173
+00:08:42,030 --> 00:08:44,560
+First, I wanna give credit to Cedric Owens
+
+174
+00:08:44,560 --> 00:08:47,820
+who uncovered this vulnerability.
+
+175
+00:08:47,820 --> 00:08:50,900
+He wasn't a hundred percent.
+sure on the root cause,
+
+176
+00:08:50,900 --> 00:08:55,080
+so ping me describing what he had found.
+
+177
+00:08:55,080 --> 00:08:58,310
+We have a nice proof
+of concept on the slide
+
+178
+00:08:58,310 --> 00:09:03,170
+that demonstrates the
+power of the vulnerability
+
+179
+00:09:03,170 --> 00:09:05,760
+and aligns to what Cedric observed,
+
+180
+00:09:05,760 --> 00:09:09,730
+which was we can download
+a malicious application
+
+181
+00:09:09,730 --> 00:09:14,610
+from the internet that is
+not signed, not notarized.
+
+182
+00:09:14,610 --> 00:09:18,800
+We can, you know, masquerade
+as for example, a resume,
+
+183
+00:09:18,800 --> 00:09:21,560
+a PDF document or really anything else.
+
+184
+00:09:21,560 --> 00:09:25,000
+And when launched,
+neither a file quarantine
+
+185
+00:09:25,000 --> 00:09:26,400
+nor a gatekeeper,
+
+186
+00:09:26,400 --> 00:09:29,550
+nor the operating systems
+notarization checks appear
+
+187
+00:09:29,550 --> 00:09:30,880
+to come into play.
+
+188
+00:09:30,880 --> 00:09:32,620
+And as Cedric notes,
+
+189
+00:09:32,620 --> 00:09:36,200
+no prompts from the
+operating system at all.
+
+190
+00:09:36,200 --> 00:09:38,020
+This is a very powerful vulnerability
+
+191
+00:09:38,020 --> 00:09:40,380
+because what it means is in theory,
+
+192
+00:09:40,380 --> 00:09:42,500
+malware authors could go
+back to their old tricks
+
+193
+00:09:42,500 --> 00:09:46,750
+of basically, infecting
+users across the globe
+
+194
+00:09:46,750 --> 00:09:50,150
+and not have to worry about any of macOSes
+
+195
+00:09:50,150 --> 00:09:52,933
+recent anti-infective mechanisms.
+
+196
+00:09:55,040 --> 00:09:57,520
+So let's take a look at what's going on.
+
+197
+00:09:57,520 --> 00:09:59,360
+So we have this proof of concepts,
+
+198
+00:09:59,360 --> 00:10:01,850
+and the first thing I wanted to check was
+
+199
+00:10:01,850 --> 00:10:04,710
+what's the quarantine
+attribute being correctly said,
+
+200
+00:10:04,710 --> 00:10:07,210
+'cause it was mentioned before
+the quarantine attribute is
+
+201
+00:10:07,210 --> 00:10:11,440
+the indicator that tells the
+operating system to perform
+
+202
+00:10:11,440 --> 00:10:16,440
+its various anti-infection
+checks, quarantine,
+
+203
+00:10:16,840 --> 00:10:19,683
+file quarantine, notarization,
+and a gatekeeper.
+
+204
+00:10:20,540 --> 00:10:24,120
+Well, as we can see, the
+proof concept is not signed,
+
+205
+00:10:24,120 --> 00:10:25,630
+which also means it's not notarized,
+
+206
+00:10:25,630 --> 00:10:29,290
+but indeed it does have the
+quarantine attribute set.
+
+207
+00:10:29,290 --> 00:10:31,870
+We can confirm that via the xattr command.
+
+208
+00:10:31,870 --> 00:10:33,570
+So this immediately shows us,
+
+209
+00:10:33,570 --> 00:10:35,510
+it's not an issue with
+the quarantine attribute
+
+210
+00:10:35,510 --> 00:10:39,510
+being missed, but this is
+almost more intriguing, right?
+
+211
+00:10:39,510 --> 00:10:42,030
+We have an unsigned
+application that can bypass
+
+212
+00:10:42,030 --> 00:10:44,770
+file quarantine, gatekeeper
+and notarization requirements.
+
+213
+00:10:44,770 --> 00:10:47,350
+How? It was insane.
+
+214
+00:10:47,350 --> 00:10:50,283
+So closer look, what's going on?
+
+215
+00:10:51,460 --> 00:10:55,450
+Well, if we look at the
+contents of the application,
+
+216
+00:10:55,450 --> 00:10:58,510
+we noticed two very interesting things
+
+217
+00:10:58,510 --> 00:11:00,130
+and I'll point these
+out 'cause you might not
+
+218
+00:11:00,130 --> 00:11:03,230
+be super familiar with
+application bundles.
+
+219
+00:11:03,230 --> 00:11:06,700
+The first thing is, if we
+look at an application.app,
+
+220
+00:11:06,700 --> 00:11:09,560
+which is really a special
+directory structure,
+
+221
+00:11:09,560 --> 00:11:12,570
+we see that it only contains three things,
+
+222
+00:11:12,570 --> 00:11:16,180
+a contents directory,
+a macOS sub-directory
+
+223
+00:11:16,180 --> 00:11:19,190
+in that contents directory,
+and then a file named PoC
+
+224
+00:11:20,070 --> 00:11:22,407
+into that macOS subdirectory.
+
+225
+00:11:23,690 --> 00:11:26,530
+Now, if you're familiar with
+normal application bundles,
+
+226
+00:11:26,530 --> 00:11:30,040
+you'll be like, wait a minute,
+where is the info.plist file?
+
+227
+00:11:30,040 --> 00:11:32,950
+The info.plist file is a metadata file
+
+228
+00:11:32,950 --> 00:11:35,557
+that describes information
+about the application
+
+229
+00:11:35,557 --> 00:11:39,680
+and it is always present
+in normal applications,
+
+230
+00:11:39,680 --> 00:11:42,553
+I thought it was required,
+but apparently not.
+
+231
+00:11:43,530 --> 00:11:44,710
+The other interesting thing about
+
+232
+00:11:44,710 --> 00:11:47,450
+this proof of concept application is that
+
+233
+00:11:47,450 --> 00:11:51,120
+the main executable component named PoC,
+
+234
+00:11:51,120 --> 00:11:53,280
+was not a macOS executable,
+
+235
+00:11:53,280 --> 00:11:56,900
+which is the standard
+executable file format on macOS
+
+236
+00:11:56,900 --> 00:12:00,373
+but rather a POSIX shell
+script, a bash script.
+
+237
+00:12:01,800 --> 00:12:04,000
+Now, rather interestingly,
+
+238
+00:12:04,000 --> 00:12:06,950
+there is a popular
+developer script on GitHub
+
+239
+00:12:06,950 --> 00:12:10,660
+that will package up applications
+in exactly this manner.
+
+240
+00:12:10,660 --> 00:12:12,990
+The idea is if you have a script
+
+241
+00:12:12,990 --> 00:12:17,210
+that you want to distribute to Mac users,
+
+242
+00:12:17,210 --> 00:12:19,500
+if you package it up as an application,
+
+243
+00:12:19,500 --> 00:12:23,170
+it's way easier to both
+distribute and for users to run,
+
+244
+00:12:23,170 --> 00:12:24,087
+they can just double click on it
+
+245
+00:12:24,087 --> 00:12:27,340
+and the operating system
+will take care of it.
+
+246
+00:12:27,340 --> 00:12:30,380
+The sad or a laughable
+thing about all of this
+
+247
+00:12:30,380 --> 00:12:33,980
+is this Appify developer
+script would actually
+
+248
+00:12:33,980 --> 00:12:36,450
+package up applications in this manner,
+
+249
+00:12:36,450 --> 00:12:39,550
+which inadvertently would
+trigger this same flaw.
+
+250
+00:12:39,550 --> 00:12:42,670
+So looking for bugs in
+macOS sometimes all you have
+
+251
+00:12:42,670 --> 00:12:47,670
+to do is use open source
+developer packaging tools, insane.
+
+252
+00:12:49,250 --> 00:12:53,603
+Okay, so we have this bare-boned
+script-based application,
+
+253
+00:12:54,500 --> 00:12:57,930
+no info.plist file and its
+main executable component
+
+254
+00:12:57,930 --> 00:13:01,260
+is a script. And we'll see,
+these are both prerequisites
+
+255
+00:13:01,260 --> 00:13:03,590
+for triggering the flaw.
+
+256
+00:13:03,590 --> 00:13:06,080
+As we also saw in that proof of concept,
+
+257
+00:13:06,080 --> 00:13:08,980
+when we download and run
+it, there are no prompts
+
+258
+00:13:08,980 --> 00:13:11,840
+as there should be because
+the quarantine attribute
+
+259
+00:13:11,840 --> 00:13:16,360
+has been set and this malicious
+proof of concept application
+
+260
+00:13:16,360 --> 00:13:20,140
+is unsigned from the
+internet, non-notarized,
+
+261
+00:13:20,140 --> 00:13:24,010
+so there's some flaw in
+the operating system.
+
+262
+00:13:24,010 --> 00:13:26,300
+My interest was peaked, I
+wanted to figure out exactly
+
+263
+00:13:26,300 --> 00:13:27,780
+what was going on.
+
+264
+00:13:27,780 --> 00:13:29,720
+Where was the flaw?
+
+265
+00:13:29,720 --> 00:13:33,040
+The problem though, was
+that when you launched
+
+266
+00:13:33,040 --> 00:13:35,420
+an application, when you
+double-click an application,
+
+267
+00:13:35,420 --> 00:13:38,220
+there is no less than
+half a dozen applications,
+
+268
+00:13:38,220 --> 00:13:42,270
+system, daemons, and the
+kernel, which all get involved
+
+269
+00:13:42,270 --> 00:13:46,110
+with parsing, launching,
+classifying the application.
+
+270
+00:13:46,110 --> 00:13:49,070
+It's incredible, I gave a talk about this
+
+271
+00:13:49,070 --> 00:13:51,240
+at ShmooCon a while back talking about
+
+272
+00:13:51,240 --> 00:13:52,770
+another gatekeeper flaw,
+
+273
+00:13:52,770 --> 00:13:56,500
+but you can see there is a
+myriad of apps and daemons
+
+274
+00:13:56,500 --> 00:13:59,510
+and frameworks that are
+all working together.
+
+275
+00:13:59,510 --> 00:14:01,940
+And again, this is
+problematic because the flaw
+
+276
+00:14:01,940 --> 00:14:05,890
+is somewhere in here, but you
+know, this is a lot going on,
+
+277
+00:14:05,890 --> 00:14:07,573
+where do we even begin?
+
+278
+00:14:10,980 --> 00:14:15,700
+So my ideal was, I'm gonna
+start by looking at log messages
+
+279
+00:14:15,700 --> 00:14:19,190
+to see if there is some
+interesting log message
+
+280
+00:14:19,190 --> 00:14:23,020
+that can point me at least
+towards the right application,
+
+281
+00:14:23,020 --> 00:14:25,160
+daemon framework or kernel code
+
+282
+00:14:25,160 --> 00:14:28,260
+where this vulnerability might lie.
+
+283
+00:14:28,260 --> 00:14:30,737
+And what they decided to do
+was launch three applications
+
+284
+00:14:30,737 --> 00:14:33,870
+and basically diff their log messages
+
+285
+00:14:33,870 --> 00:14:37,620
+to hopefully point me in the
+right direction of this flaw.
+
+286
+00:14:37,620 --> 00:14:41,200
+So the three apps were all from
+the internet, all in signed.
+
+287
+00:14:41,200 --> 00:14:43,680
+The first one was a standard application,
+
+288
+00:14:43,680 --> 00:14:47,870
+meaning it's executable
+was a Mach-O executable.
+
+289
+00:14:47,870 --> 00:14:51,540
+It also had the common info.plist file
+
+290
+00:14:51,540 --> 00:14:52,843
+in its application bundle.
+
+291
+00:14:53,810 --> 00:14:57,060
+Second application was a
+script-based application,
+
+292
+00:14:57,060 --> 00:14:59,610
+so it's executable
+component was a bash script,
+
+293
+00:14:59,610 --> 00:15:02,423
+but it still had that info.plist file.
+
+294
+00:15:03,310 --> 00:15:05,720
+And then finally, we had
+our proof of concept,
+
+295
+00:15:05,720 --> 00:15:09,540
+which is script-based, but is also missing
+
+296
+00:15:09,540 --> 00:15:11,223
+the info.plist file.
+
+297
+00:15:12,790 --> 00:15:15,590
+Now, before we can look
+at the log messages,
+
+298
+00:15:15,590 --> 00:15:17,590
+we have to enable private logging.
+
+299
+00:15:17,590 --> 00:15:20,460
+A recent versions of macOS
+suppress a lot of information
+
+300
+00:15:20,460 --> 00:15:24,990
+from the logs, which is not
+helpful when we are digging into
+
+301
+00:15:24,990 --> 00:15:27,320
+the internals of the
+operating system in an attempt
+
+302
+00:15:27,320 --> 00:15:30,040
+to find a flaw.
+
+303
+00:15:30,040 --> 00:15:33,320
+Long story short, we
+can install a profile,
+
+304
+00:15:33,320 --> 00:15:38,100
+which turns on private logging,
+posted a link in the slides
+
+305
+00:15:38,100 --> 00:15:41,080
+if you're interested in this,
+but once this is installed,
+
+306
+00:15:41,080 --> 00:15:43,593
+all data will be logged, which is great.
+
+307
+00:15:45,310 --> 00:15:47,200
+So now, let's run the three apps
+
+308
+00:15:47,200 --> 00:15:49,840
+and basically diff their log output.
+
+309
+00:15:49,840 --> 00:15:51,990
+Starting with the standard application,
+
+310
+00:15:51,990 --> 00:15:53,940
+the Mach-O based application that contains
+
+311
+00:15:53,940 --> 00:15:56,240
+the info.plist file.
+
+312
+00:15:56,240 --> 00:15:58,580
+Two things pop-out first and foremost,
+
+313
+00:15:58,580 --> 00:16:03,580
+we can quickly identify
+that the syspolicyd binary,
+
+314
+00:16:03,940 --> 00:16:07,250
+the syspolicy daemon is the component
+
+315
+00:16:07,250 --> 00:16:10,060
+of the operating system that
+is ultimately responsible
+
+316
+00:16:10,060 --> 00:16:15,060
+for evaluating and classifying
+applications, binaries
+
+317
+00:16:15,100 --> 00:16:17,320
+from the internet, ultimately saying,
+
+318
+00:16:17,320 --> 00:16:18,580
+should they be allowed or not?
+
+319
+00:16:18,580 --> 00:16:20,150
+It is the arbiter.
+
+320
+00:16:20,150 --> 00:16:23,250
+So we can assume, and as
+we'll see correctly assume
+
+321
+00:16:23,250 --> 00:16:27,803
+that this binary is where
+the logic flaw resided.
+
+322
+00:16:30,060 --> 00:16:31,690
+There's a lot of interesting
+log messages here.
+
+323
+00:16:31,690 --> 00:16:35,220
+I've highlighted what I
+think is the most indicative,
+
+324
+00:16:35,220 --> 00:16:40,220
+and that is the results of
+the GK or a gatekeeper check.
+
+325
+00:16:40,430 --> 00:16:42,460
+And we can see there's
+a variety of numbers,
+
+326
+00:16:42,460 --> 00:16:45,970
+the path of the item, but
+interestingly at the bottom,
+
+327
+00:16:45,970 --> 00:16:50,970
+it says, gk eval was allowed
+zero, false, show prompt one,
+
+328
+00:16:51,570 --> 00:16:54,390
+and then a log message
+changed the prompt was shown.
+
+329
+00:16:54,390 --> 00:16:57,870
+This is what we expected as
+this is an unsigned application
+
+330
+00:16:57,870 --> 00:17:00,730
+from the internet, so the
+log messages correspond
+
+331
+00:17:00,730 --> 00:17:03,230
+to what we see that is
+a prompt being shown
+
+332
+00:17:03,230 --> 00:17:05,883
+to the user saying, this
+application is not allowed.
+
+333
+00:17:07,080 --> 00:17:08,850
+We execute the second application,
+
+334
+00:17:08,850 --> 00:17:11,080
+this is the script-based application with
+
+335
+00:17:11,080 --> 00:17:14,530
+the info.plist file, still, we see almost
+
+336
+00:17:14,530 --> 00:17:16,910
+the exact same log messages.
+
+337
+00:17:16,910 --> 00:17:18,570
+However, there is an addition
+
+338
+00:17:18,570 --> 00:17:21,630
+of a script evaluation log message,
+
+339
+00:17:21,630 --> 00:17:24,340
+which indicates there is another code path
+
+340
+00:17:24,340 --> 00:17:28,140
+to handle applications
+that contain a script
+
+341
+00:17:28,140 --> 00:17:29,890
+as their executable component,
+
+342
+00:17:29,890 --> 00:17:32,173
+and we'll see, this is important as well.
+
+343
+00:17:33,380 --> 00:17:35,480
+Finally, we execute our proof of concept,
+
+344
+00:17:35,480 --> 00:17:37,430
+the bare-bones script-based application
+
+345
+00:17:37,430 --> 00:17:40,520
+without the info.plist file.
+
+346
+00:17:40,520 --> 00:17:42,830
+You see it goes down the same script-based
+
+347
+00:17:42,830 --> 00:17:47,830
+evaluation code path, and also
+the scan results are printed.
+
+348
+00:17:48,070 --> 00:17:50,560
+Interestingly, though,
+there's no messages about
+
+349
+00:17:50,560 --> 00:17:53,730
+the app being blocked
+nor a prompt being shown,
+
+350
+00:17:53,730 --> 00:17:56,240
+which is also what we saw when we launched
+
+351
+00:17:56,240 --> 00:17:58,280
+the proof of concept, it was not blocked.
+
+352
+00:17:58,280 --> 00:18:00,263
+There was no alerts, no prompts.
+
+353
+00:18:01,850 --> 00:18:05,360
+So now let's kinda diff
+these two, three log messages
+
+354
+00:18:05,360 --> 00:18:07,880
+and really point out the very subtle,
+
+355
+00:18:07,880 --> 00:18:10,370
+but very indicative differences.
+
+356
+00:18:10,370 --> 00:18:13,840
+So the only differences are
+actually in the scan results,
+
+357
+00:18:13,840 --> 00:18:17,390
+specifically in the GK
+evaluate scan result message.
+
+358
+00:18:17,390 --> 00:18:21,680
+For the applications that
+contain the info.plist file,
+
+359
+00:18:21,680 --> 00:18:25,520
+we can see a evaluation result of zero.
+
+360
+00:18:25,520 --> 00:18:28,440
+Whereas for our bare-bone
+script-based application
+
+361
+00:18:28,440 --> 00:18:31,710
+that did not have the info.plist file,
+
+362
+00:18:31,710 --> 00:18:35,260
+we can see that the
+scan results was a two.
+
+363
+00:18:35,260 --> 00:18:38,280
+Also, as we can see in the log message,
+
+364
+00:18:38,280 --> 00:18:41,623
+the system identified it as not a bundle.
+
+365
+00:18:42,590 --> 00:18:46,310
+So to summarize, a evaluation type of zero
+
+366
+00:18:46,310 --> 00:18:49,230
+will result in a prompt in
+the application being blocked,
+
+367
+00:18:49,230 --> 00:18:53,780
+whereas an evaluation type
+of two, will be allowed
+
+368
+00:18:53,780 --> 00:18:55,570
+with no prompts.
+
+369
+00:18:55,570 --> 00:18:56,640
+Interesting.
+
+370
+00:18:56,640 --> 00:19:01,640
+So now let's look into both
+how and why this type two
+
+371
+00:19:02,120 --> 00:19:05,470
+is returned and ultimately
+what it is means?
+
+372
+00:19:05,470 --> 00:19:08,570
+I just mentioned it actually
+means is that the application
+
+373
+00:19:08,570 --> 00:19:10,870
+will be allowed, at least we saw that
+
+374
+00:19:10,870 --> 00:19:14,140
+through our experiments, so
+now let's look at the code
+
+375
+00:19:14,140 --> 00:19:17,140
+to confirm that this is really the case.
+
+376
+00:19:17,140 --> 00:19:19,367
+So we're gonna reverse
+engineer syspolicyd,
+
+377
+00:19:19,367 --> 00:19:21,220
+and this is the daemon that's responsible
+
+378
+00:19:21,220 --> 00:19:23,630
+for making decisions about
+whether an application
+
+379
+00:19:23,630 --> 00:19:25,960
+should be allowed or blocked.
+
+380
+00:19:25,960 --> 00:19:30,960
+If we reverse engineer the
+evaluate scan result method,
+
+381
+00:19:31,070 --> 00:19:34,260
+we can see that it explicitly
+checks the evaluation type.
+
+382
+00:19:34,260 --> 00:19:37,540
+And if the evaluation type is set to two,
+
+383
+00:19:37,540 --> 00:19:39,490
+it does two things.
+
+384
+00:19:39,490 --> 00:19:42,700
+First, invokes a set allowed method,
+
+385
+00:19:42,700 --> 00:19:45,210
+two, set something to be allowed.
+
+386
+00:19:45,210 --> 00:19:48,280
+This is a flag saying, yeah,
+this, this item is allowed.
+
+387
+00:19:48,280 --> 00:19:51,720
+And then it returns,
+skipping all the logic
+
+388
+00:19:51,720 --> 00:19:55,880
+that would present the prompt to the user
+
+389
+00:19:55,880 --> 00:19:58,080
+and block the application.
+
+390
+00:19:58,080 --> 00:20:01,650
+Now, we can see this
+in the static analysis
+
+391
+00:20:01,650 --> 00:20:03,760
+of the binary in the disassembly,
+
+392
+00:20:03,760 --> 00:20:06,140
+but we can also confirm
+this in a debugger.
+
+393
+00:20:06,140 --> 00:20:08,570
+So I was debugging the syspolicy daemon,
+
+394
+00:20:08,570 --> 00:20:11,350
+set some break points and we
+can see that after this code
+
+395
+00:20:11,350 --> 00:20:14,830
+is executed on our proof
+of concept application,
+
+396
+00:20:14,830 --> 00:20:16,030
+which is allowed,
+
+397
+00:20:16,030 --> 00:20:19,030
+we can print out the value of
+the allowed instance variable
+
+398
+00:20:19,030 --> 00:20:20,740
+and see it's set to true.
+
+399
+00:20:20,740 --> 00:20:24,640
+We can also print out the
+value of the would prompt flag
+
+400
+00:20:24,640 --> 00:20:26,350
+and see that it's no,
+
+401
+00:20:26,350 --> 00:20:28,850
+which means as we saw our
+application is allowed
+
+402
+00:20:28,850 --> 00:20:30,063
+with no prompts.
+
+403
+00:20:30,970 --> 00:20:34,520
+So we've confirmed that
+what we saw experimentally
+
+404
+00:20:34,520 --> 00:20:36,518
+is realized in code, but
+I still wanted to know
+
+405
+00:20:36,518 --> 00:20:41,010
+why was this evaluation
+of type two assigned
+
+406
+00:20:41,010 --> 00:20:44,710
+to our proof of concept,
+clearly incorrectly.
+
+407
+00:20:44,710 --> 00:20:48,390
+So where does it come
+from, what returns it?
+
+408
+00:20:48,390 --> 00:20:51,840
+Well, if we look back in the
+code, still in syspolicyd,
+
+409
+00:20:51,840 --> 00:20:53,375
+we see a method named,
+
+410
+00:20:53,375 --> 00:20:57,820
+"determineGatekeeperEvaluationTypeForTarget."
+
+411
+00:20:57,820 --> 00:21:01,300
+And there are various
+methods that are called upon
+
+412
+00:21:01,300 --> 00:21:03,690
+the application bundle
+that's about to be launched,
+
+413
+00:21:03,690 --> 00:21:05,823
+for example, our proof of concept.
+
+414
+00:21:06,920 --> 00:21:10,274
+So first is a method, isUserApproved,
+
+415
+00:21:10,274 --> 00:21:14,350
+and since we're not yet approved,
+code executes into this,
+
+416
+00:21:14,350 --> 00:21:16,832
+if statement, so we continue within it.
+
+417
+00:21:16,832 --> 00:21:19,380
+There's then another method that's called,
+
+418
+00:21:19,380 --> 00:21:21,560
+which is isScript.
+
+419
+00:21:21,560 --> 00:21:23,860
+Since, our proof of concept application
+
+420
+00:21:23,860 --> 00:21:26,210
+is a script-based application,
+
+421
+00:21:26,210 --> 00:21:29,940
+this method returns true,
+meaning we then go again into
+
+422
+00:21:29,940 --> 00:21:33,303
+the next code block
+within that if statement.
+
+423
+00:21:34,410 --> 00:21:35,980
+We then see two things happen,
+
+424
+00:21:35,980 --> 00:21:38,740
+first, we see the r15 register set two,
+
+425
+00:21:38,740 --> 00:21:40,650
+devaluation type of two.
+
+426
+00:21:40,650 --> 00:21:42,350
+Okay, cool. This is
+what we're looking for.
+
+427
+00:21:42,350 --> 00:21:45,957
+And then we see a third method
+call to a method called,
+
+428
+00:21:45,957 --> 00:21:50,957
+"isBundled," and if that
+returns false, it exits.
+
+429
+00:21:51,590 --> 00:21:54,010
+Now, as you can see in
+the debugger prompt,
+
+430
+00:21:54,010 --> 00:21:56,750
+this method returns no or false
+
+431
+00:21:56,750 --> 00:21:58,830
+for our proof of concept application,
+
+432
+00:21:58,830 --> 00:22:01,430
+which means we're going to
+jump to that leave label.
+
+433
+00:22:01,430 --> 00:22:03,320
+If we look at what that leave label does,
+
+434
+00:22:03,320 --> 00:22:07,280
+it simply moves the r15
+register into the rax register
+
+435
+00:22:07,280 --> 00:22:09,200
+and then returns that.
+
+436
+00:22:09,200 --> 00:22:12,360
+So now we understand where
+that evaluation type two
+
+437
+00:22:12,360 --> 00:22:17,160
+is being set, and it looks
+like it's being returned
+
+438
+00:22:17,160 --> 00:22:22,160
+because of our application not
+being classified as a bundle.
+
+439
+00:22:23,280 --> 00:22:27,330
+Which is strange, but let's
+look into that a little deeper.
+
+440
+00:22:27,330 --> 00:22:30,430
+First, we take a peek at
+this isBundled method,
+
+441
+00:22:30,430 --> 00:22:34,790
+all it does is returns the
+isBundled instance variable flag.
+
+442
+00:22:34,790 --> 00:22:36,590
+So that's not really that helpful,
+
+443
+00:22:36,590 --> 00:22:39,430
+but what we can do is we
+can look back in the code
+
+444
+00:22:39,430 --> 00:22:41,810
+to figure out where
+this instance variable,
+
+445
+00:22:41,810 --> 00:22:44,060
+where this flag is set.
+
+446
+00:22:44,060 --> 00:22:48,130
+So we find that within a method
+name, "evaluateCodeForUser,"
+
+447
+00:22:48,130 --> 00:22:50,550
+and specifically what it does is it calls
+
+448
+00:22:50,550 --> 00:22:53,200
+an unnamed subroutine passing in the path
+
+449
+00:22:53,200 --> 00:22:56,250
+of the application that's about
+to be launched, for example,
+
+450
+00:22:56,250 --> 00:22:58,350
+our proof of concept application.
+
+451
+00:22:58,350 --> 00:23:02,040
+And then the return value
+from that unnamed subroutine
+
+452
+00:23:02,040 --> 00:23:05,700
+is passed to the set isBundled method,
+
+453
+00:23:05,700 --> 00:23:09,403
+which sets or updates the
+isBundled instance variable flag.
+
+454
+00:23:10,290 --> 00:23:13,650
+So obviously, we're interested
+in that unnamed subroutine
+
+455
+00:23:13,650 --> 00:23:16,070
+because that is the one that
+is ultimately classifying
+
+456
+00:23:16,070 --> 00:23:17,630
+the item as a bundle or not,
+
+457
+00:23:17,630 --> 00:23:20,190
+which will then determine
+if the evaluation type
+
+458
+00:23:20,190 --> 00:23:22,740
+is set to two or not.
+
+459
+00:23:22,740 --> 00:23:24,440
+So it turns out this unnamed subroutine
+
+460
+00:23:24,440 --> 00:23:28,050
+is fairly straight forward,
+since I mentioned, attempting
+
+461
+00:23:28,050 --> 00:23:33,050
+to determine if something
+is either a bundle or not.
+
+462
+00:23:33,970 --> 00:23:36,430
+And as we can see on the
+slide, the way it does this,
+
+463
+00:23:36,430 --> 00:23:41,130
+is looking for an info.plist file.
+
+464
+00:23:41,130 --> 00:23:43,490
+And I've I said about 20 times already,
+
+465
+00:23:43,490 --> 00:23:46,300
+our proof of concept
+application is missing
+
+466
+00:23:46,300 --> 00:23:48,870
+or does not have this info.plist file.
+
+467
+00:23:48,870 --> 00:23:51,040
+The application is still allowed to run,
+
+468
+00:23:51,040 --> 00:23:53,710
+even though it doesn't have this file.
+
+469
+00:23:53,710 --> 00:23:56,220
+However, the classification
+logic here thinks that
+
+470
+00:23:56,220 --> 00:23:57,920
+is indicative of a bundle,
+
+471
+00:23:57,920 --> 00:24:01,440
+so if an item does not
+have an info.plist file,
+
+472
+00:24:01,440 --> 00:24:03,570
+it is not classified as a bundle,
+
+473
+00:24:03,570 --> 00:24:05,530
+which we saw was problematic.
+
+474
+00:24:05,530 --> 00:24:09,330
+We can confirm this in
+debugger by stepping over
+
+475
+00:24:09,330 --> 00:24:11,440
+this code, and then looking at the value
+
+476
+00:24:11,440 --> 00:24:15,070
+of the isBundled instance
+variable, the flag.
+
+477
+00:24:15,070 --> 00:24:18,640
+And we can see that in fact,
+it is set to no, for false.
+
+478
+00:24:18,640 --> 00:24:20,390
+So the system has basically said,
+
+479
+00:24:20,390 --> 00:24:23,833
+you don't have an info.plist
+file, you are not a bundle.
+
+480
+00:24:24,880 --> 00:24:27,890
+And this is, as I mentioned, problematic
+
+481
+00:24:27,890 --> 00:24:30,410
+because if you don't
+have an info.plist file,
+
+482
+00:24:30,410 --> 00:24:34,750
+and you have an executable
+that is a script,
+
+483
+00:24:34,750 --> 00:24:37,690
+you will be classified as not a bundle,
+
+484
+00:24:37,690 --> 00:24:41,820
+your evaluation type will be set to two,
+
+485
+00:24:41,820 --> 00:24:44,880
+which will then as we
+saw, skip all the logic
+
+486
+00:24:44,880 --> 00:24:47,770
+that deals with prompting
+and blocking the application.
+
+487
+00:24:47,770 --> 00:24:49,740
+So we have just neatly sidestepped,
+
+488
+00:24:49,740 --> 00:24:53,463
+gatekeeper, notarization
+requirements and file quarantine.
+
+489
+00:24:54,685 --> 00:24:57,870
+And that's a pretty brief
+overview of reverse engineering,
+
+490
+00:24:57,870 --> 00:25:01,810
+syspolicyd, if you're interested
+in more of the details of
+
+491
+00:25:01,810 --> 00:25:03,980
+that reverse engineering effort,
+
+492
+00:25:03,980 --> 00:25:06,860
+check out the detailed blog post
+
+493
+00:25:06,860 --> 00:25:08,260
+that I posted on this slide.
+
+494
+00:25:09,550 --> 00:25:12,850
+All right, so now we know the
+cause of the vulnerability.
+
+495
+00:25:12,850 --> 00:25:15,300
+Just iterate, script-based application
+
+496
+00:25:15,300 --> 00:25:18,030
+with no info.plist file
+will get misclassified
+
+497
+00:25:18,030 --> 00:25:20,460
+as not being a bundle and will be allowed
+
+498
+00:25:20,460 --> 00:25:25,460
+to run, bypassing all of Apple's
+anti-infection mechanisms.
+
+499
+00:25:25,820 --> 00:25:26,653
+Sweet!
+
+500
+00:25:27,500 --> 00:25:31,460
+So next up was me thinking,
+Hey, like, is it possible that,
+
+501
+00:25:31,460 --> 00:25:34,050
+attackers have independently
+found the same vulnerability
+
+502
+00:25:34,050 --> 00:25:36,613
+and are actively
+exploiting it in the wild?
+
+503
+00:25:38,700 --> 00:25:41,130
+So the search was pretty simple.
+
+504
+00:25:41,130 --> 00:25:44,550
+Basically, we looked for an application
+
+505
+00:25:44,550 --> 00:25:47,250
+that does not have an info.plist file
+
+506
+00:25:47,250 --> 00:25:50,270
+whose executable component is a script.
+
+507
+00:25:50,270 --> 00:25:53,920
+And I pinged my former
+colleagues at Jamf and asked them
+
+508
+00:25:53,920 --> 00:25:56,310
+to poke around and see
+if they could uncover
+
+509
+00:25:56,310 --> 00:26:00,630
+any applications that
+matched this search criteria.
+
+510
+00:26:00,630 --> 00:26:02,150
+And they actually came back and said,
+
+511
+00:26:02,150 --> 00:26:04,640
+Hey, we have an application that seems
+
+512
+00:26:04,640 --> 00:26:07,320
+to match what you requested.
+
+513
+00:26:07,320 --> 00:26:10,600
+So they sent me kindly
+the candidate application,
+
+514
+00:26:10,600 --> 00:26:14,550
+an application named "1302.app."
+
+515
+00:26:14,550 --> 00:26:16,770
+As we can see on the slide, if we look
+
+516
+00:26:16,770 --> 00:26:19,730
+at its application bundle contents,
+
+517
+00:26:19,730 --> 00:26:23,830
+we can see that indeed it is
+missing an info.plist file
+
+518
+00:26:23,830 --> 00:26:28,340
+and moreover it's executable
+content is a script.
+
+519
+00:26:28,340 --> 00:26:31,840
+Moreover, it is also
+unsigned and unnotarized.
+
+520
+00:26:31,840 --> 00:26:34,473
+So this seems to be a
+very promising candidate.
+
+521
+00:26:35,510 --> 00:26:39,500
+Popped into a virtual
+machine and executed this,
+
+522
+00:26:39,500 --> 00:26:42,750
+even though it had the
+file quarantine bit sets
+
+523
+00:26:42,750 --> 00:26:46,870
+and gatekeeper, notarization,
+everything else was enabled
+
+524
+00:26:46,870 --> 00:26:48,603
+as it is by default on macOS.
+
+525
+00:26:49,780 --> 00:26:54,620
+The application was allowed
+to run without any prompts.
+
+526
+00:26:54,620 --> 00:26:58,670
+And as we can see in the output
+from the process monitor,
+
+527
+00:26:58,670 --> 00:26:59,970
+not only was it allowed to execute,
+
+528
+00:26:59,970 --> 00:27:02,220
+it was able to reach out
+and download and install
+
+529
+00:27:02,220 --> 00:27:04,540
+its second stage payload,
+
+530
+00:27:04,540 --> 00:27:07,040
+which installed a bunch
+of malware and adware
+
+531
+00:27:07,040 --> 00:27:09,250
+on the infected machine.
+
+532
+00:27:09,250 --> 00:27:10,123
+Yikes!
+
+533
+00:27:11,970 --> 00:27:15,190
+Pinged Jamf, and we were able to uncover
+
+534
+00:27:15,190 --> 00:27:17,380
+the initial infection vector.
+
+535
+00:27:17,380 --> 00:27:18,410
+It turns out attackers
+
+536
+00:27:18,410 --> 00:27:21,690
+had targeted popular Google search queries
+
+537
+00:27:21,690 --> 00:27:24,950
+and poisoned the results,
+and also infected sites
+
+538
+00:27:24,950 --> 00:27:29,000
+that would show up in these
+results to serve up a malware.
+
+539
+00:27:29,000 --> 00:27:31,660
+So for example, if you
+Googled Alexa and Disney,
+
+540
+00:27:31,660 --> 00:27:34,700
+clicked on the second link,
+it would take you to a site
+
+541
+00:27:34,700 --> 00:27:36,620
+that would serve up an application
+
+542
+00:27:36,620 --> 00:27:39,410
+that exploited this vulnerability.
+
+543
+00:27:39,410 --> 00:27:41,750
+Jamf published a lot
+more information on this,
+
+544
+00:27:41,750 --> 00:27:44,960
+so if you're interested,
+check out their post on that.
+
+545
+00:27:44,960 --> 00:27:48,890
+But again, takeaway here is
+that this application exploited
+
+546
+00:27:48,890 --> 00:27:53,330
+the same flaw, so if the
+user clicked and launched it,
+
+547
+00:27:53,330 --> 00:27:56,540
+none of Apple's anti-infection mechanisms
+
+548
+00:27:56,540 --> 00:27:58,043
+will even come in to play.
+
+549
+00:27:59,680 --> 00:28:00,930
+That sucks!
+
+550
+00:28:00,930 --> 00:28:04,120
+So while awaiting a patch
+from Apple, I thought it'd
+
+551
+00:28:04,120 --> 00:28:09,120
+be interesting to dig into
+methods of protecting Mac users.
+
+552
+00:28:11,290 --> 00:28:13,300
+And my idea was pretty simple.
+
+553
+00:28:13,300 --> 00:28:16,640
+First, the observation is
+none of these applications,
+
+554
+00:28:16,640 --> 00:28:18,420
+that that are exploiting,
+this vulnerability
+
+555
+00:28:18,420 --> 00:28:20,070
+are gonna be notarized.
+
+556
+00:28:20,070 --> 00:28:25,070
+So why don't I simply
+block, detect and block
+
+557
+00:28:25,240 --> 00:28:27,260
+the execution of any downloaded code
+
+558
+00:28:27,260 --> 00:28:30,140
+that has not been notarized,
+again while waiting
+
+559
+00:28:30,140 --> 00:28:32,003
+for an official patch from Apple.
+
+560
+00:28:35,670 --> 00:28:38,900
+So I thought I could do this
+in, basically four steps.
+
+561
+00:28:38,900 --> 00:28:42,990
+First, detect whenever a
+new process was launched.
+
+562
+00:28:42,990 --> 00:28:46,250
+Secondly, once I detected
+this process with launch,
+
+563
+00:28:46,250 --> 00:28:50,040
+classify it as coming from the
+internet and being launched
+
+564
+00:28:50,040 --> 00:28:52,220
+from the user, this was important
+
+565
+00:28:52,220 --> 00:28:55,030
+because I wanted local
+items to be able to run
+
+566
+00:28:55,030 --> 00:28:59,080
+and also if there was something
+that was already installed,
+
+567
+00:28:59,080 --> 00:29:01,360
+downloading updates, I
+didn't wanna get in the way.
+
+568
+00:29:01,360 --> 00:29:04,520
+So I basically said, I only
+wanna focus on applications
+
+569
+00:29:04,520 --> 00:29:07,180
+that are from the internet
+that the user has launched.
+
+570
+00:29:07,180 --> 00:29:10,760
+And then because macOS has
+this flaw and we can't rely on
+
+571
+00:29:10,760 --> 00:29:14,200
+its anti-infection checks
+and it's notarization logic,
+
+572
+00:29:14,200 --> 00:29:17,930
+can we then explicitly check
+if that item is notarized,
+
+573
+00:29:17,930 --> 00:29:20,520
+meaning it's been a scanned,
+improved, approved by Apple,
+
+574
+00:29:20,520 --> 00:29:22,503
+which this malware obviously won't be.
+
+575
+00:29:23,340 --> 00:29:26,793
+And if it's not notarized,
+simply, I'll block it.
+
+576
+00:29:28,172 --> 00:29:30,570
+It turns out, this was
+actually pretty easy to do.
+
+577
+00:29:30,570 --> 00:29:31,810
+So first, we can leverage
+
+578
+00:29:31,810 --> 00:29:33,680
+Apple's endpoint security framework,
+
+579
+00:29:33,680 --> 00:29:38,340
+the ESF and this is a really
+powerful user mode framework
+
+580
+00:29:38,340 --> 00:29:43,340
+that allows us to register
+for operating system events,
+
+581
+00:29:43,730 --> 00:29:46,140
+such as process launches.
+
+582
+00:29:46,140 --> 00:29:49,150
+So here's a snippet of
+the code on the slide.
+
+583
+00:29:49,150 --> 00:29:52,040
+We can see we're registering a
+new endpoint security client,
+
+584
+00:29:52,040 --> 00:29:54,040
+and we're telling it we're interested in
+
+585
+00:29:54,040 --> 00:29:56,030
+the event off exec.
+
+586
+00:29:56,030 --> 00:29:58,880
+The off exec event tells
+the operating system,
+
+587
+00:29:58,880 --> 00:30:03,180
+Hey, please invoke my
+callback anytime a process
+
+588
+00:30:03,180 --> 00:30:06,200
+is about to be launched
+and I will tell you
+
+589
+00:30:06,200 --> 00:30:07,960
+if it's authorized or not.
+
+590
+00:30:07,960 --> 00:30:11,070
+So it allows you to be the arbiter.
+
+591
+00:30:11,070 --> 00:30:14,180
+I blog more about the end
+point security framework,
+
+592
+00:30:14,180 --> 00:30:16,973
+posted a link on the slide
+if you are interested.
+
+593
+00:30:17,910 --> 00:30:19,420
+Okay, so now we have a callback.
+
+594
+00:30:19,420 --> 00:30:22,410
+That's gonna be invoked
+by the operating system,
+
+595
+00:30:22,410 --> 00:30:24,790
+every time a new process is launched.
+
+596
+00:30:24,790 --> 00:30:25,950
+So the first thing we want to do,
+
+597
+00:30:25,950 --> 00:30:28,920
+is we want to check if this
+is an item, for example,
+
+598
+00:30:28,920 --> 00:30:33,330
+an application that the user
+is launched from the internet.
+
+599
+00:30:33,330 --> 00:30:35,050
+And there's a variety of ways to do this,
+
+600
+00:30:35,050 --> 00:30:37,070
+but the easiest way is simply to check
+
+601
+00:30:37,070 --> 00:30:39,960
+its app translocation status.
+
+602
+00:30:39,960 --> 00:30:42,340
+App translocation is
+another security mechanism
+
+603
+00:30:42,340 --> 00:30:45,550
+built into macOS that
+was in direct response
+
+604
+00:30:45,550 --> 00:30:49,040
+to research I published
+and presented at DEFCON 15,
+
+605
+00:30:49,040 --> 00:30:52,340
+which involved Dylib hijack attacks.
+
+606
+00:30:52,340 --> 00:30:54,680
+The idea is when the
+user downloads something
+
+607
+00:30:54,680 --> 00:30:56,840
+from the internet and launches it,
+
+608
+00:30:56,840 --> 00:30:59,420
+Apple takes just the application bundle,
+
+609
+00:30:59,420 --> 00:31:04,420
+copies it to a randomized
+read-only share, mount
+
+610
+00:31:04,510 --> 00:31:05,930
+and executes it from there.
+
+611
+00:31:05,930 --> 00:31:10,930
+So no external libraries can
+be injected or hijack into it.
+
+612
+00:31:11,310 --> 00:31:13,750
+It's a pretty good security mechanism.
+
+613
+00:31:13,750 --> 00:31:16,000
+So what we can do though
+is, when an application
+
+614
+00:31:16,000 --> 00:31:17,760
+is launched, we can query and see,
+
+615
+00:31:17,760 --> 00:31:21,040
+Hey, was it translocated?
+And if the answer is, yes,
+
+616
+00:31:21,040 --> 00:31:22,310
+we know A- it's from the internet
+
+617
+00:31:22,310 --> 00:31:24,440
+and B- it was launched from the user.
+
+618
+00:31:24,440 --> 00:31:27,020
+Cool, which is exactly
+what you wanna know.
+
+619
+00:31:27,020 --> 00:31:28,890
+Unfortunately, there's no
+public APIs to do this,
+
+620
+00:31:28,890 --> 00:31:31,070
+but there's a very powerful private API,
+
+621
+00:31:31,070 --> 00:31:33,180
+Sec translate is translocated URL
+
+622
+00:31:34,750 --> 00:31:38,160
+that you just invoke it with
+a pass and it won't give you
+
+623
+00:31:38,160 --> 00:31:41,460
+a result, whether that item
+is translocated or not.
+
+624
+00:31:41,460 --> 00:31:44,550
+So we can leverage that,
+it's perfect for our needs.
+
+625
+00:31:44,550 --> 00:31:45,890
+And then finally, we need to see
+
+626
+00:31:45,890 --> 00:31:49,040
+if this user launched
+application from the internet
+
+627
+00:31:49,040 --> 00:31:51,370
+is notarized or not.
+
+628
+00:31:51,370 --> 00:31:53,740
+Apple provides a public API to do it,
+
+629
+00:31:53,740 --> 00:31:56,730
+the "SecStaticCodeCheckValidity" API.
+
+630
+00:31:56,730 --> 00:32:00,320
+You can invoke this
+API with a requirement,
+
+631
+00:32:00,320 --> 00:32:03,660
+so what we do is we initialize
+a notarization requirement
+
+632
+00:32:03,660 --> 00:32:07,180
+and then make this API call
+and it will set a flag,
+
+633
+00:32:07,180 --> 00:32:10,223
+whether the item we are
+examining is notarized or not.
+
+634
+00:32:11,320 --> 00:32:13,920
+So if we put this all
+together and I did within
+
+635
+00:32:13,920 --> 00:32:16,430
+an application I wrote
+called "BlockBlock,"
+
+636
+00:32:16,430 --> 00:32:19,480
+it's fully open sourced
+available on GitHub.
+
+637
+00:32:19,480 --> 00:32:22,470
+We can now generically
+prevent the execution
+
+638
+00:32:22,470 --> 00:32:27,070
+of applications, even ones
+exploiting this vulnerability
+
+639
+00:32:27,070 --> 00:32:28,840
+as a zero-day.
+
+640
+00:32:28,840 --> 00:32:31,920
+The screenshot on the
+slide, we double-clicked
+
+641
+00:32:31,920 --> 00:32:35,670
+this executable, this
+malicious 1302 application
+
+642
+00:32:35,670 --> 00:32:39,000
+that was exploiting the
+vulnerability as a zero-day,
+
+643
+00:32:39,000 --> 00:32:42,620
+the system intercepts
+the application launch
+
+644
+00:32:42,620 --> 00:32:44,840
+because we registered with the
+end point security framework,
+
+645
+00:32:44,840 --> 00:32:46,740
+invokes our callback.
+
+646
+00:32:46,740 --> 00:32:49,130
+We see this item has been app translocated
+
+647
+00:32:49,130 --> 00:32:52,400
+because the user is launching
+it and it's from the internet,
+
+648
+00:32:52,400 --> 00:32:54,640
+which I can see that it's not notarized.
+
+649
+00:32:54,640 --> 00:32:58,050
+Then alert the user saying,
+Hey, just to let you know,
+
+650
+00:32:58,050 --> 00:33:00,640
+blah, blah, blah, blah
+and essentially blocking
+
+651
+00:33:00,640 --> 00:33:03,143
+the execution of the exploit.
+
+652
+00:33:04,000 --> 00:33:06,350
+Great! This is great.
+
+653
+00:33:06,350 --> 00:33:08,950
+So we have a good way
+to protect against this,
+
+654
+00:33:08,950 --> 00:33:11,793
+again, while awaiting
+a patch from Cupertino.
+
+655
+00:33:12,650 --> 00:33:13,900
+But I also wanted to figure out,
+
+656
+00:33:13,900 --> 00:33:17,550
+was there an easy way for
+us to examine a system
+
+657
+00:33:17,550 --> 00:33:22,210
+to ascertain, to determine
+had it been infected or not,
+
+658
+00:33:22,210 --> 00:33:24,560
+you know, answer the
+question, was I exploited?
+
+659
+00:33:25,980 --> 00:33:28,460
+So I kept analyzing syspolicyd and looking
+
+660
+00:33:28,460 --> 00:33:29,670
+at the log messages,
+
+661
+00:33:29,670 --> 00:33:31,220
+and there was an interesting log message
+
+662
+00:33:31,220 --> 00:33:34,150
+that we can see on the
+slide basically says,
+
+663
+00:33:34,150 --> 00:33:37,920
+updating flags and then
+has the path, the item
+
+664
+00:33:37,920 --> 00:33:42,590
+that was analyzed, was
+classified and then a number.
+
+665
+00:33:42,590 --> 00:33:46,110
+And so what syspolicyd does,
+we mentioned it's the arbiter,
+
+666
+00:33:46,110 --> 00:33:48,230
+it's the one making the
+decisions about whether
+
+667
+00:33:48,230 --> 00:33:52,640
+an application should
+be allowed or blocked.
+
+668
+00:33:52,640 --> 00:33:55,970
+And then apparently,
+looks like it saves the,
+
+669
+00:33:55,970 --> 00:33:59,900
+or logs out the results of this statement.
+
+670
+00:33:59,900 --> 00:34:04,900
+So I then ran a file monitor
+FS usage while executing
+
+671
+00:34:05,370 --> 00:34:07,820
+the proof of concept and
+various other applications.
+
+672
+00:34:07,820 --> 00:34:11,300
+And I could see that once
+syspolicyd had classified
+
+673
+00:34:11,300 --> 00:34:13,800
+the application, either
+as should be blocked
+
+674
+00:34:13,800 --> 00:34:16,060
+or inadvertently should be allowed,
+
+675
+00:34:16,060 --> 00:34:17,950
+or legitimately should be allowed,
+
+676
+00:34:17,950 --> 00:34:21,290
+if it was a legitimately
+notarized application,
+
+677
+00:34:21,290 --> 00:34:26,050
+it would update an
+undocumented database called,
+
+678
+00:34:26,050 --> 00:34:27,878
+"ExecPolicy."
+
+679
+00:34:27,878 --> 00:34:31,120
+On the slide, there's a
+screenshot of the database,
+
+680
+00:34:31,120 --> 00:34:34,060
+we can see there is a volume, UUID,
+
+681
+00:34:34,060 --> 00:34:37,490
+something that says object ID, FS name,
+
+682
+00:34:37,490 --> 00:34:40,380
+and then also, things like the flags,
+
+683
+00:34:40,380 --> 00:34:44,850
+basically the result of the
+evaluation from syspolicyd.
+
+684
+00:34:44,850 --> 00:34:47,450
+So all right, we have this
+undocumented database \
+
+685
+00:34:47,450 --> 00:34:49,870
+where syspolicyd is
+writing out the results
+
+686
+00:34:49,870 --> 00:34:53,380
+of its evaluations for everything
+that the user launches.
+
+687
+00:34:53,380 --> 00:34:56,943
+This is seems like a good path to go down.
+
+688
+00:35:01,430 --> 00:35:03,790
+Unfortunately, and looking at the values
+
+689
+00:35:03,790 --> 00:35:08,510
+in this table, there's nothing
+that immediately pops-out
+
+690
+00:35:08,510 --> 00:35:11,490
+that points to the path
+of the item that was run,
+
+691
+00:35:11,490 --> 00:35:13,090
+which is ultimately what we want.
+
+692
+00:35:13,090 --> 00:35:16,940
+We want to know, Hey, was I exploited?
+
+693
+00:35:16,940 --> 00:35:19,220
+And where's the item that triggered,
+
+694
+00:35:19,220 --> 00:35:20,920
+where's the malicious application?
+
+695
+00:35:21,950 --> 00:35:23,980
+Well, it turns out that object ID value
+
+696
+00:35:23,980 --> 00:35:26,770
+in this undocumented ExecPolicy database
+
+697
+00:35:26,770 --> 00:35:31,400
+is actually, a inode, a file
+inode, and we can confirm that,
+
+698
+00:35:31,400 --> 00:35:34,280
+we can see on the slide, we
+take the value of the one
+
+699
+00:35:34,280 --> 00:35:37,400
+that starts with 23d, and if
+we execute the stack command
+
+700
+00:35:37,400 --> 00:35:40,350
+on the proof of concept
+application that I downloaded,
+
+701
+00:35:40,350 --> 00:35:41,830
+it matches.
+
+702
+00:35:41,830 --> 00:35:46,830
+We can then also take that
+path, query the database,
+
+703
+00:35:46,950 --> 00:35:50,500
+sorry that inode ID, and we
+can see that it does appear
+
+704
+00:35:50,500 --> 00:35:52,453
+to be the same application.
+
+705
+00:35:54,070 --> 00:35:56,840
+So what I then did is, I
+needed to figure out a way
+
+706
+00:35:56,840 --> 00:36:01,010
+to parse all the rows in that database,
+
+707
+00:36:01,010 --> 00:36:03,640
+in that specific table and
+then for each of those,
+
+708
+00:36:03,640 --> 00:36:07,440
+take the volume ID in the file
+inode ID, and then from that,
+
+709
+00:36:07,440 --> 00:36:10,800
+get a full path to the item.
+
+710
+00:36:10,800 --> 00:36:13,860
+And yes, you can do that
+via the stat command,
+
+711
+00:36:13,860 --> 00:36:15,790
+but that's really rather slow.
+
+712
+00:36:15,790 --> 00:36:19,650
+Well, it turns out there
+is a foundation API
+
+713
+00:36:19,650 --> 00:36:22,530
+you can invoke, get resource value for T
+
+714
+00:36:22,530 --> 00:36:27,530
+that given a path that has,
+that starts with .volume
+
+715
+00:36:27,690 --> 00:36:30,610
+and then the file inode,
+will actually return to you
+
+716
+00:36:30,610 --> 00:36:33,100
+the canonical path of the item.
+
+717
+00:36:33,100 --> 00:36:35,860
+So it's kind of mapping
+of file inode to path,
+
+718
+00:36:35,860 --> 00:36:38,873
+which is exactly what we want.
+
+719
+00:36:39,740 --> 00:36:41,760
+So I implemented this in
+a basic Python script,
+
+720
+00:36:41,760 --> 00:36:45,070
+the link to the Python
+script is on the slide,
+
+721
+00:36:45,070 --> 00:36:46,720
+pretty simple, it basically parses
+
+722
+00:36:46,720 --> 00:36:49,270
+this undocumented exact policy database
+
+723
+00:36:49,270 --> 00:36:54,010
+and for each item in that
+table, it first resolves
+
+724
+00:36:54,010 --> 00:36:55,527
+the path from the file inode,
+
+725
+00:36:55,527 --> 00:37:00,090
+and then it also checks for
+if the item is an application
+
+726
+00:37:00,090 --> 00:37:03,800
+that is missing an application,
+an info.plist file,
+
+727
+00:37:03,800 --> 00:37:06,270
+and whose executable is a script.
+
+728
+00:37:06,270 --> 00:37:08,770
+So in other words, it's
+basically just looking for
+
+729
+00:37:10,120 --> 00:37:12,910
+these bare-bones
+script-based applications,
+
+730
+00:37:12,910 --> 00:37:15,850
+no info.plist file,
+executable is a script.
+
+731
+00:37:15,850 --> 00:37:17,820
+And this is important
+because in this database,
+
+732
+00:37:17,820 --> 00:37:19,670
+there's a lot of other legitimate items,
+
+733
+00:37:19,670 --> 00:37:21,980
+standalone scripts,
+legitimate applications
+
+734
+00:37:21,980 --> 00:37:23,260
+that have been run,
+
+735
+00:37:23,260 --> 00:37:26,600
+so it's important to kind
+of filter out those results.
+
+736
+00:37:26,600 --> 00:37:28,630
+I ran this then on a
+system where I had run
+
+737
+00:37:28,630 --> 00:37:31,840
+the malicious application and we can see
+
+738
+00:37:31,840 --> 00:37:35,220
+that the Python script was able
+to identify and pull it up,
+
+739
+00:37:35,220 --> 00:37:36,760
+so it's kinda cool.
+
+740
+00:37:38,360 --> 00:37:40,870
+Apple did finally release a patch.
+
+741
+00:37:40,870 --> 00:37:44,170
+So let's end by kind of
+looking at their patch,
+
+742
+00:37:44,170 --> 00:37:46,190
+reverse engineering it to figure out
+
+743
+00:37:46,190 --> 00:37:49,263
+how they ultimately fixed this flaw.
+
+744
+00:37:50,260 --> 00:37:53,930
+So the patch was released in macOS 10.13,
+
+745
+00:37:53,930 --> 00:37:56,880
+and it was assigned CVE-2021-3657.
+
+746
+00:37:59,580 --> 00:38:03,670
+Again, giving credit to
+Cedric Owens for ultimately,
+
+747
+00:38:03,670 --> 00:38:08,300
+uncovering and reporting this
+lovely vulnerability to Apple.
+
+748
+00:38:08,300 --> 00:38:13,300
+So when you usually look for
+what was changed in a patch,
+
+749
+00:38:13,790 --> 00:38:15,850
+if you know the specific
+details about the vulnerability,
+
+750
+00:38:15,850 --> 00:38:17,640
+it's a lot simpler.
+
+751
+00:38:17,640 --> 00:38:20,110
+So we don't have to diff the entire patch,
+
+752
+00:38:20,110 --> 00:38:23,650
+we know we can actually just
+diff the updated syspolicyd
+
+753
+00:38:23,650 --> 00:38:26,730
+and moreover, since we
+identified the root cause
+
+754
+00:38:26,730 --> 00:38:29,470
+of the vulnerability, we
+can assume that that's where
+
+755
+00:38:29,470 --> 00:38:32,590
+the patch details ultimately lie.
+
+756
+00:38:32,590 --> 00:38:35,100
+So we can start there and
+confirm whether our assumptions
+
+757
+00:38:35,100 --> 00:38:36,963
+are valid or correct.
+
+758
+00:38:37,900 --> 00:38:42,480
+So recall the crux of the
+flaw was the misclassification
+
+759
+00:38:42,480 --> 00:38:46,450
+of an application bundle, one
+that was missing info.plist,
+
+760
+00:38:46,450 --> 00:38:49,560
+and this was realized
+in a unknown subroutine
+
+761
+00:38:49,560 --> 00:38:52,450
+in the syspolicyd daemon.
+
+762
+00:38:52,450 --> 00:38:55,580
+So what I did was I
+diff the stat subroutine
+
+763
+00:38:55,580 --> 00:38:58,470
+of an unpatched system and a patch system
+
+764
+00:38:58,470 --> 00:39:00,160
+and as we can see on the slide,
+
+765
+00:39:00,160 --> 00:39:05,160
+the unpatched code had 26
+unique control code blocks,
+
+766
+00:39:05,700 --> 00:39:10,670
+whereas almost 10 more had been
+added in the patched system.
+
+767
+00:39:10,670 --> 00:39:13,480
+So this is a really good
+sign that the majority
+
+768
+00:39:13,480 --> 00:39:17,010
+of the patch was within this subroutine,
+
+769
+00:39:17,010 --> 00:39:19,293
+so we'll start our
+reverse engineering there.
+
+770
+00:39:20,580 --> 00:39:24,260
+If we analyze the updated
+syspolicyd specifically,
+
+771
+00:39:24,260 --> 00:39:27,780
+this unnamed subroutine that
+has the isBundle algorithm,
+
+772
+00:39:27,780 --> 00:39:29,980
+we can see that the
+classification algorithm
+
+773
+00:39:29,980 --> 00:39:32,590
+has been greatly improved and expanded.
+
+774
+00:39:32,590 --> 00:39:33,670
+Specifically, there was addition
+
+775
+00:39:33,670 --> 00:39:36,460
+of two new comprehensive checks.
+
+776
+00:39:36,460 --> 00:39:39,210
+The first is checking if
+the items past extension
+
+777
+00:39:39,210 --> 00:39:41,540
+is app.app.
+
+778
+00:39:41,540 --> 00:39:45,370
+This is important because
+if an item is not named.app,
+
+779
+00:39:45,370 --> 00:39:46,610
+when the user double-clicks it,
+
+780
+00:39:46,610 --> 00:39:48,500
+it's likely not to be launched by finder.
+
+781
+00:39:48,500 --> 00:39:50,140
+So this is almost a prerequisite
+
+782
+00:39:50,140 --> 00:39:52,080
+to get an application to be launched,
+
+783
+00:39:52,080 --> 00:39:54,040
+so it makes sense to check for this.
+
+784
+00:39:55,220 --> 00:39:58,980
+So if we look at the disassembly
+and also the pseudo code,
+
+785
+00:39:58,980 --> 00:40:01,660
+we can see, it's basically just
+getting the path extension,
+
+786
+00:40:01,660 --> 00:40:04,850
+and then checking if that
+path extension is app,
+
+787
+00:40:04,850 --> 00:40:06,470
+for application.
+
+788
+00:40:06,470 --> 00:40:10,993
+If it is, it then classifies
+that item as a bundle.
+
+789
+00:40:13,690 --> 00:40:16,510
+Check two, is it also
+checks if the item contains,
+
+790
+00:40:16,510 --> 00:40:19,850
+content/MacOS, so even if it doesn't have
+
+791
+00:40:19,850 --> 00:40:23,510
+that .app extension, it looks
+for this directory structure.
+
+792
+00:40:23,510 --> 00:40:24,950
+Again, this is a very important check
+
+793
+00:40:24,950 --> 00:40:26,970
+because this is required.
+
+794
+00:40:26,970 --> 00:40:30,320
+Info.plist file is apparently optional,
+
+795
+00:40:30,320 --> 00:40:33,270
+but this directory
+structure is what defines
+
+796
+00:40:33,270 --> 00:40:35,440
+an application bundle structure.
+
+797
+00:40:35,440 --> 00:40:37,150
+So again, we can see the disassembly
+
+798
+00:40:37,150 --> 00:40:40,250
+and then the decompilation at the bottom.
+
+799
+00:40:40,250 --> 00:40:43,730
+It's essentially building
+this path and checking
+
+800
+00:40:43,730 --> 00:40:45,400
+if the bundle contains that.
+
+801
+00:40:45,400 --> 00:40:48,750
+And if the item does
+contain that, and now says,
+
+802
+00:40:48,750 --> 00:40:51,140
+yes, you are a bundle.
+
+803
+00:40:51,140 --> 00:40:54,370
+So in summary, the patch added two checks.
+
+804
+00:40:54,370 --> 00:40:57,050
+First, the checks if the item has
+
+805
+00:40:57,050 --> 00:41:00,520
+an application file
+extension, and then secondly,
+
+806
+00:41:00,520 --> 00:41:03,523
+it also checks that it
+contains, content/MacOS.
+
+807
+00:41:04,430 --> 00:41:07,220
+And if either of these
+conditions are true, it says,
+
+808
+00:41:07,220 --> 00:41:09,660
+yes, you are a bundle.
+
+809
+00:41:09,660 --> 00:41:12,743
+So with this new algorithm,
+with this improved isBundle,
+
+810
+00:41:13,790 --> 00:41:15,460
+checked this algorithm,
+
+811
+00:41:15,460 --> 00:41:19,300
+if we run the proof of concept
+vulnerability application,
+
+812
+00:41:19,300 --> 00:41:22,410
+we can see that macOS now
+correctly classifies it
+
+813
+00:41:22,410 --> 00:41:24,960
+as a bundle, which means
+its evaluation type
+
+814
+00:41:24,960 --> 00:41:28,290
+will not be two, it will be zero,
+
+815
+00:41:28,290 --> 00:41:31,790
+which then triggers the
+rest of the notarization
+
+816
+00:41:31,790 --> 00:41:34,050
+gatekeeper and file quarantine checks,
+
+817
+00:41:34,050 --> 00:41:37,250
+which unsurprisingly now,
+blocks the application
+
+818
+00:41:37,250 --> 00:41:40,963
+because it's from the internet
+unsigned and non-notarized.
+
+819
+00:41:43,010 --> 00:41:47,120
+Let's briefly wrap this
+up with some conclusions.
+
+820
+00:41:47,120 --> 00:41:51,100
+First, a key takeaway, which
+I really want to reiterate.
+
+821
+00:41:51,100 --> 00:41:53,820
+And that is hopefully,
+this illustrates that macOS
+
+822
+00:41:53,820 --> 00:41:56,683
+still has a ton of shallow bugs.
+
+823
+00:41:57,650 --> 00:41:59,730
+You know, we talked about
+the fact that there was
+
+824
+00:41:59,730 --> 00:42:03,650
+a very popular developer
+packaging script on GitHub
+
+825
+00:42:03,650 --> 00:42:06,940
+that would inadvertently trigger the flaw.
+
+826
+00:42:06,940 --> 00:42:09,230
+So, you know, you didn't
+have to do some crazy fuzzing
+
+827
+00:42:09,230 --> 00:42:11,880
+or reverse engineering, if
+you actually just packaged up
+
+828
+00:42:11,880 --> 00:42:14,190
+your application, your script with this,
+
+829
+00:42:14,190 --> 00:42:16,820
+it would trigger this flaw and bypass all
+
+830
+00:42:16,820 --> 00:42:20,490
+of Apple's anti-infection mechanisms.
+
+831
+00:42:20,490 --> 00:42:22,790
+And we see this time and time, again,
+
+832
+00:42:22,790 --> 00:42:26,160
+and really to me, illustrates
+that large components
+
+833
+00:42:26,160 --> 00:42:28,530
+of macOS have never been audited.
+
+834
+00:42:28,530 --> 00:42:30,750
+And there's a lot of
+very low hanging fruit
+
+835
+00:42:30,750 --> 00:42:34,810
+that still can be found
+and these vulnerabilities
+
+836
+00:42:34,810 --> 00:42:37,810
+while shallow, are still very impactful.
+
+837
+00:42:37,810 --> 00:42:38,980
+Being able to bypass all
+
+838
+00:42:38,980 --> 00:42:42,640
+of the Apple's anti-infection
+mechanisms, that's huge.
+
+839
+00:42:42,640 --> 00:42:45,803
+And again, as a logic flaw,
+a hundred percent reliably.
+
+840
+00:42:47,010 --> 00:42:50,230
+We also in this talk, talked
+about the root cause analysis
+
+841
+00:42:50,230 --> 00:42:54,500
+of the vulnerability, talked
+about how Apple and macOS
+
+842
+00:42:54,500 --> 00:42:59,270
+does application classification
+and did so incorrectly.
+
+843
+00:42:59,270 --> 00:43:01,940
+We showed that unfortunately
+attackers were abusing
+
+844
+00:43:01,940 --> 00:43:04,430
+this flaw as a zero-day in the wild,
+
+845
+00:43:04,430 --> 00:43:07,310
+but luckily we were able
+to provide some protections
+
+846
+00:43:07,310 --> 00:43:11,070
+and detection strategies
+while Apple was awaiting
+
+847
+00:43:11,070 --> 00:43:14,210
+a patch, and by reverse
+engineering their patch does seem
+
+848
+00:43:14,210 --> 00:43:17,240
+that they comprehensively
+addressed this flaw.
+
+849
+00:43:17,240 --> 00:43:19,810
+I also hope this talk inspired
+you or gave you some ideas,
+
+850
+00:43:19,810 --> 00:43:21,750
+some tools, some techniques
+for you to go out
+
+851
+00:43:21,750 --> 00:43:24,840
+and do your own splunking
+around the operating system,
+
+852
+00:43:24,840 --> 00:43:27,480
+your own reverse engineering,
+malware analysis,
+
+853
+00:43:27,480 --> 00:43:30,190
+or even security tool development.
+
+854
+00:43:30,190 --> 00:43:32,820
+And if you're interested in these topics,
+
+855
+00:43:32,820 --> 00:43:36,410
+there's some more resources
+I briefly wanted to share.
+
+856
+00:43:36,410 --> 00:43:39,420
+As I mentioned, I'm the author
+of the Art of Mac Malware.
+
+857
+00:43:39,420 --> 00:43:42,280
+It is a book on analyzing
+Mac wild malware,
+
+858
+00:43:42,280 --> 00:43:43,870
+it's free online.
+
+859
+00:43:43,870 --> 00:43:46,010
+So if you wanna learn
+more about Mac malware
+
+860
+00:43:46,010 --> 00:43:49,120
+and how to become a proficient
+Mac malware analyst,
+
+861
+00:43:49,120 --> 00:43:51,380
+check it out again, free open source.
+
+862
+00:43:51,380 --> 00:43:54,940
+I also organize a Mac security
+conference that's coming up
+
+863
+00:43:54,940 --> 00:43:57,060
+at the end of September,
+
+864
+00:43:57,060 --> 00:44:00,120
+a lot of really amazing
+speakers talking about Mac
+
+865
+00:44:00,120 --> 00:44:01,540
+and iOS security topics.
+
+866
+00:44:01,540 --> 00:44:03,653
+So if you're interested, check that out.
+
+867
+00:44:04,840 --> 00:44:07,310
+Finally, I wanna thank
+first and foremost, you,
+
+868
+00:44:07,310 --> 00:44:11,900
+for attending my talk either
+virtually or in person.
+
+869
+00:44:11,900 --> 00:44:14,990
+I just wanna thank the
+organizers of DEFCON
+
+870
+00:44:14,990 --> 00:44:16,810
+for putting together this conference,
+
+871
+00:44:16,810 --> 00:44:19,080
+especially in these trying times.
+
+872
+00:44:19,080 --> 00:44:21,180
+And then finally, I
+wanna thank the companies
+
+873
+00:44:21,180 --> 00:44:24,740
+who support my research and my tools,
+
+874
+00:44:24,740 --> 00:44:27,160
+allowing me to release open source tools
+
+875
+00:44:27,160 --> 00:44:29,600
+and share my research with the world.
+
+876
+00:44:29,600 --> 00:44:32,040
+So again, thank you so
+much for attending my talk,
+
+877
+00:44:32,040 --> 00:44:34,683
+stay safe and see you next time.
+

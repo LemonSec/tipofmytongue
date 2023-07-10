@@ -1,0 +1,3258 @@
+﻿1
+00:00:03,180 --> 00:00:05,870
+- Hey everybody, welcome to our talk,
+
+2
+00:00:05,870 --> 00:00:09,070
+Adventures in MitM-land, Using MitM
+
+3
+00:00:09,070 --> 00:00:12,213
+to Attack Active Directory
+Authentication Schemes.
+
+4
+00:00:14,240 --> 00:00:19,240
+So first, let me introduce us.
+
+5
+00:00:19,270 --> 00:00:24,270
+I'm Yaron, manager on the
+engineering team at CrowdStrike.
+
+6
+00:00:25,336 --> 00:00:29,390
+I've presented two times
+before at Black Hat
+
+7
+00:00:29,390 --> 00:00:31,233
+and one time at DEFCON,
+
+8
+00:00:32,530 --> 00:00:35,113
+did a lot of research on
+authentication protocols.
+
+9
+00:00:36,700 --> 00:00:41,700
+Eyal, an engineer, previously
+presented on Black Hat.
+
+10
+00:00:42,700 --> 00:00:46,568
+And Sagi, also an engineer with extensive
+
+11
+00:00:46,568 --> 00:00:49,460
+background as a security researcher
+
+12
+00:00:49,460 --> 00:00:53,393
+on many organizations.
+
+13
+00:00:55,672 --> 00:00:58,350
+So what is this talk about?
+
+14
+00:00:58,350 --> 00:01:02,303
+So this talk is about
+an extensive research
+
+15
+00:01:02,303 --> 00:01:05,580
+that we did to see what we can achieve
+
+16
+00:01:05,580 --> 00:01:07,910
+if we have a machine in the middle.
+
+17
+00:01:07,910 --> 00:01:10,900
+So machine in the middle is a technique
+
+18
+00:01:10,900 --> 00:01:14,113
+that has a lot of potential.
+
+19
+00:01:17,070 --> 00:01:18,330
+One slide back.
+
+20
+00:01:18,330 --> 00:01:21,490
+So there's a lot of potential.
+
+21
+00:01:21,490 --> 00:01:25,827
+So if you're at a pen test or an attack,
+
+22
+00:01:27,770 --> 00:01:32,770
+and you reach a point where
+you have no credentials
+
+23
+00:01:34,740 --> 00:01:38,820
+and no zero-days, sometimes
+a man in the middle
+
+24
+00:01:38,820 --> 00:01:41,420
+is a great technique to move
+
+25
+00:01:41,420 --> 00:01:44,250
+labeling inside a subnet.
+
+26
+00:01:44,250 --> 00:01:46,660
+And our area of focus
+
+27
+00:01:46,660 --> 00:01:49,519
+for this research was Active Directory,
+
+28
+00:01:49,519 --> 00:01:53,890
+and Active Directory
+has very old protocols,
+
+29
+00:01:53,890 --> 00:01:57,500
+and by default, also the
+protocols don't use TLS,
+
+30
+00:01:57,500 --> 00:02:00,863
+but rely on Windows Authentication.
+
+31
+00:02:02,520 --> 00:02:06,090
+So let's begin with a short introduction
+
+32
+00:02:06,090 --> 00:02:08,210
+to Kerberos and NTLM,
+
+33
+00:02:08,210 --> 00:02:11,680
+which on the AD authentication protocols.
+
+34
+00:02:11,680 --> 00:02:14,460
+So in NTLM, a client machine
+
+35
+00:02:14,460 --> 00:02:16,600
+wants to authenticate to a server,
+
+36
+00:02:16,600 --> 00:02:19,743
+so it sends an NTLM Negotiate request.
+
+37
+00:02:20,690 --> 00:02:22,910
+The server creates a nonce
+
+38
+00:02:22,910 --> 00:02:25,790
+and sends it in a Challenge request,
+
+39
+00:02:25,790 --> 00:02:28,070
+and the client machine signs the nonce
+
+40
+00:02:30,500 --> 00:02:33,363
+with the user's password.
+
+41
+00:02:33,363 --> 00:02:34,837
+The server does not know
+
+42
+00:02:34,837 --> 00:02:37,070
+how to validate the user's password,
+
+43
+00:02:37,070 --> 00:02:39,480
+so over the NETLOGON channel,
+
+44
+00:02:39,480 --> 00:02:42,800
+it sends the NTLM Authenticate message,
+
+45
+00:02:42,800 --> 00:02:44,220
+and the DC either approves
+
+46
+00:02:44,220 --> 00:02:47,810
+or rejects the user authentication
+
+47
+00:02:47,810 --> 00:02:49,833
+by validating the user and password.
+
+48
+00:02:50,850 --> 00:02:52,743
+Now, onto Kerberos.
+
+49
+00:02:54,630 --> 00:02:58,373
+So with Kerberos, the client machine,
+
+50
+00:03:00,396 --> 00:03:02,070
+the user first logs in,
+
+51
+00:03:02,070 --> 00:03:03,420
+and in order to log in,
+
+52
+00:03:03,420 --> 00:03:05,880
+the client machine sends an AS request,
+
+53
+00:03:05,880 --> 00:03:09,420
+which for that, it gets back a TGT,
+
+54
+00:03:09,420 --> 00:03:11,560
+a Ticket Granting Ticket.
+
+55
+00:03:11,560 --> 00:03:15,100
+Now, using that Ticket Granting Ticket,
+
+56
+00:03:15,100 --> 00:03:17,360
+the machine requests a TGS record,
+
+57
+00:03:17,360 --> 00:03:19,847
+which is a Ticket Granting Service,
+
+58
+00:03:19,847 --> 00:03:21,930
+and the DC gets a ticket,
+
+59
+00:03:22,907 --> 00:03:26,190
+the Ticket Granting Service is signed
+
+60
+00:03:26,190 --> 00:03:27,780
+with the server's password,
+
+61
+00:03:27,780 --> 00:03:30,050
+not the user's password.
+
+62
+00:03:30,050 --> 00:03:32,370
+And now, when the client machine
+
+63
+00:03:32,370 --> 00:03:37,340
+connects to the server over any channel,
+
+64
+00:03:37,340 --> 00:03:40,920
+the channel can be SMB, or LDAP, or HTTP,
+
+65
+00:03:40,920 --> 00:03:43,250
+it will send a Kerberos message,
+
+66
+00:03:43,250 --> 00:03:45,310
+which is called AP requests,
+
+67
+00:03:45,310 --> 00:03:47,160
+and would send the TGS,
+
+68
+00:03:47,160 --> 00:03:52,160
+the Ticket Granting
+Service, one more click,
+
+69
+00:03:52,610 --> 00:03:55,250
+and the server is able to
+authenticate the tickets
+
+70
+00:03:55,250 --> 00:03:57,400
+and the service ticket is signed
+
+71
+00:03:57,400 --> 00:03:58,823
+with the server's password.
+
+72
+00:04:01,820 --> 00:04:06,609
+So as you can see, Kerberos offers
+
+73
+00:04:06,609 --> 00:04:10,160
+a lot more security than NTLM.
+
+74
+00:04:10,160 --> 00:04:13,150
+There's plenty of material online
+
+75
+00:04:13,150 --> 00:04:15,820
+for any of the attacks or issues
+
+76
+00:04:15,820 --> 00:04:17,530
+that I've mentioned here.
+
+77
+00:04:17,530 --> 00:04:20,370
+One most critical issue with NTLM
+
+78
+00:04:20,370 --> 00:04:23,483
+is that NTLM allows app for NTLM relay,
+
+79
+00:04:25,620 --> 00:04:28,463
+which is also worth a short introduction.
+
+80
+00:04:29,910 --> 00:04:32,620
+So with NTLM relay, the setting is that
+
+81
+00:04:32,620 --> 00:04:35,193
+the client wants to connect to a server.
+
+82
+00:04:36,350 --> 00:04:38,720
+The server is compromised,
+
+83
+00:04:38,720 --> 00:04:42,670
+and the attacker on the server
+
+84
+00:04:42,670 --> 00:04:45,740
+wants to use the credentials
+from the client machine
+
+85
+00:04:45,740 --> 00:04:49,377
+to attack another target, another server.
+
+86
+00:04:49,377 --> 00:04:53,480
+So it relays the Negotiate
+message to the server
+
+87
+00:04:53,480 --> 00:04:55,333
+and to the attack target.
+
+88
+00:04:57,167 --> 00:05:00,410
+The attack target sends
+
+89
+00:05:00,410 --> 00:05:04,713
+the challenge back with a nonce.
+
+90
+00:05:06,040 --> 00:05:09,370
+This is relayed to the
+client machine back.
+
+91
+00:05:09,370 --> 00:05:11,550
+The client machine signs the nonce
+
+92
+00:05:11,550 --> 00:05:15,440
+with the user secret.
+
+93
+00:05:15,440 --> 00:05:19,040
+The server relays that
+NTLM Authenticate message.
+
+94
+00:05:19,040 --> 00:05:20,860
+The attack target would validate it
+
+95
+00:05:20,860 --> 00:05:22,090
+over the NETLOGON channel,
+
+96
+00:05:22,090 --> 00:05:24,610
+and the DC would approve it
+
+97
+00:05:24,610 --> 00:05:27,113
+since it's the user's correct secret,
+
+98
+00:05:28,070 --> 00:05:30,163
+and the attack would succeed.
+
+99
+00:05:32,200 --> 00:05:33,890
+So there's plenty of network
+
+100
+00:05:33,890 --> 00:05:36,910
+and plenty of research on NTLM relay.
+
+101
+00:05:36,910 --> 00:05:39,510
+One talk you might want to review
+
+102
+00:05:39,510 --> 00:05:44,510
+is a talk in DEFCON I did
+with Marina Simakov in 2019,
+
+103
+00:05:45,480 --> 00:05:50,337
+which really dives deep
+into NTLM relay internals.
+
+104
+00:05:59,000 --> 00:06:02,440
+And with that, I'll
+pass the stage to Eyal.
+
+105
+00:06:02,440 --> 00:06:05,440
+- Thanks, Yaron, as Yaron mentioned,
+
+106
+00:06:06,400 --> 00:06:09,510
+NTLM relay only works if the server
+
+107
+00:06:09,510 --> 00:06:14,060
+does not enforce a sign-in
+with encryption on the target.
+
+108
+00:06:14,060 --> 00:06:16,183
+Sylvain found that one could authenticate
+
+109
+00:06:16,183 --> 00:06:20,920
+through a certain RPC
+interface, the Task Scheduler,
+
+110
+00:06:20,920 --> 00:06:25,300
+and it does not enforce
+signing on to the traffic.
+
+111
+00:06:25,300 --> 00:06:27,900
+It's even written in the steps.
+
+112
+00:06:27,900 --> 00:06:31,410
+So using the classical
+technique of NTLM relay,
+
+113
+00:06:31,410 --> 00:06:34,470
+one could relay the
+authentication to the server,
+
+114
+00:06:34,470 --> 00:06:38,660
+and afterwards, send an unsigned packet
+
+115
+00:06:38,660 --> 00:06:41,660
+that would cause it to
+run an arbitrary task.
+
+116
+00:06:41,660 --> 00:06:43,880
+This would result effectively
+
+117
+00:06:43,880 --> 00:06:46,083
+in a remote code execution vulnerability.
+
+118
+00:06:48,280 --> 00:06:50,520
+What allowed this attack is the way
+
+119
+00:06:50,520 --> 00:06:52,940
+that RPC handles security.
+
+120
+00:06:52,940 --> 00:06:55,710
+The level of security in RPC session
+
+121
+00:06:55,710 --> 00:06:59,470
+is determined by the
+authentication level of it.
+
+122
+00:06:59,470 --> 00:07:03,630
+Some RPC service requires packet privacy.
+
+123
+00:07:03,630 --> 00:07:05,480
+That means it require that
+
+124
+00:07:05,480 --> 00:07:06,980
+the session would be encrypted
+
+125
+00:07:07,920 --> 00:07:11,720
+while other only require packet integrity,
+
+126
+00:07:11,720 --> 00:07:12,953
+that is signing.
+
+127
+00:07:14,670 --> 00:07:17,310
+The authentication
+requirement is determined
+
+128
+00:07:17,310 --> 00:07:20,460
+on an interface-by-interface basis.
+
+129
+00:07:20,460 --> 00:07:22,760
+In fact, the registration API
+
+130
+00:07:22,760 --> 00:07:26,200
+requires the call-out to
+set up a special function
+
+131
+00:07:26,200 --> 00:07:29,170
+to check for security requirements
+
+132
+00:07:30,721 --> 00:07:35,213
+for an arbitrary authentication level.
+
+133
+00:07:36,520 --> 00:07:39,750
+It does not rely, as one would expect,
+
+134
+00:07:39,750 --> 00:07:44,110
+on the SMB signing settings
+
+135
+00:07:45,373 --> 00:07:47,893
+or on other security for it.
+
+136
+00:07:49,150 --> 00:07:54,110
+You see, when an interface
+allows for a packet
+
+137
+00:07:54,110 --> 00:07:56,600
+for authentication level of connect,
+
+138
+00:07:56,600 --> 00:08:01,600
+it would be vulnerable
+to NTLM relay anywhere,
+
+139
+00:08:01,630 --> 00:08:03,573
+on any computer, even on RPC.
+
+140
+00:08:04,720 --> 00:08:08,570
+The question is does this interface
+
+141
+00:08:08,570 --> 00:08:12,190
+has a potential security impact?
+
+142
+00:08:12,190 --> 00:08:15,330
+And indeed, while most of the interfaces
+
+143
+00:08:15,330 --> 00:08:19,500
+implemented by Microsoft
+in Windows are protected,
+
+144
+00:08:19,500 --> 00:08:22,250
+there might be some instances
+
+145
+00:08:22,250 --> 00:08:25,733
+where the developer neglected this thing.
+
+146
+00:08:27,270 --> 00:08:31,670
+So now, we switch to a very
+different vulnerability,
+
+147
+00:08:31,670 --> 00:08:34,133
+and we'll see how it is related.
+
+148
+00:08:34,980 --> 00:08:39,560
+And one of the recent vulnerability
+
+149
+00:08:39,560 --> 00:08:42,120
+involving Print Spooler,
+
+150
+00:08:42,120 --> 00:08:45,280
+one should say one of the many,
+
+151
+00:08:45,280 --> 00:08:48,560
+many recent vulnerabilities
+of Print Spooler,
+
+152
+00:08:49,490 --> 00:08:52,977
+was discovered by Peleg
+Hadar and Tomer Bar.
+
+153
+00:08:54,220 --> 00:08:58,450
+And in this vulnerability,
+
+154
+00:08:58,450 --> 00:09:03,450
+you exploit a lack of access check
+
+155
+00:09:04,480 --> 00:09:06,717
+in order to achieve writing
+
+156
+00:09:09,760 --> 00:09:12,830
+arbitrary files in the system.
+
+157
+00:09:12,830 --> 00:09:14,283
+So how does it work?
+
+158
+00:09:16,341 --> 00:09:19,090
+To print something, one needs to specify
+
+159
+00:09:19,090 --> 00:09:21,870
+which printer, printer driver,
+
+160
+00:09:21,870 --> 00:09:25,540
+and by which port it
+communicates with the printer.
+
+161
+00:09:25,540 --> 00:09:28,490
+The current implementation
+allows for any user
+
+162
+00:09:28,490 --> 00:09:31,813
+to install a printer driver,
+
+163
+00:09:33,940 --> 00:09:37,100
+and then also of course, to print.
+
+164
+00:09:37,100 --> 00:09:40,720
+So the simplest driver, the list
+
+165
+00:09:40,720 --> 00:09:43,583
+is called a Generic/Text driver,
+
+166
+00:09:44,550 --> 00:09:49,550
+which simply passes the
+input it gets into the port
+
+167
+00:09:49,730 --> 00:09:53,953
+while the port could be
+something like COM1 or COM2,
+
+168
+00:09:53,953 --> 00:09:56,090
+what the printer is connected to.
+
+169
+00:09:56,090 --> 00:09:58,003
+It can also be a file.
+
+170
+00:10:02,088 --> 00:10:06,317
+And this means that the user can call
+
+171
+00:10:08,770 --> 00:10:13,120
+this simple printer to
+print to a file it wants.
+
+172
+00:10:13,120 --> 00:10:16,390
+But what makes all of
+these a vulnerability
+
+173
+00:10:16,390 --> 00:10:20,040
+is that the access checks were done
+
+174
+00:10:20,040 --> 00:10:23,290
+from a certain execution path,
+
+175
+00:10:23,290 --> 00:10:27,180
+but it was on the client side.
+
+176
+00:10:27,180 --> 00:10:30,890
+So all of this allows effectively
+
+177
+00:10:32,730 --> 00:10:35,350
+a local privilege escalation
+
+178
+00:10:35,350 --> 00:10:40,070
+in which an unprivileged
+user can write a file.
+
+179
+00:10:40,070 --> 00:10:42,150
+And now, a file to important location
+
+180
+00:10:42,150 --> 00:10:45,163
+doesn't have privileges to do so.
+
+181
+00:10:48,270 --> 00:10:53,120
+So instead of relying
+on the document, okay,
+
+182
+00:10:53,120 --> 00:10:56,930
+now, let's switch to our contribution
+
+183
+00:10:56,930 --> 00:11:00,900
+and instead of relying
+on the documentation
+
+184
+00:11:00,900 --> 00:11:04,890
+of the RPC interfaces like Printer B,
+
+185
+00:11:04,890 --> 00:11:07,350
+we developed a small scanning tool
+
+186
+00:11:07,350 --> 00:11:11,220
+to allow us to find additional
+vulnerable interfaces.
+
+187
+00:11:11,220 --> 00:11:16,220
+One of the result was the
+Print Spooler interface,
+
+188
+00:11:16,910 --> 00:11:19,550
+and we know from previous slides
+
+189
+00:11:19,550 --> 00:11:22,910
+that a Print Spooler interface could allow
+
+190
+00:11:22,910 --> 00:11:25,073
+one to write arbitrary files.
+
+191
+00:11:26,340 --> 00:11:31,340
+Even after it is fixed, one could write
+
+192
+00:11:32,600 --> 00:11:36,330
+files if it has sufficient privilege.
+
+193
+00:11:36,330 --> 00:11:40,573
+So we can combine both vulnerabilities
+
+194
+00:11:41,710 --> 00:11:44,473
+or both our insight
+into a working example.
+
+195
+00:11:46,070 --> 00:11:50,380
+So now, this is the
+setting of the previous
+
+196
+00:11:50,380 --> 00:11:53,972
+vulnerability 1048, our local privilege
+
+197
+00:11:53,972 --> 00:11:58,230
+unprivileged user but
+without formal setting
+
+198
+00:11:58,230 --> 00:12:03,230
+of remote privileged user
+that contact a certain server,
+
+199
+00:12:04,330 --> 00:12:09,330
+and we relay this request,
+whatever the request is,
+
+200
+00:12:10,480 --> 00:12:14,113
+to another server using NTLM relay.
+
+201
+00:12:15,460 --> 00:12:20,460
+And there, what we execute
+on the target server
+
+202
+00:12:24,840 --> 00:12:28,680
+is similar to what happened
+
+203
+00:12:28,680 --> 00:12:30,920
+in the original vulnerability.
+
+204
+00:12:30,920 --> 00:12:33,530
+So let's see how it's done.
+
+205
+00:12:33,530 --> 00:12:37,370
+First, we have an authentication request
+
+206
+00:12:38,330 --> 00:12:40,166
+by the client machine that
+
+207
+00:12:40,166 --> 00:12:43,023
+is passed to a rogue server.
+
+208
+00:12:43,870 --> 00:12:47,990
+And now, we create a channel
+
+209
+00:12:47,990 --> 00:12:52,570
+with the target server with the attacker,
+
+210
+00:12:52,570 --> 00:12:56,200
+and we bind to the
+Print Spooler interface.
+
+211
+00:12:56,200 --> 00:12:58,310
+We relay the authentication
+
+212
+00:12:58,310 --> 00:13:01,990
+and get a challenge that
+will relay to a client deck,
+
+213
+00:13:01,990 --> 00:13:05,150
+and the client send us the
+response to the challenge.
+
+214
+00:13:05,150 --> 00:13:07,360
+We'll relay it back to the DC.
+
+215
+00:13:07,360 --> 00:13:09,620
+So now, it's verified.
+
+216
+00:13:09,620 --> 00:13:14,620
+Now, it has an authenticated
+session that is valid,
+
+217
+00:13:15,270 --> 00:13:18,650
+and we can send commands without
+
+218
+00:13:19,910 --> 00:13:22,420
+encryption to this session.
+
+219
+00:13:22,420 --> 00:13:26,840
+Now, we just installed a printer driver.
+
+220
+00:13:26,840 --> 00:13:31,140
+Then we do all the things that you need.
+
+221
+00:13:31,140 --> 00:13:33,670
+We add a port, we install a printer,
+
+222
+00:13:33,670 --> 00:13:36,710
+and we start to write to a file,
+
+223
+00:13:36,710 --> 00:13:38,810
+and that is it.
+
+224
+00:13:38,810 --> 00:13:40,833
+Now, we can see the demo.
+
+225
+00:13:45,340 --> 00:13:48,430
+Okay, so what happens here is that
+
+226
+00:13:48,430 --> 00:13:50,403
+we first used Metasploit.
+
+227
+00:13:51,490 --> 00:13:56,060
+We used here, endpoint mapping query,
+
+228
+00:13:56,060 --> 00:14:01,010
+and we list all the
+different RPC interface
+
+229
+00:14:01,010 --> 00:14:04,170
+that we see on the remote computer.
+
+230
+00:14:04,170 --> 00:14:07,480
+This remote computer is a DC.
+
+231
+00:14:07,480 --> 00:14:10,873
+And we see here, we have many interfaces.
+
+232
+00:14:11,940 --> 00:14:15,340
+Some of them are local RPC,
+
+233
+00:14:15,340 --> 00:14:18,573
+and the others are remote.
+
+234
+00:14:20,860 --> 00:14:25,210
+And now, we just reformat the output,
+
+235
+00:14:25,210 --> 00:14:27,820
+so it will match a script
+
+236
+00:14:27,820 --> 00:14:29,930
+that we're about to write.
+
+237
+00:14:29,930 --> 00:14:34,470
+And what this script
+will do is it will try
+
+238
+00:14:38,354 --> 00:14:43,070
+different interfaces, the
+same that we found earlier,
+
+239
+00:14:43,070 --> 00:14:48,070
+and it will connect send a garbage packet,
+
+240
+00:14:48,990 --> 00:14:51,983
+and using this packet, we can know, okay,
+
+241
+00:14:54,490 --> 00:14:57,090
+we can know if it's vulnerable.
+
+242
+00:14:57,090 --> 00:15:02,090
+Now you see, we found the
+Print Spooler interface there,
+
+243
+00:15:02,940 --> 00:15:06,223
+and it is the error code is unsupported.
+
+244
+00:15:07,330 --> 00:15:09,240
+And we have another interface
+
+245
+00:15:09,240 --> 00:15:11,850
+with error of bad stub data.
+
+246
+00:15:11,850 --> 00:15:15,220
+The error of bad stub data means that
+
+247
+00:15:16,650 --> 00:15:19,680
+the server handled this garbage,
+
+248
+00:15:19,680 --> 00:15:22,380
+and it's on the standards garbage,
+
+249
+00:15:22,380 --> 00:15:25,170
+and so, it rejects it.
+
+250
+00:15:25,170 --> 00:15:26,670
+They're unsupported error.
+
+251
+00:15:26,670 --> 00:15:31,130
+On the other end, it's
+simply inconclusive,
+
+252
+00:15:31,130 --> 00:15:33,720
+and it actually requires an additional,
+
+253
+00:15:33,720 --> 00:15:38,570
+that we send an additional
+object ID for it to work.
+
+254
+00:15:38,570 --> 00:15:40,990
+So once we did that, we found that
+
+255
+00:15:40,990 --> 00:15:43,810
+the Print Spooler is indeed vulnerable,
+
+256
+00:15:43,810 --> 00:15:47,330
+and now, I can show you the second demo,
+
+257
+00:15:47,330 --> 00:15:51,429
+which is how to do NTLM relay
+
+258
+00:15:51,429 --> 00:15:53,773
+to the Print Spooler and write a file.
+
+259
+00:15:57,151 --> 00:15:59,830
+And we do it against the DC.
+
+260
+00:15:59,830 --> 00:16:03,690
+And we see here that we first
+
+261
+00:16:05,433 --> 00:16:07,860
+open our man-in-the-middle server,
+
+262
+00:16:07,860 --> 00:16:12,710
+and the client access SharePoint.
+
+263
+00:16:12,710 --> 00:16:16,800
+It types its username and password,
+
+264
+00:16:16,800 --> 00:16:21,450
+and we will shortly see
+that in the target computer,
+
+265
+00:16:21,450 --> 00:16:24,030
+a file is being written.
+
+266
+00:16:24,030 --> 00:16:27,930
+So we write a file to the SYSVOL volume,
+
+267
+00:16:27,930 --> 00:16:32,930
+which would be present on
+any computer on the network.
+
+268
+00:16:33,120 --> 00:16:37,073
+So this would allow one
+to take over the domain.
+
+269
+00:16:38,220 --> 00:16:41,127
+And then now, following me is Sagi,
+
+270
+00:16:45,190 --> 00:16:50,190
+and he will discuss his vulnerabilities.
+
+271
+00:16:51,310 --> 00:16:55,563
+- So actually, Yaron is speaking now.
+
+272
+00:16:56,622 --> 00:16:58,840
+(laughs)
+
+273
+00:16:58,840 --> 00:17:03,840
+So now, I want to highlight
+another vulnerability,
+
+274
+00:17:06,120 --> 00:17:08,460
+and it was not discovered by us.
+
+275
+00:17:08,460 --> 00:17:13,460
+It was discovered on
+2015 by Luke Jennings,
+
+276
+00:17:16,450 --> 00:17:18,620
+and Luke Jennings essentially
+
+277
+00:17:18,620 --> 00:17:21,863
+reset the GPO retrieval process,
+
+278
+00:17:23,290 --> 00:17:25,840
+and wondered what would happen
+
+279
+00:17:25,840 --> 00:17:30,340
+if a MitM would attack that scenario,
+
+280
+00:17:30,340 --> 00:17:33,259
+and he actually found many
+
+281
+00:17:33,259 --> 00:17:37,920
+attacks that can be done.
+
+282
+00:17:37,920 --> 00:17:42,610
+One attack is actually still exploitable,
+
+283
+00:17:42,610 --> 00:17:45,820
+which is that if you have
+a low-privileged user
+
+284
+00:17:45,820 --> 00:17:50,820
+and a MitM, you could manipulate the GPO
+
+285
+00:17:51,460 --> 00:17:56,460
+using the credentials and
+inject a malicious GPO.
+
+286
+00:17:57,000 --> 00:17:59,280
+The other one is an attack that
+
+287
+00:17:59,280 --> 00:18:03,303
+requires only MitM and uses NTLM.
+
+288
+00:18:04,240 --> 00:18:07,600
+And in that attack, which
+Microsoft actually fixed,
+
+289
+00:18:07,600 --> 00:18:10,270
+is an attack that we want to focus on,
+
+290
+00:18:10,270 --> 00:18:12,960
+since we've improved this attack
+
+291
+00:18:12,960 --> 00:18:17,003
+and found new avenues to attack it.
+
+292
+00:18:18,700 --> 00:18:21,427
+So if we have a client machine,
+
+293
+00:18:21,427 --> 00:18:26,427
+and the client machine
+wishes to download GPOs,
+
+294
+00:18:27,670 --> 00:18:30,410
+it would perform an LDAP bind.
+
+295
+00:18:30,410 --> 00:18:33,610
+And then if the GPO retrieval
+
+296
+00:18:33,610 --> 00:18:36,240
+is authenticated with NTLM,
+
+297
+00:18:36,240 --> 00:18:39,967
+an NTLM Negotiate message would appear.
+
+298
+00:18:39,967 --> 00:18:43,720
+And since we're into
+accepting this request,
+
+299
+00:18:43,720 --> 00:18:46,320
+instead of the DC, we will send
+
+300
+00:18:46,320 --> 00:18:49,000
+an NTLM Challenge request,
+
+301
+00:18:49,000 --> 00:18:52,983
+and would name the target
+name as the rogue server.
+
+302
+00:18:53,910 --> 00:18:57,022
+The client machine does not authenticate
+
+303
+00:18:57,022 --> 00:18:59,460
+or validate the NTLM Challenge.
+
+304
+00:18:59,460 --> 00:19:02,710
+And even though the machine initially
+
+305
+00:19:02,710 --> 00:19:07,710
+connected the DC, it
+doesn't reject the requests
+
+306
+00:19:08,844 --> 00:19:10,730
+or the NTLM challenge,
+
+307
+00:19:10,730 --> 00:19:12,790
+names another machine as the target,
+
+308
+00:19:12,790 --> 00:19:15,730
+and just send an NTLM Authenticate message
+
+309
+00:19:17,110 --> 00:19:19,380
+with the rogue server name.
+
+310
+00:19:19,380 --> 00:19:24,380
+Now, our machine can, in
+its own NETLOGON challenge,
+
+311
+00:19:24,990 --> 00:19:27,360
+send the NTLM Authenticate,
+
+312
+00:19:27,360 --> 00:19:30,380
+and the DC would respect this request,
+
+313
+00:19:30,380 --> 00:19:33,160
+since the target of the request
+
+314
+00:19:33,160 --> 00:19:36,160
+is reported to be our rogue server,
+
+315
+00:19:36,160 --> 00:19:39,830
+and the DC would send us back a reply,
+
+316
+00:19:39,830 --> 00:19:44,440
+and the reply would have the session key.
+
+317
+00:19:44,440 --> 00:19:46,350
+So now, we have a session key,
+
+318
+00:19:46,350 --> 00:19:48,570
+and we can send an accept-complete
+
+319
+00:19:48,570 --> 00:19:51,410
+signaling the client it can send requests
+
+320
+00:19:51,410 --> 00:19:54,058
+over the LDAP channel.
+
+321
+00:19:54,058 --> 00:19:55,930
+And even though the request
+
+322
+00:19:55,930 --> 00:19:58,480
+might be signed or sealed,
+
+323
+00:19:58,480 --> 00:20:01,658
+even if the requests are signed or sealed,
+
+324
+00:20:01,658 --> 00:20:02,730
+they're signed and sealed
+
+325
+00:20:02,730 --> 00:20:06,120
+with the session key that we know,
+
+326
+00:20:06,120 --> 00:20:09,060
+and we can send back any malicious
+
+327
+00:20:09,060 --> 00:20:11,100
+response that we like.
+
+328
+00:20:11,100 --> 00:20:13,800
+In the regional vulnerability,
+
+329
+00:20:13,800 --> 00:20:16,900
+the response was a redirect stating
+
+330
+00:20:16,900 --> 00:20:21,630
+that the GPOs are at some malicious UNC
+
+331
+00:20:21,630 --> 00:20:24,360
+that's on our control.
+
+332
+00:20:24,360 --> 00:20:27,450
+Now, this exact attack can happen
+
+333
+00:20:27,450 --> 00:20:29,570
+on LDAP as we displayed,
+
+334
+00:20:29,570 --> 00:20:33,210
+but you can let the LDAP be related
+
+335
+00:20:33,210 --> 00:20:36,400
+to the DC without any manipulation.
+
+336
+00:20:36,400 --> 00:20:39,830
+And then when the client
+machine downloads using SMB,
+
+337
+00:20:39,830 --> 00:20:42,760
+the GPO files themselves,
+
+338
+00:20:42,760 --> 00:20:46,043
+we can do the same technique over SMB.
+
+339
+00:20:47,200 --> 00:20:50,150
+So how has Microsoft fixed that issue?
+
+340
+00:20:50,150 --> 00:20:54,010
+So now, the default is
+that group policy objects
+
+341
+00:20:54,010 --> 00:20:56,827
+cannot be downloaded using NTLM,
+
+342
+00:20:56,827 --> 00:20:59,810
+and there's a new registry key for that.
+
+343
+00:20:59,810 --> 00:21:03,637
+And for the SMB case,
+Microsoft even went deeper.
+
+344
+00:21:06,130 --> 00:21:08,160
+They've added a new configuration
+
+345
+00:21:08,160 --> 00:21:10,970
+called Hardened UNC Paths,
+
+346
+00:21:10,970 --> 00:21:14,260
+and that configuration basically
+
+347
+00:21:14,260 --> 00:21:16,610
+forces Kerberos authentication
+
+348
+00:21:16,610 --> 00:21:21,610
+and not NTLM for any UNC over SMB
+
+349
+00:21:21,630 --> 00:21:25,300
+that is on a file on some regexes.
+
+350
+00:21:26,750 --> 00:21:29,540
+The default for this configuration
+
+351
+00:21:29,540 --> 00:21:34,130
+is that there's a SYSVOL
+regex and a NETLOGON regex,
+
+352
+00:21:34,130 --> 00:21:39,130
+and this actually stops
+any chance of intervening
+
+353
+00:21:39,410 --> 00:21:44,410
+with the group policy download process.
+
+354
+00:21:45,130 --> 00:21:49,690
+And with that, I'll pass
+the stage back to Eyal,
+
+355
+00:21:49,690 --> 00:21:53,690
+who's going to present our new attacks.
+
+356
+00:21:58,380 --> 00:22:00,370
+- Okay, thank you, Yaron.
+
+357
+00:22:00,370 --> 00:22:04,693
+So now, we will discuss
+a bit Azure AD Connect.
+
+358
+00:22:04,693 --> 00:22:07,905
+And the Azure AD Connect is of course
+
+359
+00:22:07,905 --> 00:22:12,540
+the vision of Microsoft
+of seamless sign-on.
+
+360
+00:22:12,540 --> 00:22:17,413
+So in this perspective, the user
+
+361
+00:22:19,010 --> 00:22:22,690
+that is connected to the web
+
+362
+00:22:22,690 --> 00:22:27,690
+can use its internal company credentials
+
+363
+00:22:27,980 --> 00:22:30,810
+to access some external resources
+
+364
+00:22:30,810 --> 00:22:35,810
+like Office 365 or some
+internal application
+
+365
+00:22:36,020 --> 00:22:37,940
+without needing a VPN.
+
+366
+00:22:39,563 --> 00:22:41,230
+So how does it work?
+
+367
+00:22:42,504 --> 00:22:45,754
+It works by synchronizing the important
+
+368
+00:22:46,644 --> 00:22:49,694
+Active Directory data to the cloud
+
+369
+00:22:49,694 --> 00:22:52,730
+with the help of a special server
+
+370
+00:22:52,730 --> 00:22:55,813
+that is called the AD Connect Server.
+
+371
+00:22:56,654 --> 00:22:59,605
+The server connects to a domain controller
+
+372
+00:22:59,605 --> 00:23:02,820
+that replicates the
+password and other data,
+
+373
+00:23:02,820 --> 00:23:05,070
+and then it export its hash
+
+374
+00:23:09,316 --> 00:23:11,899
+to the Azure Active Directory.
+
+375
+00:23:15,580 --> 00:23:17,910
+However, one needs to make sure
+
+376
+00:23:17,910 --> 00:23:20,090
+that it is actually talking
+
+377
+00:23:20,090 --> 00:23:22,370
+to the right domain controller.
+
+378
+00:23:22,370 --> 00:23:26,029
+For instance, it could do
+it by taking the protocol
+
+379
+00:23:26,029 --> 00:23:28,390
+that supports mutual authentication
+
+380
+00:23:28,390 --> 00:23:30,620
+and certainly, not working in NTLM.
+
+381
+00:23:31,530 --> 00:23:34,600
+So what happens there is that the traffic
+
+382
+00:23:34,600 --> 00:23:37,300
+that's meant to the original DC
+
+383
+00:23:37,300 --> 00:23:39,080
+might end up in a work server
+
+384
+00:23:39,980 --> 00:23:42,700
+and the things would work just fine
+
+385
+00:23:42,700 --> 00:23:44,747
+as Yaron demonstrated.
+
+386
+00:23:47,560 --> 00:23:52,240
+So what we need to assume
+for this attack to work
+
+387
+00:23:52,240 --> 00:23:54,347
+is a full man in the middle
+
+388
+00:23:54,347 --> 00:23:59,343
+including DNS, Kerberos, DCE/RPC,
+
+389
+00:24:00,400 --> 00:24:04,473
+and then we first make Kerberos fail,
+
+390
+00:24:05,660 --> 00:24:10,325
+and allowing LDAP to pass through the DC
+
+391
+00:24:10,325 --> 00:24:12,890
+will relay to the actual DC,
+
+392
+00:24:12,890 --> 00:24:16,510
+and we went for a domain replication.
+
+393
+00:24:16,510 --> 00:24:20,140
+When it appears we inject a new change
+
+394
+00:24:20,140 --> 00:24:22,230
+that involves a new password
+
+395
+00:24:22,230 --> 00:24:25,440
+for an account of our choice,
+
+396
+00:24:25,440 --> 00:24:28,763
+and afterwards, it
+syncs with the Azure AD,
+
+397
+00:24:31,206 --> 00:24:34,038
+and we can log in into Azure AD
+
+398
+00:24:34,038 --> 00:24:36,288
+with the injected password.
+
+399
+00:24:37,150 --> 00:24:39,073
+So let's see the demo.
+
+400
+00:24:42,250 --> 00:24:47,250
+Okay, so what happens
+here is we have first,
+
+401
+00:24:47,810 --> 00:24:51,960
+we want to change the
+password into NTLM injection.
+
+402
+00:24:51,960 --> 00:24:55,600
+Now, we see that the password
+of this user, ektest,
+
+403
+00:24:56,500 --> 00:25:01,500
+is now, not NTLM injection,
+but other password.
+
+404
+00:25:01,670 --> 00:25:03,980
+And we have two windows here.
+
+405
+00:25:03,980 --> 00:25:06,490
+One, the first one contains
+
+406
+00:25:07,633 --> 00:25:10,353
+a modified version of Mimikatz.
+
+407
+00:25:11,408 --> 00:25:12,590
+And in this modified version,
+
+408
+00:25:12,590 --> 00:25:15,290
+we specified the target user
+
+409
+00:25:15,290 --> 00:25:17,460
+and the password that we want,
+
+410
+00:25:17,460 --> 00:25:20,650
+and the other window is doing simply
+
+411
+00:25:20,650 --> 00:25:23,457
+follow the LDAP traffic to the DC.
+
+412
+00:25:24,947 --> 00:25:28,310
+And now, I adjusted the speed of the demo,
+
+413
+00:25:28,310 --> 00:25:32,923
+so we can see what happened.
+
+414
+00:25:34,170 --> 00:25:38,230
+The interesting part and it took around
+
+415
+00:25:38,230 --> 00:25:42,410
+a minute or two minutes until we get it.
+
+416
+00:25:42,410 --> 00:25:45,370
+And then now, we got to it,
+
+417
+00:25:45,370 --> 00:25:50,370
+and that we see that it
+pulled our fake change.
+
+418
+00:25:52,440 --> 00:25:56,740
+And we can now log in
+
+419
+00:25:56,740 --> 00:26:01,740
+and with our new password of
+full retrieval, let's see.
+
+420
+00:26:19,700 --> 00:26:22,269
+Okay, so it doesn't work.
+
+421
+00:26:22,269 --> 00:26:23,436
+We try again.
+
+422
+00:26:25,710 --> 00:26:26,793
+Still doesn't work.
+
+423
+00:26:28,780 --> 00:26:31,000
+Yeah, it sometimes takes time
+
+424
+00:26:31,000 --> 00:26:35,710
+for the synchronization to occur.
+
+425
+00:26:35,710 --> 00:26:40,170
+And we see that it got
+the sign-on request okay,
+
+426
+00:26:40,170 --> 00:26:42,133
+and we have access to Office.
+
+427
+00:26:46,620 --> 00:26:50,640
+So now, we can look at the traffic itself,
+
+428
+00:26:50,640 --> 00:26:53,570
+and we can see the bind packet,
+
+429
+00:26:53,570 --> 00:26:57,870
+which is directed to our work cell
+
+430
+00:26:58,925 --> 00:27:01,003
+that's for Workstation 01.
+
+431
+00:27:02,840 --> 00:27:06,200
+And indeed, that is the
+response that it returns.
+
+432
+00:27:07,640 --> 00:27:11,083
+And we can also see the LDAP bind packet
+
+433
+00:27:13,730 --> 00:27:17,553
+that are all a return from the DC itself.
+
+434
+00:27:18,760 --> 00:27:21,500
+And you can see it here.
+
+435
+00:27:21,500 --> 00:27:25,713
+So that really concludes the demo.
+
+436
+00:27:28,870 --> 00:27:32,510
+Thanks a lot and now, Sagi will continue.
+
+437
+00:27:32,510 --> 00:27:35,093
+- Now, let's talk a bit
+about Kerberos relay.
+
+438
+00:27:36,086 --> 00:27:38,100
+Now, it's basically the same scenario
+
+439
+00:27:38,100 --> 00:27:40,723
+as the NTLM, just with Kerberos.
+
+440
+00:27:41,800 --> 00:27:44,280
+So a client wants to connect
+
+441
+00:27:44,280 --> 00:27:47,727
+to some service in the target server,
+
+442
+00:27:47,727 --> 00:27:51,200
+and to start off that,
+it sends an AP request.
+
+443
+00:27:51,200 --> 00:27:53,910
+The attacker intercepts that AP request
+
+444
+00:27:53,910 --> 00:27:56,940
+isn't server it needed to connect
+
+445
+00:27:56,940 --> 00:28:01,860
+and uses it to establish
+a session of its own
+
+446
+00:28:01,860 --> 00:28:04,993
+against the target server
+with the client's credential.
+
+447
+00:28:06,000 --> 00:28:09,020
+Since the AP request is valid
+
+448
+00:28:09,863 --> 00:28:12,810
+and was actually intended for that
+
+449
+00:28:12,810 --> 00:28:14,813
+target server, it will work.
+
+450
+00:28:16,100 --> 00:28:19,030
+This way, of course, this will work
+
+451
+00:28:19,030 --> 00:28:22,063
+only if the signing and encryption stacks
+
+452
+00:28:22,970 --> 00:28:26,826
+are not turned off inside the AP request
+
+453
+00:28:26,826 --> 00:28:29,600
+or the protocol the attacker chooses
+
+454
+00:28:29,600 --> 00:28:31,870
+supports turning those off
+
+455
+00:28:31,870 --> 00:28:34,860
+as part of the protocol negotiation.
+
+456
+00:28:34,860 --> 00:28:38,330
+Also this works, I guess, on services
+
+457
+00:28:38,330 --> 00:28:41,393
+since most of them do not validate
+
+458
+00:28:41,393 --> 00:28:43,811
+the service principal name,
+
+459
+00:28:43,811 --> 00:28:45,644
+and only SPN can use.
+
+460
+00:28:48,400 --> 00:28:50,683
+Let's see a specific
+example using SMB relay.
+
+461
+00:28:53,140 --> 00:28:56,123
+An attacker will intercept some AP request
+
+462
+00:28:56,123 --> 00:28:58,820
+that was made to the target server
+
+463
+00:28:58,820 --> 00:29:02,900
+and then establish a new
+SMB session of its own
+
+464
+00:29:02,900 --> 00:29:05,470
+against that same target server
+
+465
+00:29:05,470 --> 00:29:09,431
+while negotiating signing
+and did some auth.
+
+466
+00:29:09,431 --> 00:29:13,509
+Then it uses the same AP
+request it intercepted
+
+467
+00:29:13,509 --> 00:29:16,706
+to authenticate in that SMB session
+
+468
+00:29:16,706 --> 00:29:19,070
+and basically, get an SMB session
+
+469
+00:29:19,070 --> 00:29:21,610
+with the client's credentials.
+
+470
+00:29:21,610 --> 00:29:24,270
+And of course, this will, as I said,
+
+471
+00:29:24,270 --> 00:29:26,180
+work only if the target server
+
+472
+00:29:26,180 --> 00:29:30,600
+does not enforce signing and encryption.
+
+473
+00:29:30,600 --> 00:29:35,138
+And as you can understand,
+
+474
+00:29:35,138 --> 00:29:37,909
+the solution for this problem,
+
+475
+00:29:37,909 --> 00:29:39,123
+for the Kerberos server problem,
+
+476
+00:29:39,123 --> 00:29:42,613
+is that it involved, as I
+said, signing or encryption,
+
+477
+00:29:43,490 --> 00:29:46,380
+which is done in the protocol level
+
+478
+00:29:46,380 --> 00:29:49,170
+and uses a failed circuit
+that is negotiated
+
+479
+00:29:49,170 --> 00:29:52,533
+inside the AP request
+and response process.
+
+480
+00:29:53,960 --> 00:29:56,290
+Okay, so encryption in the protocol
+
+481
+00:29:56,290 --> 00:29:58,440
+level solves the unit problem
+
+482
+00:29:58,440 --> 00:30:02,617
+but what happens when we use TLS channels?
+
+483
+00:30:03,710 --> 00:30:06,580
+Since the encryption is
+done in the construct layer,
+
+484
+00:30:06,580 --> 00:30:08,870
+there is no connection to the underlying
+
+485
+00:30:08,870 --> 00:30:11,418
+authentication in the protocols,
+
+486
+00:30:11,418 --> 00:30:14,940
+and we get a new relay problem.
+
+487
+00:30:14,940 --> 00:30:18,300
+So this is where API comes into play.
+
+488
+00:30:19,434 --> 00:30:23,977
+Using API, we cut the
+authentication process
+
+489
+00:30:25,419 --> 00:30:29,320
+to the TLS channel using
+the certificate thumbprint
+
+490
+00:30:29,320 --> 00:30:34,320
+that was presented during
+the TLS channel negotiation.
+
+491
+00:30:34,480 --> 00:30:38,460
+The thumbprint is inserted
+inside the checksum field
+
+492
+00:30:38,460 --> 00:30:41,534
+of the AP request authenticator,
+
+493
+00:30:41,534 --> 00:30:44,475
+and servers that support API.
+
+494
+00:30:44,475 --> 00:30:47,103
+API used that field to validate
+
+495
+00:30:47,103 --> 00:30:49,660
+that the certificate path
+
+496
+00:30:49,660 --> 00:30:52,770
+that was presented during
+the TLS negotiation
+
+497
+00:30:52,770 --> 00:30:54,550
+is in fact turned on,
+
+498
+00:30:54,550 --> 00:30:57,993
+and if not, they reject this connection.
+
+499
+00:30:59,501 --> 00:31:02,710
+API is used in very important services
+
+500
+00:31:02,710 --> 00:31:05,267
+like LDAP, AD FS, and the IIS,
+
+501
+00:31:06,533 --> 00:31:09,730
+and it usually requires
+to full enforcement.
+
+502
+00:31:11,809 --> 00:31:14,850
+It requires some settings to be turned on,
+
+503
+00:31:14,850 --> 00:31:17,773
+and usually, they are not on by default.
+
+504
+00:31:19,520 --> 00:31:21,393
+And so, can we bypass the API?
+
+505
+00:31:22,660 --> 00:31:27,180
+Of course, for example, an NTLM bypass,
+
+506
+00:31:27,180 --> 00:31:28,830
+again, check out Yaron's
+
+507
+00:31:28,830 --> 00:31:32,190
+and Marina's talk from DEFCON '19.
+
+508
+00:31:32,190 --> 00:31:35,500
+And as for Kerberos,
+let's see what happens
+
+509
+00:31:35,500 --> 00:31:38,340
+when we don't include the checksum field
+
+510
+00:31:38,340 --> 00:31:40,193
+inside the AP request.
+
+511
+00:31:41,750 --> 00:31:45,947
+So here's an example of an LDAPS pickup.
+
+512
+00:31:48,330 --> 00:31:50,240
+Of course, it's negated,
+
+513
+00:31:50,240 --> 00:31:52,840
+so that's why you see the traffic.
+
+514
+00:31:52,840 --> 00:31:56,423
+And here, we took a regular AP request
+
+515
+00:31:56,423 --> 00:31:59,130
+that was generated by a Windows client,
+
+516
+00:31:59,130 --> 00:32:01,120
+and we tried to relay it,
+
+517
+00:32:01,120 --> 00:32:02,960
+and inside there, the best session,
+
+518
+00:32:02,960 --> 00:32:05,887
+and to authenticate with it to the DC.
+
+519
+00:32:05,887 --> 00:32:08,647
+The DC is set to fully enforce API.
+
+520
+00:32:09,650 --> 00:32:12,310
+And as you can see, the Windows client
+
+521
+00:32:12,310 --> 00:32:14,843
+included a zeroed out hash
+in the checksum field,
+
+522
+00:32:16,290 --> 00:32:18,283
+and the DC verified the task.
+
+523
+00:32:18,283 --> 00:32:21,040
+Obviously, it saw it's wrong hash,
+
+524
+00:32:21,040 --> 00:32:24,023
+so the DC rejected the connection.
+
+525
+00:32:24,940 --> 00:32:27,140
+Now, in this pick-up list,
+
+526
+00:32:27,140 --> 00:32:32,140
+which is also an
+LDAP-executed network traffic,
+
+527
+00:32:32,191 --> 00:32:36,237
+we give it an AP request that
+
+528
+00:32:36,237 --> 00:32:39,140
+was generated by Iron Docket,
+
+529
+00:32:39,140 --> 00:32:41,840
+which by default, does not
+include the checksum field,
+
+530
+00:32:42,981 --> 00:32:45,300
+and we relayed it to the same DC
+
+531
+00:32:45,300 --> 00:32:47,951
+that is set to enforce API.
+
+532
+00:32:47,951 --> 00:32:49,230
+And as you can see,
+
+533
+00:32:49,230 --> 00:32:51,670
+since the checksum field is not there,
+
+534
+00:32:51,670 --> 00:32:53,960
+the DC approves the connection,
+
+535
+00:32:53,960 --> 00:32:57,803
+and accepts our LDAP search.
+
+536
+00:32:58,840 --> 00:33:02,120
+And obviously, for that
+attack scenario to work,
+
+537
+00:33:02,120 --> 00:33:04,320
+we need to find one vulnerable client
+
+538
+00:33:04,320 --> 00:33:06,630
+in the network that does not include
+
+539
+00:33:06,630 --> 00:33:08,830
+the checksum field
+inside the authenticator.
+
+540
+00:33:11,850 --> 00:33:14,153
+Well, let's talk about KDC spoofing.
+
+541
+00:33:15,420 --> 00:33:18,360
+It's a very old technique that's usually
+
+542
+00:33:18,360 --> 00:33:21,350
+used to bypass authentication server.
+
+543
+00:33:21,350 --> 00:33:23,318
+So the basic scenario goes
+
+544
+00:33:23,318 --> 00:33:26,270
+and it's a user authenticates to server
+
+545
+00:33:26,270 --> 00:33:28,180
+using plain text credentials.
+
+546
+00:33:28,180 --> 00:33:31,090
+Of course, usually through
+some encrypted channel
+
+547
+00:33:31,090 --> 00:33:36,090
+like SSH or HUPS, the server
+takes that credentials
+
+548
+00:33:36,900 --> 00:33:41,273
+and using it to create some AP request.
+
+549
+00:33:42,707 --> 00:33:45,600
+An attacker intercepts that AP request
+
+550
+00:33:46,745 --> 00:33:50,253
+and returns a fake TGT attack ticket,
+
+551
+00:33:51,670 --> 00:33:55,500
+and now, the server has no ability
+
+552
+00:33:55,500 --> 00:33:57,603
+to validate the TGT.
+
+553
+00:33:57,603 --> 00:33:59,350
+And since it got one,
+
+554
+00:33:59,350 --> 00:34:01,447
+it just approved the
+connection of the user,
+
+555
+00:34:01,447 --> 00:34:03,673
+and the user is logged on.
+
+556
+00:34:06,430 --> 00:34:09,700
+Now, let's see how this
+problem was solved.
+
+557
+00:34:09,700 --> 00:34:12,560
+We begin with the same basic scenario.
+
+558
+00:34:12,560 --> 00:34:15,881
+A user authenticates to the server
+
+559
+00:34:15,881 --> 00:34:17,900
+with plain text credentials,
+
+560
+00:34:17,900 --> 00:34:19,583
+an AP request is generated.
+
+561
+00:34:20,540 --> 00:34:22,610
+This returns a valid TGT.
+
+562
+00:34:24,290 --> 00:34:27,150
+And as I said, the server has no ability
+
+563
+00:34:27,150 --> 00:34:29,300
+to validate that ticket.
+
+564
+00:34:29,300 --> 00:34:33,820
+And this time, the server uses the TGT
+
+565
+00:34:33,820 --> 00:34:38,430
+to ask for a service ticket to itself.
+
+566
+00:34:38,430 --> 00:34:41,585
+The DC approves that request
+
+567
+00:34:41,585 --> 00:34:45,060
+and returns a TGS that is
+intended to the server.
+
+568
+00:34:46,090 --> 00:34:50,013
+And with that, the server
+decrypts the TGS, validates it,
+
+569
+00:34:51,042 --> 00:34:53,637
+and use its own secret.
+
+570
+00:34:53,637 --> 00:34:57,640
+Secret was actually used to
+decrypt to sign the ticket,
+
+571
+00:34:57,640 --> 00:35:02,083
+and thus, it can validate
+the DC is a genuine DC.
+
+572
+00:35:04,870 --> 00:35:07,673
+Well, let's see how it
+looks in the traffic.
+
+573
+00:35:08,574 --> 00:35:09,713
+Here in this scenario,
+
+574
+00:35:09,713 --> 00:35:12,656
+a user logged on to one station.
+
+575
+00:35:12,656 --> 00:35:14,983
+An AS request was generated,
+
+576
+00:35:15,830 --> 00:35:17,790
+the DC returned a TGT,
+
+577
+00:35:17,790 --> 00:35:20,260
+and then that workstation used that TGT
+
+578
+00:35:21,130 --> 00:35:24,170
+to ask for a service ticket to itself,
+
+579
+00:35:24,170 --> 00:35:26,863
+in this case, with the host SPN.
+
+580
+00:35:27,958 --> 00:35:29,625
+Usually in this scenario,
+
+581
+00:35:29,625 --> 00:35:31,423
+the host SPN will be used.
+
+582
+00:35:33,380 --> 00:35:36,690
+So we can't manipulate TGS and TGT,
+
+583
+00:35:39,020 --> 00:35:40,483
+so what can we do?
+
+584
+00:35:41,840 --> 00:35:44,573
+Let's look at the DC selection process.
+
+585
+00:35:45,920 --> 00:35:48,470
+In this process, the machine does some
+
+586
+00:35:50,270 --> 00:35:54,507
+unsecured queries using
+mostly LDAP and DNS.
+
+587
+00:35:56,020 --> 00:35:57,743
+Also, some C-LDAP.
+
+588
+00:35:58,960 --> 00:36:02,350
+Until it gets enough information
+
+589
+00:36:02,350 --> 00:36:07,233
+and can decide what this
+is, it just forwards it.
+
+590
+00:36:08,170 --> 00:36:10,080
+As I said, until this stage,
+
+591
+00:36:10,080 --> 00:36:13,950
+all queries are now unsecured
+
+592
+00:36:13,950 --> 00:36:16,020
+and can be tempered with.
+
+593
+00:36:16,020 --> 00:36:19,960
+Now, at this point, a
+standard Windows client
+
+594
+00:36:19,960 --> 00:36:23,800
+will create a NETLOGON
+channel against the chosen DC
+
+595
+00:36:23,800 --> 00:36:26,710
+and sends some messages over.
+
+596
+00:36:26,710 --> 00:36:28,900
+This step is the most important one
+
+597
+00:36:28,900 --> 00:36:31,743
+since the creation of a NETLOGON channel
+
+598
+00:36:32,740 --> 00:36:35,710
+actually validates the DC
+
+599
+00:36:35,710 --> 00:36:38,610
+since for establishing the channel,
+
+600
+00:36:38,610 --> 00:36:42,470
+the target server must know
+the client actual secret.
+
+601
+00:36:42,470 --> 00:36:46,160
+So this channel was established correctly,
+
+602
+00:36:46,160 --> 00:36:48,480
+and at least one message passed.
+
+603
+00:36:48,480 --> 00:36:52,193
+That means that the target
+server is a genuine DC.
+
+604
+00:36:53,960 --> 00:36:56,105
+So what does it mean?
+
+605
+00:36:56,105 --> 00:36:58,477
+It means that as long as the target server
+
+606
+00:36:58,477 --> 00:37:02,150
+or service does not validate the DC
+
+607
+00:37:02,150 --> 00:37:05,040
+using NETLOGON or other means,
+
+608
+00:37:05,040 --> 00:37:07,890
+we easily can interject in the process
+
+609
+00:37:07,890 --> 00:37:10,830
+and inject the whole DC logon,
+
+610
+00:37:10,830 --> 00:37:13,379
+and then serves data to the target,
+
+611
+00:37:13,379 --> 00:37:18,379
+data like LDAP, SMB, or DCE/RPC traffic.
+
+612
+00:37:18,960 --> 00:37:20,723
+Let's see the attack scenario.
+
+613
+00:37:21,878 --> 00:37:23,050
+A client machine boots up
+
+614
+00:37:23,050 --> 00:37:26,010
+once you select the DC.
+
+615
+00:37:26,010 --> 00:37:28,220
+As I said, we can intervene in the process
+
+616
+00:37:28,220 --> 00:37:32,430
+since it's done totally unsecured,
+
+617
+00:37:32,430 --> 00:37:34,823
+and we inject our own rogue DC.
+
+618
+00:37:36,470 --> 00:37:40,133
+Now, as long as the target server
+
+619
+00:37:41,060 --> 00:37:44,383
+or service does not validate the DC,
+
+620
+00:37:46,180 --> 00:37:48,810
+when a user logs in, the same process
+
+621
+00:37:48,810 --> 00:37:50,870
+we discussed earlier begins.
+
+622
+00:37:50,870 --> 00:37:53,887
+The machine creates an AS request.
+
+623
+00:37:53,887 --> 00:37:56,670
+We take this AS request,
+relay it to the DC,
+
+624
+00:37:56,670 --> 00:37:59,310
+and relay back the response.
+
+625
+00:37:59,310 --> 00:38:04,310
+Now, the verification
+of the DC by the host
+
+626
+00:38:05,810 --> 00:38:09,030
+request to the machine begins.
+
+627
+00:38:09,030 --> 00:38:13,220
+Again, we relay this message to the DC
+
+628
+00:38:13,220 --> 00:38:15,801
+and the response back to the client.
+
+629
+00:38:15,801 --> 00:38:20,343
+And since an actual DC
+serves those requests,
+
+630
+00:38:21,240 --> 00:38:23,830
+the machine gets a valid ticket,
+
+631
+00:38:23,830 --> 00:38:26,800
+and approves the user for login.
+
+632
+00:38:26,800 --> 00:38:28,850
+Now, at this stage, usually machines
+
+633
+00:38:28,850 --> 00:38:31,550
+or servers will actually want to know
+
+634
+00:38:31,550 --> 00:38:33,410
+more details about the user,
+
+635
+00:38:33,410 --> 00:38:36,223
+such as display name, organization unit,
+
+636
+00:38:37,210 --> 00:38:39,720
+profile, tasks, and other data.
+
+637
+00:38:39,720 --> 00:38:43,393
+So usually, an LDAP
+session will be initiated.
+
+638
+00:38:45,676 --> 00:38:47,060
+This session is of course,
+
+639
+00:38:47,060 --> 00:38:48,890
+established against the DC,
+
+640
+00:38:48,890 --> 00:38:50,540
+which in this case is our own DC.
+
+641
+00:38:51,880 --> 00:38:56,166
+So a service ticket to the
+rouge DC will be asked.
+
+642
+00:38:56,166 --> 00:38:59,308
+We will relay this request to the DC,
+
+643
+00:38:59,308 --> 00:39:03,907
+and return back a genuine
+TGS for the rogue DC.
+
+644
+00:39:03,907 --> 00:39:06,657
+At this point, since TGS is used,
+
+645
+00:39:07,625 --> 00:39:10,340
+the target for it is our rogue DC,
+
+646
+00:39:10,340 --> 00:39:13,230
+we can still add a protocol
+
+647
+00:39:13,230 --> 00:39:16,610
+such as LDAP, SMB or DCE/RPC,
+
+648
+00:39:16,610 --> 00:39:17,913
+signed or encrypted.
+
+649
+00:39:18,750 --> 00:39:21,580
+So that's how in this scenario,
+
+650
+00:39:21,580 --> 00:39:25,470
+the machine will initiate an LDAP search.
+
+651
+00:39:25,470 --> 00:39:27,747
+We will pool it, and get back,
+
+652
+00:39:29,493 --> 00:39:33,290
+and return the responses
+with malicious data,
+
+653
+00:39:33,290 --> 00:39:36,280
+such as lone group memberships,
+
+654
+00:39:36,280 --> 00:39:41,280
+or malicious profile paths,
+
+655
+00:39:41,530 --> 00:39:43,433
+and the other example.
+
+656
+00:39:46,740 --> 00:39:49,650
+So let's do it for that attack scenario.
+
+657
+00:39:49,650 --> 00:39:52,403
+We need a service that uses Kerberos
+
+658
+00:39:52,403 --> 00:39:55,060
+that ingests data from the DC
+
+659
+00:39:56,280 --> 00:40:00,400
+that does not have a
+fixed DC configuration.
+
+660
+00:40:00,400 --> 00:40:04,330
+And of course, MitM between
+that server and this DC,
+
+661
+00:40:06,569 --> 00:40:08,443
+and we need that service
+to not validate the DC
+
+662
+00:40:10,826 --> 00:40:13,243
+using NETLOGON or other ways.
+
+663
+00:40:15,033 --> 00:40:17,360
+So the attack itself, we're using MitM.
+
+664
+00:40:18,747 --> 00:40:21,710
+We redirect the traffic to our own DC,
+
+665
+00:40:21,710 --> 00:40:26,710
+and every time the client
+wants to query the DC,
+
+666
+00:40:27,783 --> 00:40:30,953
+it queries us, and we can
+inject any data we want.
+
+667
+00:40:32,047 --> 00:40:36,060
+For this to work, we
+need to for our rogue DC
+
+668
+00:40:36,060 --> 00:40:38,804
+to have registered SPNs like LDAP
+
+669
+00:40:38,804 --> 00:40:41,323
+or some other stuff we might need.
+
+670
+00:40:43,610 --> 00:40:47,203
+Okay, so how can we protect
+against this attack?
+
+671
+00:40:48,530 --> 00:40:50,490
+We should all use servers
+
+672
+00:40:50,490 --> 00:40:53,310
+and services that use part of NETLOGON
+
+673
+00:40:55,120 --> 00:40:57,890
+to validate the DC or use LDAPS
+
+674
+00:40:58,850 --> 00:41:01,170
+with certificate validation.
+
+675
+00:41:01,170 --> 00:41:04,367
+It is also possible to
+turn on Kerberos Armoring
+
+676
+00:41:04,367 --> 00:41:06,680
+though we haven't tested it fully,
+
+677
+00:41:06,680 --> 00:41:09,590
+so we cannot vouch for that.
+
+678
+00:41:09,590 --> 00:41:14,590
+And as a side note,
+Windows GPO is still safe
+
+679
+00:41:14,610 --> 00:41:19,610
+since the Windows GPO
+client only enclosed GPO
+
+680
+00:41:20,040 --> 00:41:24,010
+after there is a valid NETLOGON session
+
+681
+00:41:24,010 --> 00:41:26,680
+against the target DC.
+
+682
+00:41:26,680 --> 00:41:28,110
+If there is not one,
+
+683
+00:41:28,110 --> 00:41:30,633
+the GPO client will not call any GPO.
+
+684
+00:41:31,750 --> 00:41:36,410
+Now, we wanted to show
+you demos of this attack,
+
+685
+00:41:36,410 --> 00:41:39,567
+but unfortunately, the
+vendors we worked with
+
+686
+00:41:39,567 --> 00:41:43,230
+weren't able to fully fix the problem yet.
+
+687
+00:41:43,230 --> 00:41:46,300
+And so, stay tuned for updates.
+
+688
+00:41:46,300 --> 00:41:49,510
+And as a side note,
+this particular problem
+
+689
+00:41:49,510 --> 00:41:52,800
+is pretty common in the Linux client
+
+690
+00:41:52,800 --> 00:41:57,800
+and basically, any
+non-Windows native clients.
+
+691
+00:42:01,410 --> 00:42:04,253
+So let's get back to Yaron.
+
+692
+00:42:05,774 --> 00:42:10,774
+- Okay, so we have shown
+you basically four issues;
+
+693
+00:42:14,450 --> 00:42:17,530
+an NTLM relay, an NTLM injection,
+
+694
+00:42:17,530 --> 00:42:21,740
+and a Kerberos relay,
+and a Kerberos injection.
+
+695
+00:42:21,740 --> 00:42:25,980
+For the NTLM relay, Microsoft has fixed
+
+696
+00:42:25,980 --> 00:42:27,933
+the issue that we've reported.
+
+697
+00:42:29,380 --> 00:42:31,550
+We've also noted that there might
+
+698
+00:42:31,550 --> 00:42:34,580
+be other open interfaces,
+
+699
+00:42:34,580 --> 00:42:38,660
+and Microsoft actually
+asked for any interface
+
+700
+00:42:38,660 --> 00:42:42,540
+we found it to be exploitable
+to report separately,
+
+701
+00:42:42,540 --> 00:42:44,720
+and we've not had the proper time
+
+702
+00:42:44,720 --> 00:42:47,640
+to investigate each interface.
+
+703
+00:42:47,640 --> 00:42:50,500
+For the Azure AD, Microsoft actually says
+
+704
+00:42:50,500 --> 00:42:54,493
+that MitM is basically
+not a security boundary.
+
+705
+00:42:56,250 --> 00:42:58,410
+I can actually understand their point
+
+706
+00:42:58,410 --> 00:43:03,090
+since Azure AD sits in the data center,
+
+707
+00:43:03,090 --> 00:43:05,420
+and the DC should also
+sit in the data center,
+
+708
+00:43:05,420 --> 00:43:09,030
+so that connection should
+probably be more secure.
+
+709
+00:43:09,030 --> 00:43:11,950
+But if this connection is
+not secure in your network,
+
+710
+00:43:11,950 --> 00:43:13,753
+you should probably have it secured.
+
+711
+00:43:15,280 --> 00:43:17,550
+For the channel bindings issue,
+
+712
+00:43:17,550 --> 00:43:20,970
+the Kerberos over TLS,
+
+713
+00:43:20,970 --> 00:43:25,283
+so Microsoft has chosen
+not to fix this issue.
+
+714
+00:43:26,796 --> 00:43:29,370
+And for the Kerberos
+injection, as Sagi mentioned,
+
+715
+00:43:29,370 --> 00:43:32,300
+that issue is probably very widespread,
+
+716
+00:43:32,300 --> 00:43:35,040
+and we've notified a few vendors,
+
+717
+00:43:35,040 --> 00:43:38,083
+and you can expect updates soon.
+
+718
+00:43:41,060 --> 00:43:43,420
+So closing remarks,
+
+719
+00:43:43,420 --> 00:43:48,370
+so when we started this research,
+
+720
+00:43:48,370 --> 00:43:52,820
+we weren't sure if how seriously
+
+721
+00:43:52,820 --> 00:43:56,310
+would our MitM vulnerabilities be taken,
+
+722
+00:43:56,310 --> 00:43:59,970
+and we can see that in some cases,
+
+723
+00:43:59,970 --> 00:44:03,250
+MitM is not considered
+a security vulnerability
+
+724
+00:44:03,250 --> 00:44:04,950
+or a security boundary, I'm sorry.
+
+725
+00:44:06,954 --> 00:44:09,370
+And technically, what we've shown you
+
+726
+00:44:09,370 --> 00:44:12,890
+is that Kerberos is not validating
+
+727
+00:44:12,890 --> 00:44:16,100
+this identity properly
+if not using NETLOGON,
+
+728
+00:44:16,100 --> 00:44:18,080
+which is not always the case,
+
+729
+00:44:18,080 --> 00:44:21,050
+and GSS-API encryption simply
+
+730
+00:44:21,050 --> 00:44:26,050
+does not guarantee privacy
+in NTLM that's by design
+
+731
+00:44:26,670 --> 00:44:31,670
+and in Kerberos if no
+NETLOGON is performed.
+
+732
+00:44:31,740 --> 00:44:35,220
+And basically, just protecting protocols
+
+733
+00:44:35,220 --> 00:44:36,900
+from MitM is hard.
+
+734
+00:44:36,900 --> 00:44:41,570
+You need to carefully
+validate that any parties
+
+735
+00:44:42,430 --> 00:44:45,080
+are completely authenticated.
+
+736
+00:44:45,080 --> 00:44:48,500
+And when you're using external
+libraries and protocols,
+
+737
+00:44:48,500 --> 00:44:51,313
+that's not always easy to ascertain.
+
+738
+00:44:54,460 --> 00:44:57,360
+So a couple of tips for defenders.
+
+739
+00:44:57,360 --> 00:45:01,660
+So obviously, you should
+have in your networks
+
+740
+00:45:03,520 --> 00:45:06,350
+enable server-signing and client-signing.
+
+741
+00:45:06,350 --> 00:45:08,270
+When server-signing and client-signing
+
+742
+00:45:08,270 --> 00:45:12,610
+are not enabled or not enforced,
+
+743
+00:45:12,610 --> 00:45:15,710
+then a lot easier attacks,
+
+744
+00:45:15,710 --> 00:45:18,830
+a lot simpler attacks
+are able to be achieved.
+
+745
+00:45:18,830 --> 00:45:21,320
+You should regularly patch your software,
+
+746
+00:45:21,320 --> 00:45:23,470
+and you should treat critical servers
+
+747
+00:45:23,470 --> 00:45:28,470
+like Azure AD Connect the
+same way you would a DC.
+
+748
+00:45:28,610 --> 00:45:30,760
+The connection should probably be secured.
+
+749
+00:45:30,760 --> 00:45:35,203
+Maybe, it should be over secure sockets.
+
+750
+00:45:36,110 --> 00:45:38,320
+For the Kerberos injection,
+
+751
+00:45:38,320 --> 00:45:41,490
+basically, what Sagi showed is that
+
+752
+00:45:41,490 --> 00:45:44,100
+in order to launch the attack,
+
+753
+00:45:44,100 --> 00:45:48,340
+then you need to register the LDAP SPN
+
+754
+00:45:48,340 --> 00:45:50,600
+on a machine that is not a DC.
+
+755
+00:45:50,600 --> 00:45:52,570
+So this is something you can hunt for,
+
+756
+00:45:52,570 --> 00:45:57,173
+to look for successful
+attacks or attack attempts.
+
+757
+00:45:58,440 --> 00:46:03,380
+And jokes aside, avoid the
+Microsoft recommendation
+
+758
+00:46:03,380 --> 00:46:05,130
+that you should not be MitM'd.
+
+759
+00:46:05,130 --> 00:46:07,790
+So MitM is a technique that often
+
+760
+00:46:07,790 --> 00:46:10,340
+can be mitigated by properly
+
+761
+00:46:10,340 --> 00:46:13,420
+configuring your network equipment.
+
+762
+00:46:13,420 --> 00:46:17,310
+You need to turn on
+mitigations for ARP spoofing,
+
+763
+00:46:17,310 --> 00:46:20,820
+for DHCP spoofing, for SLAAC.
+
+764
+00:46:20,820 --> 00:46:24,810
+These are mitigations that
+are known to work well.
+
+765
+00:46:24,810 --> 00:46:27,930
+So there's plenty of resources out there
+
+766
+00:46:27,930 --> 00:46:30,504
+on how to protect yourself from MitMs.
+
+767
+00:46:30,504 --> 00:46:33,703
+You need to patch your network equipment,
+
+768
+00:46:34,580 --> 00:46:36,583
+and that's it.
+
+769
+00:46:37,585 --> 00:46:39,270
+Thanks for listening to our talk.
+
+770
+00:46:39,270 --> 00:46:40,633
+We hope you enjoyed it.
+

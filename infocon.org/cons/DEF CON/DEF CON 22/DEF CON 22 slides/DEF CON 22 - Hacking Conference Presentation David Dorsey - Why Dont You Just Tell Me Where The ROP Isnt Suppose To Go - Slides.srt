@@ -1,0 +1,706 @@
+﻿1
+00:00:00,375 --> 00:00:06,917
+>> Alright, so like you said I'm
+David Dorsey. I work at Click
+Security doing R&D. I've been on
+
+2
+00:00:06,917 --> 00:00:13,542
+the defensive side for the last
+ten years. File analysis, RE, a
+little bit of IR. Recently doing
+
+3
+00:00:13,542 --> 00:00:18,333
+some stuff with machine
+learning, if you're over at B
+sides. But, we're here to talk
+
+4
+00:00:18,333 --> 00:00:24,333
+about ROP. So, quick level
+setting, ROP is a technique used
+to bypass non-executable memory,
+
+5
+00:00:27,125 --> 00:00:32,917
+bounce around memory, executing
+small gadgets. Typically input
+the return instruction, hence
+
+6
+00:00:32,917 --> 00:00:38,917
+the return oriented programming.
+I use pin to do this. It's a
+dynamic binary instrumentation
+
+7
+00:00:41,250 --> 00:00:46,250
+framework from Intel, it's
+really nice. You don't need to
+compile source code and it can
+
+8
+00:00:46,250 --> 00:00:54,083
+instrument dynamically generated
+code. It gives you lots of
+different granularity on where
+
+9
+00:00:54,083 --> 00:01:01,167
+you can instrument by
+instruction, basic block
+function, dll loads and unloads.
+
+10
+00:01:01,167 --> 00:01:08,375
+It can do way more than what I'm
+using it for but it's a really
+cool tool. So, the basic idea
+
+11
+00:01:08,375 --> 00:01:12,875
+here is, we're going to force
+some control flow integrity.
+We're starting with just coarse
+
+12
+00:01:12,875 --> 00:01:19,000
+grain controls. So, the idea is,
+we know where your calls and
+returns are supposed to go. You
+
+13
+00:01:19,000 --> 00:01:23,125
+know, the functions,
+instructions after a call
+instruction, things like that.
+
+14
+00:01:23,125 --> 00:01:28,917
+So we want to create a white
+list of these addresses and then
+we want to store the offset to
+
+15
+00:01:28,917 --> 00:01:34,917
+these because dll's are loaded
+ALSR now. Then, if an indirect
+call or a return doesn't go to
+
+16
+00:01:38,417 --> 00:01:43,583
+one of these addresses then we
+go, hey, this is a ROP. So,
+first we have to get those
+
+17
+00:01:43,583 --> 00:01:48,417
+offsets, we have to build our
+white lists. So how do we get
+those? So, the first I did is I
+
+18
+00:01:48,417 --> 00:01:54,000
+build a pin tool to give me
+those addresses. So, when DLL is
+loaded it iterates through the
+
+19
+00:01:54,000 --> 00:02:00,167
+exported functions, analyzes
+them, finds the calls, if it's a
+direct call we put the target of
+
+20
+00:02:00,167 --> 00:02:06,417
+that on the white list and then
+the instruction afterwards. If
+it's an indirect call just the
+
+21
+00:02:06,417 --> 00:02:11,500
+instruction afterwards because
+we don't know where it goes yet.
+Then, in addition to that, all
+
+22
+00:02:11,500 --> 00:02:17,792
+calls and returns are
+instrumented on the instruction
+level. This is because when you
+
+23
+00:02:17,792 --> 00:02:22,583
+run a program not ever function
+is in one of those exported
+ones. There's a whole lot more
+
+24
+00:02:22,583 --> 00:02:28,417
+so we need to get access to
+those. Then, these offsets are
+stored when the program ends,
+
+25
+00:02:28,417 --> 00:02:33,792
+it's dumped to a text file.
+There is some post processing
+that goes on afterwards to add
+
+26
+00:02:33,792 --> 00:02:39,042
+them to the white list and make
+sure that you don't have any
+duplicates. So, this is really
+
+27
+00:02:39,042 --> 00:02:42,500
+good in the sense that we get
+real, actual used values. There
+are not questions, there's no
+
+28
+00:02:42,500 --> 00:02:49,458
+heuristics we have to worry
+about. Bad news is that it's not
+the fastest thing and we only
+
+29
+00:02:49,458 --> 00:02:55,083
+get values that are actually
+run. So, if a DLL isn't loaded
+you're not getting a code for
+
+30
+00:02:55,083 --> 00:02:59,667
+that. And you also probably need
+to run it multiple times just to
+be safe. I would have to run
+
+31
+00:02:59,667 --> 00:03:05,667
+three or four times to make sure
+every different code path is
+executed. So then I decided that
+
+32
+00:03:05,667 --> 00:03:11,667
+wasn't a good idea. I didn't
+want to do that so I turned to
+pyew. It's much better at
+
+33
+00:03:15,208 --> 00:03:19,833
+detecting these functions. It's
+much better. You can extract the
+flow graphs and then you can
+
+34
+00:03:19,833 --> 00:03:25,958
+bulk run them. I actually had to
+create a patch for pyew that I'm
+making available. At some point
+
+35
+00:03:25,958 --> 00:03:32,958
+it will be put in the main trunk
+but I have to fix it first. But
+it's much better; I get a lot
+
+36
+00:03:32,958 --> 00:03:39,917
+more details, or a lot more
+information quicker. So, now
+that we have the data what do we
+
+37
+00:03:39,917 --> 00:03:47,042
+do with it? So, I store all of
+them by per dll and I store them
+by the md5 hash. This is because
+
+38
+00:03:47,042 --> 00:03:53,000
+dll's can have inversions and I
+need to be able to account for
+that. So, now that we have all
+
+39
+00:03:53,000 --> 00:03:59,500
+of this let's detect the ROP.
+So, we have another pin tool.
+When a dll is loaded pin gives
+
+40
+00:03:59,500 --> 00:04:05,500
+you the location of that dll
+disk. So, I take that location,
+open up the file, I hash it,
+
+41
+00:04:09,375 --> 00:04:15,167
+then take that hash and load the
+white list for that. Then I
+instrument all indirect calls
+
+42
+00:04:15,167 --> 00:04:21,167
+and returns and if you're not on
+the white list you're a ROP. So,
+examples: Adobe 9.3 on Windows
+
+43
+00:04:23,583 --> 00:04:30,792
+XP, there is the hash. This is
+an old exploit obviously. So, we
+run it, wave our hands, and
+
+44
+00:04:30,792 --> 00:04:35,708
+viola; we have a detection. So,
+you can see the address where we
+are coming from and where we're
+
+45
+00:04:35,708 --> 00:04:40,125
+going to. Then in the
+parenthesis there's the offset.
+So yay, we found one. That's
+
+46
+00:04:40,125 --> 00:04:46,292
+really good, I was really happy.
+But, we only detected one and
+that was disappointing. All you
+
+47
+00:04:46,292 --> 00:04:52,333
+need to do is detect one but,
+you know, I always want more. So
+let's take a look at what
+
+48
+00:04:52,333 --> 00:04:58,292
+happens. So, this is an
+enco-type dll. The attacker
+already has control of the EAX.
+
+49
+00:04:58,292 --> 00:05:05,625
+This is the beginning of the ROP
+change. So, the call executes
+and then we just here. Actually,
+
+50
+00:05:05,625 --> 00:05:11,875
+we don't detect this one at the
+moment, there is a call before
+it, so this address is actually
+
+51
+00:05:11,875 --> 00:05:15,625
+on the white list at the moment.
+That's disappointing so that's
+probably why we didn't detect
+
+52
+00:05:15,625 --> 00:05:22,750
+this one. We execute those three
+instructions and we get to this,
+so we do a stack pivot, and this
+
+53
+00:05:22,750 --> 00:05:26,375
+is the one we detect. Ok, great,
+we detected this one now let's
+see why. Let's look at the
+
+54
+00:05:26,375 --> 00:05:31,042
+instruction before it and there
+really isn't an instruction
+before it because it's not
+
+55
+00:05:31,042 --> 00:05:36,417
+really an instruction that is
+supposed to be there. Just
+returning into the middle of an
+
+56
+00:05:36,417 --> 00:05:43,958
+instruction and we can detect
+that. So, at this point this is
+where it dies, at this return
+
+57
+00:05:43,958 --> 00:05:49,833
+right here. And that's because
+the pin is affecting my memory
+layout. It's messing up the heap
+
+58
+00:05:49,833 --> 00:05:57,250
+spray so when the return happens
+we're going to a random spot in
+memory which is generally not
+
+59
+00:05:57,250 --> 00:06:02,208
+useful when you are trying to
+execute a program or anything.
+So, on a side note, I don't know
+
+60
+00:06:02,208 --> 00:06:08,125
+if we should run everything in
+pin because hey, I prevented it
+from happening. So, let's make
+
+61
+00:06:08,125 --> 00:06:12,458
+believe here. How would we have
+done if this had actually
+executed completely? So, there
+
+62
+00:06:12,458 --> 00:06:17,083
+are forty-five chains in this
+ROP sequence, only fourteen
+unique addresses. Not terribly
+
+63
+00:06:17,083 --> 00:06:20,583
+surprising once you have a
+gadget that works. No sense
+finding another to do the same
+
+64
+00:06:20,583 --> 00:06:26,583
+thing. Two of these were
+indirect calls and we had 43
+returns. Three of the fourteen
+
+65
+00:06:29,375 --> 00:06:32,792
+addresses were on the white list
+so we had a pretty good
+detection rate there. So,
+
+66
+00:06:32,792 --> 00:06:38,750
+overall out of all the chains we
+only missed three of them. Not
+too shabby there. Example two
+
+67
+00:06:38,750 --> 00:06:44,750
+here; Adobe 9.5, also on Windows
+xp more recent vulnerability
+from late last year. This one,
+
+68
+00:06:49,333 --> 00:06:53,708
+unfortunately, I didn't get
+anything. Pin was messing up the
+memory layout again, despite my
+
+69
+00:06:53,708 --> 00:06:59,708
+best efforts. So again,
+unfortunately we have to go the
+make believe. So this one
+
+70
+00:06:59,708 --> 00:07:04,500
+actually had a huge ROP
+sequence, its 208, but it was
+dominated by a NOP sled
+
+71
+00:07:04,500 --> 00:07:10,792
+essentially. It was returning to
+itself over and over again and
+once it finished that then it
+
+72
+00:07:10,792 --> 00:07:15,875
+went around about its business.
+Fifteen unique addresses this
+time, all of them returns.
+
+73
+00:07:15,875 --> 00:07:22,083
+Again, only three were on the
+white list and of all of the
+chains we detected two-hundred
+
+74
+00:07:22,083 --> 00:07:28,292
+and four out of two-hundred and
+eight. So, we seem to, on the
+address part, about the same
+
+75
+00:07:28,292 --> 00:07:33,833
+detection rate. So, let's do a
+little math. How good would this
+work if we could get it to work
+
+76
+00:07:33,833 --> 00:07:39,833
+in pin? So, you can see, you
+know, the math works out in your
+favor pretty quickly. Even at
+
+77
+00:07:42,667 --> 00:07:48,250
+ten there are a lot of nines in
+that detection probability.
+That's a good thing. So, let's
+
+78
+00:07:48,250 --> 00:07:55,875
+say that might be a little
+optimistic, let's say. So, what
+if we drop it to fifty percent?
+
+79
+00:07:55,875 --> 00:08:01,875
+Even at ten addresses you still
+have 99.9 percent. I was happy
+with that. So, let's talk about
+
+80
+00:08:04,000 --> 00:08:08,708
+the limitations of this.
+Obviously breaking on the stack
+limit. That's a pretty big
+
+81
+00:08:08,708 --> 00:08:14,458
+limitation unfortunately. Since
+we are running this in pin it's
+also kind of slow. This is not
+
+82
+00:08:14,458 --> 00:08:19,917
+ready for prime time. I don't
+want to make you think that it
+is. We don't handle jump
+
+83
+00:08:19,917 --> 00:08:27,542
+oriented programming, JOP; I
+would need a sample to test that
+out first. We only do the course
+
+84
+00:08:27,542 --> 00:08:34,750
+grained control flow integrity,
+not the fine grained yet. So,
+what's left to do? Obviously I
+
+85
+00:08:34,750 --> 00:08:41,583
+still have to figure out the
+heat problem. There are probably
+much better, smarter
+
+86
+00:08:41,583 --> 00:08:48,083
+implementations I can do. Maybe
+do things at the basic lock
+level rather than every single
+
+87
+00:08:48,083 --> 00:08:54,667
+instruction. I can push the
+analysis to another thread. The
+analysis doesn't take a long
+
+88
+00:08:54,667 --> 00:09:01,042
+time but microseconds add up
+when you do it billions of
+times. I want to add checks for
+
+89
+00:09:01,042 --> 00:09:06,583
+JOP in there since I think we
+can do that. I'd love to
+implement this on OS X and Linux
+
+90
+00:09:06,583 --> 00:09:13,000
+would be fine. Also, on
+Wednesday at Black Hat there was
+a really good talk on bypassing
+
+91
+00:09:13,000 --> 00:09:18,292
+all the ROP stuff called The
+Beast in in Your Memory. I want
+to talk about that for a little
+
+92
+00:09:18,292 --> 00:09:23,583
+bit here. They defeated
+essentially all of the coarse
+grained CFI's. They had to
+
+93
+00:09:23,583 --> 00:09:29,125
+sample a demo where they
+defeated EMET, the latest one.
+It would defeat my current
+
+94
+00:09:29,125 --> 00:09:35,375
+implementation. It defeated
+return frequency/sequence length
+heuristics, from Kbouncer and
+
+95
+00:09:35,375 --> 00:09:42,875
+ROPecker. So, that is the state
+of the art now. So, they raised
+the bar so how can we defeat
+
+96
+00:09:42,875 --> 00:09:48,333
+them now? That's the big
+question. So we can start to
+implement fine grain control. As
+
+97
+00:09:48,333 --> 00:09:55,583
+I stated earlier, we currently
+wouldn't detect this particular
+call into this location.
+
+98
+00:09:55,583 --> 00:10:01,583
+However, really the only
+address, the only place where
+you should return to this
+
+99
+00:10:01,583 --> 00:10:05,625
+specific, the CB38 is from that
+call. So, if we're not coming
+from the return in that call,
+
+100
+00:10:05,625 --> 00:10:09,917
+then that's very suspicious. So
+we should be able to do that.
+When we pull all of the
+
+101
+00:10:09,917 --> 00:10:15,917
+addresses with pyew we can
+easily get all the return
+addresses from where they go.
+
+102
+00:10:23,333 --> 00:10:29,333
+Since we do all of this
+pre-process this shouldn't add a
+lot of analysis time and I
+
+103
+00:10:31,333 --> 00:10:36,750
+think, you know, we should be
+able to detect ‑‑ we should be
+able to defeat what they
+
+104
+00:10:36,750 --> 00:10:42,167
+currently have at the moment.
+So, it's just raising the bar
+and then they're trying to raise
+
+105
+00:10:42,167 --> 00:10:46,625
+the bar. So, there's probably a
+smarter way to do this. Maybe
+you want to do this in a
+
+106
+00:10:46,625 --> 00:10:52,625
+debugger, Detours, Kbouncer, in
+particular, I know uses the MSRs
+for the last branch and that's
+
+107
+00:10:54,667 --> 00:11:00,750
+how they can get their
+performance. Pin is pretty slow
+tonight but it's nice. It's
+
+108
+00:11:00,750 --> 00:11:07,250
+slow, it's good for using, for
+poofing out a concept but it's
+not going to be a prime time
+
+109
+00:11:07,250 --> 00:11:14,750
+tool at this point. And so
+that's about it. I have code to
+your. It's not up yet. It should
+
+110
+00:11:14,750 --> 00:11:20,167
+be I'd like to say tonight but
+let's be honest it would be more
+like tomorrow morning. If you
+
+111
+00:11:20,167 --> 00:11:25,083
+want to contact me you can.
+There's further reading. You
+might be able to read this if
+
+112
+00:11:25,083 --> 00:11:29,208
+you're in the front but if you
+want the slides later there's
+some good links there about some
+
+113
+00:11:29,208 --> 00:11:35,208
+things there about ROP. And
+that's it. Any questions?
+(Applause). >> All right. I got
+
+114
+00:11:53,167 --> 00:11:59,167
+tons of time. So, I can go back.
+I know, I talk fast, I
+apologize. So, one thing to note
+
+115
+00:12:04,500 --> 00:12:11,292
+here, the icucnv36 that's used a
+lot because it's not ALSR'd so
+in the 9.X series and most of
+
+116
+00:12:11,292 --> 00:12:13,292
+your attacks go behind that.
+They'll use this. Let's see what
+else? That's about it really.
+
+117
+00:12:13,292 --> 00:12:15,333
+The other ones ‑‑ there was some
+calls that I could detect,
+indirect calls, so it wasn't
+
+118
+00:12:15,333 --> 00:12:17,333
+just returns. 
+

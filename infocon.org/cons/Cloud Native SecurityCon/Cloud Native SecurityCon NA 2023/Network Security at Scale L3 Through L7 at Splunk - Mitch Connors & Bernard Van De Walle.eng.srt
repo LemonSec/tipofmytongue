@@ -1,0 +1,3104 @@
+﻿1
+00:00:00,420 --> 00:00:03,540
+okay good morning and thanks for joining
+
+2
+00:00:03,540 --> 00:00:05,580
+us today for this session on network
+
+3
+00:00:05,580 --> 00:00:08,400
+security at scale
+
+4
+00:00:08,400 --> 00:00:11,280
+I am Bernard vanderwaal I'm a principal
+
+5
+00:00:11,280 --> 00:00:13,920
+software engineer at splink and I work
+
+6
+00:00:13,920 --> 00:00:16,320
+on operationalizing at scale kubernetes
+
+7
+00:00:16,320 --> 00:00:18,960
+istio and Envoy
+
+8
+00:00:18,960 --> 00:00:21,060
+I used to do this at Cruise previously
+
+9
+00:00:21,060 --> 00:00:22,699
+and my role career was in between
+
+10
+00:00:22,699 --> 00:00:25,920
+networking and software engineering
+
+11
+00:00:25,920 --> 00:00:28,320
+and my name is Mitch Connors I'm a
+
+12
+00:00:28,320 --> 00:00:30,420
+principal software engineer at aviatrix
+
+13
+00:00:30,420 --> 00:00:33,260
+where I am working on the istio project
+
+14
+00:00:33,260 --> 00:00:35,399
+I've been a member of the istio project
+
+15
+00:00:35,399 --> 00:00:37,559
+since 2018 currently serving on the
+
+16
+00:00:37,559 --> 00:00:39,719
+technical oversight committee I'm also a
+
+17
+00:00:39,719 --> 00:00:42,600
+local here to Seattle which means that I
+
+18
+00:00:42,600 --> 00:00:44,579
+can give you istio swag I can answer any
+
+19
+00:00:44,579 --> 00:00:45,719
+questions you have about the project
+
+20
+00:00:45,719 --> 00:00:48,059
+about aviatrix where I work or I can
+
+21
+00:00:48,059 --> 00:00:48,840
+give you really good restaurant
+
+22
+00:00:48,840 --> 00:00:50,760
+recommendations for the area so come
+
+23
+00:00:50,760 --> 00:00:53,340
+chat with me after
+
+24
+00:00:53,340 --> 00:00:56,640
+very nice and so today we want to talk
+
+25
+00:00:56,640 --> 00:00:58,559
+to you about Splunk load and the story
+
+26
+00:00:58,559 --> 00:01:01,640
+behind it so splint cloud is basically a
+
+27
+00:01:01,640 --> 00:01:04,019
+re-design of Splunk to be Cloud native
+
+28
+00:01:04,019 --> 00:01:06,840
+so we wanted to standardize it on the
+
+29
+00:01:06,840 --> 00:01:08,340
+kubernetes API
+
+30
+00:01:08,340 --> 00:01:10,680
+and we wanted to be Cloud agnostic as
+
+31
+00:01:10,680 --> 00:01:11,880
+much as possible
+
+32
+00:01:11,880 --> 00:01:14,700
+and today we run both in AWS and gcp
+
+33
+00:01:14,700 --> 00:01:16,439
+mainly in AWS
+
+34
+00:01:16,439 --> 00:01:19,860
+we run in about 35 clusters all over the
+
+35
+00:01:19,860 --> 00:01:22,799
+world in all regions of AWS pretty much
+
+36
+00:01:22,799 --> 00:01:24,840
+and the tech stack we are going to talk
+
+37
+00:01:24,840 --> 00:01:27,540
+about today is kubernetes istio and
+
+38
+00:01:27,540 --> 00:01:30,240
+Envoy mainly
+
+39
+00:01:30,240 --> 00:01:33,180
+and so if you look at the agenda I think
+
+40
+00:01:33,180 --> 00:01:35,700
+our goal today is to tell you a generic
+
+41
+00:01:35,700 --> 00:01:38,100
+story and go in detail into each of the
+
+42
+00:01:38,100 --> 00:01:39,540
+layers
+
+43
+00:01:39,540 --> 00:01:41,880
+um that you deal with when you manage
+
+44
+00:01:41,880 --> 00:01:44,640
+the network of such a cloud deployment
+
+45
+00:01:44,640 --> 00:01:46,740
+and I think it's especially confusing
+
+46
+00:01:46,740 --> 00:01:48,900
+because to some level you can configure
+
+47
+00:01:48,900 --> 00:01:51,180
+networking policies on the cloud
+
+48
+00:01:51,180 --> 00:01:53,520
+provider on your VPC you can also
+
+49
+00:01:53,520 --> 00:01:55,380
+configure Network policies on kubernetes
+
+50
+00:01:55,380 --> 00:01:57,420
+and you can do that on istio as well
+
+51
+00:01:57,420 --> 00:01:59,040
+right so I think what we want to do
+
+52
+00:01:59,040 --> 00:02:01,320
+today is to go into each of those layers
+
+53
+00:02:01,320 --> 00:02:03,780
+and explore what you can do
+
+54
+00:02:03,780 --> 00:02:05,939
+our goal today is to make it as generic
+
+55
+00:02:05,939 --> 00:02:07,860
+as possible so it's not really tied to
+
+56
+00:02:07,860 --> 00:02:11,300
+Splunk even though it's what we use
+
+57
+00:02:11,760 --> 00:02:14,160
+okay so let's start with the cloud
+
+58
+00:02:14,160 --> 00:02:15,720
+provider level
+
+59
+00:02:15,720 --> 00:02:19,800
+this is first AWS and gcp so we deploy
+
+60
+00:02:19,800 --> 00:02:22,800
+our clusters into standard vpcs so we
+
+61
+00:02:22,800 --> 00:02:26,400
+use a cookie cutter VPC one cluster per
+
+62
+00:02:26,400 --> 00:02:29,220
+VPC typically and the goal is it gives
+
+63
+00:02:29,220 --> 00:02:31,560
+us some level of networking sandbox for
+
+64
+00:02:31,560 --> 00:02:33,599
+clusters
+
+65
+00:02:33,599 --> 00:02:35,640
+um we deploy your vpcs with three
+
+66
+00:02:35,640 --> 00:02:37,800
+different set of subnets so we got
+
+67
+00:02:37,800 --> 00:02:40,500
+typically a bunch of private subnets
+
+68
+00:02:40,500 --> 00:02:42,420
+which will be used for the kubernetes
+
+69
+00:02:42,420 --> 00:02:45,000
+workloads that's where we want with our
+
+70
+00:02:45,000 --> 00:02:46,920
+nodes running and I don't have the data
+
+71
+00:02:46,920 --> 00:02:49,920
+pods as well we do this because we want
+
+72
+00:02:49,920 --> 00:02:51,720
+the private subnet as the name says to
+
+73
+00:02:51,720 --> 00:02:54,300
+be fully isolated from anything else
+
+74
+00:02:54,300 --> 00:02:56,160
+and then we got public subnets for
+
+75
+00:02:56,160 --> 00:02:57,959
+internet connectivity and that's where
+
+76
+00:02:57,959 --> 00:02:59,940
+we want anything Ingress or egress
+
+77
+00:02:59,940 --> 00:03:02,340
+coming from internet to go to and we got
+
+78
+00:03:02,340 --> 00:03:04,800
+internal subnets for connectivity inside
+
+79
+00:03:04,800 --> 00:03:08,420
+Splinter to other clusters
+
+80
+00:03:09,540 --> 00:03:11,280
+and this brings me to the first knob
+
+81
+00:03:11,280 --> 00:03:13,440
+that you can use for security which is
+
+82
+00:03:13,440 --> 00:03:16,080
+Network ACLS so pretty much every cloud
+
+83
+00:03:16,080 --> 00:03:18,900
+provider supports this those are very
+
+84
+00:03:18,900 --> 00:03:22,019
+low level crude ACLS they are stateless
+
+85
+00:03:22,019 --> 00:03:23,580
+so they don't really take into account
+
+86
+00:03:23,580 --> 00:03:27,060
+already opened connections and the issue
+
+87
+00:03:27,060 --> 00:03:29,220
+is they get applied to sublets which
+
+88
+00:03:29,220 --> 00:03:33,000
+means you pretty much need to allow
+
+89
+00:03:33,000 --> 00:03:34,980
+everything that any of your instances
+
+90
+00:03:34,980 --> 00:03:37,080
+will eventually require because you can
+
+91
+00:03:37,080 --> 00:03:38,159
+only apply
+
+92
+00:03:38,159 --> 00:03:40,200
+on the subnet level you cannot specify
+
+93
+00:03:40,200 --> 00:03:42,659
+specific instances
+
+94
+00:03:42,659 --> 00:03:44,700
+they give you very basic layer 2 and
+
+95
+00:03:44,700 --> 00:03:46,739
+layer 4 capabilities meaning you can
+
+96
+00:03:46,739 --> 00:03:48,900
+match on ipn ports both on the source
+
+97
+00:03:48,900 --> 00:03:51,180
+and destination and I pretty much see
+
+98
+00:03:51,180 --> 00:03:53,819
+them as a kind of casual Last Resort set
+
+99
+00:03:53,819 --> 00:03:55,319
+of rules
+
+100
+00:03:55,319 --> 00:03:57,420
+the way we use them for example is on
+
+101
+00:03:57,420 --> 00:03:59,099
+the internal subnet you never want to
+
+102
+00:03:59,099 --> 00:04:02,760
+see anything else than the IP IP private
+
+103
+00:04:02,760 --> 00:04:06,959
+range like 10 8 the RFC 19 18 IP range
+
+104
+00:04:06,959 --> 00:04:09,659
+so we default we by default we deny
+
+105
+00:04:09,659 --> 00:04:12,420
+everything except traffic with those
+
+106
+00:04:12,420 --> 00:04:13,680
+Source IPS
+
+107
+00:04:13,680 --> 00:04:15,299
+we do the same thing for the private
+
+108
+00:04:15,299 --> 00:04:17,699
+subnets and we also explicitly allow
+
+109
+00:04:17,699 --> 00:04:19,978
+some traffic coming from internet from
+
+110
+00:04:19,978 --> 00:04:21,720
+specific parts for anything English like
+
+111
+00:04:21,720 --> 00:04:24,320
+443
+
+112
+00:04:25,080 --> 00:04:28,560
+okay so on the private subnets we will
+
+113
+00:04:28,560 --> 00:04:30,419
+deploy node groups those are the
+
+114
+00:04:30,419 --> 00:04:33,120
+kubernetes nodes typically and we will
+
+115
+00:04:33,120 --> 00:04:35,880
+group them into different functions into
+
+116
+00:04:35,880 --> 00:04:38,520
+those node groups for example we got
+
+117
+00:04:38,520 --> 00:04:40,620
+Ingress node groups that's where we want
+
+118
+00:04:40,620 --> 00:04:43,380
+to deploy our Ingress gateways where we
+
+119
+00:04:43,380 --> 00:04:45,360
+will run Envoy eventually we'll talk
+
+120
+00:04:45,360 --> 00:04:47,820
+more about this later we also got some
+
+121
+00:04:47,820 --> 00:04:50,940
+generic node groups and workload
+
+122
+00:04:50,940 --> 00:04:52,680
+specific node groups
+
+123
+00:04:52,680 --> 00:04:54,840
+all of those get deployed into a private
+
+124
+00:04:54,840 --> 00:04:57,180
+IP space because again we never want
+
+125
+00:04:57,180 --> 00:04:59,820
+anything outside which which you know
+
+126
+00:04:59,820 --> 00:05:03,020
+directly to those node groups
+
+127
+00:05:03,540 --> 00:05:05,520
+and so doing this gives you the ability
+
+128
+00:05:05,520 --> 00:05:07,020
+to use something else that most Cloud
+
+129
+00:05:07,020 --> 00:05:08,639
+providers support which is security
+
+130
+00:05:08,639 --> 00:05:12,180
+groups so security groups are kind of
+
+131
+00:05:12,180 --> 00:05:14,759
+network ACLS plus plus first of all they
+
+132
+00:05:14,759 --> 00:05:16,680
+are stateful so the the support
+
+133
+00:05:16,680 --> 00:05:19,080
+connection based
+
+134
+00:05:19,080 --> 00:05:21,120
+um you can also apply them for instance
+
+135
+00:05:21,120 --> 00:05:23,639
+which means you can do more fine-grained
+
+136
+00:05:23,639 --> 00:05:24,919
+things like this
+
+137
+00:05:24,919 --> 00:05:27,840
+we want for example to fully isolate the
+
+138
+00:05:27,840 --> 00:05:30,000
+generic node groups and only allow
+
+139
+00:05:30,000 --> 00:05:32,220
+Connection in through the Ingress node
+
+140
+00:05:32,220 --> 00:05:34,919
+group and so what we do is we apply a
+
+141
+00:05:34,919 --> 00:05:37,020
+very locked down Security Group to the
+
+142
+00:05:37,020 --> 00:05:39,000
+generic node groups and a slightly
+
+143
+00:05:39,000 --> 00:05:41,639
+relaxed Security Group to the Ingress
+
+144
+00:05:41,639 --> 00:05:44,220
+node groups and so this basically forces
+
+145
+00:05:44,220 --> 00:05:46,500
+anything coming into the cluster to
+
+146
+00:05:46,500 --> 00:05:49,620
+transit to those English node groups
+
+147
+00:05:49,620 --> 00:05:51,660
+and the other good thing with security
+
+148
+00:05:51,660 --> 00:05:54,600
+groups is they allow you to use a
+
+149
+00:05:54,600 --> 00:05:57,240
+slightly higher level syntax you can use
+
+150
+00:05:57,240 --> 00:05:59,400
+other security groups as Source or
+
+151
+00:05:59,400 --> 00:06:01,940
+destinations
+
+152
+00:06:03,620 --> 00:06:06,240
+for Ingress connectivity we want
+
+153
+00:06:06,240 --> 00:06:08,820
+everything to go to rnlb and Ingress
+
+154
+00:06:08,820 --> 00:06:11,520
+gateways and Ingress node groups so what
+
+155
+00:06:11,520 --> 00:06:13,320
+we do is we deploy basically a bunch of
+
+156
+00:06:13,320 --> 00:06:15,600
+nlbs into those public and internal
+
+157
+00:06:15,600 --> 00:06:16,940
+subnets
+
+158
+00:06:16,940 --> 00:06:19,620
+the public nlbs are obviously made for
+
+159
+00:06:19,620 --> 00:06:21,840
+public internet connectivity and we use
+
+160
+00:06:21,840 --> 00:06:25,680
+internal internal nlbs for anything that
+
+161
+00:06:25,680 --> 00:06:27,240
+needs to be reached from inside Splunk
+
+162
+00:06:27,240 --> 00:06:30,539
+those will be iped on the 10-8 IP space
+
+163
+00:06:30,539 --> 00:06:31,740
+obviously
+
+164
+00:06:31,740 --> 00:06:33,360
+and what they do is they basically
+
+165
+00:06:33,360 --> 00:06:36,000
+Target the Ingress node group and the
+
+166
+00:06:36,000 --> 00:06:38,340
+Ingress node group will run the envoy
+
+167
+00:06:38,340 --> 00:06:40,319
+gateways that will terminate connections
+
+168
+00:06:40,319 --> 00:06:43,380
+and proxy traffic Upstream inside the
+
+169
+00:06:43,380 --> 00:06:45,800
+cluster
+
+170
+00:06:46,259 --> 00:06:48,360
+so for internal traffic once you've hit
+
+171
+00:06:48,360 --> 00:06:51,419
+the NLB inside the internal subnet you
+
+172
+00:06:51,419 --> 00:06:52,740
+still need a way to get to another
+
+173
+00:06:52,740 --> 00:06:54,900
+cluster another cluster lives in another
+
+174
+00:06:54,900 --> 00:06:59,220
+VPC so uh for that they're using
+
+175
+00:06:59,220 --> 00:07:01,860
+AWS Transit gateways those are
+
+176
+00:07:01,860 --> 00:07:04,080
+advertising only the internal subnet
+
+177
+00:07:04,080 --> 00:07:06,300
+Source IPS so those private subnet
+
+178
+00:07:06,300 --> 00:07:07,860
+public subnet IPS are not getting
+
+179
+00:07:07,860 --> 00:07:09,620
+advertised across that Transit Gateway
+
+180
+00:07:09,620 --> 00:07:11,759
+and of course this transits through the
+
+181
+00:07:11,759 --> 00:07:13,560
+Splunk firewall where security rules can
+
+182
+00:07:13,560 --> 00:07:14,940
+be applied
+
+183
+00:07:14,940 --> 00:07:17,100
+in addition there's a number of shared
+
+184
+00:07:17,100 --> 00:07:19,080
+services that every cluster needs to be
+
+185
+00:07:19,080 --> 00:07:20,880
+able to access and they need to be able
+
+186
+00:07:20,880 --> 00:07:22,860
+to access it without transiting an NLB
+
+187
+00:07:22,860 --> 00:07:26,280
+so for for these cases uh Splunk is
+
+188
+00:07:26,280 --> 00:07:29,220
+using aviatrix aviatrix apply allows a
+
+189
+00:07:29,220 --> 00:07:31,979
+flat Network at layer three where all of
+
+190
+00:07:31,979 --> 00:07:33,840
+the Clusters directly from their private
+
+191
+00:07:33,840 --> 00:07:36,479
+subnets can access those shared services
+
+192
+00:07:36,479 --> 00:07:39,960
+across the aviatrix transit Gateway
+
+193
+00:07:39,960 --> 00:07:42,360
+and of course once you've established a
+
+194
+00:07:42,360 --> 00:07:44,520
+peering so that your pods can access
+
+195
+00:07:44,520 --> 00:07:47,099
+those shared services aviatrix by
+
+196
+00:07:47,099 --> 00:07:48,599
+default would allow those pods to
+
+197
+00:07:48,599 --> 00:07:49,979
+communicate with one another which of
+
+198
+00:07:49,979 --> 00:07:51,360
+course would bypass all of the rules
+
+199
+00:07:51,360 --> 00:07:53,400
+that we've set up in our internal subnet
+
+200
+00:07:53,400 --> 00:07:55,680
+so in order to prevent that Splunk has
+
+201
+00:07:55,680 --> 00:07:57,599
+used aviatrix's
+
+202
+00:07:57,599 --> 00:07:58,319
+um
+
+203
+00:07:58,319 --> 00:08:00,539
+Network domains feature which simply
+
+204
+00:08:00,539 --> 00:08:03,120
+allows you to say this VPC can talk to
+
+205
+00:08:03,120 --> 00:08:05,699
+that VPC that VPC can talk to the other
+
+206
+00:08:05,699 --> 00:08:08,460
+but certain vpcs can't so in this case
+
+207
+00:08:08,460 --> 00:08:10,020
+you see a diagram where like the blue
+
+208
+00:08:10,020 --> 00:08:11,699
+cannot talk to the green and the green
+
+209
+00:08:11,699 --> 00:08:13,620
+cannot talk to the blue but we have a
+
+210
+00:08:13,620 --> 00:08:15,900
+number of shared vpcs that are both blue
+
+211
+00:08:15,900 --> 00:08:17,520
+and green that are accessible from all
+
+212
+00:08:17,520 --> 00:08:19,199
+and that's the setup that Splunk is
+
+213
+00:08:19,199 --> 00:08:21,419
+using there
+
+214
+00:08:21,419 --> 00:08:22,740
+okay
+
+215
+00:08:22,740 --> 00:08:23,520
+um
+
+216
+00:08:23,520 --> 00:08:25,620
+so let's look at the next layer which is
+
+217
+00:08:25,620 --> 00:08:27,060
+kubernetes
+
+218
+00:08:27,060 --> 00:08:29,940
+so first of all or kubernetes deployment
+
+219
+00:08:29,940 --> 00:08:31,740
+that's blank we treat it as a full
+
+220
+00:08:31,740 --> 00:08:34,740
+self-service platform which means that
+
+221
+00:08:34,740 --> 00:08:37,080
+teams own namespace they can they can do
+
+222
+00:08:37,080 --> 00:08:38,880
+whatever they want with the kubernetes
+
+223
+00:08:38,880 --> 00:08:42,299
+API they can provision objects CRVs or
+
+224
+00:08:42,299 --> 00:08:45,180
+steel etc etc
+
+225
+00:08:45,180 --> 00:08:47,160
+um our goal as a platform team is to
+
+226
+00:08:47,160 --> 00:08:49,500
+provide some level of Base capabilities
+
+227
+00:08:49,500 --> 00:08:52,019
+like networking security observability
+
+228
+00:08:52,019 --> 00:08:53,760
+Etc
+
+229
+00:08:53,760 --> 00:08:55,620
+one of the things we try to do obviously
+
+230
+00:08:55,620 --> 00:08:57,899
+is for the service teams not shoot
+
+231
+00:08:57,899 --> 00:09:00,000
+themselves into the foods I'm going to
+
+232
+00:09:00,000 --> 00:09:01,560
+show you a couple of examples on how we
+
+233
+00:09:01,560 --> 00:09:04,380
+do that first of all one of the things
+
+234
+00:09:04,380 --> 00:09:07,640
+we mended is any Ingress connectivity
+
+235
+00:09:07,640 --> 00:09:10,320
+both internal or external needs to go to
+
+236
+00:09:10,320 --> 00:09:13,019
+our nlbs Ingress nodes and Ingress
+
+237
+00:09:13,019 --> 00:09:15,120
+Gateway that's a way for us to apply
+
+238
+00:09:15,120 --> 00:09:18,300
+security into a central point
+
+239
+00:09:18,300 --> 00:09:20,880
+um another note as well is once you get
+
+240
+00:09:20,880 --> 00:09:22,800
+to the kubernetes layer you do
+
+241
+00:09:22,800 --> 00:09:25,019
+put-to-pot communication as well this is
+
+242
+00:09:25,019 --> 00:09:27,180
+mainly invisible to the cloud provider
+
+243
+00:09:27,180 --> 00:09:29,600
+right most of the time is tunneling
+
+244
+00:09:29,600 --> 00:09:33,120
+services like Galaxy or psyllium and
+
+245
+00:09:33,120 --> 00:09:37,080
+yeah that adds some level of complexity
+
+246
+00:09:37,080 --> 00:09:39,839
+so one thing we do we use quite heavily
+
+247
+00:09:39,839 --> 00:09:43,320
+some validating web hooks so the goal of
+
+248
+00:09:43,320 --> 00:09:45,420
+a validating web Hook is it's basically
+
+249
+00:09:45,420 --> 00:09:48,660
+a callback from kubernetes API whenever
+
+250
+00:09:48,660 --> 00:09:51,779
+a code create updates or delete of a
+
+251
+00:09:51,779 --> 00:09:54,540
+specific object is being performed and
+
+252
+00:09:54,540 --> 00:09:56,760
+so we use this in order to validate that
+
+253
+00:09:56,760 --> 00:09:59,399
+users use those objects correctly a
+
+254
+00:09:59,399 --> 00:10:02,100
+typical example is for a service of type
+
+255
+00:10:02,100 --> 00:10:03,779
+load balancer
+
+256
+00:10:03,779 --> 00:10:07,680
+You by default kubernetes will create an
+
+257
+00:10:07,680 --> 00:10:09,899
+NLB if you use a service of title
+
+258
+00:10:09,899 --> 00:10:11,820
+balancer we absolutely want to block
+
+259
+00:10:11,820 --> 00:10:14,339
+this right since again we want to force
+
+260
+00:10:14,339 --> 00:10:16,680
+traffic to go to our NLB and Ingress
+
+261
+00:10:16,680 --> 00:10:19,019
+nodes and so we use those validating my
+
+262
+00:10:19,019 --> 00:10:21,180
+books that's just one example in order
+
+263
+00:10:21,180 --> 00:10:23,820
+to enforce those things
+
+264
+00:10:23,820 --> 00:10:25,560
+and there are plenty of open
+
+265
+00:10:25,560 --> 00:10:27,420
+implementations of those validating
+
+266
+00:10:27,420 --> 00:10:30,300
+workbooks Opa is one example I used to
+
+267
+00:10:30,300 --> 00:10:32,580
+use cable at Cruz which is a good open
+
+268
+00:10:32,580 --> 00:10:35,220
+source alternative in this case we we
+
+269
+00:10:35,220 --> 00:10:36,899
+create our own ones but they're pretty
+
+270
+00:10:36,899 --> 00:10:39,500
+easy to implement
+
+271
+00:10:40,200 --> 00:10:43,380
+okay so next thing is Network policies
+
+272
+00:10:43,380 --> 00:10:44,940
+on kubernetes
+
+273
+00:10:44,940 --> 00:10:47,700
+so those Network policies and kubernetes
+
+274
+00:10:47,700 --> 00:10:50,040
+are very kubernetes Centric you it's
+
+275
+00:10:50,040 --> 00:10:51,899
+basically a crd defined inside
+
+276
+00:10:51,899 --> 00:10:54,000
+kubernetes
+
+277
+00:10:54,000 --> 00:10:55,740
+um they allow you to use the kubernetes
+
+278
+00:10:55,740 --> 00:10:58,500
+syntax which means you can use labels in
+
+279
+00:10:58,500 --> 00:11:00,480
+order to select pods so that you don't
+
+280
+00:11:00,480 --> 00:11:03,420
+have to explicitly Define the eyepiece
+
+281
+00:11:03,420 --> 00:11:05,279
+of each pod you want to match on
+
+282
+00:11:05,279 --> 00:11:07,500
+those are by default implemented by your
+
+283
+00:11:07,500 --> 00:11:09,360
+cni plugin something like cilium or
+
+284
+00:11:09,360 --> 00:11:11,760
+Calico and a typical example is
+
+285
+00:11:11,760 --> 00:11:13,740
+something like this right in which you
+
+286
+00:11:13,740 --> 00:11:16,019
+have a two-tier application and you want
+
+287
+00:11:16,019 --> 00:11:18,300
+the back end to be able to be reached
+
+288
+00:11:18,300 --> 00:11:20,640
+from inside its own namespace and you
+
+289
+00:11:20,640 --> 00:11:22,620
+maybe want as well connectivity from a
+
+290
+00:11:22,620 --> 00:11:23,579
+front end
+
+291
+00:11:23,579 --> 00:11:26,579
+right and so you you are able to select
+
+292
+00:11:26,579 --> 00:11:29,820
+namespaces and pods based on labels and
+
+293
+00:11:29,820 --> 00:11:33,019
+you can end up with something like this
+
+294
+00:11:35,160 --> 00:11:37,920
+all right so far we've talked about from
+
+295
+00:11:37,920 --> 00:11:40,860
+VPC level layer three up to kubernetes
+
+296
+00:11:40,860 --> 00:11:43,200
+policy how security is applied at each
+
+297
+00:11:43,200 --> 00:11:45,600
+of these layers to scale up to the level
+
+298
+00:11:45,600 --> 00:11:47,519
+that Splunk requires now we're going to
+
+299
+00:11:47,519 --> 00:11:50,100
+look at layer seven and for that it
+
+300
+00:11:50,100 --> 00:11:52,740
+Splunk is using the istio project if
+
+301
+00:11:52,740 --> 00:11:54,240
+you're unfamiliar with istio it's a
+
+302
+00:11:54,240 --> 00:11:56,399
+service mesh and lots of people have
+
+303
+00:11:56,399 --> 00:11:58,320
+attempted to explain what a service mesh
+
+304
+00:11:58,320 --> 00:12:00,360
+is it can all seem very confusing and
+
+305
+00:12:00,360 --> 00:12:03,720
+hype at a fundamental layer this allows
+
+306
+00:12:03,720 --> 00:12:06,480
+application near application layer
+
+307
+00:12:06,480 --> 00:12:08,640
+networking abstractions over your
+
+308
+00:12:08,640 --> 00:12:10,500
+network so if you want to talk about
+
+309
+00:12:10,500 --> 00:12:13,260
+your network not in terms of this IP and
+
+310
+00:12:13,260 --> 00:12:15,300
+Port can talk to that IP and Port but
+
+311
+00:12:15,300 --> 00:12:17,040
+instead in terms of this service
+
+312
+00:12:17,040 --> 00:12:18,839
+identity can talk to that service
+
+313
+00:12:18,839 --> 00:12:22,200
+identity you want a service mesh if you
+
+314
+00:12:22,200 --> 00:12:23,820
+want something that can globally collect
+
+315
+00:12:23,820 --> 00:12:25,620
+Telemetry and say something along the
+
+316
+00:12:25,620 --> 00:12:28,500
+lines of HTTP requests with this path
+
+317
+00:12:28,500 --> 00:12:30,839
+and this verb are succeeding this
+
+318
+00:12:30,839 --> 00:12:33,660
+percent of the time you want application
+
+319
+00:12:33,660 --> 00:12:35,640
+layer networking abstractions you want a
+
+320
+00:12:35,640 --> 00:12:37,500
+service mesh
+
+321
+00:12:37,500 --> 00:12:38,160
+um
+
+322
+00:12:38,160 --> 00:12:40,260
+you can also play with routing a little
+
+323
+00:12:40,260 --> 00:12:42,540
+bit and say perhaps our premium tier
+
+324
+00:12:42,540 --> 00:12:44,760
+users are routed to a subset of this
+
+325
+00:12:44,760 --> 00:12:46,380
+service which we know to run on a little
+
+326
+00:12:46,380 --> 00:12:47,880
+bit better hardware and be a little bit
+
+327
+00:12:47,880 --> 00:12:51,720
+faster that's what istio does we're
+
+328
+00:12:51,720 --> 00:12:53,100
+going to talk a little bit about how
+
+329
+00:12:53,100 --> 00:12:54,839
+istio does this and then we're going to
+
+330
+00:12:54,839 --> 00:12:57,000
+look at how Splunk is leveraging istio
+
+331
+00:12:57,000 --> 00:12:59,820
+well all of the magic of istio comes
+
+332
+00:12:59,820 --> 00:13:03,120
+from Envoy we insert an Envoy sidecar
+
+333
+00:13:03,120 --> 00:13:06,120
+into every single application pod which
+
+334
+00:13:06,120 --> 00:13:07,440
+means that this diagram isn't quite
+
+335
+00:13:07,440 --> 00:13:08,760
+correct if we were to correct it it
+
+336
+00:13:08,760 --> 00:13:10,680
+would probably look a little bit more
+
+337
+00:13:10,680 --> 00:13:12,600
+like this
+
+338
+00:13:12,600 --> 00:13:14,880
+there's a lot of application pods in
+
+339
+00:13:14,880 --> 00:13:16,740
+your average service mesh which means
+
+340
+00:13:16,740 --> 00:13:18,899
+there's a lot of envoy sidecars we're
+
+341
+00:13:18,899 --> 00:13:20,880
+running Envoy everywhere but the
+
+342
+00:13:20,880 --> 00:13:22,079
+advantage is that means that we have
+
+343
+00:13:22,079 --> 00:13:23,700
+control over all of the network traffic
+
+344
+00:13:23,700 --> 00:13:26,040
+we can collect Telemetry over all of the
+
+345
+00:13:26,040 --> 00:13:27,779
+networking traffic and so the trade-offs
+
+346
+00:13:27,779 --> 00:13:31,800
+in splunk's case have been worthwhile
+
+347
+00:13:31,800 --> 00:13:34,560
+uh one of the key things that istio
+
+348
+00:13:34,560 --> 00:13:36,480
+offers for Splunk is in transit
+
+349
+00:13:36,480 --> 00:13:38,279
+encryption without any need to modify
+
+350
+00:13:38,279 --> 00:13:40,380
+applications so the applications are
+
+351
+00:13:40,380 --> 00:13:42,420
+sending plain text to http as far as
+
+352
+00:13:42,420 --> 00:13:44,279
+they know the envoy sidecar will
+
+353
+00:13:44,279 --> 00:13:47,459
+intercept and apply Mutual TLS to that
+
+354
+00:13:47,459 --> 00:13:48,899
+traffic so that it may not be
+
+355
+00:13:48,899 --> 00:13:52,620
+intercepted or modified in transit
+
+356
+00:13:52,620 --> 00:13:55,139
+um you can run istio in strict mode
+
+357
+00:13:55,139 --> 00:13:57,300
+which requires that mtls apply to all
+
+358
+00:13:57,300 --> 00:13:59,040
+traffic occasionally you'll run into
+
+359
+00:13:59,040 --> 00:14:01,200
+some hiccups there so Splunk runs in
+
+360
+00:14:01,200 --> 00:14:02,940
+permissive mode which means it will
+
+361
+00:14:02,940 --> 00:14:05,940
+attempt to use mtls and fail back to
+
+362
+00:14:05,940 --> 00:14:08,639
+plain text if necessary and then they
+
+363
+00:14:08,639 --> 00:14:10,860
+have this fancy alert setup that lets
+
+364
+00:14:10,860 --> 00:14:12,480
+them know when there's traffic that's
+
+365
+00:14:12,480 --> 00:14:14,040
+happening in plain text so that they can
+
+366
+00:14:14,040 --> 00:14:15,899
+alert their security team rather than
+
+367
+00:14:15,899 --> 00:14:17,399
+blocking it proactively they'd rather
+
+368
+00:14:17,399 --> 00:14:20,040
+have developers respond to that plain
+
+369
+00:14:20,040 --> 00:14:22,800
+text and correct the problem
+
+370
+00:14:22,800 --> 00:14:24,060
+yep
+
+371
+00:14:24,060 --> 00:14:26,820
+so I think one interesting thing to talk
+
+372
+00:14:26,820 --> 00:14:28,860
+about is the way we provision gateways
+
+373
+00:14:28,860 --> 00:14:31,440
+in our English story because this is
+
+374
+00:14:31,440 --> 00:14:33,720
+going to be the the Ingress point for
+
+375
+00:14:33,720 --> 00:14:35,700
+anything into the cluster right
+
+376
+00:14:35,700 --> 00:14:38,040
+so as we said before we want anything
+
+377
+00:14:38,040 --> 00:14:41,160
+that comes in to go to nlbs because that
+
+378
+00:14:41,160 --> 00:14:42,620
+allows us to
+
+379
+00:14:42,620 --> 00:14:44,880
+nlbs and Ingress gateways because then
+
+380
+00:14:44,880 --> 00:14:47,160
+we can apply a new uniform security
+
+381
+00:14:47,160 --> 00:14:48,660
+policy to it
+
+382
+00:14:48,660 --> 00:14:51,240
+what we do is we deploy basically nlbs
+
+383
+00:14:51,240 --> 00:14:53,220
+and gateways together so the gateways
+
+384
+00:14:53,220 --> 00:14:56,000
+will be Envoy running on Ingress nodes
+
+385
+00:14:56,000 --> 00:14:58,199
+based on the source of the traffic you
+
+386
+00:14:58,199 --> 00:15:00,360
+want to ingest for example if you want a
+
+387
+00:15:00,360 --> 00:15:02,579
+public traffic you obviously will deploy
+
+388
+00:15:02,579 --> 00:15:05,100
+your NLB on the public subnets for the
+
+389
+00:15:05,100 --> 00:15:06,839
+internal traffic your NLB needs to be on
+
+390
+00:15:06,839 --> 00:15:08,160
+the internal subnets
+
+391
+00:15:08,160 --> 00:15:10,199
+what we also do obviously for security
+
+392
+00:15:10,199 --> 00:15:12,540
+reasons and blast radius reasons is
+
+393
+00:15:12,540 --> 00:15:15,060
+sometimes we deploy nlbn gateways for
+
+394
+00:15:15,060 --> 00:15:17,339
+very critical applications we also
+
+395
+00:15:17,339 --> 00:15:19,500
+shared tenants sometimes across multiple
+
+396
+00:15:19,500 --> 00:15:22,139
+nlbs when we reach a critical mass
+
+397
+00:15:22,139 --> 00:15:25,019
+and we do this so that in case gateways
+
+398
+00:15:25,019 --> 00:15:26,760
+go down hopefully it doesn't happen too
+
+399
+00:15:26,760 --> 00:15:28,620
+often it doesn't take down the whole
+
+400
+00:15:28,620 --> 00:15:30,360
+cluster
+
+401
+00:15:30,360 --> 00:15:32,820
+those gateways are managed by us as a
+
+402
+00:15:32,820 --> 00:15:34,980
+platform team we run them into the istio
+
+403
+00:15:34,980 --> 00:15:37,199
+gateway namespace and it's basically a
+
+404
+00:15:37,199 --> 00:15:38,639
+capability that we offer to everyone
+
+405
+00:15:38,639 --> 00:15:40,920
+into the the cluster they can basically
+
+406
+00:15:40,920 --> 00:15:43,440
+plug into it
+
+407
+00:15:43,440 --> 00:15:45,600
+and the way we do this is what we use
+
+408
+00:15:45,600 --> 00:15:46,680
+this steel
+
+409
+00:15:46,680 --> 00:15:50,040
+um we set up Gateway so istio is going
+
+410
+00:15:50,040 --> 00:15:53,339
+to program Envoy as a Gateway and we set
+
+411
+00:15:53,339 --> 00:15:55,800
+up those gateways through the istiocrds
+
+412
+00:15:55,800 --> 00:15:58,440
+like Gateway crb so Gateway crd will
+
+413
+00:15:58,440 --> 00:16:00,899
+basically Define which hostname and
+
+414
+00:16:00,899 --> 00:16:02,940
+which Port you expect traffic on
+
+415
+00:16:02,940 --> 00:16:04,920
+we also provisioned those Gateway
+
+416
+00:16:04,920 --> 00:16:07,980
+service with certificates so that we
+
+417
+00:16:07,980 --> 00:16:11,040
+enforce TLS by default right and then we
+
+418
+00:16:11,040 --> 00:16:14,339
+allow our users into the into the
+
+419
+00:16:14,339 --> 00:16:16,740
+cluster to plug into those gateways
+
+420
+00:16:16,740 --> 00:16:19,440
+again this is gated to a validating
+
+421
+00:16:19,440 --> 00:16:21,540
+workbook so that not any namespace can
+
+422
+00:16:21,540 --> 00:16:23,760
+connect on any hostname they need to be
+
+423
+00:16:23,760 --> 00:16:25,740
+pre-validated in some ways
+
+424
+00:16:25,740 --> 00:16:27,240
+again we want everything to be
+
+425
+00:16:27,240 --> 00:16:29,220
+self-service except the critical Parts
+
+426
+00:16:29,220 --> 00:16:32,760
+like the those hostname and ports open
+
+427
+00:16:32,760 --> 00:16:35,240
+to internet
+
+428
+00:16:36,180 --> 00:16:38,339
+and so we quickly realized something
+
+429
+00:16:38,339 --> 00:16:42,959
+which is that users had to to create and
+
+430
+00:16:42,959 --> 00:16:44,820
+provision a lot of crds and objects on
+
+431
+00:16:44,820 --> 00:16:47,579
+kubernetes and this was leading us to
+
+432
+00:16:47,579 --> 00:16:50,100
+see a lot of mini security incidents I
+
+433
+00:16:50,100 --> 00:16:52,019
+will say in which people will configure
+
+434
+00:16:52,019 --> 00:16:54,899
+things wrongly so we've moved forward by
+
+435
+00:16:54,899 --> 00:16:56,639
+creating a service abstraction layer
+
+436
+00:16:56,639 --> 00:16:59,459
+which is essentially a controller which
+
+437
+00:16:59,459 --> 00:17:01,680
+will attempt to configure everything for
+
+438
+00:17:01,680 --> 00:17:04,319
+you all those complex objects
+
+439
+00:17:04,319 --> 00:17:06,720
+the way we did it is we allowed teams to
+
+440
+00:17:06,720 --> 00:17:09,780
+provision an open API stack and this
+
+441
+00:17:09,780 --> 00:17:11,640
+controller is going to scrape that spec
+
+442
+00:17:11,640 --> 00:17:13,380
+and create the virtual Services
+
+443
+00:17:13,380 --> 00:17:15,959
+destination rules Gateway all the
+
+444
+00:17:15,959 --> 00:17:17,819
+kubernetes objects you require to get
+
+445
+00:17:17,819 --> 00:17:20,160
+end-to-end networking connectivity
+
+446
+00:17:20,160 --> 00:17:22,380
+it will also manage certificates so
+
+447
+00:17:22,380 --> 00:17:24,000
+generate a certificate for your hostname
+
+448
+00:17:24,000 --> 00:17:27,359
+if it's allowed and setup DNS that goes
+
+449
+00:17:27,359 --> 00:17:29,580
+directly to the right NLB so this is
+
+450
+00:17:29,580 --> 00:17:31,919
+pretty much first one click deploy
+
+451
+00:17:31,919 --> 00:17:34,440
+solution for the network end-to-end if
+
+452
+00:17:34,440 --> 00:17:37,620
+you use those specs that we defined and
+
+453
+00:17:37,620 --> 00:17:41,280
+we see it as a way to make our clusters
+
+454
+00:17:41,280 --> 00:17:42,720
+more secure since it reduce
+
+455
+00:17:42,720 --> 00:17:46,039
+configuration errors
+
+456
+00:17:48,059 --> 00:17:50,340
+okay something else I would like to talk
+
+457
+00:17:50,340 --> 00:17:53,820
+about is some level of layer 7
+
+458
+00:17:53,820 --> 00:17:56,400
+authentication so we wanted to provide
+
+459
+00:17:56,400 --> 00:17:58,980
+inner clusters a standard way to do
+
+460
+00:17:58,980 --> 00:18:02,940
+hotel so authentication we do this by
+
+461
+00:18:02,940 --> 00:18:07,260
+leveraging a spec from Envoy called x2z
+
+462
+00:18:07,260 --> 00:18:10,440
+so x dot Z is defined by the envoy
+
+463
+00:18:10,440 --> 00:18:12,799
+project so we do this outside this year
+
+464
+00:18:12,799 --> 00:18:16,200
+it's basically a way to get a sync call
+
+465
+00:18:16,200 --> 00:18:19,320
+whenever you hit Envoy
+
+466
+00:18:19,320 --> 00:18:21,419
+um where you reach out to next to the
+
+467
+00:18:21,419 --> 00:18:23,280
+server with the headers of the request
+
+468
+00:18:23,280 --> 00:18:26,039
+and next to This Server will decide if
+
+469
+00:18:26,039 --> 00:18:28,200
+it's allowed denied or in some case you
+
+470
+00:18:28,200 --> 00:18:31,799
+can even modify the request headers
+
+471
+00:18:31,799 --> 00:18:33,780
+so what we did is we developed a bunch
+
+472
+00:18:33,780 --> 00:18:37,200
+of x2d proxies that we that act as the
+
+473
+00:18:37,200 --> 00:18:39,960
+next to this server and those will allow
+
+474
+00:18:39,960 --> 00:18:42,360
+a bunch of plugins to plug in and so we
+
+475
+00:18:42,360 --> 00:18:43,799
+develop those plugins based on what
+
+476
+00:18:43,799 --> 00:18:45,660
+alternants need for example we have an
+
+477
+00:18:45,660 --> 00:18:47,400
+authentication plugin which will
+
+478
+00:18:47,400 --> 00:18:49,500
+validate in some cases your better token
+
+479
+00:18:49,500 --> 00:18:53,280
+for HTTP we got some JWT talk plugins
+
+480
+00:18:53,280 --> 00:18:55,440
+and we got things like Kota plugins
+
+481
+00:18:55,440 --> 00:18:57,780
+which will make sure that a specific
+
+482
+00:18:57,780 --> 00:19:00,059
+tunnel doesn't issue more than a
+
+483
+00:19:00,059 --> 00:19:02,220
+specific amount of RPS
+
+484
+00:19:02,220 --> 00:19:04,500
+the good thing is this is enforced on
+
+485
+00:19:04,500 --> 00:19:06,059
+the Gateway before going into the
+
+486
+00:19:06,059 --> 00:19:09,000
+cluster our goal is to basically develop
+
+487
+00:19:09,000 --> 00:19:11,340
+any bogus request because before they
+
+488
+00:19:11,340 --> 00:19:15,559
+get Upstream further into the cluster
+
+489
+00:19:15,660 --> 00:19:18,419
+um I mean I highly recommend XT it was a
+
+490
+00:19:18,419 --> 00:19:21,179
+super easy protocol to implement
+
+491
+00:19:21,179 --> 00:19:21,919
+um
+
+492
+00:19:21,919 --> 00:19:24,900
+the workloads Upstream into the bud
+
+493
+00:19:24,900 --> 00:19:27,720
+still need to re-verify the identity
+
+494
+00:19:27,720 --> 00:19:29,820
+though this is just a way for us to stop
+
+495
+00:19:29,820 --> 00:19:32,580
+large-scale ddoses in some ways or to
+
+496
+00:19:32,580 --> 00:19:34,020
+block anything that should not get into
+
+497
+00:19:34,020 --> 00:19:36,620
+the cluster
+
+498
+00:19:37,980 --> 00:19:41,280
+other things we use istio 4 is we also
+
+499
+00:19:41,280 --> 00:19:43,799
+use some level of network policies
+
+500
+00:19:43,799 --> 00:19:45,600
+um some alloy lists
+
+501
+00:19:45,600 --> 00:19:48,840
+once you reach the istio level you can
+
+502
+00:19:48,840 --> 00:19:50,760
+basically start mixing and matching
+
+503
+00:19:50,760 --> 00:19:53,640
+layer 4 and layer 7 Concepts and we do
+
+504
+00:19:53,640 --> 00:19:55,500
+this quite often it's not super clean
+
+505
+00:19:55,500 --> 00:19:57,559
+but it allows us to do things like
+
+506
+00:19:57,559 --> 00:20:00,360
+defining us a bunch of source IPS that
+
+507
+00:20:00,360 --> 00:20:03,360
+should be able to go to specific paths
+
+508
+00:20:03,360 --> 00:20:06,240
+and host names for a service for example
+
+509
+00:20:06,240 --> 00:20:08,160
+so the higher level you go into the
+
+510
+00:20:08,160 --> 00:20:10,679
+stack the more Concepts you can use to
+
+511
+00:20:10,679 --> 00:20:13,679
+provide those Network policies
+
+512
+00:20:13,679 --> 00:20:16,380
+other things that some of our tenants do
+
+513
+00:20:16,380 --> 00:20:19,020
+on the cluster is they use some request
+
+514
+00:20:19,020 --> 00:20:23,220
+authentication crds to Define some GWT
+
+515
+00:20:23,220 --> 00:20:25,799
+odds and validate that any requests
+
+516
+00:20:25,799 --> 00:20:29,460
+coming into their workload is got a
+
+517
+00:20:29,460 --> 00:20:31,500
+correct token Associated into the
+
+518
+00:20:31,500 --> 00:20:33,919
+headers
+
+519
+00:20:34,980 --> 00:20:37,919
+and so yeah for this at this point I
+
+520
+00:20:37,919 --> 00:20:40,320
+want to take a step back and look at the
+
+521
+00:20:40,320 --> 00:20:42,539
+life of an Ingress request so this is
+
+522
+00:20:42,539 --> 00:20:44,940
+basically an end-to-end request coming
+
+523
+00:20:44,940 --> 00:20:46,880
+to our gateways going
+
+524
+00:20:46,880 --> 00:20:51,539
+to the envoy extra Z and then being
+
+525
+00:20:51,539 --> 00:20:55,440
+epoxy to the Upstream workload so if we
+
+526
+00:20:55,440 --> 00:20:58,500
+if we take a step back any policies
+
+527
+00:20:58,500 --> 00:21:00,299
+applied on the VPC and kubernetes level
+
+528
+00:21:00,299 --> 00:21:03,179
+are applied for connections any policies
+
+529
+00:21:03,179 --> 00:21:05,460
+on istio are applied per requests pretty
+
+530
+00:21:05,460 --> 00:21:06,380
+much
+
+531
+00:21:06,380 --> 00:21:09,539
+so your client when they send us a
+
+532
+00:21:09,539 --> 00:21:11,640
+request they first open a connection to
+
+533
+00:21:11,640 --> 00:21:14,039
+our NLB the NLB will layer three proxies
+
+534
+00:21:14,039 --> 00:21:16,799
+to one of our Ingress nodes this will
+
+535
+00:21:16,799 --> 00:21:18,660
+end up into our Envoy Gateway that will
+
+536
+00:21:18,660 --> 00:21:21,059
+terminate TLS and then we'll inspect the
+
+537
+00:21:21,059 --> 00:21:24,660
+request on a layer 7. they will use x2z
+
+538
+00:21:24,660 --> 00:21:26,760
+to validate that it's a correct request
+
+539
+00:21:26,760 --> 00:21:28,799
+and it should get into the cluster
+
+540
+00:21:28,799 --> 00:21:31,559
+if it's allowed the envoy Gateway will
+
+541
+00:21:31,559 --> 00:21:33,780
+proxate Upstream
+
+542
+00:21:33,780 --> 00:21:36,780
+at that point the network policies from
+
+543
+00:21:36,780 --> 00:21:38,640
+kubernetes will kick in again to make
+
+544
+00:21:38,640 --> 00:21:40,559
+sure that this proxying to the Upstream
+
+545
+00:21:40,559 --> 00:21:43,140
+Port is allowed and then the Upstream
+
+546
+00:21:43,140 --> 00:21:46,140
+sidecar on the workload will again look
+
+547
+00:21:46,140 --> 00:21:48,360
+at the layer 7 requests and if allowed
+
+548
+00:21:48,360 --> 00:21:51,059
+it will be decapsulated and sent to the
+
+549
+00:21:51,059 --> 00:21:53,460
+workload in clear text
+
+550
+00:21:53,460 --> 00:21:55,260
+when we do this we use a public
+
+551
+00:21:55,260 --> 00:21:57,900
+certificate on the front end that's what
+
+552
+00:21:57,900 --> 00:22:00,059
+your clients will see typically to Let's
+
+553
+00:22:00,059 --> 00:22:02,100
+encrypt or a bunch of other providers we
+
+554
+00:22:02,100 --> 00:22:06,059
+use and we use fully mtls in transit
+
+555
+00:22:06,059 --> 00:22:08,220
+encryption inside our clusters we use a
+
+556
+00:22:08,220 --> 00:22:11,659
+Splunk internal ca for that
+
+557
+00:22:12,960 --> 00:22:15,900
+all right so that was a lot of layers of
+
+558
+00:22:15,900 --> 00:22:19,620
+security and as you can imagine not all
+
+559
+00:22:19,620 --> 00:22:22,020
+of it is as wonderful as one might
+
+560
+00:22:22,020 --> 00:22:23,820
+expect let's talk about a couple of
+
+561
+00:22:23,820 --> 00:22:25,860
+particular pain points in this security
+
+562
+00:22:25,860 --> 00:22:28,020
+stack and what we're doing to resolve
+
+563
+00:22:28,020 --> 00:22:28,740
+them
+
+564
+00:22:28,740 --> 00:22:30,840
+uh that slide that we had earlier with
+
+565
+00:22:30,840 --> 00:22:33,780
+like a million Envoy instances on it it
+
+566
+00:22:33,780 --> 00:22:36,480
+looked bad and that's on purpose
+
+567
+00:22:36,480 --> 00:22:37,020
+um
+
+568
+00:22:37,020 --> 00:22:39,360
+running one proxy per instance of your
+
+569
+00:22:39,360 --> 00:22:41,100
+application you're going to run into
+
+570
+00:22:41,100 --> 00:22:44,340
+scalability problems for one compute
+
+571
+00:22:44,340 --> 00:22:47,039
+cost is very substantial for that many
+
+572
+00:22:47,039 --> 00:22:50,640
+proxies for two in some cases you're
+
+573
+00:22:50,640 --> 00:22:52,620
+going to want some Envoy incidences to
+
+574
+00:22:52,620 --> 00:22:55,559
+have more resources than others that's
+
+575
+00:22:55,559 --> 00:22:57,120
+very difficult to pull off with this
+
+576
+00:22:57,120 --> 00:22:59,760
+deal today and to get the tuning done
+
+577
+00:22:59,760 --> 00:23:01,080
+right
+
+578
+00:23:01,080 --> 00:23:01,980
+um
+
+579
+00:23:01,980 --> 00:23:04,380
+obviously we need to capture all traffic
+
+580
+00:23:04,380 --> 00:23:06,960
+but there may be more efficient ways and
+
+581
+00:23:06,960 --> 00:23:08,159
+we'll look at that in a little bit that
+
+582
+00:23:08,159 --> 00:23:10,860
+we can capture all of the track traffic
+
+583
+00:23:10,860 --> 00:23:12,240
+across
+
+584
+00:23:12,240 --> 00:23:13,740
+um envoys
+
+585
+00:23:13,740 --> 00:23:16,440
+there's also a lot of magic involved in
+
+586
+00:23:16,440 --> 00:23:19,440
+istio today I've pulled this uh quote
+
+587
+00:23:19,440 --> 00:23:22,799
+from the istio.io documentation site and
+
+588
+00:23:22,799 --> 00:23:24,720
+this last sentence here any new pods
+
+589
+00:23:24,720 --> 00:23:26,820
+that are created in that namespace will
+
+590
+00:23:26,820 --> 00:23:28,740
+automatically have a sidecar added to
+
+591
+00:23:28,740 --> 00:23:32,100
+them it's magic it's really cool what
+
+592
+00:23:32,100 --> 00:23:35,059
+about the old pods
+
+593
+00:23:35,400 --> 00:23:36,780
+um okay well we don't do anything to
+
+594
+00:23:36,780 --> 00:23:38,760
+those those pods are immutable we can't
+
+595
+00:23:38,760 --> 00:23:40,620
+do anything to those pods so you've got
+
+596
+00:23:40,620 --> 00:23:42,179
+to go through every time you change
+
+597
+00:23:42,179 --> 00:23:43,260
+something about what's going to get
+
+598
+00:23:43,260 --> 00:23:45,539
+injected in a pod or a namespace you've
+
+599
+00:23:45,539 --> 00:23:46,740
+got to go through and restart that
+
+600
+00:23:46,740 --> 00:23:48,840
+workload don't miss a workload you might
+
+601
+00:23:48,840 --> 00:23:50,640
+be rolling out a critical vulnerability
+
+602
+00:23:50,640 --> 00:23:52,740
+fix that you're going to rely on and if
+
+603
+00:23:52,740 --> 00:23:54,299
+you forget to restart your workload your
+
+604
+00:23:54,299 --> 00:23:55,919
+istio upgrade will have succeeded
+
+605
+00:23:55,919 --> 00:23:57,539
+everything looks good and you're still
+
+606
+00:23:57,539 --> 00:24:00,600
+100 vulnerable on The Wire
+
+607
+00:24:00,600 --> 00:24:02,940
+um so we we think we could do better
+
+608
+00:24:02,940 --> 00:24:05,340
+also just answering the question which
+
+609
+00:24:05,340 --> 00:24:08,400
+Envoy am I running where can be
+
+610
+00:24:08,400 --> 00:24:09,600
+challenging
+
+611
+00:24:09,600 --> 00:24:11,880
+so the istio project is aware of these
+
+612
+00:24:11,880 --> 00:24:14,100
+challenges and we believe that we have a
+
+613
+00:24:14,100 --> 00:24:16,320
+solution for them we are developing
+
+614
+00:24:16,320 --> 00:24:20,159
+ambient mode for istio where all of our
+
+615
+00:24:20,159 --> 00:24:22,500
+layer 4 technology all of that mtls
+
+616
+00:24:22,500 --> 00:24:24,539
+magic that we talked about will happen
+
+617
+00:24:24,539 --> 00:24:26,880
+in a Daemon set that runs on every node
+
+618
+00:24:26,880 --> 00:24:29,340
+and serves every pod on the Node so no
+
+619
+00:24:29,340 --> 00:24:31,679
+more sidecar all of the traffic capture
+
+620
+00:24:31,679 --> 00:24:34,580
+happens outside of the application pod
+
+621
+00:24:34,580 --> 00:24:37,740
+that Z tunnel should do very little only
+
+622
+00:24:37,740 --> 00:24:40,260
+layer 4 functionality which means it
+
+623
+00:24:40,260 --> 00:24:42,059
+should be much less susceptible to cves
+
+624
+00:24:42,059 --> 00:24:44,100
+much less susceptible to upgrade
+
+625
+00:24:44,100 --> 00:24:46,860
+breakages Etc should be safer to run
+
+626
+00:24:46,860 --> 00:24:50,039
+then if you want layer 7 magic as well
+
+627
+00:24:50,039 --> 00:24:52,500
+you can still run an Envoy but it won't
+
+628
+00:24:52,500 --> 00:24:54,480
+run as a sidecar it'll run as its own
+
+629
+00:24:54,480 --> 00:24:56,940
+deployment in the namespace the Z tunnel
+
+630
+00:24:56,940 --> 00:24:58,320
+will take care of redirecting traffic
+
+631
+00:24:58,320 --> 00:25:00,600
+from whatever application needs it into
+
+632
+00:25:00,600 --> 00:25:02,880
+the envoy side car where we can apply
+
+633
+00:25:02,880 --> 00:25:04,860
+all of the L7 magic that you've come to
+
+634
+00:25:04,860 --> 00:25:08,039
+know and love from istio but not one per
+
+635
+00:25:08,039 --> 00:25:10,500
+instance you can scale that Envoy
+
+636
+00:25:10,500 --> 00:25:12,780
+installation independently of the
+
+637
+00:25:12,780 --> 00:25:14,760
+application scale you can adjust its
+
+638
+00:25:14,760 --> 00:25:17,240
+resource utilization or allocation
+
+639
+00:25:17,240 --> 00:25:20,600
+our pods will match our deployment spec
+
+640
+00:25:20,600 --> 00:25:23,340
+finally which doesn't really happen with
+
+641
+00:25:23,340 --> 00:25:25,020
+injection today if you'd like more
+
+642
+00:25:25,020 --> 00:25:26,700
+information on ambient or you're
+
+643
+00:25:26,700 --> 00:25:27,960
+interested in getting involved you can
+
+644
+00:25:27,960 --> 00:25:32,100
+check out the blog post below
+
+645
+00:25:32,279 --> 00:25:34,200
+all right so let's let's look in the
+
+646
+00:25:34,200 --> 00:25:35,640
+rear view mirror this was a lot of
+
+647
+00:25:35,640 --> 00:25:37,380
+information to cover in a pretty short
+
+648
+00:25:37,380 --> 00:25:40,740
+time we're doing good on time uh at
+
+649
+00:25:40,740 --> 00:25:43,320
+every single layer of the network from
+
+650
+00:25:43,320 --> 00:25:46,020
+the cloud provider and VPC level and
+
+651
+00:25:46,020 --> 00:25:48,600
+layer three to the kubernetes policy to
+
+652
+00:25:48,600 --> 00:25:51,240
+istio at layer seven we have to solve
+
+653
+00:25:51,240 --> 00:25:54,799
+for identity policy and observability
+
+654
+00:25:54,799 --> 00:25:58,799
+now this looks redundant right we've
+
+655
+00:25:58,799 --> 00:26:00,659
+already done identity at layer three why
+
+656
+00:26:00,659 --> 00:26:01,919
+are we doing it again at layer four and
+
+657
+00:26:01,919 --> 00:26:03,120
+then again at layer seven that's
+
+658
+00:26:03,120 --> 00:26:05,400
+computationally expensive
+
+659
+00:26:05,400 --> 00:26:08,940
+um the reason for that is uh that
+
+660
+00:26:08,940 --> 00:26:13,200
+security is about layers every layer is
+
+661
+00:26:13,200 --> 00:26:14,820
+always going to have holes and and this
+
+662
+00:26:14,820 --> 00:26:16,200
+is your slide so I'll let you take it
+
+663
+00:26:16,200 --> 00:26:17,039
+from there
+
+664
+00:26:17,039 --> 00:26:19,559
+yeah I mean I think one of the key
+
+665
+00:26:19,559 --> 00:26:21,419
+things is that we learned over time is
+
+666
+00:26:21,419 --> 00:26:24,840
+defense in depth so what we want to do
+
+667
+00:26:24,840 --> 00:26:26,880
+is if we speed up on things you can
+
+668
+00:26:26,880 --> 00:26:28,860
+color in each layers the best way is to
+
+669
+00:26:28,860 --> 00:26:30,659
+close them down each the most you can
+
+670
+00:26:30,659 --> 00:26:32,700
+and to make sense so that you have that
+
+671
+00:26:32,700 --> 00:26:35,580
+swiss cheese model right in which
+
+672
+00:26:35,580 --> 00:26:38,940
+um if by mistake one secret incident
+
+673
+00:26:38,940 --> 00:26:40,860
+happened at one layer hopefully the next
+
+674
+00:26:40,860 --> 00:26:42,840
+layer is going to catch it
+
+675
+00:26:42,840 --> 00:26:43,500
+um
+
+676
+00:26:43,500 --> 00:26:45,659
+the things we learn as well is
+
+677
+00:26:45,659 --> 00:26:47,460
+um that self-service platforms are
+
+678
+00:26:47,460 --> 00:26:50,159
+really hard so the best thing you can do
+
+679
+00:26:50,159 --> 00:26:52,200
+is to put safeguards in place to avoid
+
+680
+00:26:52,200 --> 00:26:54,600
+your users doing stupid things most of
+
+681
+00:26:54,600 --> 00:26:56,820
+the security incidents we've seen is
+
+682
+00:26:56,820 --> 00:26:59,520
+basically users misconfiguring things so
+
+683
+00:26:59,520 --> 00:27:01,020
+over time what we try to do is to block
+
+684
+00:27:01,020 --> 00:27:03,059
+those things one by one
+
+685
+00:27:03,059 --> 00:27:05,159
+the one way to do this is to provide the
+
+686
+00:27:05,159 --> 00:27:06,840
+golden path that will avoid those
+
+687
+00:27:06,840 --> 00:27:09,059
+configurations that's what we did with a
+
+688
+00:27:09,059 --> 00:27:11,880
+self-service abstraction layer so that
+
+689
+00:27:11,880 --> 00:27:14,340
+we can kind of ensure that people do the
+
+690
+00:27:14,340 --> 00:27:16,620
+right thing by default
+
+691
+00:27:16,620 --> 00:27:18,779
+finally I will close by saying that for
+
+692
+00:27:18,779 --> 00:27:21,179
+us observability was key that's how we
+
+693
+00:27:21,179 --> 00:27:24,299
+detect secret incidents with a bunch of
+
+694
+00:27:24,299 --> 00:27:26,760
+alerts we get paid if any public traffic
+
+695
+00:27:26,760 --> 00:27:28,880
+is discovered in some vpcs for example
+
+696
+00:27:28,880 --> 00:27:31,799
+it's also very useful for helping your
+
+697
+00:27:31,799 --> 00:27:33,299
+users debug at the end of the day
+
+698
+00:27:33,299 --> 00:27:34,860
+because there are so many layers and
+
+699
+00:27:34,860 --> 00:27:38,178
+nobody understands all of them
+
+700
+00:27:39,120 --> 00:27:41,520
+I think that's pretty much it I think
+
+701
+00:27:41,520 --> 00:27:43,440
+this goes to a feedback form if you want
+
+702
+00:27:43,440 --> 00:27:46,559
+and we'll take some questions
+
+703
+00:27:46,559 --> 00:27:48,539
+also give a brief plug if you're an
+
+704
+00:27:48,539 --> 00:27:50,400
+istio user we're going to have our first
+
+705
+00:27:50,400 --> 00:27:53,279
+ever istio day at kubecon Europe as a
+
+706
+00:27:53,279 --> 00:27:55,080
+co-located event and the the request
+
+707
+00:27:55,080 --> 00:27:57,360
+call for papers is currently open for
+
+708
+00:27:57,360 --> 00:27:59,400
+another week and a half so uh submit
+
+709
+00:27:59,400 --> 00:28:01,930
+your talks
+
+710
+00:28:01,930 --> 00:28:10,979
+[Applause]
+
+711
+00:28:11,820 --> 00:28:13,559
+yeah Rob
+
+712
+00:28:13,559 --> 00:28:15,360
+uh for now you mentioned that there are
+
+713
+00:28:15,360 --> 00:28:17,779
+some Minis
+
+714
+00:28:19,020 --> 00:28:20,159
+directly
+
+715
+00:28:20,159 --> 00:28:21,779
+can you talk about how you identified
+
+716
+00:28:21,779 --> 00:28:23,159
+those things maybe the people I learned
+
+717
+00:28:23,159 --> 00:28:24,240
+in place let you know when that good
+
+718
+00:28:24,240 --> 00:28:26,340
+thing happens yeah I mean a typical
+
+719
+00:28:26,340 --> 00:28:29,039
+example is I it's not really mini secret
+
+720
+00:28:29,039 --> 00:28:31,380
+incident but it's so if it's still you
+
+721
+00:28:31,380 --> 00:28:33,299
+can for example look at your pass
+
+722
+00:28:33,299 --> 00:28:35,400
+through cluster if you don't use a fully
+
+723
+00:28:35,400 --> 00:28:39,360
+strict encryption in transit and you
+
+724
+00:28:39,360 --> 00:28:41,100
+will see anything that doesn't use ntls
+
+725
+00:28:41,100 --> 00:28:43,440
+go to that cluster right and so that's
+
+726
+00:28:43,440 --> 00:28:45,240
+how we identify those as soon as we see
+
+727
+00:28:45,240 --> 00:28:47,640
+some traffic on this we alert I mean
+
+728
+00:28:47,640 --> 00:28:50,240
+Alexis
+
+729
+00:28:50,640 --> 00:28:52,020
+um it's it's a weird trade-off between
+
+730
+00:28:52,020 --> 00:28:53,580
+productivity you don't want to block
+
+731
+00:28:53,580 --> 00:28:56,100
+people doing what they need to do but
+
+732
+00:28:56,100 --> 00:28:58,080
+also being secure right so this
+
+733
+00:28:58,080 --> 00:29:00,360
+we are looking at moving to strict
+
+734
+00:29:00,360 --> 00:29:01,919
+um but at this time we are like still in
+
+735
+00:29:01,919 --> 00:29:04,460
+permissive yeah
+
+736
+00:29:06,000 --> 00:29:08,900
+yeah yes in the back
+
+737
+00:29:15,539 --> 00:29:17,100
+um that's a really good question I have
+
+738
+00:29:17,100 --> 00:29:18,600
+as well to be honest
+
+739
+00:29:18,600 --> 00:29:20,159
+um
+
+740
+00:29:20,159 --> 00:29:23,220
+I think it's a mix of historical reasons
+
+741
+00:29:23,220 --> 00:29:25,620
+and validation webhook being really easy
+
+742
+00:29:25,620 --> 00:29:28,200
+to to deploy yourself I mean it's the
+
+743
+00:29:28,200 --> 00:29:30,659
+code is really simple but yes we are
+
+744
+00:29:30,659 --> 00:29:32,460
+maybe looking at consolidating that's
+
+745
+00:29:32,460 --> 00:29:35,760
+why I mentioned it to appear I think I
+
+746
+00:29:35,760 --> 00:29:37,380
+used Gabriel in the past as well which
+
+747
+00:29:37,380 --> 00:29:39,000
+is also a similar project which is very
+
+748
+00:29:39,000 --> 00:29:41,899
+kubernetes Centric
+
+749
+00:29:47,220 --> 00:29:51,080
+any other questions on the stack yeah
+
+750
+00:30:07,559 --> 00:30:13,020
+to maybe make things easier to adopt one
+
+751
+00:30:13,020 --> 00:30:16,158
+of those services
+
+752
+00:30:17,640 --> 00:30:19,440
+um yeah that's that's a good point I
+
+753
+00:30:19,440 --> 00:30:21,179
+mean we try to
+
+754
+00:30:21,179 --> 00:30:24,539
+keep or close deployments on layers so
+
+755
+00:30:24,539 --> 00:30:26,039
+we don't use things like layers and
+
+756
+00:30:26,039 --> 00:30:27,419
+gateways on the cloud for example
+
+757
+00:30:27,419 --> 00:30:29,820
+everything comes into
+
+758
+00:30:29,820 --> 00:30:32,100
+or Android when we do everything at that
+
+759
+00:30:32,100 --> 00:30:34,799
+level yeah
+
+760
+00:30:34,799 --> 00:30:36,779
+I mean I guess we're always looking at
+
+761
+00:30:36,779 --> 00:30:38,520
+what could be done but at this point yes
+
+762
+00:30:38,520 --> 00:30:39,600
+we
+
+763
+00:30:39,600 --> 00:30:41,640
+yeah we try really strongly to be Cloud
+
+764
+00:30:41,640 --> 00:30:44,460
+agnostic so that's the kubernetes API is
+
+765
+00:30:44,460 --> 00:30:47,159
+our point of reference here and that
+
+766
+00:30:47,159 --> 00:30:49,140
+actually is how aviatrix achieves a lot
+
+767
+00:30:49,140 --> 00:30:51,299
+of its features within the networking
+
+768
+00:30:51,299 --> 00:30:53,340
+stack is by providing one Central
+
+769
+00:30:53,340 --> 00:30:56,100
+abstraction over the cloud provider
+
+770
+00:30:56,100 --> 00:30:57,779
+specific implementations of security
+
+771
+00:30:57,779 --> 00:31:00,260
+yeah
+
+772
+00:31:06,419 --> 00:31:08,760
+all right well thank you all for coming
+
+773
+00:31:08,760 --> 00:31:10,620
+to our talk uh we'll be around for
+
+774
+00:31:10,620 --> 00:31:12,480
+questions or restaurant recommendations
+
+775
+00:31:12,480 --> 00:31:14,420
+after
+
+776
+00:31:14,420 --> 00:31:18,569
+[Applause]
+

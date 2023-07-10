@@ -1,0 +1,2400 @@
+﻿1
+00:00:01,199 --> 00:00:04,199
+foreign
+
+2
+00:00:14,480 --> 00:00:17,039
+my name is Max I'm a security engineer
+
+3
+00:00:17,039 --> 00:00:18,900
+at figma and I'm going to talk or
+
+4
+00:00:18,900 --> 00:00:20,640
+present this talk that a colleague of
+
+5
+00:00:20,640 --> 00:00:22,920
+mine Hong Yi hu and I put together on
+
+6
+00:00:22,920 --> 00:00:25,199
+navigating the sandbox Buffet this was
+
+7
+00:00:25,199 --> 00:00:28,560
+inspired by the idea that these days
+
+8
+00:00:28,560 --> 00:00:30,660
+there's been a very substantial increase
+
+9
+00:00:30,660 --> 00:00:32,159
+in the number of different sandboxing
+
+10
+00:00:32,159 --> 00:00:33,600
+and isolation technologies that you
+
+11
+00:00:33,600 --> 00:00:35,579
+might be able to use to isolate
+
+12
+00:00:35,579 --> 00:00:37,020
+untrusted software
+
+13
+00:00:37,020 --> 00:00:38,520
+and that it can be difficult to
+
+14
+00:00:38,520 --> 00:00:40,020
+determine sort of which ones are
+
+15
+00:00:40,020 --> 00:00:41,520
+appropriate to choose to solve a
+
+16
+00:00:41,520 --> 00:00:43,140
+different set of problems
+
+17
+00:00:43,140 --> 00:00:45,420
+what I hope to achieve with this talk is
+
+18
+00:00:45,420 --> 00:00:47,820
+to convince you that it's useful to
+
+19
+00:00:47,820 --> 00:00:50,399
+isolate untrusted or somewhat dangerous
+
+20
+00:00:50,399 --> 00:00:53,460
+code and also that the
+
+21
+00:00:53,460 --> 00:00:55,320
+number of these different approaches to
+
+22
+00:00:55,320 --> 00:00:57,180
+doing it don't arise because one is
+
+23
+00:00:57,180 --> 00:00:58,739
+strictly better than the other but
+
+24
+00:00:58,739 --> 00:01:00,420
+because they actually operate
+
+25
+00:01:00,420 --> 00:01:02,340
+in different places in the trade-off
+
+26
+00:01:02,340 --> 00:01:04,140
+space and let you
+
+27
+00:01:04,140 --> 00:01:07,799
+isolate different kinds of software
+
+28
+00:01:07,799 --> 00:01:09,000
+um I find that the best way to do this
+
+29
+00:01:09,000 --> 00:01:10,500
+is to sort of
+
+30
+00:01:10,500 --> 00:01:12,780
+tell a story of how we might have done
+
+31
+00:01:12,780 --> 00:01:14,159
+this at
+
+32
+00:01:14,159 --> 00:01:16,380
+um in practice and at scale so imagine
+
+33
+00:01:16,380 --> 00:01:18,780
+for a minute that we're at a SAS company
+
+34
+00:01:18,780 --> 00:01:21,299
+in the not so distant past and someone
+
+35
+00:01:21,299 --> 00:01:23,040
+has written this relatively innocuous
+
+36
+00:01:23,040 --> 00:01:25,080
+looking line of code which takes an
+
+37
+00:01:25,080 --> 00:01:27,540
+uploaded image from a user resizes it to
+
+38
+00:01:27,540 --> 00:01:30,360
+a desired size and stores it back away
+
+39
+00:01:30,360 --> 00:01:32,700
+so that it can then be presumably stored
+
+40
+00:01:32,700 --> 00:01:35,220
+in a database or in a bucket to then be
+
+41
+00:01:35,220 --> 00:01:37,259
+fed back to users this is the sort of
+
+42
+00:01:37,259 --> 00:01:38,579
+thing that you might reasonably write if
+
+43
+00:01:38,579 --> 00:01:40,020
+you're say implementing profile pictures
+
+44
+00:01:40,020 --> 00:01:42,060
+or you want to thumbnail a file that's
+
+45
+00:01:42,060 --> 00:01:43,979
+been uploaded to you
+
+46
+00:01:43,979 --> 00:01:45,000
+um
+
+47
+00:01:45,000 --> 00:01:46,740
+and this is sort of safe and reasonable
+
+48
+00:01:46,740 --> 00:01:49,439
+to do up until we learn hey this is
+
+49
+00:01:49,439 --> 00:01:51,060
+actually calling into this Library image
+
+50
+00:01:51,060 --> 00:01:53,579
+magic that has support for a million
+
+51
+00:01:53,579 --> 00:01:55,320
+different image protocols is written in
+
+52
+00:01:55,320 --> 00:01:58,140
+CRC plus plus and has this series of
+
+53
+00:01:58,140 --> 00:02:00,720
+cves in it one of them relatively
+
+54
+00:02:00,720 --> 00:02:03,299
+famously branded image tragic which
+
+55
+00:02:03,299 --> 00:02:04,799
+allows for sort of arbitrary code
+
+56
+00:02:04,799 --> 00:02:08,160
+execution given a user crafted image
+
+57
+00:02:08,160 --> 00:02:10,020
+um what we'd like to do
+
+58
+00:02:10,020 --> 00:02:12,360
+like more abstractly this is an example
+
+59
+00:02:12,360 --> 00:02:14,099
+of a place where we have the sort of
+
+60
+00:02:14,099 --> 00:02:17,099
+scary code where scary here means it's
+
+61
+00:02:17,099 --> 00:02:18,900
+processing things that are complicated
+
+62
+00:02:18,900 --> 00:02:21,540
+formats it's written in an unmanaged
+
+63
+00:02:21,540 --> 00:02:22,860
+language or calling out into
+
+64
+00:02:22,860 --> 00:02:25,260
+sub-processes that have the potential
+
+65
+00:02:25,260 --> 00:02:27,599
+for misuse or for bugs and we're feeding
+
+66
+00:02:27,599 --> 00:02:29,040
+in sort of arbitrary complicated user
+
+67
+00:02:29,040 --> 00:02:30,480
+input into it and we'd like to be able
+
+68
+00:02:30,480 --> 00:02:32,099
+to do this safely we'd like to be able
+
+69
+00:02:32,099 --> 00:02:34,080
+to ensure that the user input that we
+
+70
+00:02:34,080 --> 00:02:35,640
+get or that we
+
+71
+00:02:35,640 --> 00:02:38,760
+process doesn't then give that user
+
+72
+00:02:38,760 --> 00:02:40,680
+access to a whole bunch of other data on
+
+73
+00:02:40,680 --> 00:02:43,319
+the system or to previous users inputs
+
+74
+00:02:43,319 --> 00:02:45,720
+or any other things that they aren't
+
+75
+00:02:45,720 --> 00:02:48,000
+supposed to have access to
+
+76
+00:02:48,000 --> 00:02:49,920
+and you can sort of think about this in
+
+77
+00:02:49,920 --> 00:02:51,900
+practice is you can do this in sort of
+
+78
+00:02:51,900 --> 00:02:54,480
+two ways there's more I'm sure but these
+
+79
+00:02:54,480 --> 00:02:55,620
+two ways are what we're going to briefly
+
+80
+00:02:55,620 --> 00:02:57,420
+talk about the first is we can try to
+
+81
+00:02:57,420 --> 00:03:00,000
+harden that scary code we can restrict
+
+82
+00:03:00,000 --> 00:03:01,379
+which input formats are willing to
+
+83
+00:03:01,379 --> 00:03:03,120
+accept say with images we'll only accept
+
+84
+00:03:03,120 --> 00:03:05,580
+jpegs we could rewrite let
+
+85
+00:03:05,580 --> 00:03:07,680
+libraries like image magic or the python
+
+86
+00:03:07,680 --> 00:03:09,900
+Imaging library in memory safe languages
+
+87
+00:03:09,900 --> 00:03:11,519
+where certain classes of bugs are harder
+
+88
+00:03:11,519 --> 00:03:13,620
+to do we can audit them for bugs we can
+
+89
+00:03:13,620 --> 00:03:15,780
+fuzz them Etc the problem with this
+
+90
+00:03:15,780 --> 00:03:16,980
+approach
+
+91
+00:03:16,980 --> 00:03:18,300
+um which is a great and I think there's
+
+92
+00:03:18,300 --> 00:03:21,959
+a talk about it tomorrow is that
+
+93
+00:03:21,959 --> 00:03:24,360
+we're presumably a relatively small SAS
+
+94
+00:03:24,360 --> 00:03:25,920
+company where profile pictures are not
+
+95
+00:03:25,920 --> 00:03:27,780
+our core competency resizing images are
+
+96
+00:03:27,780 --> 00:03:30,540
+not our core competency or we're doing
+
+97
+00:03:30,540 --> 00:03:32,340
+things like transcoding videos that we
+
+98
+00:03:32,340 --> 00:03:33,659
+can stream them to your devices but
+
+99
+00:03:33,659 --> 00:03:35,580
+that's sort of one of many features on
+
+100
+00:03:35,580 --> 00:03:37,980
+our platform and that's why we've sort
+
+101
+00:03:37,980 --> 00:03:39,300
+of handed it off to a third party
+
+102
+00:03:39,300 --> 00:03:40,739
+Library rather than writing it all from
+
+103
+00:03:40,739 --> 00:03:42,239
+scratch ourselves so we're not
+
+104
+00:03:42,239 --> 00:03:43,980
+necessarily willing to invest the level
+
+105
+00:03:43,980 --> 00:03:45,540
+of effort that it takes to do that sort
+
+106
+00:03:45,540 --> 00:03:47,400
+of hardening instead what we like to do
+
+107
+00:03:47,400 --> 00:03:48,900
+is you like to isolate it which sort of
+
+108
+00:03:48,900 --> 00:03:51,360
+makes us jump back to First principles
+
+109
+00:03:51,360 --> 00:03:53,819
+why is it that code execution or remote
+
+110
+00:03:53,819 --> 00:03:56,700
+code execution is a problem
+
+111
+00:03:56,700 --> 00:03:59,879
+um on some level all of us maybe not all
+
+112
+00:03:59,879 --> 00:04:03,180
+most of us have run arbitrary code from
+
+113
+00:04:03,180 --> 00:04:04,860
+other people on machines that we control
+
+114
+00:04:04,860 --> 00:04:07,080
+if you visited a website in a web
+
+115
+00:04:07,080 --> 00:04:08,700
+browser that runs JavaScript you have
+
+116
+00:04:08,700 --> 00:04:11,879
+run those people's code on your machine
+
+117
+00:04:11,879 --> 00:04:13,319
+why is
+
+118
+00:04:13,319 --> 00:04:15,480
+rce bad
+
+119
+00:04:15,480 --> 00:04:16,380
+um
+
+120
+00:04:16,380 --> 00:04:18,120
+the reason we're worried about this is
+
+121
+00:04:18,120 --> 00:04:20,279
+that code that is running sort of on our
+
+122
+00:04:20,279 --> 00:04:23,580
+SAS Services servers has a whole bunch
+
+123
+00:04:23,580 --> 00:04:26,639
+of powers and privileges that sort of
+
+124
+00:04:26,639 --> 00:04:28,080
+attack or controlled code doesn't
+
+125
+00:04:28,080 --> 00:04:30,000
+necessarily have on their own machines
+
+126
+00:04:30,000 --> 00:04:32,280
+so for instance
+
+127
+00:04:32,280 --> 00:04:34,440
+arbitrary code running in R processes
+
+128
+00:04:34,440 --> 00:04:36,540
+can access anything that are in that is
+
+129
+00:04:36,540 --> 00:04:38,820
+in that process's virtual memory so for
+
+130
+00:04:38,820 --> 00:04:40,320
+instance Yahoo had a bug a few years
+
+131
+00:04:40,320 --> 00:04:42,479
+back where an uploaded image would give
+
+132
+00:04:42,479 --> 00:04:44,400
+you back a specially crafted uploaded
+
+133
+00:04:44,400 --> 00:04:46,139
+image will then give you back whatever a
+
+134
+00:04:46,139 --> 00:04:47,639
+recently uploaded image from another
+
+135
+00:04:47,639 --> 00:04:49,860
+user was
+
+136
+00:04:49,860 --> 00:04:51,540
+um you might also have access to local
+
+137
+00:04:51,540 --> 00:04:53,220
+data so you have secrets presumably
+
+138
+00:04:53,220 --> 00:04:56,580
+stored on your servers or cached data
+
+139
+00:04:56,580 --> 00:04:58,560
+from previous fetches
+
+140
+00:04:58,560 --> 00:05:00,479
+arbitrary code can read that local file
+
+141
+00:05:00,479 --> 00:05:01,740
+system
+
+142
+00:05:01,740 --> 00:05:03,060
+even though the attackers controlled
+
+143
+00:05:03,060 --> 00:05:04,740
+code on their laptop can't
+
+144
+00:05:04,740 --> 00:05:06,180
+if you haven't implemented all the stuff
+
+145
+00:05:06,180 --> 00:05:08,100
+Ian just talked about you might also be
+
+146
+00:05:08,100 --> 00:05:09,540
+in a privileged Network position where
+
+147
+00:05:09,540 --> 00:05:11,160
+you can talk to other services within
+
+148
+00:05:11,160 --> 00:05:13,620
+your production environment and be able
+
+149
+00:05:13,620 --> 00:05:16,560
+to get access to a whole bunch of there
+
+150
+00:05:16,560 --> 00:05:20,000
+sensitive or scary stuff
+
+151
+00:05:20,639 --> 00:05:21,960
+and what we'd like to do is we'd like to
+
+152
+00:05:21,960 --> 00:05:23,520
+be able to prevent those things we like
+
+153
+00:05:23,520 --> 00:05:26,220
+to get rid of access to local memory get
+
+154
+00:05:26,220 --> 00:05:27,900
+rid of access to local disk get rid of
+
+155
+00:05:27,900 --> 00:05:28,919
+access to your privileged Network
+
+156
+00:05:28,919 --> 00:05:30,840
+position in a way that gives us high
+
+157
+00:05:30,840 --> 00:05:32,520
+throughput low latency and that
+
+158
+00:05:32,520 --> 00:05:34,080
+non-specialist Engineers can actually
+
+159
+00:05:34,080 --> 00:05:35,699
+develop in
+
+160
+00:05:35,699 --> 00:05:38,479
+um I say this because
+
+161
+00:05:39,840 --> 00:05:41,340
+often these kinds of processing
+
+162
+00:05:41,340 --> 00:05:44,100
+techniques or processing tools run in
+
+163
+00:05:44,100 --> 00:05:45,960
+places where we're already doing them
+
+164
+00:05:45,960 --> 00:05:48,360
+very close to capacity for instance if
+
+165
+00:05:48,360 --> 00:05:49,919
+we're transcoding video that's a very
+
+166
+00:05:49,919 --> 00:05:51,840
+expensive operation and we have
+
+167
+00:05:51,840 --> 00:05:53,759
+presumably already paid for roughly the
+
+168
+00:05:53,759 --> 00:05:55,500
+amount of machines that we estimate we
+
+169
+00:05:55,500 --> 00:05:57,060
+need to do the transcoding that we want
+
+170
+00:05:57,060 --> 00:05:59,280
+to do
+
+171
+00:05:59,280 --> 00:06:02,639
+if we add the security layer that raises
+
+172
+00:06:02,639 --> 00:06:05,699
+or raises the costs of doing so by five
+
+173
+00:06:05,699 --> 00:06:07,800
+percent by increases the amount of
+
+174
+00:06:07,800 --> 00:06:09,120
+through like reduces the amount of
+
+175
+00:06:09,120 --> 00:06:09,960
+throughput you need to do by five
+
+176
+00:06:09,960 --> 00:06:11,699
+percent that's five percent more dollars
+
+177
+00:06:11,699 --> 00:06:13,320
+that we have to spend and five percent
+
+178
+00:06:13,320 --> 00:06:15,000
+more engineer well maybe not five
+
+179
+00:06:15,000 --> 00:06:16,440
+percent more engineering time that you
+
+180
+00:06:16,440 --> 00:06:17,580
+have to spend to make those machine
+
+181
+00:06:17,580 --> 00:06:19,919
+maintain those machines keep them up and
+
+182
+00:06:19,919 --> 00:06:21,479
+also the engineers that are doing the
+
+183
+00:06:21,479 --> 00:06:22,800
+sort of development inside of these
+
+184
+00:06:22,800 --> 00:06:24,120
+environments that are writing this code
+
+185
+00:06:24,120 --> 00:06:26,100
+may not be experts in how to do this
+
+186
+00:06:26,100 --> 00:06:29,160
+isolation or in how to manage isolated
+
+187
+00:06:29,160 --> 00:06:31,380
+systems they're experts presumably in
+
+188
+00:06:31,380 --> 00:06:32,639
+the thing that you're trying to have
+
+189
+00:06:32,639 --> 00:06:36,000
+them do rather than insecurity
+
+190
+00:06:36,000 --> 00:06:37,740
+so our goal here is going to be we want
+
+191
+00:06:37,740 --> 00:06:39,300
+to drop those privileges that we
+
+192
+00:06:39,300 --> 00:06:40,860
+described in a way that is fast in a way
+
+193
+00:06:40,860 --> 00:06:43,020
+that is transparent to our end users and
+
+194
+00:06:43,020 --> 00:06:44,400
+we're going to talk about sort of three
+
+195
+00:06:44,400 --> 00:06:47,160
+levels of the security onion here where
+
+196
+00:06:47,160 --> 00:06:48,780
+you can talk about an option where we
+
+197
+00:06:48,780 --> 00:06:50,580
+isolate the entire operating system an
+
+198
+00:06:50,580 --> 00:06:52,020
+option where we isolate a group of
+
+199
+00:06:52,020 --> 00:06:54,180
+processes and an option where we isolate
+
+200
+00:06:54,180 --> 00:06:55,979
+code that is running within one single
+
+201
+00:06:55,979 --> 00:06:57,479
+process
+
+202
+00:06:57,479 --> 00:06:58,919
+and the first option here we're going to
+
+203
+00:06:58,919 --> 00:07:02,100
+talk about is virtualization
+
+204
+00:07:02,100 --> 00:07:04,199
+um which is the sort of first we're just
+
+205
+00:07:04,199 --> 00:07:05,520
+taking the operating system we're going
+
+206
+00:07:05,520 --> 00:07:07,620
+to take a whole machine
+
+207
+00:07:07,620 --> 00:07:09,539
+the Isle of isolation is I just buy a
+
+208
+00:07:09,539 --> 00:07:12,419
+new machine for every user request run
+
+209
+00:07:12,419 --> 00:07:13,860
+the process on that machine and then
+
+210
+00:07:13,860 --> 00:07:16,080
+throw that machine away we can't do this
+
+211
+00:07:16,080 --> 00:07:17,340
+with physical machines because it costs
+
+212
+00:07:17,340 --> 00:07:18,539
+a whole lot of money and a whole lot of
+
+213
+00:07:18,539 --> 00:07:21,120
+carbon and so we'd rather do this with
+
+214
+00:07:21,120 --> 00:07:22,860
+virtualized machines where I can say hey
+
+215
+00:07:22,860 --> 00:07:24,780
+please pretend you're a new computer for
+
+216
+00:07:24,780 --> 00:07:26,940
+me I have this new user image I want to
+
+217
+00:07:26,940 --> 00:07:28,800
+resize give me back the resized image
+
+218
+00:07:28,800 --> 00:07:31,020
+and then destroy yourself
+
+219
+00:07:31,020 --> 00:07:32,699
+um or more concretely encode
+
+220
+00:07:32,699 --> 00:07:34,680
+we initialize a VM
+
+221
+00:07:34,680 --> 00:07:38,840
+feed it or image get back our result
+
+222
+00:07:39,479 --> 00:07:41,220
+and this can be great
+
+223
+00:07:41,220 --> 00:07:42,720
+um your developer is if you're a SAS
+
+224
+00:07:42,720 --> 00:07:43,979
+product almost certainly are already
+
+225
+00:07:43,979 --> 00:07:45,900
+familiar with writing code that is meant
+
+226
+00:07:45,900 --> 00:07:47,460
+to run inside of some kind of virtual
+
+227
+00:07:47,460 --> 00:07:49,080
+machine if you're running in a cloud
+
+228
+00:07:49,080 --> 00:07:50,400
+environment for instance all of your
+
+229
+00:07:50,400 --> 00:07:51,780
+machines are most likely virtual
+
+230
+00:07:51,780 --> 00:07:53,160
+machines
+
+231
+00:07:53,160 --> 00:07:54,539
+um and because this is a separate
+
+232
+00:07:54,539 --> 00:07:56,819
+machine we can control which parts of
+
+233
+00:07:56,819 --> 00:07:58,259
+the host disk and which parts of the
+
+234
+00:07:58,259 --> 00:08:00,479
+host Network it actually has access to
+
+235
+00:08:00,479 --> 00:08:02,940
+by configuring our hypervisor or our VM
+
+236
+00:08:02,940 --> 00:08:05,960
+in the appropriate way
+
+237
+00:08:06,419 --> 00:08:07,979
+which sounds great that sort of sounds
+
+238
+00:08:07,979 --> 00:08:10,080
+very very close to our platonic ideal of
+
+239
+00:08:10,080 --> 00:08:11,759
+buying a new machine and calling it a
+
+240
+00:08:11,759 --> 00:08:13,740
+day there are a whole lot of downsides
+
+241
+00:08:13,740 --> 00:08:14,699
+here though
+
+242
+00:08:14,699 --> 00:08:16,500
+um
+
+243
+00:08:16,500 --> 00:08:18,120
+if we think back to sort of what are the
+
+244
+00:08:18,120 --> 00:08:19,379
+things that we wanted to con like what
+
+245
+00:08:19,379 --> 00:08:20,580
+are the costs that we wanted to consider
+
+246
+00:08:20,580 --> 00:08:21,720
+the first one you're talking about is
+
+247
+00:08:21,720 --> 00:08:23,460
+performance
+
+248
+00:08:23,460 --> 00:08:25,440
+um virtual machines give us the strong
+
+249
+00:08:25,440 --> 00:08:27,060
+isolation because they set up a whole
+
+250
+00:08:27,060 --> 00:08:29,039
+new system every time you want to do one
+
+251
+00:08:29,039 --> 00:08:31,319
+of these some of this processing and the
+
+252
+00:08:31,319 --> 00:08:32,640
+startup time for one of these virtual
+
+253
+00:08:32,640 --> 00:08:34,620
+machines can be very substantial this
+
+254
+00:08:34,620 --> 00:08:36,000
+could be measured in seconds or in
+
+255
+00:08:36,000 --> 00:08:37,140
+minutes depending on the level of
+
+256
+00:08:37,140 --> 00:08:39,360
+complexity that you want to
+
+257
+00:08:39,360 --> 00:08:42,899
+that you want to pull in
+
+258
+00:08:42,899 --> 00:08:44,580
+um when you're talking about an
+
+259
+00:08:44,580 --> 00:08:46,020
+operation like resizing an image
+
+260
+00:08:46,020 --> 00:08:47,640
+transcoding a video running a computer
+
+261
+00:08:47,640 --> 00:08:50,100
+vision algorithm to do OCR these are
+
+262
+00:08:50,100 --> 00:08:51,959
+operations that natively happen very
+
+263
+00:08:51,959 --> 00:08:54,000
+very quickly right like it doesn't take
+
+264
+00:08:54,000 --> 00:08:56,220
+very long to take an image in paint and
+
+265
+00:08:56,220 --> 00:08:57,839
+resize it it's not an operation that
+
+266
+00:08:57,839 --> 00:09:00,180
+takes very long so your runtime ends up
+
+267
+00:09:00,180 --> 00:09:02,459
+dominated by startup time if you're
+
+268
+00:09:02,459 --> 00:09:04,980
+starting them up on every request
+
+269
+00:09:04,980 --> 00:09:06,540
+um the developer experience well great
+
+270
+00:09:06,540 --> 00:09:09,000
+because VMS are highly flexible has some
+
+271
+00:09:09,000 --> 00:09:11,300
+pretty serious issues one of which is
+
+272
+00:09:11,300 --> 00:09:15,899
+developers don't write software once
+
+273
+00:09:15,899 --> 00:09:18,120
+um to talk about in just a minute
+
+274
+00:09:18,120 --> 00:09:20,399
+so how can we sort of fix this
+
+275
+00:09:20,399 --> 00:09:21,779
+um we talked about performance and how
+
+276
+00:09:21,779 --> 00:09:23,459
+we end up with it in the scenario where
+
+277
+00:09:23,459 --> 00:09:25,980
+we're dominated by runtime or by startup
+
+278
+00:09:25,980 --> 00:09:28,080
+performance we can get away with some
+
+279
+00:09:28,080 --> 00:09:30,120
+sort of fixes here where we can pre-warm
+
+280
+00:09:30,120 --> 00:09:31,440
+our instances usually because we're
+
+281
+00:09:31,440 --> 00:09:33,360
+started up by a dominated by startup
+
+282
+00:09:33,360 --> 00:09:35,519
+performance if we can freeze a virtual
+
+283
+00:09:35,519 --> 00:09:36,480
+machine
+
+284
+00:09:36,480 --> 00:09:38,160
+at the point where it has started but
+
+285
+00:09:38,160 --> 00:09:40,260
+hasn't yet processed a request and then
+
+286
+00:09:40,260 --> 00:09:42,000
+thought and run it that way we can get
+
+287
+00:09:42,000 --> 00:09:43,740
+much higher throughput for instance but
+
+288
+00:09:43,740 --> 00:09:45,720
+we or much higher latency but maybe not
+
+289
+00:09:45,720 --> 00:09:47,700
+get throughput because the CPU like we
+
+290
+00:09:47,700 --> 00:09:49,019
+still need to re-initialize a whole new
+
+291
+00:09:49,019 --> 00:09:51,660
+VM every time we make a new we get a new
+
+292
+00:09:51,660 --> 00:09:52,440
+image
+
+293
+00:09:52,440 --> 00:09:55,080
+we could also instead of scoff a whole
+
+294
+00:09:55,080 --> 00:09:56,640
+new VM on every user request we could
+
+295
+00:09:56,640 --> 00:09:58,860
+soften our isolation requirements and
+
+296
+00:09:58,860 --> 00:10:00,300
+say well
+
+297
+00:10:00,300 --> 00:10:01,920
+maybe we don't actually need a whole new
+
+298
+00:10:01,920 --> 00:10:04,320
+VM for every image that gets re-uploaded
+
+299
+00:10:04,320 --> 00:10:06,360
+maybe we're comfortable with if it's the
+
+300
+00:10:06,360 --> 00:10:08,160
+same user that's uploading like 12
+
+301
+00:10:08,160 --> 00:10:10,980
+different images maybe it's okay that
+
+302
+00:10:10,980 --> 00:10:12,600
+those 12 images are all processed on the
+
+303
+00:10:12,600 --> 00:10:14,760
+10 machine or they're all in the same
+
+304
+00:10:14,760 --> 00:10:17,100
+organization depending on your task plan
+
+305
+00:10:17,100 --> 00:10:19,380
+they can all be processed on the same on
+
+306
+00:10:19,380 --> 00:10:20,580
+the same machine
+
+307
+00:10:20,580 --> 00:10:23,279
+or if we're willing to play the
+
+308
+00:10:23,279 --> 00:10:25,260
+probabilistic game maybe just some
+
+309
+00:10:25,260 --> 00:10:27,000
+number of requests across all of your
+
+310
+00:10:27,000 --> 00:10:28,980
+users yes that still breaks your
+
+311
+00:10:28,980 --> 00:10:30,899
+isolation primitive or you've traded off
+
+312
+00:10:30,899 --> 00:10:33,240
+some security in exchange for some
+
+313
+00:10:33,240 --> 00:10:34,680
+improved
+
+314
+00:10:34,680 --> 00:10:36,720
+performance
+
+315
+00:10:36,720 --> 00:10:38,459
+but you no longer have to pay the
+
+316
+00:10:38,459 --> 00:10:39,959
+startup cost for every request just for
+
+317
+00:10:39,959 --> 00:10:42,899
+one out of every 30 requests
+
+318
+00:10:42,899 --> 00:10:44,459
+and the deeper question is around
+
+319
+00:10:44,459 --> 00:10:46,140
+developer experiences what do developers
+
+320
+00:10:46,140 --> 00:10:48,000
+actually want
+
+321
+00:10:48,000 --> 00:10:49,500
+um what we learned when we sort of when
+
+322
+00:10:49,500 --> 00:10:51,899
+we first deployed a virtualization-based
+
+323
+00:10:51,899 --> 00:10:54,060
+system was that it was really it's not
+
+324
+00:10:54,060 --> 00:10:56,640
+that hard to write code that runs in one
+
+325
+00:10:56,640 --> 00:10:58,560
+of these systems the first time
+
+326
+00:10:58,560 --> 00:11:00,120
+but what developers actually end up
+
+327
+00:11:00,120 --> 00:11:01,740
+wanting is they want to get feedback on
+
+328
+00:11:01,740 --> 00:11:03,180
+whether their system is working well
+
+329
+00:11:03,180 --> 00:11:04,920
+what the performance characteristics of
+
+330
+00:11:04,920 --> 00:11:06,540
+their systems are when there's a bug
+
+331
+00:11:06,540 --> 00:11:08,100
+that happens and you go to stack Trace
+
+332
+00:11:08,100 --> 00:11:09,959
+back out they want to be able to attach
+
+333
+00:11:09,959 --> 00:11:12,120
+debuggers and learn things about the
+
+334
+00:11:12,120 --> 00:11:13,140
+currently running state of their
+
+335
+00:11:13,140 --> 00:11:15,360
+programs that they can fix it
+
+336
+00:11:15,360 --> 00:11:18,660
+and this is not super well supported
+
+337
+00:11:18,660 --> 00:11:20,820
+if you just build a VM right out of the
+
+338
+00:11:20,820 --> 00:11:22,140
+box
+
+339
+00:11:22,140 --> 00:11:23,880
+um
+
+340
+00:11:23,880 --> 00:11:25,500
+you end up having to do things like
+
+341
+00:11:25,500 --> 00:11:27,779
+punch holes and run additional daemons
+
+342
+00:11:27,779 --> 00:11:30,000
+inside of your virtual machines or run
+
+343
+00:11:30,000 --> 00:11:31,920
+additional like put additional Tooling
+
+344
+00:11:31,920 --> 00:11:33,779
+in there that may weaken your security
+
+345
+00:11:33,779 --> 00:11:35,220
+guarantees in ways that you don't
+
+346
+00:11:35,220 --> 00:11:37,880
+necessarily want
+
+347
+00:11:38,940 --> 00:11:40,500
+so that sort of prompts us to move
+
+348
+00:11:40,500 --> 00:11:42,360
+towards a slightly different world where
+
+349
+00:11:42,360 --> 00:11:44,700
+maybe we can have better systems in
+
+350
+00:11:44,700 --> 00:11:45,899
+place here
+
+351
+00:11:45,899 --> 00:11:47,700
+if we can at least abstract away the
+
+352
+00:11:47,700 --> 00:11:50,220
+system level monitoring by saying well
+
+353
+00:11:50,220 --> 00:11:52,380
+you don't have to now monitor the status
+
+354
+00:11:52,380 --> 00:11:54,180
+of your VMS and of your hosts you can
+
+355
+00:11:54,180 --> 00:11:55,740
+now look at
+
+356
+00:11:55,740 --> 00:11:57,420
+the group of processes that you're
+
+357
+00:11:57,420 --> 00:11:58,860
+handling and that will be your isolation
+
+358
+00:11:58,860 --> 00:12:00,839
+primitive so you can use all of your
+
+359
+00:12:00,839 --> 00:12:03,120
+standard visibility tooling on the whole
+
+360
+00:12:03,120 --> 00:12:05,399
+system but you have you have this sort
+
+361
+00:12:05,399 --> 00:12:07,320
+of security boundary around your process
+
+362
+00:12:07,320 --> 00:12:09,600
+group in practice in Linux this is
+
+363
+00:12:09,600 --> 00:12:11,399
+usually achieved to view the use of
+
+364
+00:12:11,399 --> 00:12:13,200
+namespaces name spaces are a way of
+
+365
+00:12:13,200 --> 00:12:16,019
+saying hey Linux kernel please instead
+
+366
+00:12:16,019 --> 00:12:17,339
+of presenting me with the normal file
+
+367
+00:12:17,339 --> 00:12:19,620
+system present me with this subset like
+
+368
+00:12:19,620 --> 00:12:21,120
+subdivided view of the file system
+
+369
+00:12:21,120 --> 00:12:23,100
+instead of providing me with a view of
+
+370
+00:12:23,100 --> 00:12:24,779
+the whole process tree give me this
+
+371
+00:12:24,779 --> 00:12:27,000
+subset of the process tree instead of
+
+372
+00:12:27,000 --> 00:12:28,320
+providing me with the whole network give
+
+373
+00:12:28,320 --> 00:12:31,339
+me this part of the network
+
+374
+00:12:31,680 --> 00:12:33,240
+um you might imagine we've Rewritten our
+
+375
+00:12:33,240 --> 00:12:35,399
+code here so instead of calling a resize
+
+376
+00:12:35,399 --> 00:12:37,320
+image function we instead write some
+
+377
+00:12:37,320 --> 00:12:38,940
+command line like hey I'm going to call
+
+378
+00:12:38,940 --> 00:12:40,920
+nsjl which is a tool by Google that uses
+
+379
+00:12:40,920 --> 00:12:43,079
+namespaces I think Google that uses
+
+380
+00:12:43,079 --> 00:12:45,740
+namespaces to do this jailing with some
+
+381
+00:12:45,740 --> 00:12:48,000
+isolation config and say Hey I want to
+
+382
+00:12:48,000 --> 00:12:49,500
+resize this image please give me back
+
+383
+00:12:49,500 --> 00:12:51,980
+the output
+
+384
+00:12:52,139 --> 00:12:54,240
+with namespaces we get a lot of the
+
+385
+00:12:54,240 --> 00:12:55,680
+isolation Primitives that we wanted to
+
+386
+00:12:55,680 --> 00:12:57,720
+get we're a separate process because we
+
+387
+00:12:57,720 --> 00:13:00,600
+sort of we have run nsjl with DOT slash
+
+388
+00:13:00,600 --> 00:13:02,579
+dot slash resize image so we've done a
+
+389
+00:13:02,579 --> 00:13:04,860
+fork and we've done an exec so a memory
+
+390
+00:13:04,860 --> 00:13:07,079
+reuse here is not a problem we're in a
+
+391
+00:13:07,079 --> 00:13:08,519
+separate Mount namespace which means we
+
+392
+00:13:08,519 --> 00:13:09,839
+get a different subset of the file
+
+393
+00:13:09,839 --> 00:13:11,639
+system so we don't have access to the
+
+394
+00:13:11,639 --> 00:13:13,800
+whole underlying disk and we don't have
+
+395
+00:13:13,800 --> 00:13:15,240
+access to the network because we can
+
+396
+00:13:15,240 --> 00:13:16,740
+restrict which parts of the network you
+
+397
+00:13:16,740 --> 00:13:18,060
+have access to in your network namespace
+
+398
+00:13:18,060 --> 00:13:20,279
+and which parts like which network
+
+399
+00:13:20,279 --> 00:13:22,380
+devices you have access to Via your
+
+400
+00:13:22,380 --> 00:13:25,040
+device namespace
+
+401
+00:13:25,740 --> 00:13:27,360
+quickly better on the surface right like
+
+402
+00:13:27,360 --> 00:13:29,519
+we have
+
+403
+00:13:29,519 --> 00:13:32,760
+allowed users to get somewhat
+
+404
+00:13:32,760 --> 00:13:34,680
+cheaper like better observability
+
+405
+00:13:34,680 --> 00:13:37,380
+tooling while still maintaining a lot of
+
+406
+00:13:37,380 --> 00:13:39,540
+the security guarantees the downside
+
+407
+00:13:39,540 --> 00:13:42,300
+here is we're one level deeper into the
+
+408
+00:13:42,300 --> 00:13:43,680
+security onion and what this means is
+
+409
+00:13:43,680 --> 00:13:45,180
+that our operating system is shared and
+
+410
+00:13:45,180 --> 00:13:47,040
+the operating system at issue here for
+
+411
+00:13:47,040 --> 00:13:50,700
+us at least was Linux and Linux has a
+
+412
+00:13:50,700 --> 00:13:52,620
+very very large attack surface and it's
+
+413
+00:13:52,620 --> 00:13:55,139
+a very large program that runs
+
+414
+00:13:55,139 --> 00:13:57,060
+multiple like in a very concurrent
+
+415
+00:13:57,060 --> 00:13:58,740
+fashion written in C
+
+416
+00:13:58,740 --> 00:14:00,480
+it's just very difficult to get this
+
+417
+00:14:00,480 --> 00:14:02,820
+right reliably 100 of the time there's a
+
+418
+00:14:02,820 --> 00:14:04,079
+lot of attack surface that we have to
+
+419
+00:14:04,079 --> 00:14:05,820
+worry about here and so there's a lot of
+
+420
+00:14:05,820 --> 00:14:07,980
+escapes of purely name space-based
+
+421
+00:14:07,980 --> 00:14:09,779
+Solutions
+
+422
+00:14:09,779 --> 00:14:11,279
+one way that we were able to sort of
+
+423
+00:14:11,279 --> 00:14:13,320
+help mitigate that is we can use a
+
+424
+00:14:13,320 --> 00:14:14,940
+system called set count BPF built into
+
+425
+00:14:14,940 --> 00:14:17,339
+the Linux kernel which lets us restrict
+
+426
+00:14:17,339 --> 00:14:18,720
+which system calls you're allowed to
+
+427
+00:14:18,720 --> 00:14:20,100
+make the whole interface you have to the
+
+428
+00:14:20,100 --> 00:14:21,360
+kernel is based around these system
+
+429
+00:14:21,360 --> 00:14:22,920
+calls these individual essential
+
+430
+00:14:22,920 --> 00:14:24,720
+functions
+
+431
+00:14:24,720 --> 00:14:26,940
+and we can say oh you're only allowed to
+
+432
+00:14:26,940 --> 00:14:28,440
+make this handful of calls we can
+
+433
+00:14:28,440 --> 00:14:30,420
+restrict arguments to some degree that
+
+434
+00:14:30,420 --> 00:14:32,279
+gives us some better
+
+435
+00:14:32,279 --> 00:14:34,200
+security guarantees
+
+436
+00:14:34,200 --> 00:14:36,800
+um for this system
+
+437
+00:14:37,680 --> 00:14:39,360
+what overall trade-offs does this make
+
+438
+00:14:39,360 --> 00:14:40,560
+well the good news is our performance
+
+439
+00:14:40,560 --> 00:14:42,060
+here is better too instead of our
+
+440
+00:14:42,060 --> 00:14:43,560
+container or instead of our runtime
+
+441
+00:14:43,560 --> 00:14:45,300
+startup being measured in multiple
+
+442
+00:14:45,300 --> 00:14:47,339
+seconds to minutes we can be measured
+
+443
+00:14:47,339 --> 00:14:49,260
+here in milliseconds to deciseconds
+
+444
+00:14:49,260 --> 00:14:50,579
+right like a few hundred milliseconds
+
+445
+00:14:50,579 --> 00:14:52,079
+for every startup if you have to spin up
+
+446
+00:14:52,079 --> 00:14:53,820
+a whole new runtime
+
+447
+00:14:53,820 --> 00:14:56,040
+which is significantly better
+
+448
+00:14:56,040 --> 00:14:57,000
+um
+
+449
+00:14:57,000 --> 00:14:59,100
+we also have some debugging tools that
+
+450
+00:14:59,100 --> 00:15:00,480
+work somewhat better right like you get
+
+451
+00:15:00,480 --> 00:15:02,220
+the same standard system logs as you do
+
+452
+00:15:02,220 --> 00:15:03,959
+if you're not using containers
+
+453
+00:15:03,959 --> 00:15:06,899
+and you some if you configure P trace
+
+454
+00:15:06,899 --> 00:15:08,459
+and friends correctly you can get them
+
+455
+00:15:08,459 --> 00:15:10,680
+to poke holes through the VMS but you
+
+456
+00:15:10,680 --> 00:15:11,820
+still will frequently want to do
+
+457
+00:15:11,820 --> 00:15:14,579
+application specific logs within the
+
+458
+00:15:14,579 --> 00:15:16,800
+system itself and that poses its own set
+
+459
+00:15:16,800 --> 00:15:19,199
+of hole punching problems where you have
+
+460
+00:15:19,199 --> 00:15:21,300
+to open a new file descriptor or pump
+
+461
+00:15:21,300 --> 00:15:23,699
+out logs in your own way
+
+462
+00:15:23,699 --> 00:15:24,480
+um
+
+463
+00:15:24,480 --> 00:15:26,279
+the restrictions we have to do to limit
+
+464
+00:15:26,279 --> 00:15:28,079
+the attack surface also add their own
+
+465
+00:15:28,079 --> 00:15:29,880
+level of complexities this is one of
+
+466
+00:15:29,880 --> 00:15:32,160
+these things where
+
+467
+00:15:32,160 --> 00:15:35,220
+it now the developer experience of your
+
+468
+00:15:35,220 --> 00:15:37,860
+system relies not just on
+
+469
+00:15:37,860 --> 00:15:39,660
+the code itself but also on the
+
+470
+00:15:39,660 --> 00:15:41,639
+configuration of the underlying host in
+
+471
+00:15:41,639 --> 00:15:43,019
+a way that may not be transparent to
+
+472
+00:15:43,019 --> 00:15:44,040
+Developers
+
+473
+00:15:44,040 --> 00:15:45,959
+so for one concrete instance of this
+
+474
+00:15:45,959 --> 00:15:48,000
+happening when we deployed a setcom
+
+475
+00:15:48,000 --> 00:15:50,399
+based system for the first time we
+
+476
+00:15:50,399 --> 00:15:52,139
+didn't whitelist the system calls that
+
+477
+00:15:52,139 --> 00:15:55,139
+allow you to get the current time of day
+
+478
+00:15:55,139 --> 00:15:56,820
+um because we never saw them called in
+
+479
+00:15:56,820 --> 00:15:58,860
+local development
+
+480
+00:15:58,860 --> 00:16:00,600
+um unfortunately the moment we deployed
+
+481
+00:16:00,600 --> 00:16:02,040
+this system to production we noticed
+
+482
+00:16:02,040 --> 00:16:03,480
+that there were many calls to this call
+
+483
+00:16:03,480 --> 00:16:05,220
+to the system call happening and this
+
+484
+00:16:05,220 --> 00:16:06,720
+wasn't because the actual code was any
+
+485
+00:16:06,720 --> 00:16:08,519
+different but because the kernel was
+
+486
+00:16:08,519 --> 00:16:09,899
+configured differently such that it
+
+487
+00:16:09,899 --> 00:16:11,699
+didn't load a special Library called the
+
+488
+00:16:11,699 --> 00:16:14,459
+vdso into our memory space so that we
+
+489
+00:16:14,459 --> 00:16:16,320
+were actually making direct system calls
+
+490
+00:16:16,320 --> 00:16:18,240
+instead of Faking them in our own
+
+491
+00:16:18,240 --> 00:16:20,279
+process these are things that are very
+
+492
+00:16:20,279 --> 00:16:21,839
+difficult for developers to sort of
+
+493
+00:16:21,839 --> 00:16:24,120
+predict and that you frequently only
+
+494
+00:16:24,120 --> 00:16:25,980
+find out as you're deploying into
+
+495
+00:16:25,980 --> 00:16:28,459
+production
+
+496
+00:16:28,740 --> 00:16:30,540
+which brings us to sort of our third our
+
+497
+00:16:30,540 --> 00:16:31,980
+third approach
+
+498
+00:16:31,980 --> 00:16:33,480
+um which is what if we went all the way
+
+499
+00:16:33,480 --> 00:16:35,339
+deep into the onion what if we just
+
+500
+00:16:35,339 --> 00:16:38,459
+isolated the individual process
+
+501
+00:16:38,459 --> 00:16:40,518
+um
+
+502
+00:16:40,620 --> 00:16:43,380
+and here we're going to lean on
+
+503
+00:16:43,380 --> 00:16:45,060
+the tool that we used to limit the
+
+504
+00:16:45,060 --> 00:16:46,500
+kernel attack surface in the first place
+
+505
+00:16:46,500 --> 00:16:48,899
+on a pretty fundamental level the way
+
+506
+00:16:48,899 --> 00:16:51,480
+that code inside of a process interfaces
+
+507
+00:16:51,480 --> 00:16:52,560
+with the rest of the world and
+
+508
+00:16:52,560 --> 00:16:53,880
+interfaces with these things that are
+
+509
+00:16:53,880 --> 00:16:56,940
+scary is by making system calls that's
+
+510
+00:16:56,940 --> 00:16:59,160
+what lets them read input open files
+
+511
+00:16:59,160 --> 00:17:03,139
+write output make Network calls
+
+512
+00:17:03,180 --> 00:17:05,459
+and what do we actually need to do if
+
+513
+00:17:05,459 --> 00:17:08,459
+we're doing say image resizing most of
+
+514
+00:17:08,459 --> 00:17:09,959
+our processing from the moment we've
+
+515
+00:17:09,959 --> 00:17:11,699
+actually gotten our user input we might
+
+516
+00:17:11,699 --> 00:17:13,740
+have to allocate some memory
+
+517
+00:17:13,740 --> 00:17:15,299
+and we probably have to rewrite our
+
+518
+00:17:15,299 --> 00:17:16,980
+output maybe we have to read our input
+
+519
+00:17:16,980 --> 00:17:19,819
+if we haven't done that already
+
+520
+00:17:20,400 --> 00:17:22,799
+that's all we did
+
+521
+00:17:22,799 --> 00:17:25,439
+so we wrote a a syscall white list that
+
+522
+00:17:25,439 --> 00:17:28,140
+lets you only allocate memory read from
+
+523
+00:17:28,140 --> 00:17:30,179
+open file descriptors right to open file
+
+524
+00:17:30,179 --> 00:17:33,419
+descriptors and then quit
+
+525
+00:17:33,419 --> 00:17:34,799
+um this is actually the idea behind the
+
+526
+00:17:34,799 --> 00:17:36,299
+original version of setcom called set
+
+527
+00:17:36,299 --> 00:17:38,700
+comp one rather than second BPF the
+
+528
+00:17:38,700 --> 00:17:40,380
+problem with that approach is the
+
+529
+00:17:40,380 --> 00:17:41,880
+original approach does not allow memory
+
+530
+00:17:41,880 --> 00:17:43,320
+allocation which it turns out you
+
+531
+00:17:43,320 --> 00:17:46,140
+frequently want to do at runtime
+
+532
+00:17:46,140 --> 00:17:48,260
+um
+
+533
+00:17:48,539 --> 00:17:50,220
+yeah so this is this is a system we've
+
+534
+00:17:50,220 --> 00:17:52,380
+deployed now at figma for our sort of
+
+535
+00:17:52,380 --> 00:17:55,740
+server-side rendering of uh
+
+536
+00:17:55,740 --> 00:17:57,840
+files
+
+537
+00:17:57,840 --> 00:17:59,340
+what are the advantages here well for
+
+538
+00:17:59,340 --> 00:18:00,720
+one thing the performance here is great
+
+539
+00:18:00,720 --> 00:18:02,100
+all you're doing is you're forking in
+
+540
+00:18:02,100 --> 00:18:03,600
+your process executing the the
+
+541
+00:18:03,600 --> 00:18:05,220
+underlying binary and then you call set
+
+542
+00:18:05,220 --> 00:18:06,900
+comp once and you do your processing and
+
+543
+00:18:06,900 --> 00:18:10,020
+you're done you're over your overhead
+
+544
+00:18:10,020 --> 00:18:12,299
+here is mostly limited to you have to
+
+545
+00:18:12,299 --> 00:18:14,160
+serialize some data back and forth and
+
+546
+00:18:14,160 --> 00:18:15,720
+there's some limited overheads due to
+
+547
+00:18:15,720 --> 00:18:17,100
+the forecasting Tech
+
+548
+00:18:17,100 --> 00:18:19,919
+the downside here is
+
+549
+00:18:19,919 --> 00:18:21,539
+second failures can be very hard to
+
+550
+00:18:21,539 --> 00:18:22,860
+introspect as we talked about in the
+
+551
+00:18:22,860 --> 00:18:24,780
+sort of previous example but also not
+
+552
+00:18:24,780 --> 00:18:27,600
+all programs fit cleanly into this box
+
+553
+00:18:27,600 --> 00:18:30,120
+while programs that are written sort of
+
+554
+00:18:30,120 --> 00:18:31,860
+by your own developers in maybe these
+
+555
+00:18:31,860 --> 00:18:34,440
+unsafe languages can often be Rewritten
+
+556
+00:18:34,440 --> 00:18:36,539
+to not require heavy syscall usage deep
+
+557
+00:18:36,539 --> 00:18:39,059
+inside the program many cannot so for
+
+558
+00:18:39,059 --> 00:18:40,559
+instance if you're trying to run a
+
+559
+00:18:40,559 --> 00:18:41,820
+computer vision
+
+560
+00:18:41,820 --> 00:18:46,200
+program or you're trying to do OCR or
+
+561
+00:18:46,200 --> 00:18:48,840
+anything that may require say the GPU to
+
+562
+00:18:48,840 --> 00:18:50,520
+do its processing you're almost
+
+563
+00:18:50,520 --> 00:18:52,380
+certainly including a library from a GPU
+
+564
+00:18:52,380 --> 00:18:53,400
+for render
+
+565
+00:18:53,400 --> 00:18:55,799
+which may need a whole list of syscalls
+
+566
+00:18:55,799 --> 00:18:57,900
+that you can't get rid of
+
+567
+00:18:57,900 --> 00:18:58,799
+um
+
+568
+00:18:58,799 --> 00:19:01,080
+this limits the utility of this of this
+
+569
+00:19:01,080 --> 00:19:02,700
+approach in practice because only a
+
+570
+00:19:02,700 --> 00:19:05,280
+small fraction of your code is likely to
+
+571
+00:19:05,280 --> 00:19:07,740
+be amidable
+
+572
+00:19:07,740 --> 00:19:10,260
+and then one can sort of think well we
+
+573
+00:19:10,260 --> 00:19:11,520
+talked about this onion we went through
+
+574
+00:19:11,520 --> 00:19:13,320
+these three sort of examples can we go
+
+575
+00:19:13,320 --> 00:19:15,000
+deeper is there sort of another level
+
+576
+00:19:15,000 --> 00:19:16,799
+inside of that onion that we could keep
+
+577
+00:19:16,799 --> 00:19:18,600
+going to and the answer here is probably
+
+578
+00:19:18,600 --> 00:19:21,840
+yes ultimately if you think back to sort
+
+579
+00:19:21,840 --> 00:19:23,580
+of the first example the very first line
+
+580
+00:19:23,580 --> 00:19:25,260
+of code that we showed
+
+581
+00:19:25,260 --> 00:19:27,780
+it was making a library call or making a
+
+582
+00:19:27,780 --> 00:19:29,400
+function call
+
+583
+00:19:29,400 --> 00:19:32,280
+there's no fundamental reason that a fun
+
+584
+00:19:32,280 --> 00:19:34,320
+a library that is in your shared memory
+
+585
+00:19:34,320 --> 00:19:36,120
+space needs to have access to all of
+
+586
+00:19:36,120 --> 00:19:37,679
+those privileges that the rest of your
+
+587
+00:19:37,679 --> 00:19:40,260
+program has access to and we might be
+
+588
+00:19:40,260 --> 00:19:42,539
+able to buy recompiling parts of the
+
+589
+00:19:42,539 --> 00:19:45,720
+program limit the access of these
+
+590
+00:19:45,720 --> 00:19:47,400
+individual functions um this is an
+
+591
+00:19:47,400 --> 00:19:49,799
+active research area Mozilla has a paper
+
+592
+00:19:49,799 --> 00:19:52,620
+out with UCSD and
+
+593
+00:19:52,620 --> 00:19:55,440
+University of Texas
+
+594
+00:19:55,440 --> 00:19:57,539
+um about a system called RL box that is
+
+595
+00:19:57,539 --> 00:19:59,039
+an example way to do this
+
+596
+00:19:59,039 --> 00:20:00,000
+um we haven't deployed this in
+
+597
+00:20:00,000 --> 00:20:02,520
+production but we are excited to do so
+
+598
+00:20:02,520 --> 00:20:04,140
+yeah
+
+599
+00:20:04,140 --> 00:20:05,580
+thank you all
+
+600
+00:20:05,580 --> 00:20:08,120
+okay
+

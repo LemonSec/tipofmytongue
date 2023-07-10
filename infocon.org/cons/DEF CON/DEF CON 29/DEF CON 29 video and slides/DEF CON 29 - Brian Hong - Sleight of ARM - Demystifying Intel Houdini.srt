@@ -1,0 +1,4476 @@
+﻿1
+00:00:01,670 --> 00:00:02,950
+- Hello everyone and welcome
+
+2
+00:00:02,950 --> 00:00:05,990
+to Sleight of ARM:
+Demystifying Intel Houdini.
+
+3
+00:00:05,990 --> 00:00:06,823
+My name is Brian
+
+4
+00:00:06,823 --> 00:00:07,656
+and I'll be discussing
+
+5
+00:00:07,656 --> 00:00:09,760
+Intel's Houdini binary translator.
+
+6
+00:00:09,760 --> 00:00:11,340
+So what it is, where it's used,
+
+7
+00:00:11,340 --> 00:00:12,173
+how it works,
+
+8
+00:00:12,173 --> 00:00:14,800
+security concerns and recommendations.
+
+9
+00:00:14,800 --> 00:00:15,633
+But before that,
+
+10
+00:00:15,633 --> 00:00:18,310
+a little bit about myself real quick.
+
+11
+00:00:18,310 --> 00:00:19,640
+That's me, I'm Brian Hong.
+
+12
+00:00:19,640 --> 00:00:21,150
+I studied electrical engineering
+
+13
+00:00:21,150 --> 00:00:22,500
+at Cooper Union,
+
+14
+00:00:22,500 --> 00:00:23,750
+and I'm currently working as
+
+15
+00:00:23,750 --> 00:00:26,390
+a security consultant with the NCC group.
+
+16
+00:00:26,390 --> 00:00:27,320
+Lately I've been performing
+
+17
+00:00:27,320 --> 00:00:28,670
+a lot of Android pentests,
+
+18
+00:00:28,670 --> 00:00:31,003
+and sometimes even
+Android malware analysis.
+
+19
+00:00:31,960 --> 00:00:33,250
+Besides that, I like to build
+
+20
+00:00:33,250 --> 00:00:34,640
+random bits of hardware
+
+21
+00:00:34,640 --> 00:00:36,830
+and also like to reverse engineer
+
+22
+00:00:36,830 --> 00:00:38,300
+low-level stuff that other people built,
+
+23
+00:00:38,300 --> 00:00:39,693
+both software and hardware.
+
+24
+00:00:40,550 --> 00:00:43,173
+So with that, let's get
+started with Android.
+
+25
+00:00:44,420 --> 00:00:46,270
+So Android is
+
+26
+00:00:46,270 --> 00:00:47,800
+one of the largest operating systems
+
+27
+00:00:47,800 --> 00:00:48,633
+in the world.
+
+28
+00:00:49,600 --> 00:00:52,940
+And you could write
+applications for Android,
+
+29
+00:00:52,940 --> 00:00:55,560
+Android applications
+using Java and Kotlin.
+
+30
+00:00:55,560 --> 00:00:56,510
+And you could also,
+
+31
+00:00:57,420 --> 00:00:59,260
+as well as C and C++ using
+
+32
+00:00:59,260 --> 00:01:01,253
+their native development kit.
+
+33
+00:01:02,470 --> 00:01:04,580
+Android was originally designed and built
+
+34
+00:01:04,580 --> 00:01:06,170
+for ARM devices,
+
+35
+00:01:06,170 --> 00:01:08,670
+but Google later added support for x86.
+
+36
+00:01:08,670 --> 00:01:09,503
+And just to note,
+
+37
+00:01:09,503 --> 00:01:11,300
+there has been out-of-tree support
+
+38
+00:01:11,300 --> 00:01:13,290
+before that as well,
+
+39
+00:01:13,290 --> 00:01:15,483
+such as the Android x86 project.
+
+40
+00:01:17,520 --> 00:01:18,880
+So since then there's been
+
+41
+00:01:18,880 --> 00:01:22,500
+several Android devices running on x86,
+
+42
+00:01:22,500 --> 00:01:24,470
+but now there's many too,
+
+43
+00:01:24,470 --> 00:01:26,517
+which are x86 Chromebooks
+
+44
+00:01:26,517 --> 00:01:28,030
+and x86 hosts running
+
+45
+00:01:28,030 --> 00:01:29,563
+commercial Android emulators.
+
+46
+00:01:31,200 --> 00:01:33,610
+However, apps generally lack support
+
+47
+00:01:33,610 --> 00:01:35,250
+for x86 still.
+
+48
+00:01:35,250 --> 00:01:37,490
+And that's because ARM is,
+
+49
+00:01:37,490 --> 00:01:40,840
+ARM is the primary hardware
+platform for Android.
+
+50
+00:01:40,840 --> 00:01:42,460
+And in fact, if you have native components
+
+51
+00:01:42,460 --> 00:01:43,293
+in your app,
+
+52
+00:01:43,293 --> 00:01:46,593
+the Play Store only
+requires the ARM builds.
+
+53
+00:01:47,660 --> 00:01:48,840
+And because of this,
+
+54
+00:01:48,840 --> 00:01:50,990
+many native applications
+don't end up containing
+
+55
+00:01:50,990 --> 00:01:53,980
+any x86 binaries, only ARM.
+
+56
+00:01:53,980 --> 00:01:58,680
+So how can x86 devices running Android run
+
+57
+00:01:58,680 --> 00:02:01,510
+these apps that only contain ARM binaries?
+
+58
+00:02:01,510 --> 00:02:03,150
+And this would be a great time for me
+
+59
+00:02:03,150 --> 00:02:06,250
+to introduce you to Houdini.
+
+60
+00:02:06,250 --> 00:02:08,390
+So Houdini, the topic of this talk,
+
+61
+00:02:08,390 --> 00:02:11,590
+is Intel's proprietary binary translator
+
+62
+00:02:11,590 --> 00:02:16,010
+that allows x86 devices
+to run on binaries.
+
+63
+00:02:16,010 --> 00:02:17,560
+And it was co-created with Google,
+
+64
+00:02:17,560 --> 00:02:18,960
+as it was designed to be run
+
+65
+00:02:18,960 --> 00:02:20,950
+with Android NativeBridge.
+
+66
+00:02:20,950 --> 00:02:22,350
+We'll get to it in a second.
+
+67
+00:02:23,830 --> 00:02:27,330
+Houdini is this mysterious
+little black box.
+
+68
+00:02:27,330 --> 00:02:29,793
+We don't know how it does.
+
+69
+00:02:30,700 --> 00:02:31,810
+We don't know how it works
+
+70
+00:02:31,810 --> 00:02:32,740
+and there doesn't seem to be
+
+71
+00:02:32,740 --> 00:02:33,940
+any documentation on it.
+
+72
+00:02:35,450 --> 00:02:37,208
+And it's possible some
+vendors may be trying
+
+73
+00:02:37,208 --> 00:02:38,963
+to hide that they're using it.
+
+74
+00:02:41,080 --> 00:02:42,590
+We'll get to that as well.
+
+75
+00:02:43,735 --> 00:02:45,220
+And there are three variants,
+
+76
+00:02:45,220 --> 00:02:48,950
+32-bit x86 implementing 32-bit ARM,
+
+77
+00:02:48,950 --> 00:02:51,973
+64-bit x86 32-bit ARM,
+
+78
+00:02:51,973 --> 00:02:55,130
+64-bit x86 64-bit ARM.
+
+79
+00:02:55,130 --> 00:02:56,570
+Right.
+
+80
+00:02:56,570 --> 00:02:58,830
+So Houdini can be used
+in physical hardware
+
+81
+00:02:58,830 --> 00:03:01,880
+as they were on x86 based mobile phones.
+
+82
+00:03:01,880 --> 00:03:06,230
+And they are still used
+in x86 Chromebooks,
+
+83
+00:03:06,230 --> 00:03:08,130
+which is how we actually got the binaries.
+
+84
+00:03:08,130 --> 00:03:09,730
+So we could take a look at them.
+
+85
+00:03:11,160 --> 00:03:12,210
+They're also using
+
+86
+00:03:12,210 --> 00:03:13,750
+some commercial Android emulators,
+
+87
+00:03:13,750 --> 00:03:15,940
+such as BlueStacks and NOX.
+
+88
+00:03:15,940 --> 00:03:18,260
+Well, I don't believe
+they're enabled by default.
+
+89
+00:03:18,260 --> 00:03:20,430
+I think, I believe, I remember,
+
+90
+00:03:20,430 --> 00:03:22,010
+I think there is an option to enable it
+
+91
+00:03:22,010 --> 00:03:23,610
+in the settings.
+
+92
+00:03:23,610 --> 00:03:27,230
+And also it's using the
+Android x86 project,
+
+93
+00:03:27,230 --> 00:03:29,010
+which can be run on real hardware
+
+94
+00:03:29,010 --> 00:03:30,713
+or on an emulator.
+
+95
+00:03:31,660 --> 00:03:33,080
+Okay.
+
+96
+00:03:33,080 --> 00:03:34,750
+So how does it work?
+
+97
+00:03:34,750 --> 00:03:37,860
+Houdini is basically
+a interpreted emulator
+
+98
+00:03:37,860 --> 00:03:39,453
+for ARM instructions.
+
+99
+00:03:40,560 --> 00:03:41,393
+What that means is
+
+100
+00:03:41,393 --> 00:03:43,600
+there's a loop reading ARM instruction,
+
+101
+00:03:43,600 --> 00:03:44,640
+the opcodes,
+
+102
+00:03:44,640 --> 00:03:48,870
+and it produces a
+corresponding behavior in x86.
+
+103
+00:03:48,870 --> 00:03:49,730
+I just want to make clear
+
+104
+00:03:49,730 --> 00:03:52,890
+that it does not do just
+in time compilation.
+
+105
+00:03:52,890 --> 00:03:54,930
+It doesn't translate nor output
+
+106
+00:03:54,930 --> 00:03:56,390
+any x86 instruction.
+
+107
+00:03:56,390 --> 00:03:58,693
+It reads it and then does the behavior.
+
+108
+00:04:01,260 --> 00:04:03,920
+And Houdini has two main components.
+
+109
+00:04:03,920 --> 00:04:06,720
+The first, just Houdini, runs executables.
+
+110
+00:04:06,720 --> 00:04:08,980
+And the second, libhoudini, is used
+
+111
+00:04:08,980 --> 00:04:11,533
+to load and link ARM shared objects.
+
+112
+00:04:12,760 --> 00:04:13,593
+So like I said,
+
+113
+00:04:13,593 --> 00:04:17,280
+the first part, Houdini,
+runs ARM executables,
+
+114
+00:04:17,280 --> 00:04:19,970
+both statically and dynamically linked.
+
+115
+00:04:19,970 --> 00:04:22,390
+When running dynamic binaries,
+
+116
+00:04:22,390 --> 00:04:23,780
+it actually uses
+
+117
+00:04:23,780 --> 00:04:25,610
+its own set up pre-compiled libraries
+
+118
+00:04:25,610 --> 00:04:27,760
+for ARM Android
+
+119
+00:04:27,760 --> 00:04:30,960
+in addition to the x86 library needed
+
+120
+00:04:30,960 --> 00:04:33,923
+by the rest of the Android
+and Houdini itself.
+
+121
+00:04:35,000 --> 00:04:36,300
+And there's a screenshot
+
+122
+00:04:36,300 --> 00:04:37,853
+from the Chromebook actually.
+
+123
+00:04:38,820 --> 00:04:41,470
+You could see that we have a x86 machine,
+
+124
+00:04:41,470 --> 00:04:43,653
+denoted by x86 at the end.
+
+125
+00:04:44,830 --> 00:04:47,090
+And the program I'm trying
+to run, hello static,
+
+126
+00:04:47,090 --> 00:04:52,090
+is a 32-bit ARM
+statically-linked ELF binary,
+
+127
+00:04:54,490 --> 00:04:55,923
+and I run it ./hello_static,
+
+128
+00:04:56,840 --> 00:04:58,490
+and it just prints "Hello world."
+
+129
+00:05:01,249 --> 00:05:02,400
+So some of you may have noticed
+
+130
+00:05:02,400 --> 00:05:05,080
+that I just executed the binary directly
+
+131
+00:05:05,080 --> 00:05:06,830
+without invoking Houdini.
+
+132
+00:05:06,830 --> 00:05:07,663
+So you might be wondering,
+
+133
+00:05:07,663 --> 00:05:09,483
+where does Houdini come in from?
+
+134
+00:05:10,690 --> 00:05:13,560
+And this is actually a
+kind of cool feature,
+
+135
+00:05:13,560 --> 00:05:15,980
+Linux kernel feature called binfmt_msc.
+
+136
+00:05:15,980 --> 00:05:17,840
+And if you are familiar with it,
+
+137
+00:05:17,840 --> 00:05:19,340
+I'll give a quick explanation.
+
+138
+00:05:20,330 --> 00:05:22,040
+Miscellaneous binary format is
+
+139
+00:05:22,040 --> 00:05:23,380
+a Linux kernel feature
+
+140
+00:05:23,380 --> 00:05:26,900
+that lets you basically
+register interpreters
+
+141
+00:05:26,900 --> 00:05:29,270
+for custom binary formats.
+
+142
+00:05:29,270 --> 00:05:31,152
+Kind of similar how a shebang works
+
+143
+00:05:31,152 --> 00:05:33,653
+in Bash or Python programs.
+
+144
+00:05:35,270 --> 00:05:37,070
+So in our specific case,
+
+145
+00:05:37,070 --> 00:05:41,033
+our custom binary format
+is an ARM ELF binary.
+
+146
+00:05:44,600 --> 00:05:47,370
+So the two screenshots below show
+
+147
+00:05:47,370 --> 00:05:49,190
+the registered entries
+
+148
+00:05:49,190 --> 00:05:54,020
+for a static and dynamic ARM ELF binaries.
+
+149
+00:05:54,020 --> 00:05:55,700
+And you can see that
+the interpreter is set
+
+150
+00:05:55,700 --> 00:05:57,410
+to /system/bin/houdini.
+
+151
+00:05:57,410 --> 00:06:00,500
+So essentially the resulting effect is
+
+152
+00:06:00,500 --> 00:06:01,360
+when I try to,
+
+153
+00:06:01,360 --> 00:06:03,130
+when I type in ./hello in batch,
+
+154
+00:06:03,130 --> 00:06:05,720
+or try to exec this binary,
+
+155
+00:06:05,720 --> 00:06:07,530
+the kernel compares the magic bytes
+
+156
+00:06:07,530 --> 00:06:09,930
+by looking at the first end bytes.
+
+157
+00:06:09,930 --> 00:06:13,260
+If it matches, it turns it into that.
+
+158
+00:06:13,260 --> 00:06:16,340
+So it actually execs /system/bin/houdini
+
+159
+00:06:16,340 --> 00:06:17,690
+and it passes my program name
+
+160
+00:06:17,690 --> 00:06:19,173
+as the first argument.
+
+161
+00:06:20,970 --> 00:06:22,360
+Right.
+
+162
+00:06:22,360 --> 00:06:23,193
+So,
+
+163
+00:06:23,193 --> 00:06:24,026
+now that we know
+
+164
+00:06:24,026 --> 00:06:25,731
+how the Houdini part is being used,
+
+165
+00:06:25,731 --> 00:06:27,870
+let's look at the more
+interesting second component,
+
+166
+00:06:27,870 --> 00:06:30,203
+which is libhoudini.so.
+
+167
+00:06:31,591 --> 00:06:35,360
+So libhoudini is itself
+a shared object for x86,
+
+168
+00:06:35,360 --> 00:06:36,350
+and it's used to load
+
+169
+00:06:36,350 --> 00:06:37,860
+other shared objects for ARM,
+
+170
+00:06:37,860 --> 00:06:38,993
+that's built for ARM.
+
+171
+00:06:40,080 --> 00:06:41,300
+It was designed to be used
+
+172
+00:06:41,300 --> 00:06:43,460
+with Android NativeBridge.
+
+173
+00:06:43,460 --> 00:06:46,253
+So let's talk about that.
+
+174
+00:06:47,890 --> 00:06:50,380
+So Android NativeBridge is the component
+
+175
+00:06:50,380 --> 00:06:52,000
+in Android that allows
+
+176
+00:06:52,000 --> 00:06:53,893
+this binary translation to work.
+
+177
+00:06:54,940 --> 00:06:56,650
+It is part of the Android runtime
+
+178
+00:06:56,650 --> 00:06:58,290
+and is the main interface
+
+179
+00:06:58,290 --> 00:06:59,880
+between our Android side
+
+180
+00:06:59,880 --> 00:07:01,463
+and our Houdini binary.
+
+181
+00:07:04,640 --> 00:07:07,210
+So NativeBridge provides an interface for,
+
+182
+00:07:07,210 --> 00:07:09,570
+for our Android to talk with Houdini.
+
+183
+00:07:09,570 --> 00:07:11,250
+And I want to point out that
+
+184
+00:07:11,250 --> 00:07:14,100
+while it might have been
+designed specifically
+
+185
+00:07:14,100 --> 00:07:16,290
+with ARM and Houdini in mind,
+
+186
+00:07:16,290 --> 00:07:18,301
+the interface that it provides can be used
+
+187
+00:07:18,301 --> 00:07:21,670
+to implement other
+processor architectures.
+
+188
+00:07:21,670 --> 00:07:26,533
+For example, running
+MIPS code on ARM device.
+
+189
+00:07:31,229 --> 00:07:32,829
+So it's part of Android runtime.
+
+190
+00:07:33,730 --> 00:07:36,490
+So it's initialized on boot.
+
+191
+00:07:36,490 --> 00:07:37,800
+And when it, during it,
+
+192
+00:07:37,800 --> 00:07:39,540
+it checks a system property,
+
+193
+00:07:39,540 --> 00:07:41,620
+ro.dalvik.vm.native.bridge,
+
+194
+00:07:41,620 --> 00:07:44,320
+and if it's set to zero it's disabled.
+
+195
+00:07:44,320 --> 00:07:45,153
+If it's not,
+
+196
+00:07:45,153 --> 00:07:47,300
+the value is used as the name
+
+197
+00:07:47,300 --> 00:07:48,480
+of the library to load,
+
+198
+00:07:48,480 --> 00:07:51,870
+which implements the
+NativeBridge implementation.
+
+199
+00:07:51,870 --> 00:07:54,423
+So in our case, that
+would be libhoudini.so.
+
+200
+00:07:55,590 --> 00:07:58,570
+Actually a few interesting
+things about this.
+
+201
+00:07:58,570 --> 00:08:00,550
+According to a DEFCON
+talk a few years back,
+
+202
+00:08:00,550 --> 00:08:02,880
+it seems like BlueStacks
+renamed libhoudini
+
+203
+00:08:02,880 --> 00:08:05,820
+to something like lib3btrans.so
+
+204
+00:08:06,930 --> 00:08:09,033
+or something for some unknown reasons.
+
+205
+00:08:10,630 --> 00:08:14,380
+And also it looks like
+Android x86 project uses
+
+206
+00:08:14,380 --> 00:08:17,550
+their own implementation, libnb.so.
+
+207
+00:08:17,550 --> 00:08:19,300
+But when you take a
+look at the source tree,
+
+208
+00:08:19,300 --> 00:08:21,750
+it's actually just a thin wrapper
+
+209
+00:08:21,750 --> 00:08:24,613
+that loads and uses libhoudini itself.
+
+210
+00:08:26,270 --> 00:08:28,140
+Another interesting thing was,
+
+211
+00:08:28,140 --> 00:08:30,520
+there's a script in
+the Android x86 project
+
+212
+00:08:31,640 --> 00:08:33,282
+that enables NativeBridge,
+
+213
+00:08:33,282 --> 00:08:35,780
+and it downloads libhoudini
+
+214
+00:08:35,780 --> 00:08:40,780
+from a couple of obfuscated
+.cn URL shorteners.
+
+215
+00:08:41,879 --> 00:08:43,370
+And yeah.
+
+216
+00:08:43,370 --> 00:08:45,240
+It also seems like they move that link
+
+217
+00:08:45,240 --> 00:08:48,033
+and the related code
+around a couple of times.
+
+218
+00:08:48,940 --> 00:08:50,220
+Not sure what's going on in there,
+
+219
+00:08:50,220 --> 00:08:52,370
+but back on topic.
+
+220
+00:08:52,370 --> 00:08:55,343
+NativeBridge defines two
+main callback interfaces.
+
+221
+00:08:58,197 --> 00:08:59,750
+And just to get off topic again,
+
+222
+00:08:59,750 --> 00:09:01,860
+I have to talk about the JNI first
+
+223
+00:09:01,860 --> 00:09:03,560
+before I get into those callbacks.
+
+224
+00:09:04,810 --> 00:09:06,230
+So Java Native Interface is
+
+225
+00:09:06,230 --> 00:09:07,690
+a foreign function interface
+
+226
+00:09:07,690 --> 00:09:10,460
+that enables our JVM code to interact
+
+227
+00:09:10,460 --> 00:09:12,733
+with the native code and vice versa.
+
+228
+00:09:13,618 --> 00:09:14,650
+Yeah.
+
+229
+00:09:14,650 --> 00:09:15,920
+So,
+
+230
+00:09:15,920 --> 00:09:18,540
+this part is actually
+not specific to Android
+
+231
+00:09:18,540 --> 00:09:20,270
+and it is part of Java.
+
+232
+00:09:20,270 --> 00:09:21,413
+So on the right side,
+
+233
+00:09:22,716 --> 00:09:23,560
+we see a struct,
+
+234
+00:09:23,560 --> 00:09:25,947
+the JNI Native Interface.
+
+235
+00:09:29,270 --> 00:09:31,210
+It's also typed up to...
+
+236
+00:09:31,210 --> 00:09:33,257
+Its pointer is also typed up to JNIEnv.
+
+237
+00:09:34,560 --> 00:09:36,020
+So this structure has basically
+
+238
+00:09:36,020 --> 00:09:37,350
+a bag of function pointers
+
+239
+00:09:37,350 --> 00:09:39,660
+that's provided to the native code
+
+240
+00:09:39,660 --> 00:09:42,610
+so that our native code could be,
+
+241
+00:09:42,610 --> 00:09:43,650
+could use these functions
+
+242
+00:09:43,650 --> 00:09:46,673
+to perform low-level JVM reflection.
+
+243
+00:09:49,271 --> 00:09:50,104
+And I cut out a lot of it.
+
+244
+00:09:50,104 --> 00:09:52,690
+There's a lot of functions
+functions in there,
+
+245
+00:09:52,690 --> 00:09:53,620
+but some of them are, you know,
+
+246
+00:09:53,620 --> 00:09:56,260
+calling methods,
+
+247
+00:09:56,260 --> 00:09:58,580
+getting the method ID,
+
+248
+00:09:58,580 --> 00:09:59,470
+allocating object,
+
+249
+00:09:59,470 --> 00:10:01,210
+getting a field,
+
+250
+00:10:01,210 --> 00:10:03,093
+finding classes and so on.
+
+251
+00:10:04,070 --> 00:10:05,440
+So this,
+
+252
+00:10:05,440 --> 00:10:07,530
+the pointer to this
+struct has actually passed
+
+253
+00:10:07,530 --> 00:10:08,640
+as the first argument
+
+254
+00:10:09,890 --> 00:10:11,593
+when a Java,
+
+255
+00:10:12,920 --> 00:10:15,023
+when your Java code calls the native code.
+
+256
+00:10:16,940 --> 00:10:18,740
+And we'll see how that's used later.
+
+257
+00:10:19,660 --> 00:10:23,530
+So the first callback interface
+
+258
+00:10:23,530 --> 00:10:25,680
+from NativeBridge is
+
+259
+00:10:25,680 --> 00:10:28,620
+the NativeBridgeRuntimeCallbacks.
+
+260
+00:10:29,650 --> 00:10:30,483
+It's quite simple,
+
+261
+00:10:30,483 --> 00:10:32,070
+but it's passed from NativeBridge
+
+262
+00:10:32,070 --> 00:10:34,080
+to our libhoudini binary
+
+263
+00:10:34,080 --> 00:10:38,290
+so that our libhoudini can call,
+
+264
+00:10:38,290 --> 00:10:39,920
+find and call native functions
+
+265
+00:10:39,920 --> 00:10:41,010
+in the Android side
+
+266
+00:10:41,010 --> 00:10:42,303
+or the NativeBridge side.
+
+267
+00:10:43,720 --> 00:10:46,490
+The second more interesting
+callback interface is
+
+268
+00:10:46,490 --> 00:10:48,310
+the NativeBridge callbacks.
+
+269
+00:10:48,310 --> 00:10:51,010
+And this is quite kind
+of like the opposite.
+
+270
+00:10:51,010 --> 00:10:53,360
+It provides a way for our NativeBridge
+
+271
+00:10:53,360 --> 00:10:56,633
+to call function in our libhoudini binary.
+
+272
+00:10:58,330 --> 00:11:00,580
+We see some of the functions on the right.
+
+273
+00:11:00,580 --> 00:11:02,730
+The most interesting of these are
+
+274
+00:11:02,730 --> 00:11:05,597
+initialize(), loadLibrary(),
+and getTrampoline(),
+
+275
+00:11:06,470 --> 00:11:10,940
+the latter two of which are quite similar
+
+276
+00:11:10,940 --> 00:11:13,450
+to how dlopen and dlsym works.
+
+277
+00:11:13,450 --> 00:11:15,250
+And I'll show that in a later slide.
+
+278
+00:11:17,060 --> 00:11:18,290
+Yeah, so this,
+
+279
+00:11:18,290 --> 00:11:20,700
+this struct is actually exposed
+
+280
+00:11:20,700 --> 00:11:22,930
+via the symbol NativeBridge ITF,
+
+281
+00:11:22,930 --> 00:11:24,323
+which can be seen here.
+
+282
+00:11:26,130 --> 00:11:26,963
+By looking at it
+
+283
+00:11:26,963 --> 00:11:29,620
+in a hex editor or disassembler,
+
+284
+00:11:29,620 --> 00:11:32,220
+you could see all the function pointers
+
+285
+00:11:32,220 --> 00:11:33,693
+in that data structure.
+
+286
+00:11:35,040 --> 00:11:38,780
+So, I have all of the components
+
+287
+00:11:38,780 --> 00:11:41,490
+of like NativeBridge explained kind of,
+
+288
+00:11:41,490 --> 00:11:42,450
+so I'm going to try my best
+
+289
+00:11:42,450 --> 00:11:45,030
+to kind of put them all together.
+
+290
+00:11:45,030 --> 00:11:45,973
+So here we go.
+
+291
+00:11:47,450 --> 00:11:49,300
+So normally it would
+look something like this.
+
+292
+00:11:49,300 --> 00:11:51,660
+Here you have an ARM
+device running ARM Android,
+
+293
+00:11:51,660 --> 00:11:55,570
+and we want to load a ARM native library.
+
+294
+00:11:55,570 --> 00:11:57,410
+So when your application launches,
+
+295
+00:11:57,410 --> 00:12:00,680
+it would call system.loadLibrary,
+
+296
+00:12:00,680 --> 00:12:01,670
+and which would trigger
+
+297
+00:12:01,670 --> 00:12:06,150
+the Android runtime to call dlopen,
+
+298
+00:12:06,150 --> 00:12:07,990
+and that will load our libnative.so
+
+299
+00:12:07,990 --> 00:12:10,420
+into memory, into the processor.
+
+300
+00:12:10,420 --> 00:12:12,170
+And then when our app wants to call
+
+301
+00:12:13,496 --> 00:12:15,700
+a native code, native function,
+
+302
+00:12:15,700 --> 00:12:16,940
+it will first do a dlsym,
+
+303
+00:12:16,940 --> 00:12:18,950
+which will give it in
+turn a function pointer
+
+304
+00:12:18,950 --> 00:12:20,440
+to our code.
+
+305
+00:12:20,440 --> 00:12:21,960
+And then it jumps to it
+
+306
+00:12:21,960 --> 00:12:23,720
+with the first argument being
+
+307
+00:12:23,720 --> 00:12:27,343
+the pointer to our JNIEnv structure.
+
+308
+00:12:28,430 --> 00:12:30,850
+And if our native code wants to interact
+
+309
+00:12:30,850 --> 00:12:32,070
+with the Java world,
+
+310
+00:12:32,070 --> 00:12:33,440
+it could do so by looking
+
+311
+00:12:33,440 --> 00:12:34,560
+for the appropriate function
+
+312
+00:12:34,560 --> 00:12:37,513
+in the JNIEnv, you
+know, function pointers.
+
+313
+00:12:38,350 --> 00:12:40,330
+Now this gets a little more complicated
+
+314
+00:12:40,330 --> 00:12:42,540
+when we talk about NativeBridge.
+
+315
+00:12:42,540 --> 00:12:44,643
+So before anything happens,
+
+316
+00:12:46,040 --> 00:12:48,060
+NativeBridge gets loaded on boot, right?
+
+317
+00:12:48,060 --> 00:12:49,860
+So it checks the system property
+
+318
+00:12:49,860 --> 00:12:50,960
+and sees that it's pointing
+
+319
+00:12:50,960 --> 00:12:53,100
+to libhoudini.so.
+
+320
+00:12:53,100 --> 00:12:58,050
+And it dlopens the libhoudini library.
+
+321
+00:12:58,949 --> 00:13:03,949
+Our Android and our device is x86,
+
+322
+00:13:04,930 --> 00:13:06,610
+and so is libhoudini,
+
+323
+00:13:06,610 --> 00:13:08,850
+and our goal is to run co,
+
+324
+00:13:08,850 --> 00:13:13,420
+which is an ARM in our libnative.so.
+
+325
+00:13:13,420 --> 00:13:16,290
+So after that, after libhoudini is loaded,
+
+326
+00:13:16,290 --> 00:13:19,610
+it fetches the NativeBridge
+callbacks using
+
+327
+00:13:19,610 --> 00:13:21,800
+dlsym() and closeinitialize(),
+
+328
+00:13:21,800 --> 00:13:24,653
+which isn't shown in the diagram.
+
+329
+00:13:25,870 --> 00:13:27,110
+So after that, you know,
+
+330
+00:13:27,110 --> 00:13:28,773
+the Android continues to boot up.
+
+331
+00:13:29,620 --> 00:13:30,750
+And then when you launch your app,
+
+332
+00:13:30,750 --> 00:13:32,330
+it would try to load the library again
+
+333
+00:13:32,330 --> 00:13:35,830
+with system.load or loadLibrary(),
+
+334
+00:13:35,830 --> 00:13:38,860
+which triggers NativeBridge
+plus Android runtime
+
+335
+00:13:38,860 --> 00:13:43,860
+to call our NativeBridge
+callbacks load library,
+
+336
+00:13:45,750 --> 00:13:46,583
+which acts similar to dlopen().
+
+337
+00:13:46,583 --> 00:13:49,130
+So we'll turn a handle.
+
+338
+00:13:49,130 --> 00:13:50,450
+And with the handle,
+
+339
+00:13:50,450 --> 00:13:52,050
+we could pass it to getTrampoline()
+
+340
+00:13:52,050 --> 00:13:53,910
+to get a function pointer,
+
+341
+00:13:53,910 --> 00:13:55,987
+similar to a dlsym().
+
+342
+00:13:56,840 --> 00:13:57,673
+Now we can't,
+
+343
+00:13:57,673 --> 00:13:58,880
+we can't actually just use
+
+344
+00:13:58,880 --> 00:14:00,620
+dlopen() and dlsym() directly
+
+345
+00:14:00,620 --> 00:14:02,810
+because the kernel will complain
+
+346
+00:14:02,810 --> 00:14:04,520
+it's a different architecture.
+
+347
+00:14:04,520 --> 00:14:05,870
+And especially for dlsym(),
+
+348
+00:14:05,870 --> 00:14:08,810
+because dlsym() will give
+you a function pointer.
+
+349
+00:14:08,810 --> 00:14:11,290
+So Houdini has their own versions,
+
+350
+00:14:11,290 --> 00:14:12,677
+loadLibrary() and getTrampoline().
+
+351
+00:14:13,714 --> 00:14:15,950
+loadLibrary just opens our native file
+
+352
+00:14:15,950 --> 00:14:17,860
+and maps it into memory.
+
+353
+00:14:17,860 --> 00:14:19,840
+And getTrampoline() should return
+
+354
+00:14:19,840 --> 00:14:22,398
+the function pointer, but it doesn't.
+
+355
+00:14:22,398 --> 00:14:24,740
+It can't return the
+actual function pointer
+
+356
+00:14:24,740 --> 00:14:25,990
+to our native library
+
+357
+00:14:25,990 --> 00:14:28,350
+because our code is written in ARM,
+
+358
+00:14:28,350 --> 00:14:31,560
+or it will contain ARM
+instructions in there,
+
+359
+00:14:31,560 --> 00:14:34,320
+which our x86 processor
+probably won't know
+
+360
+00:14:34,320 --> 00:14:35,350
+how to handle.
+
+361
+00:14:35,350 --> 00:14:37,900
+So instead libhoudini returns a pointer
+
+362
+00:14:37,900 --> 00:14:40,360
+to a little step inside
+of our interpreter,
+
+363
+00:14:40,360 --> 00:14:42,090
+inside our libhoudini,
+
+364
+00:14:42,090 --> 00:14:44,620
+so that when we call the,
+
+365
+00:14:44,620 --> 00:14:47,710
+the function returned by getTrampoline(),
+
+366
+00:14:47,710 --> 00:14:49,270
+the interpreter is going to start running
+
+367
+00:14:49,270 --> 00:14:51,440
+and the interpreter will in turn,
+
+368
+00:14:51,440 --> 00:14:53,420
+start reading the native code
+
+369
+00:14:53,420 --> 00:14:54,423
+and executing it.
+
+370
+00:14:56,170 --> 00:14:57,403
+So the last part,
+
+371
+00:14:58,701 --> 00:15:02,730
+I want to bring up is the JNIEnv pointer.
+
+372
+00:15:02,730 --> 00:15:05,215
+I mentioned the, that the,
+
+373
+00:15:05,215 --> 00:15:08,330
+when your Java code calls native code,
+
+374
+00:15:08,330 --> 00:15:10,310
+the pointer to JNIEnv is passed
+
+375
+00:15:10,310 --> 00:15:11,410
+as the first argument.
+
+376
+00:15:13,130 --> 00:15:16,530
+We can't pass that straight through
+
+377
+00:15:16,530 --> 00:15:17,640
+to our native code
+
+378
+00:15:17,640 --> 00:15:21,680
+because while our native
+code is running in ARM
+
+379
+00:15:21,680 --> 00:15:25,400
+and our JNI functions are in x86.
+
+380
+00:15:25,400 --> 00:15:29,400
+So what libhoudini does
+is it just remembers
+
+381
+00:15:29,400 --> 00:15:31,460
+where it's,
+
+382
+00:15:31,460 --> 00:15:32,740
+like where it is,
+
+383
+00:15:32,740 --> 00:15:35,740
+and then it creates its own fake version
+
+384
+00:15:35,740 --> 00:15:37,010
+that's filled with ARM instructions.
+
+385
+00:15:37,010 --> 00:15:39,130
+Actually it's filled the,
+
+386
+00:15:39,130 --> 00:15:41,560
+JNIEnv function pointers point
+
+387
+00:15:41,560 --> 00:15:44,710
+to a bunch of trap instructions.
+
+388
+00:15:44,710 --> 00:15:46,700
+That way, when the interpreter sees
+
+389
+00:15:46,700 --> 00:15:48,600
+those ARM trap instructions,
+
+390
+00:15:48,600 --> 00:15:52,960
+it knows which of like proper JNI function
+
+391
+00:15:55,830 --> 00:15:58,433
+to call on the real x86 structure.
+
+392
+00:15:59,880 --> 00:16:00,713
+All right so,
+
+393
+00:16:00,713 --> 00:16:01,930
+now that I've kind of explained
+
+394
+00:16:01,930 --> 00:16:05,070
+how libhoudini comes
+together with NativeBridge
+
+395
+00:16:05,070 --> 00:16:06,890
+and how it all fits together,
+
+396
+00:16:06,890 --> 00:16:08,270
+let's start thinking deeper
+
+397
+00:16:08,270 --> 00:16:11,090
+into how the interpreter part works,
+
+398
+00:16:11,090 --> 00:16:14,350
+and starting with memory.
+
+399
+00:16:14,350 --> 00:16:17,900
+So, the emulation is a dual architecture,
+
+400
+00:16:17,900 --> 00:16:20,407
+so it contains both separate ARM
+
+401
+00:16:20,407 --> 00:16:22,840
+and x86 binaries.
+
+402
+00:16:22,840 --> 00:16:24,750
+And it is a shared virtual address space,
+
+403
+00:16:24,750 --> 00:16:26,430
+as well as they both have
+
+404
+00:16:26,430 --> 00:16:28,640
+real world view of memory.
+
+405
+00:16:28,640 --> 00:16:29,980
+So what that means is
+
+406
+00:16:29,980 --> 00:16:33,440
+the x86 parts of the process
+
+407
+00:16:33,440 --> 00:16:35,620
+and the ARM parts of the process view
+
+408
+00:16:35,620 --> 00:16:37,310
+the memory the same way.
+
+409
+00:16:37,310 --> 00:16:38,900
+And they're in the same,
+
+410
+00:16:38,900 --> 00:16:40,290
+they're in the same address space.
+
+411
+00:16:40,290 --> 00:16:42,730
+So there's no magic translation
+
+412
+00:16:42,730 --> 00:16:47,730
+between an ARM address
+versus an x86 address.
+
+413
+00:16:47,800 --> 00:16:49,420
+And the last point is,
+
+414
+00:16:49,420 --> 00:16:52,320
+there is a separate
+allocation for ARM stack.
+
+415
+00:16:52,320 --> 00:16:56,710
+And just to, just to show,
+
+416
+00:16:56,710 --> 00:16:57,543
+this is a snippet
+
+417
+00:16:57,543 --> 00:16:59,780
+from one of the app's process memory,
+
+418
+00:16:59,780 --> 00:17:00,613
+memory map.
+
+419
+00:17:02,580 --> 00:17:05,010
+We see here our native
+libraries loaded up there.
+
+420
+00:17:05,010 --> 00:17:06,810
+And on down there,
+
+421
+00:17:06,810 --> 00:17:08,453
+we have our libhoudini loaded.
+
+422
+00:17:10,016 --> 00:17:10,849
+You could also see
+
+423
+00:17:10,849 --> 00:17:13,540
+a bunch of ARM libraries loaded
+
+424
+00:17:13,540 --> 00:17:15,173
+that's used by our native code.
+
+425
+00:17:16,720 --> 00:17:18,796
+The next one is, yeah.
+
+426
+00:17:18,796 --> 00:17:21,270
+Specifically libc and a couple of others,
+
+427
+00:17:21,270 --> 00:17:25,393
+we could see are loaded
+for both ARM and x86.
+
+428
+00:17:27,000 --> 00:17:27,833
+And you also see
+
+429
+00:17:27,833 --> 00:17:29,380
+a bunch of anonymously map pages,
+
+430
+00:17:29,380 --> 00:17:31,940
+which is used internally by libhoudini.
+
+431
+00:17:31,940 --> 00:17:36,070
+And our ARM stack lives
+
+432
+00:17:36,070 --> 00:17:37,773
+somewhere in or around there.
+
+433
+00:17:38,790 --> 00:17:39,710
+So moving on,
+
+434
+00:17:39,710 --> 00:17:42,060
+I want to talk about the
+actual execution loop.
+
+435
+00:17:43,670 --> 00:17:45,270
+So I mentioned earlier,
+
+436
+00:17:45,270 --> 00:17:46,880
+it's essentially a switch statement
+
+437
+00:17:46,880 --> 00:17:47,963
+inside while loop.
+
+438
+00:17:48,980 --> 00:17:50,220
+So this screenshot shows
+
+439
+00:17:50,220 --> 00:17:52,920
+the portion of the interpreter
+
+440
+00:17:52,920 --> 00:17:54,010
+where it would like,
+
+441
+00:17:54,010 --> 00:17:55,380
+it would fetch,
+
+442
+00:17:55,380 --> 00:17:56,760
+it would read the instruction,
+
+443
+00:17:56,760 --> 00:17:58,560
+it would partially decode it,
+
+444
+00:17:58,560 --> 00:18:00,963
+and then jump to the
+proper instruction handler.
+
+445
+00:18:02,270 --> 00:18:04,320
+So in this assembly,
+
+446
+00:18:04,320 --> 00:18:06,160
+I have the comments on the right,
+
+447
+00:18:06,160 --> 00:18:08,810
+but I do have a equivalency code
+
+448
+00:18:08,810 --> 00:18:09,733
+on the next slide.
+
+449
+00:18:12,010 --> 00:18:16,270
+So basically I'll run
+through this real quick.
+
+450
+00:18:16,270 --> 00:18:20,270
+The snippet of code
+gets the program counter
+
+451
+00:18:20,270 --> 00:18:21,930
+from the processor state,
+
+452
+00:18:21,930 --> 00:18:24,250
+reads the instruction from memory,
+
+453
+00:18:24,250 --> 00:18:25,680
+and then checks the condition bit,
+
+454
+00:18:25,680 --> 00:18:28,240
+condition field.
+
+455
+00:18:28,240 --> 00:18:29,073
+Condition code?
+
+456
+00:18:29,073 --> 00:18:31,300
+Yeah, condition code to determine
+
+457
+00:18:31,300 --> 00:18:32,640
+whether the current instruction should be
+
+458
+00:18:32,640 --> 00:18:34,010
+executed or not.
+
+459
+00:18:34,010 --> 00:18:36,300
+Once it determines that it should,
+
+460
+00:18:36,300 --> 00:18:37,760
+it calculates this offset
+
+461
+00:18:37,760 --> 00:18:41,060
+by concatenating bits 20-27
+
+462
+00:18:41,060 --> 00:18:42,003
+and the bits 4-7.
+
+463
+00:18:43,250 --> 00:18:46,230
+So that offset is used as the entry offset
+
+464
+00:18:46,230 --> 00:18:48,890
+into this instruction handler table,
+
+465
+00:18:48,890 --> 00:18:49,723
+which has filled with
+
+466
+00:18:49,723 --> 00:18:51,110
+a bunch of function pointers
+
+467
+00:18:51,110 --> 00:18:52,333
+to instruction handlers.
+
+468
+00:18:55,049 --> 00:18:56,210
+And then it jumps to it.
+
+469
+00:18:56,210 --> 00:18:57,960
+So for example,
+
+470
+00:18:57,960 --> 00:19:00,730
+our "mov r0, r1" instruction has
+
+471
+00:19:00,730 --> 00:19:04,730
+the entry offset of 0x1A1.
+
+472
+00:19:04,730 --> 00:19:06,900
+And each entry is a 32-bit address.
+
+473
+00:19:06,900 --> 00:19:08,320
+So multiply by four bytes,
+
+474
+00:19:08,320 --> 00:19:10,340
+we get 0x684.
+
+475
+00:19:10,340 --> 00:19:12,640
+And then, so the final offset,
+
+476
+00:19:12,640 --> 00:19:15,540
+final address that this
+function pointer is in,
+
+477
+00:19:15,540 --> 00:19:16,667
+is 4BC044.
+
+478
+00:19:18,200 --> 00:19:21,503
+And we could see that right here.
+
+479
+00:19:22,700 --> 00:19:26,279
+If I look at it through a disassembler.
+
+480
+00:19:26,279 --> 00:19:27,280
+At that address,
+
+481
+00:19:27,280 --> 00:19:29,529
+we see a pointer to our function handler,
+
+482
+00:19:29,529 --> 00:19:30,529
+instr_mov_1.
+
+483
+00:19:32,965 --> 00:19:34,170
+And just note that
+
+484
+00:19:34,170 --> 00:19:37,000
+this decompilation is
+not entirely correct,
+
+485
+00:19:37,000 --> 00:19:37,900
+but already we could see
+
+486
+00:19:37,900 --> 00:19:42,030
+in around lines 22, 23 and 27,
+
+487
+00:19:42,030 --> 00:19:44,080
+we see some registers being moved around.
+
+488
+00:19:47,000 --> 00:19:50,130
+And even some shifting and masking
+
+489
+00:19:51,020 --> 00:19:53,400
+because mov instruction has the option
+
+490
+00:19:53,400 --> 00:19:54,233
+to do that.
+
+491
+00:19:56,080 --> 00:20:00,773
+The important thing to
+look at is that the,
+
+492
+00:20:02,330 --> 00:20:04,110
+all of the instruction handlers have
+
+493
+00:20:04,110 --> 00:20:05,910
+two parameters that's passed in.
+
+494
+00:20:05,910 --> 00:20:08,170
+The first is the instruction itself,
+
+495
+00:20:08,170 --> 00:20:09,630
+the instruction bytes,
+
+496
+00:20:09,630 --> 00:20:11,230
+so that the handler,
+
+497
+00:20:11,230 --> 00:20:12,250
+the instruction handler could
+
+498
+00:20:12,250 --> 00:20:13,910
+pull out the operands
+
+499
+00:20:13,910 --> 00:20:16,380
+and fully decode it.
+
+500
+00:20:16,380 --> 00:20:19,740
+And the second argument
+is the processor state.
+
+501
+00:20:19,740 --> 00:20:21,593
+And it is basically what it is.
+
+502
+00:20:21,593 --> 00:20:23,610
+It's this data structure
+
+503
+00:20:23,610 --> 00:20:27,970
+that keeps track of the ARM,
+
+504
+00:20:27,970 --> 00:20:30,560
+emulator ARM's processor state,
+
+505
+00:20:30,560 --> 00:20:32,510
+but mostly continues to register values
+
+506
+00:20:33,470 --> 00:20:35,250
+such as, you know, "r0, r1,"
+
+507
+00:20:35,250 --> 00:20:36,610
+but also registers such as
+
+508
+00:20:36,610 --> 00:20:39,010
+the program counter, stack pointer,
+
+509
+00:20:39,010 --> 00:20:41,033
+link register, and so on.
+
+510
+00:20:42,320 --> 00:20:45,540
+It also contains a byte that tells you
+
+511
+00:20:45,540 --> 00:20:47,293
+whether it's in thumb mode or not,
+
+512
+00:20:48,490 --> 00:20:50,090
+and there's a bunch of other fields,
+
+513
+00:20:50,090 --> 00:20:51,410
+but I couldn't really figure out
+
+514
+00:20:51,410 --> 00:20:52,963
+what all of those do.
+
+515
+00:20:55,490 --> 00:20:56,323
+Note that this is just
+
+516
+00:20:56,323 --> 00:21:01,060
+the data structure in memory.
+
+517
+00:21:01,060 --> 00:21:03,990
+And they have shared memory addresses
+
+518
+00:21:03,990 --> 00:21:06,160
+between the x86 and the ARM side.
+
+519
+00:21:06,160 --> 00:21:09,240
+So you can technically just,
+
+520
+00:21:09,240 --> 00:21:11,620
+if you find that you could write values
+
+521
+00:21:11,620 --> 00:21:13,370
+to these registers,
+
+522
+00:21:13,370 --> 00:21:15,350
+to this struct to change
+and register values
+
+523
+00:21:15,350 --> 00:21:16,183
+inside of ARM.
+
+524
+00:21:17,770 --> 00:21:18,730
+So the next thing
+
+525
+00:21:18,730 --> 00:21:22,530
+I took a look at was the syscalls.
+
+526
+00:21:22,530 --> 00:21:23,893
+Trying to figure out how syscalls work.
+
+527
+00:21:26,372 --> 00:21:28,840
+Syscalls adjust instructions as well.
+
+528
+00:21:28,840 --> 00:21:29,860
+They're special instructions,
+
+529
+00:21:29,860 --> 00:21:30,910
+but they are instructions.
+
+530
+00:21:30,910 --> 00:21:32,510
+So we could actually find them
+
+531
+00:21:32,510 --> 00:21:34,583
+in the instruction handler table.
+
+532
+00:21:36,943 --> 00:21:37,776
+We could see on the right,
+
+533
+00:21:37,776 --> 00:21:38,650
+it takes the same parameters,
+
+534
+00:21:38,650 --> 00:21:41,260
+the instruction and the processor state.
+
+535
+00:21:41,260 --> 00:21:43,700
+This is also not entirely correct,
+
+536
+00:21:43,700 --> 00:21:45,460
+the decompilation,
+
+537
+00:21:45,460 --> 00:21:47,570
+but we could see that it,
+
+538
+00:21:47,570 --> 00:21:51,280
+it actually doesn't
+issue any x86 syscalls,
+
+539
+00:21:51,280 --> 00:21:55,350
+but rather it just sets
+that SVC number field
+
+540
+00:21:55,350 --> 00:21:57,703
+in the processor state and returns.
+
+541
+00:21:58,870 --> 00:22:03,870
+So the actual switch
+for issuing x86 syscalls
+
+542
+00:22:05,200 --> 00:22:07,350
+is further down that,
+
+543
+00:22:07,350 --> 00:22:10,150
+that loop in the interpreter,
+
+544
+00:22:10,150 --> 00:22:13,310
+and depending on which
+syscall number it is,
+
+545
+00:22:13,310 --> 00:22:14,860
+it will do different things.
+
+546
+00:22:14,860 --> 00:22:15,740
+Most of the time,
+
+547
+00:22:15,740 --> 00:22:17,790
+it's just simple wrappers or pastors
+
+548
+00:22:17,790 --> 00:22:19,160
+with some conversion
+
+549
+00:22:19,160 --> 00:22:22,550
+between like moving the ARM register value
+
+550
+00:22:22,550 --> 00:22:24,390
+to the actual x86 register
+
+551
+00:22:24,390 --> 00:22:27,560
+and calling int 80 in x86.
+
+552
+00:22:27,560 --> 00:22:30,310
+Or just simple, you know, conversions.
+
+553
+00:22:30,310 --> 00:22:32,771
+But some of them are a
+little more complicated
+
+554
+00:22:32,771 --> 00:22:33,633
+than the other.
+
+555
+00:22:34,510 --> 00:22:36,050
+One such example that was
+
+556
+00:22:36,050 --> 00:22:39,193
+of interest to us was the clones call.
+
+557
+00:22:40,300 --> 00:22:42,410
+And I've actually combined
+fork and clone here
+
+558
+00:22:42,410 --> 00:22:44,490
+because nowadays if you call fork,
+
+559
+00:22:44,490 --> 00:22:46,280
+it'll go to libc fork,
+
+560
+00:22:46,280 --> 00:22:47,933
+which would actually call clone.
+
+561
+00:22:49,300 --> 00:22:51,580
+So, clone was also very interesting
+
+562
+00:22:51,580 --> 00:22:54,930
+because it has a parameter there
+
+563
+00:22:54,930 --> 00:22:56,980
+to pass in called child_stack.
+
+564
+00:22:56,980 --> 00:23:01,010
+And you pass in a memory region,
+
+565
+00:23:01,010 --> 00:23:03,370
+which will be used as a child_stack.
+
+566
+00:23:03,370 --> 00:23:05,930
+And on top of that set stack will be
+
+567
+00:23:05,930 --> 00:23:07,500
+the return address
+
+568
+00:23:07,500 --> 00:23:10,280
+so that when the child is cloned,
+
+569
+00:23:10,280 --> 00:23:13,740
+it'll return and that address becomes
+
+570
+00:23:13,740 --> 00:23:16,793
+the entry point of our child process.
+
+571
+00:23:18,580 --> 00:23:19,413
+Now, we were wondering
+
+572
+00:23:19,413 --> 00:23:21,677
+how that gets handled by the Houdini,
+
+573
+00:23:21,677 --> 00:23:24,050
+and it turns out the child_stack
+
+574
+00:23:24,050 --> 00:23:26,330
+we pass in is not passed to the kernel,
+
+575
+00:23:26,330 --> 00:23:29,610
+but instead libhoudini creates
+
+576
+00:23:29,610 --> 00:23:32,210
+its own empty RWX page
+
+577
+00:23:32,210 --> 00:23:35,080
+and passes that as the child stack
+
+578
+00:23:35,080 --> 00:23:37,690
+and handles the parent and child logic.
+
+579
+00:23:37,690 --> 00:23:39,150
+So now that we have some ideas
+
+580
+00:23:39,150 --> 00:23:41,280
+on how it works internally,
+
+581
+00:23:41,280 --> 00:23:42,980
+let's get to the fun stuff.
+
+582
+00:23:42,980 --> 00:23:43,813
+So,
+
+583
+00:23:44,760 --> 00:23:45,593
+detection.
+
+584
+00:23:47,220 --> 00:23:48,690
+Is there ways we could detect
+
+585
+00:23:48,690 --> 00:23:50,890
+whether we're running as an app,
+
+586
+00:23:50,890 --> 00:23:53,023
+we're running inside of libhoudini or not?
+
+587
+00:23:54,080 --> 00:23:55,200
+We came up with a couple of ways
+
+588
+00:23:55,200 --> 00:23:56,763
+and the first way would be,
+
+589
+00:23:58,587 --> 00:23:59,990
+we build an ARM native app.
+
+590
+00:23:59,990 --> 00:24:01,020
+And in that app,
+
+591
+00:24:01,020 --> 00:24:03,180
+we could check the host architecture,
+
+592
+00:24:03,180 --> 00:24:05,610
+either via Java's os.arch system property
+
+593
+00:24:05,610 --> 00:24:09,143
+or by reading the /proc/cpuinfo.
+
+594
+00:24:11,470 --> 00:24:12,303
+But as it turns out,
+
+595
+00:24:12,303 --> 00:24:13,180
+you actually can't do that
+
+596
+00:24:13,180 --> 00:24:15,363
+because Houdini hides these.
+
+597
+00:24:16,220 --> 00:24:17,560
+So when you do os.arch,
+
+598
+00:24:17,560 --> 00:24:19,023
+System.getProperty,
+
+599
+00:24:19,870 --> 00:24:22,830
+libhoudini makes us say armv7l
+
+600
+00:24:24,960 --> 00:24:25,850
+from the Java side,
+
+601
+00:24:25,850 --> 00:24:27,750
+when you're running with NativeBridge.
+
+602
+00:24:30,167 --> 00:24:32,067
+And when you try to cat /proc/cpuinfo,
+
+603
+00:24:34,451 --> 00:24:35,360
+it would actually return
+
+604
+00:24:35,360 --> 00:24:37,797
+ARMv8 processor rev 1 (aarch64).
+
+605
+00:24:41,050 --> 00:24:42,470
+Actually, if you're careful,
+
+606
+00:24:42,470 --> 00:24:43,970
+you might be able to tell
+
+607
+00:24:43,970 --> 00:24:45,070
+whether you're running under Houdini
+
+608
+00:24:45,070 --> 00:24:48,780
+because there seems to
+be some inconsistency,
+
+609
+00:24:48,780 --> 00:24:50,650
+because one of them would've turned on v7,
+
+610
+00:24:50,650 --> 00:24:52,320
+the other one would've turned on v8,
+
+611
+00:24:52,320 --> 00:24:55,237
+and hardware says
+"placeholder," funny enough.
+
+612
+00:24:56,570 --> 00:24:58,890
+So there are some other ways as well.
+
+613
+00:24:58,890 --> 00:25:01,640
+So checking the memory map,
+
+614
+00:25:01,640 --> 00:25:04,020
+you could try to read the memory maps
+
+615
+00:25:04,020 --> 00:25:06,860
+and see if either libhoudini is loaded
+
+616
+00:25:06,860 --> 00:25:10,583
+or both ARM and our x86
+libraries are loaded.
+
+617
+00:25:14,800 --> 00:25:16,530
+So these are okay methods,
+
+618
+00:25:16,530 --> 00:25:18,300
+but we think the best ways are
+
+619
+00:25:18,300 --> 00:25:21,730
+those that are undetectable itself.
+
+620
+00:25:21,730 --> 00:25:24,010
+So like no syscall issues,
+
+621
+00:25:24,010 --> 00:25:25,690
+no files being opened,
+
+622
+00:25:25,690 --> 00:25:30,223
+anything that would
+trigger an analysis tool,
+
+623
+00:25:31,130 --> 00:25:32,250
+you know.
+
+624
+00:25:32,250 --> 00:25:34,490
+So the method I came up with was using
+
+625
+00:25:34,490 --> 00:25:37,650
+the JNIEnv function pointer.
+
+626
+00:25:37,650 --> 00:25:38,483
+So I mentioned earlier,
+
+627
+00:25:38,483 --> 00:25:39,933
+if you're on a real device,
+
+628
+00:25:40,840 --> 00:25:44,230
+I mentioned earlier
+that libhoudini creates
+
+629
+00:25:44,230 --> 00:25:45,640
+its own ARM version
+
+630
+00:25:45,640 --> 00:25:49,740
+of the JNIEnv structure function pointers.
+
+631
+00:25:49,740 --> 00:25:51,940
+Now, if you're on a real device,
+
+632
+00:25:51,940 --> 00:25:53,860
+those functions pointers would point
+
+633
+00:25:53,860 --> 00:25:55,593
+to real ARM opcodes.
+
+634
+00:25:56,760 --> 00:25:59,220
+But if you're running under libhoudini,
+
+635
+00:25:59,220 --> 00:26:01,340
+the function pointers will point to
+
+636
+00:26:01,340 --> 00:26:04,210
+also real ARM instructions,
+
+637
+00:26:04,210 --> 00:26:07,940
+but those would be syscall instructions.
+
+638
+00:26:07,940 --> 00:26:10,163
+I'll have a quick
+demonstration of that later.
+
+639
+00:26:12,490 --> 00:26:14,050
+So the next thing is,
+
+640
+00:26:14,050 --> 00:26:14,883
+once we detect
+
+641
+00:26:14,883 --> 00:26:16,663
+that we're running inside libhoudini,
+
+642
+00:26:17,520 --> 00:26:19,683
+can we escape to x86 with it?
+
+643
+00:26:20,670 --> 00:26:23,050
+So of course we could call mprotect
+
+644
+00:26:23,050 --> 00:26:24,383
+and write code to memory.
+
+645
+00:26:25,520 --> 00:26:27,040
+But again, this isn't very subtle.
+
+646
+00:26:27,040 --> 00:26:28,220
+We would need to call mprotect,
+
+647
+00:26:28,220 --> 00:26:30,730
+which would probably trigger
+
+648
+00:26:30,730 --> 00:26:32,263
+most of the analysis tools.
+
+649
+00:26:34,440 --> 00:26:36,240
+And another way we could try to do this is
+
+650
+00:26:36,240 --> 00:26:38,910
+by x86 stack manipulations.
+
+651
+00:26:38,910 --> 00:26:41,580
+We know approximately
+where the x86 stack is.
+
+652
+00:26:41,580 --> 00:26:42,930
+So we could try to clobber the stack
+
+653
+00:26:42,930 --> 00:26:43,900
+with ROP payloads
+
+654
+00:26:43,900 --> 00:26:45,500
+and have it jumped to somewhere.
+
+655
+00:26:47,060 --> 00:26:49,530
+This method is much more annoying,
+
+656
+00:26:49,530 --> 00:26:51,720
+but one of the harder parts is trying
+
+657
+00:26:51,720 --> 00:26:52,553
+to figure out
+
+658
+00:26:52,553 --> 00:26:54,630
+where we could actually run our code.
+
+659
+00:26:54,630 --> 00:26:57,090
+So we need to find a page
+
+660
+00:26:57,090 --> 00:26:58,480
+that has execute permissions
+
+661
+00:26:58,480 --> 00:27:00,030
+or try to find a bunch of,
+
+662
+00:27:00,030 --> 00:27:01,403
+a lot of raw payloads.
+
+663
+00:27:03,210 --> 00:27:06,243
+That brings us to security concerns.
+
+664
+00:27:08,750 --> 00:27:10,600
+It turns out libhoudini uses,
+
+665
+00:27:10,600 --> 00:27:15,270
+creates a bunch of RWX
+pages they use internally.
+
+666
+00:27:15,270 --> 00:27:16,103
+And we see,
+
+667
+00:27:16,103 --> 00:27:17,090
+we saw one of these for that,
+
+668
+00:27:17,090 --> 00:27:19,140
+which has been used for the clone's call.
+
+669
+00:27:20,280 --> 00:27:22,180
+And they have read, write,
+
+670
+00:27:22,180 --> 00:27:23,410
+and execute permissions,
+
+671
+00:27:23,410 --> 00:27:25,290
+which means we could
+write x86 code to them
+
+672
+00:27:25,290 --> 00:27:26,543
+and just jump to it.
+
+673
+00:27:28,100 --> 00:27:29,112
+And there are again, shared memory.
+
+674
+00:27:29,112 --> 00:27:30,550
+So we could write code
+
+675
+00:27:30,550 --> 00:27:32,100
+from either both x86 side
+
+676
+00:27:32,100 --> 00:27:33,253
+or from the ARM side.
+
+677
+00:27:35,210 --> 00:27:36,043
+So just to show you
+
+678
+00:27:36,043 --> 00:27:37,550
+what some of these are used for,
+
+679
+00:27:38,420 --> 00:27:39,840
+the ARM JNIEnv,
+
+680
+00:27:39,840 --> 00:27:43,440
+the ones filled with trap instructions,
+
+681
+00:27:43,440 --> 00:27:44,950
+isn't there.
+
+682
+00:27:44,950 --> 00:27:48,431
+The ARM stack is in that memory region.
+
+683
+00:27:48,431 --> 00:27:51,635
+So, back to security concerns.
+
+684
+00:27:51,635 --> 00:27:54,565
+We have RWX pages in x86.
+
+685
+00:27:54,565 --> 00:27:55,926
+So what about trying to get
+
+686
+00:27:55,926 --> 00:27:58,114
+code execution on ARM?
+
+687
+00:27:58,114 --> 00:27:59,572
+So it turns out Houdini ignores
+
+688
+00:27:59,572 --> 00:28:01,743
+this bit entirely.
+
+689
+00:28:02,672 --> 00:28:04,576
+Yeah.
+
+690
+00:28:04,576 --> 00:28:05,409
+Which just means,
+
+691
+00:28:05,409 --> 00:28:06,700
+you could load,
+
+692
+00:28:06,700 --> 00:28:09,295
+you could write code
+anywhere and jump to it.
+
+693
+00:28:09,295 --> 00:28:11,101
+And I don't think I need to explain
+
+694
+00:28:11,101 --> 00:28:13,283
+why that's an issue,
+
+695
+00:28:14,324 --> 00:28:15,157
+but yeah,
+
+696
+00:28:15,157 --> 00:28:16,585
+ARM libraries themselves are loaded
+
+697
+00:28:16,585 --> 00:28:19,333
+without the execute bit on their pages.
+
+698
+00:28:20,220 --> 00:28:24,205
+So regarding the behavior ignoring
+
+699
+00:28:24,205 --> 00:28:26,363
+the non-execute bit,
+
+700
+00:28:26,363 --> 00:28:27,460
+not that this is correct,
+
+701
+00:28:27,460 --> 00:28:28,421
+but if you think about it,
+
+702
+00:28:28,421 --> 00:28:30,301
+this kind of makes sense.
+
+703
+00:28:30,301 --> 00:28:33,620
+Houdini is an interpreter for ARM.
+
+704
+00:28:33,620 --> 00:28:37,434
+The interpreter gets the data input.
+
+705
+00:28:37,434 --> 00:28:38,276
+And that means,
+
+706
+00:28:38,276 --> 00:28:39,527
+if you could read the data,
+
+707
+00:28:39,527 --> 00:28:41,205
+read the instructions,
+
+708
+00:28:41,205 --> 00:28:42,976
+it will run it.
+
+709
+00:28:42,976 --> 00:28:44,589
+So to demonstrate that,
+
+710
+00:28:44,589 --> 00:28:47,666
+I got this little program here,
+
+711
+00:28:47,666 --> 00:28:49,357
+nx stack.c.
+
+712
+00:28:49,357 --> 00:28:50,708
+And in my main,
+
+713
+00:28:50,708 --> 00:28:52,967
+I allocate some memory
+
+714
+00:28:52,967 --> 00:28:55,187
+on the stack code[512],
+
+715
+00:28:55,187 --> 00:28:58,433
+and then I write two
+ARM instructions on it.
+
+716
+00:29:00,233 --> 00:29:02,690
+And then I make that cast them
+
+717
+00:29:02,690 --> 00:29:03,814
+to function pointers
+
+718
+00:29:03,814 --> 00:29:05,029
+and jump to it.
+
+719
+00:29:05,029 --> 00:29:06,591
+And normally on a real device,
+
+720
+00:29:06,591 --> 00:29:07,754
+real ARM device,
+
+721
+00:29:07,754 --> 00:29:09,791
+this will cause a SEC fault.
+
+722
+00:29:09,791 --> 00:29:12,152
+But as we see below, it doesn't.
+
+723
+00:29:12,152 --> 00:29:13,689
+It just works.
+
+724
+00:29:13,689 --> 00:29:17,504
+Actually, in the first
+iteration of this code,
+
+725
+00:29:17,504 --> 00:29:19,984
+I accidentally have the memory
+
+726
+00:29:19,984 --> 00:29:21,661
+outside of the function.
+
+727
+00:29:21,661 --> 00:29:23,711
+So it was in the data section
+
+728
+00:29:23,711 --> 00:29:26,234
+or some other region,
+
+729
+00:29:26,234 --> 00:29:28,283
+and it still worked perfectly fine.
+
+730
+00:29:29,863 --> 00:29:32,297
+Well, this runs fine
+
+731
+00:29:32,297 --> 00:29:36,551
+with devices running with libhoudini.
+
+732
+00:29:36,551 --> 00:29:39,400
+So the next step is
+
+733
+00:29:39,400 --> 00:29:41,923
+a couple of quick demos.
+
+734
+00:29:44,390 --> 00:29:45,789
+So, for the demo,
+
+735
+00:29:45,789 --> 00:29:47,849
+this is on the Chromebook.
+
+736
+00:29:47,849 --> 00:29:48,689
+And for the demo,
+
+737
+00:29:48,689 --> 00:29:49,840
+I wrote this app.
+
+738
+00:29:49,840 --> 00:29:51,292
+And I've actually built it,
+
+739
+00:29:51,292 --> 00:29:54,082
+built two separate versions of it.
+
+740
+00:29:54,082 --> 00:29:55,471
+It's the exact same source.
+
+741
+00:29:55,471 --> 00:29:57,244
+I just have two versions of it.
+
+742
+00:29:57,244 --> 00:30:00,377
+One is built with just x86 libraries,
+
+743
+00:30:00,377 --> 00:30:01,828
+our native code,
+
+744
+00:30:01,828 --> 00:30:06,828
+and one only contains the ARM binary.
+
+745
+00:30:06,971 --> 00:30:08,578
+So the top one is the x86 one
+
+746
+00:30:08,578 --> 00:30:10,665
+and the bottom one is the ARM.
+
+747
+00:30:10,665 --> 00:30:12,995
+And the Chromebook itself is x86.
+
+748
+00:30:12,995 --> 00:30:15,184
+So to run the bottom app,
+
+749
+00:30:15,184 --> 00:30:17,053
+it is running through libhoudini.
+
+750
+00:30:18,548 --> 00:30:22,053
+So the first tab is CPU info.
+
+751
+00:30:22,053 --> 00:30:23,271
+Well,
+
+752
+00:30:23,271 --> 00:30:24,360
+you know,
+
+753
+00:30:24,360 --> 00:30:26,121
+overturn the values
+that I mentioned before,
+
+754
+00:30:26,121 --> 00:30:28,362
+and the top one doesn't
+have any libhoudini.
+
+755
+00:30:28,362 --> 00:30:30,592
+It's running x86 on x86.
+
+756
+00:30:30,592 --> 00:30:31,950
+So all the values are correct.
+
+757
+00:30:31,950 --> 00:30:33,144
+We see GenuineIntel.
+
+758
+00:30:33,144 --> 00:30:35,962
+Everything's all nice.
+
+759
+00:30:35,962 --> 00:30:37,505
+Whereas on the bottom,
+
+760
+00:30:37,505 --> 00:30:40,200
+we're running it with libhoudini,
+
+761
+00:30:42,045 --> 00:30:43,647
+and we saw the output we saw before,
+
+762
+00:30:43,647 --> 00:30:45,695
+ARMv7, ARMv8.
+
+763
+00:30:45,695 --> 00:30:50,049
+Inconsistency, as well as
+hardware = placeholder.
+
+764
+00:30:50,049 --> 00:30:52,769
+The second tab demonstrates
+the GetVersion,
+
+765
+00:30:52,769 --> 00:30:55,472
+the detection method I quickly described,
+
+766
+00:30:55,472 --> 00:30:59,286
+but here we see on the x86,
+
+767
+00:30:59,286 --> 00:31:00,830
+when we do reference the GetVersion
+
+768
+00:31:00,830 --> 00:31:03,037
+and CallStaticMethod functions,
+
+769
+00:31:03,037 --> 00:31:03,870
+I believe, I mean,
+
+770
+00:31:03,870 --> 00:31:07,142
+those are valid x86 instructions.
+
+771
+00:31:07,142 --> 00:31:07,975
+I just,
+
+772
+00:31:07,975 --> 00:31:10,213
+I think those are a bunch
+of push instructions
+
+773
+00:31:10,213 --> 00:31:11,709
+as you've often seen
+
+774
+00:31:11,709 --> 00:31:13,863
+in the beginning of a function.
+
+775
+00:31:16,081 --> 00:31:17,289
+And on the bottom,
+
+776
+00:31:17,289 --> 00:31:20,653
+when we do the same thing, fetch all,
+
+777
+00:31:21,732 --> 00:31:23,098
+so this is running with libhoudini.
+
+778
+00:31:23,098 --> 00:31:25,150
+So we will see ARM instruction,
+
+779
+00:31:25,150 --> 00:31:30,150
+but specifically those
+instructions, 0xef000,
+
+780
+00:31:31,264 --> 00:31:34,183
+those are our syscall instructions.
+
+781
+00:31:35,093 --> 00:31:38,429
+So you could use that as a method
+
+782
+00:31:38,429 --> 00:31:42,893
+to detect whether libhoudini
+is running or not.
+
+783
+00:31:44,475 --> 00:31:47,103
+In this case, yeah.
+
+784
+00:31:47,103 --> 00:31:48,846
+So the third tab actually is not
+
+785
+00:31:48,846 --> 00:31:49,687
+for demonstration.
+
+786
+00:31:49,687 --> 00:31:52,120
+Just the utility to show you
+
+787
+00:31:52,120 --> 00:31:54,571
+the process's memory map.
+
+788
+00:31:54,571 --> 00:31:55,990
+So we're in x86.
+
+789
+00:31:55,990 --> 00:31:57,155
+There's no libhoudini.
+
+790
+00:31:57,155 --> 00:31:58,803
+And there should,
+
+791
+00:31:58,803 --> 00:32:00,909
+everything should look fine.
+
+792
+00:32:00,909 --> 00:32:01,913
+Right.
+
+793
+00:32:03,063 --> 00:32:05,573
+But when we look at the,
+
+794
+00:32:07,555 --> 00:32:10,085
+the ARM versions process map,
+
+795
+00:32:10,085 --> 00:32:12,461
+we see a bunch of anonymous map memory,
+
+796
+00:32:12,461 --> 00:32:14,368
+we see libhoudini right there.
+
+797
+00:32:14,368 --> 00:32:15,736
+And we should also see
+
+798
+00:32:15,736 --> 00:32:20,736
+our ARM libraries loaded in right there.
+
+799
+00:32:22,166 --> 00:32:23,082
+Okay.
+
+800
+00:32:23,082 --> 00:32:24,572
+So the,
+
+801
+00:32:24,572 --> 00:32:27,611
+I think the most interesting
+tab is the last tab,
+
+802
+00:32:27,611 --> 00:32:28,777
+the exec,
+
+803
+00:32:28,777 --> 00:32:31,587
+which demonstrates the NX bit
+
+804
+00:32:31,587 --> 00:32:33,360
+or the lack of NX bit check
+
+805
+00:32:33,360 --> 00:32:36,494
+on the ARM side with libhoudini.
+
+806
+00:32:36,494 --> 00:32:39,720
+So top one is running without libhoudini.
+
+807
+00:32:39,720 --> 00:32:40,659
+And just to kind of explain to you
+
+808
+00:32:40,659 --> 00:32:42,925
+what this layout is.
+
+809
+00:32:42,925 --> 00:32:43,758
+So on the left side,
+
+810
+00:32:43,758 --> 00:32:45,781
+you will write some bites.
+
+811
+00:32:45,781 --> 00:32:48,258
+That's going to get written to a buffer.
+
+812
+00:32:48,258 --> 00:32:50,270
+You're going to type in some bites,
+
+813
+00:32:50,270 --> 00:32:51,672
+and then you got to click run,
+
+814
+00:32:51,672 --> 00:32:53,366
+and then it will be
+passed to a native code
+
+815
+00:32:53,366 --> 00:32:55,232
+where those bites will be actually written
+
+816
+00:32:55,232 --> 00:32:58,966
+to memory and then jumped to.
+
+817
+00:32:58,966 --> 00:33:03,084
+However, the top one is our x86 version,
+
+818
+00:33:03,084 --> 00:33:06,819
+so obviously we can't run ARM instructions
+
+819
+00:33:06,819 --> 00:33:08,597
+and there's no libhoudini loaded.
+
+820
+00:33:08,597 --> 00:33:10,526
+So it's going to crash.
+
+821
+00:33:10,526 --> 00:33:12,623
+That was the intended behavior.
+
+822
+00:33:12,623 --> 00:33:17,622
+However, on apps that's
+running with libhoudini
+
+823
+00:33:17,622 --> 00:33:19,790
+we could actually just type in
+
+824
+00:33:19,790 --> 00:33:21,645
+valid ARM instructions, click run,
+
+825
+00:33:21,645 --> 00:33:23,943
+and it would run.
+
+826
+00:33:23,943 --> 00:33:24,909
+And I have a couple
+
+827
+00:33:24,909 --> 00:33:27,203
+of different programs written up there
+
+828
+00:33:27,203 --> 00:33:29,403
+because I don't want
+to type it up manually.
+
+829
+00:33:30,441 --> 00:33:31,888
+Run and then multiply,
+
+830
+00:33:31,888 --> 00:33:33,994
+and multiply is r1 and r2,
+
+831
+00:33:33,994 --> 00:33:35,643
+and then adds it to r0.
+
+832
+00:33:37,323 --> 00:33:38,156
+That's correct.
+
+833
+00:33:38,156 --> 00:33:41,708
+And getSP actually reads the stack pointer
+
+834
+00:33:41,708 --> 00:33:46,708
+of the ARM processor and returns it.
+
+835
+00:33:48,342 --> 00:33:49,894
+And just to show you that this is dynamic,
+
+836
+00:33:49,894 --> 00:33:51,902
+these bytes are actually being copied,
+
+837
+00:33:51,902 --> 00:33:53,765
+I could change the actual bytes
+
+838
+00:33:53,765 --> 00:33:55,363
+of the instruction.
+
+839
+00:33:56,587 --> 00:33:59,423
+Register 15 will be reading the PC.
+
+840
+00:34:00,534 --> 00:34:02,494
+I could also modify it.
+
+841
+00:34:02,494 --> 00:34:05,204
+So the left side is completely changeable.
+
+842
+00:34:05,204 --> 00:34:08,857
+As long as it's executable
+ARM instructions,
+
+843
+00:34:08,857 --> 00:34:09,792
+it will run it.
+
+844
+00:34:09,792 --> 00:34:11,984
+I changed the one to a two or three
+
+845
+00:34:11,984 --> 00:34:13,846
+and would add three.
+
+846
+00:34:13,846 --> 00:34:16,790
+Same thing for adding two integers.
+
+847
+00:34:16,790 --> 00:34:18,890
+I added three times.
+
+848
+00:34:18,890 --> 00:34:23,890
+So 2 times 3 plus 6 is 13.
+
+849
+00:34:23,957 --> 00:34:26,618
+So just for completeness,
+
+850
+00:34:26,618 --> 00:34:27,971
+I have the same app,
+
+851
+00:34:27,971 --> 00:34:30,861
+but now it's running on a real ARM device.
+
+852
+00:34:30,861 --> 00:34:35,672
+So this device happened to be on v8.
+
+853
+00:34:35,672 --> 00:34:39,833
+So we'll stay on v8 and aarch64 processor.
+
+854
+00:34:42,180 --> 00:34:43,068
+It's going to all look correct.
+
+855
+00:34:43,068 --> 00:34:46,257
+There's no libhoudini running on this
+
+856
+00:34:46,257 --> 00:34:50,153
+because it's an ARM
+device running ARM code.
+
+857
+00:34:51,094 --> 00:34:53,717
+So we go to the detect tab.
+
+858
+00:34:53,717 --> 00:34:55,962
+Let's skip to it.
+
+859
+00:34:55,962 --> 00:34:56,795
+We go to detect tab.
+
+860
+00:34:56,795 --> 00:34:59,112
+We see just valid ARM instructions
+
+861
+00:34:59,112 --> 00:35:00,653
+that are not,
+
+862
+00:35:01,530 --> 00:35:03,280
+they're not syscalls.
+
+863
+00:35:06,124 --> 00:35:08,741
+And in the maps, you know,
+
+864
+00:35:08,741 --> 00:35:10,802
+this should also be fine.
+
+865
+00:35:10,802 --> 00:35:12,742
+Completely fine.
+
+866
+00:35:12,742 --> 00:35:14,356
+No Houdini.
+
+867
+00:35:14,356 --> 00:35:15,785
+No, yeah.
+
+868
+00:35:15,785 --> 00:35:17,606
+And of course,
+
+869
+00:35:17,606 --> 00:35:19,481
+this is not running with libhoudini.
+
+870
+00:35:19,481 --> 00:35:21,624
+This is just running
+on actual ARM hardware.
+
+871
+00:35:21,624 --> 00:35:24,355
+So when we try to copy these bytes
+
+872
+00:35:24,355 --> 00:35:26,496
+into malloc memory
+
+873
+00:35:26,496 --> 00:35:28,484
+or stack with the heap,
+
+874
+00:35:28,484 --> 00:35:31,232
+and then jumped to it, it would crash.
+
+875
+00:35:31,232 --> 00:35:33,203
+And it does.
+
+876
+00:35:36,352 --> 00:35:37,814
+With demos out of the way,
+
+877
+00:35:37,814 --> 00:35:39,567
+let's now talk about possibilities
+
+878
+00:35:39,567 --> 00:35:42,461
+of malware that knows about libhoudini.
+
+879
+00:35:42,461 --> 00:35:43,294
+To start, we know that
+
+880
+00:35:43,294 --> 00:35:44,539
+applications are often run
+
+881
+00:35:44,539 --> 00:35:46,962
+in sandbox environments for analysis.
+
+882
+00:35:46,962 --> 00:35:49,951
+This is mainly done in one of three ways.
+
+883
+00:35:49,951 --> 00:35:52,051
+Running them on actual devices would give
+
+884
+00:35:52,051 --> 00:35:54,009
+the most realistic behaviors,
+
+885
+00:35:54,009 --> 00:35:55,500
+but it is hard to do on a large scale
+
+886
+00:35:55,500 --> 00:35:57,663
+and also hard to instrument.
+
+887
+00:35:58,618 --> 00:35:59,891
+The second best option is
+
+888
+00:35:59,891 --> 00:36:02,791
+fully virtualized environments, like QEMU.
+
+889
+00:36:02,791 --> 00:36:06,020
+but these have somewhat,
+
+890
+00:36:06,020 --> 00:36:07,000
+a performance overhead
+
+891
+00:36:07,000 --> 00:36:08,433
+since they would have to emulate
+
+892
+00:36:08,433 --> 00:36:11,695
+the entire hardware and the processor.
+
+893
+00:36:11,695 --> 00:36:14,169
+And that brings us to our third option,
+
+894
+00:36:14,169 --> 00:36:15,717
+Android emulators.
+
+895
+00:36:15,717 --> 00:36:20,340
+And those Android emulators on x86 devices
+
+896
+00:36:21,272 --> 00:36:23,005
+can use technology like Houdini
+
+897
+00:36:23,005 --> 00:36:24,691
+to run ARM applications.
+
+898
+00:36:24,691 --> 00:36:26,016
+This has the least overhead
+
+899
+00:36:26,016 --> 00:36:28,602
+as would only emulate
+parts of the application
+
+900
+00:36:28,602 --> 00:36:31,494
+instead of the whole hardware
+
+901
+00:36:31,494 --> 00:36:34,227
+and the operating system.
+
+902
+00:36:34,227 --> 00:36:36,422
+And on another point,
+
+903
+00:36:36,422 --> 00:36:37,596
+most of you would agree
+
+904
+00:36:37,596 --> 00:36:39,610
+that inconsistent behaviors are
+
+905
+00:36:39,610 --> 00:36:41,197
+harder to debug.
+
+906
+00:36:41,197 --> 00:36:42,362
+And similarly, apps that may
+
+907
+00:36:42,362 --> 00:36:44,718
+or may not have behaved maliciously are
+
+908
+00:36:44,718 --> 00:36:46,162
+harder to detect
+
+909
+00:36:46,162 --> 00:36:48,694
+and are also harder to analyze.
+
+910
+00:36:48,694 --> 00:36:51,158
+So let's combine those points.
+
+911
+00:36:51,158 --> 00:36:52,608
+And so for example,
+
+912
+00:36:52,608 --> 00:36:53,520
+a malware can use one
+
+913
+00:36:53,520 --> 00:36:56,313
+of those detection methods
+mentioned previously
+
+914
+00:36:56,313 --> 00:36:57,485
+to figure out whether or not
+
+915
+00:36:57,485 --> 00:36:59,710
+it is running with libhoudini.
+
+916
+00:36:59,710 --> 00:37:01,032
+Then it's possible for them now
+
+917
+00:37:01,032 --> 00:37:03,459
+to act benevolently when it thinks
+
+918
+00:37:03,459 --> 00:37:05,067
+it is under analysis
+
+919
+00:37:05,067 --> 00:37:08,640
+by seeing that libhoudini is being used.
+
+920
+00:37:08,640 --> 00:37:09,828
+And in other cases,
+
+921
+00:37:09,828 --> 00:37:11,695
+show malicious behaviors
+
+922
+00:37:11,695 --> 00:37:14,583
+when libhoudini is not present.
+
+923
+00:37:16,370 --> 00:37:17,203
+Yeah.
+
+924
+00:37:17,203 --> 00:37:21,228
+So what about the other way around?
+
+925
+00:37:21,228 --> 00:37:22,905
+We could also perform malicious actions
+
+926
+00:37:22,905 --> 00:37:26,331
+only when Houdini is present,
+
+927
+00:37:26,331 --> 00:37:28,408
+abusing the knowledge
+of its inner workings
+
+928
+00:37:28,408 --> 00:37:30,653
+to further obfuscate itself.
+
+929
+00:37:30,653 --> 00:37:31,780
+And for example,
+
+930
+00:37:31,780 --> 00:37:33,952
+we don't know what the
+play store uses nowadays,
+
+931
+00:37:33,952 --> 00:37:36,583
+but it seems like
+
+932
+00:37:36,583 --> 00:37:40,182
+their automatic app testing doesn't use,
+
+933
+00:37:40,182 --> 00:37:44,860
+doesn't run ARM APKs
+on x86 with libhoudini.
+
+934
+00:37:44,860 --> 00:37:47,897
+In a case like this,
+
+935
+00:37:47,897 --> 00:37:50,420
+a malware could detect
+
+936
+00:37:50,420 --> 00:37:53,477
+that it's running on,
+
+937
+00:37:53,477 --> 00:37:56,161
+well, it's not under analysis,
+
+938
+00:37:56,161 --> 00:37:57,979
+and when it is running under libhoudini,
+
+939
+00:37:57,979 --> 00:38:02,841
+for example, inside an
+commercial emulator,
+
+940
+00:38:02,841 --> 00:38:04,343
+then it could do some tricks
+
+941
+00:38:04,343 --> 00:38:07,006
+like running code from the stack,
+
+942
+00:38:07,006 --> 00:38:08,920
+which you can't do on a real device.
+
+943
+00:38:08,920 --> 00:38:13,238
+And trying to analyze that would prove
+
+944
+00:38:13,238 --> 00:38:14,261
+to be difficult
+
+945
+00:38:14,261 --> 00:38:18,287
+because a static analysis
+tool would see that
+
+946
+00:38:18,287 --> 00:38:19,923
+you write some code onto the stack
+
+947
+00:38:19,923 --> 00:38:20,859
+and it jumps to it.
+
+948
+00:38:20,859 --> 00:38:22,631
+And that should crash.
+
+949
+00:38:22,631 --> 00:38:24,737
+Whereas if you're running on libhoudini,
+
+950
+00:38:24,737 --> 00:38:26,695
+it works.
+
+951
+00:38:26,695 --> 00:38:29,819
+So we finally come to the recommendations
+
+952
+00:38:29,819 --> 00:38:32,042
+and how not to write an emulator.
+
+953
+00:38:32,042 --> 00:38:33,388
+And we could start by talking
+
+954
+00:38:33,388 --> 00:38:36,813
+about the RWX pages.
+
+955
+00:38:36,813 --> 00:38:41,057
+So we noticed that
+libhoudini internally uses,
+
+956
+00:38:41,057 --> 00:38:44,624
+well, libhoudini maps a bunch of RWX pages
+
+957
+00:38:44,624 --> 00:38:46,489
+to be used internally,
+
+958
+00:38:46,489 --> 00:38:50,131
+and those should not be there.
+
+959
+00:38:50,131 --> 00:38:51,657
+If it's really necessary,
+
+960
+00:38:51,657 --> 00:38:53,081
+we recommend performing
+
+961
+00:38:53,081 --> 00:38:56,722
+a finer-grain page permission control.
+
+962
+00:38:56,722 --> 00:38:58,810
+And one of those methods
+would be implementing
+
+963
+00:38:58,810 --> 00:39:02,296
+an efficient NX implementation.
+
+964
+00:39:02,296 --> 00:39:03,543
+So,
+
+965
+00:39:05,000 --> 00:39:07,917
+we understand that
+checking page permissions
+
+966
+00:39:07,917 --> 00:39:09,693
+every instruction would incur
+
+967
+00:39:09,693 --> 00:39:12,872
+a very significant overhead, right?
+
+968
+00:39:12,872 --> 00:39:14,175
+Every instruction you want to run,
+
+969
+00:39:14,175 --> 00:39:16,888
+it has to check the page permissions,
+
+970
+00:39:16,888 --> 00:39:18,809
+via software.
+
+971
+00:39:18,809 --> 00:39:20,323
+So instead what we could do is,
+
+972
+00:39:20,323 --> 00:39:22,706
+we keep track of it in a data structure,
+
+973
+00:39:22,706 --> 00:39:24,776
+and we only check
+
+974
+00:39:24,776 --> 00:39:28,149
+if the instruction we're
+currently running is
+
+975
+00:39:28,149 --> 00:39:32,026
+different than the previous instructions.
+
+976
+00:39:32,026 --> 00:39:33,803
+So in the case of jumps
+
+977
+00:39:33,803 --> 00:39:37,653
+or instructions across a page boundary.
+
+978
+00:39:37,653 --> 00:39:39,627
+We could check those.
+
+979
+00:39:39,627 --> 00:39:41,752
+So this basically becomes
+
+980
+00:39:41,752 --> 00:39:44,510
+our userland page table implementation.
+
+981
+00:39:44,510 --> 00:39:45,823
+Given that,
+
+982
+00:39:48,126 --> 00:39:53,035
+our recommendation is to
+just use virtualization.
+
+983
+00:39:53,035 --> 00:39:54,204
+Simple enough.
+
+984
+00:39:54,204 --> 00:39:57,517
+But regarding actually implementing
+
+985
+00:39:57,517 --> 00:40:01,215
+the userland page table via software,
+
+986
+00:40:01,215 --> 00:40:03,933
+we can do it a couple of ways, right?
+
+987
+00:40:03,933 --> 00:40:06,430
+We could only trust the text section
+
+988
+00:40:06,430 --> 00:40:09,840
+of the library on load.
+
+989
+00:40:09,840 --> 00:40:11,560
+And the other option is
+
+990
+00:40:13,035 --> 00:40:14,751
+to check the memory map
+
+991
+00:40:14,751 --> 00:40:17,551
+and every time a new page is added.
+
+992
+00:40:17,551 --> 00:40:18,811
+And then if a new page is added,
+
+993
+00:40:18,811 --> 00:40:20,904
+we add that to our data structure
+
+994
+00:40:20,904 --> 00:40:22,630
+that we keep track of.
+
+995
+00:40:22,630 --> 00:40:24,783
+And third, we could,
+
+996
+00:40:26,076 --> 00:40:31,076
+we could hook the memory
+mapping related syscalls,
+
+997
+00:40:31,132 --> 00:40:32,563
+and then,
+
+998
+00:40:33,535 --> 00:40:34,993
+add, whenever, for example,
+
+999
+00:40:34,993 --> 00:40:36,436
+mmap is called
+
+1000
+00:40:36,436 --> 00:40:37,463
+or mprotect is called
+
+1001
+00:40:37,463 --> 00:40:38,957
+with the execute permissions,
+
+1002
+00:40:38,957 --> 00:40:43,815
+we update our data structure accordingly.
+
+1003
+00:40:43,815 --> 00:40:45,975
+So ideal solution combines the last two,
+
+1004
+00:40:45,975 --> 00:40:47,565
+two and three.
+
+1005
+00:40:47,565 --> 00:40:49,280
+So it will,
+
+1006
+00:40:50,495 --> 00:40:52,452
+yeah, every time you do mmap or mprotect,
+
+1007
+00:40:52,452 --> 00:40:53,389
+for example,
+
+1008
+00:40:53,389 --> 00:40:57,461
+it would add an entry
+into our data structure
+
+1009
+00:40:57,461 --> 00:41:00,035
+that keeps track of the page permissions.
+
+1010
+00:41:00,035 --> 00:41:01,720
+And just as a catchall,
+
+1011
+00:41:01,720 --> 00:41:04,176
+we could check the memory map
+
+1012
+00:41:04,176 --> 00:41:08,003
+for new pages that's not already in there.
+
+1013
+00:41:08,003 --> 00:41:11,860
+And this has some good side effects,
+
+1014
+00:41:11,860 --> 00:41:13,737
+such as,
+
+1015
+00:41:13,737 --> 00:41:14,574
+we can now,
+
+1016
+00:41:14,574 --> 00:41:17,342
+since we have a userland page table,
+
+1017
+00:41:17,342 --> 00:41:21,403
+we could do dynamic library loading
+
+1018
+00:41:21,403 --> 00:41:22,976
+via dlopen().
+
+1019
+00:41:22,976 --> 00:41:23,884
+And we could also do
+
+1020
+00:41:23,884 --> 00:41:27,125
+legitimate just-in-time compilation.
+
+1021
+00:41:27,125 --> 00:41:28,040
+And of course,
+
+1022
+00:41:28,040 --> 00:41:33,040
+the used JIT pages should be cleared,
+
+1023
+00:41:33,839 --> 00:41:35,599
+properly cleaned up after usage
+
+1024
+00:41:35,599 --> 00:41:37,993
+to prevent page reuse attacks.
+
+1025
+00:41:38,939 --> 00:41:41,158
+And another thing is that, of course,
+
+1026
+00:41:41,158 --> 00:41:44,121
+this data structure is a
+critical data structure
+
+1027
+00:41:44,121 --> 00:41:46,133
+as it acts as our page table
+
+1028
+00:41:46,133 --> 00:41:48,329
+and should be heavily protected.
+
+1029
+00:41:48,329 --> 00:41:49,761
+So some of the things we mentioned is
+
+1030
+00:41:49,761 --> 00:41:51,720
+writeable only when being updated,
+
+1031
+00:41:51,720 --> 00:41:53,395
+surrounded by guard pages,
+
+1032
+00:41:53,395 --> 00:41:55,037
+not accessible to ARM,
+
+1033
+00:41:55,037 --> 00:41:56,703
+et cetera, et cetera.
+
+1034
+00:41:57,979 --> 00:42:01,097
+And another thing we recommend
+
+1035
+00:42:01,097 --> 00:42:06,001
+for researchers or vendors doing analysis
+
+1036
+00:42:06,001 --> 00:42:08,396
+or Android applications is
+
+1037
+00:42:08,396 --> 00:42:09,888
+when you're running dynamic analysis,
+
+1038
+00:42:09,888 --> 00:42:12,650
+you should also run
+apps through libhoudini.
+
+1039
+00:42:12,650 --> 00:42:13,725
+As we mentioned,
+
+1040
+00:42:13,725 --> 00:42:15,286
+it's possible for malwares
+
+1041
+00:42:15,286 --> 00:42:16,640
+or any other applications
+
+1042
+00:42:16,640 --> 00:42:17,996
+to behave differently
+
+1043
+00:42:17,996 --> 00:42:21,575
+when they see that libhoudini is enabled.
+
+1044
+00:42:21,575 --> 00:42:23,769
+Also when doing static analysis,
+
+1045
+00:42:23,769 --> 00:42:24,669
+we should look for access
+
+1046
+00:42:24,669 --> 00:42:27,707
+to Houdini RWX pages,
+
+1047
+00:42:27,707 --> 00:42:28,853
+or attempt to execute
+
+1048
+00:42:28,853 --> 00:42:31,943
+from non-executable pages,
+
+1049
+00:42:31,943 --> 00:42:32,776
+which would work
+
+1050
+00:42:32,776 --> 00:42:36,030
+if it was running under libhoudini.
+
+1051
+00:42:37,387 --> 00:42:39,656
+And just to add on that,
+
+1052
+00:42:39,656 --> 00:42:41,905
+anything scanning for
+JNIEnv function points,
+
+1053
+00:42:41,905 --> 00:42:45,223
+as that was one of our detection methods.
+
+1054
+00:42:46,270 --> 00:42:48,378
+So to summarize,
+
+1055
+00:42:48,378 --> 00:42:49,789
+what I'm trying to say
+
+1056
+00:42:49,789 --> 00:42:52,596
+in this presentation is
+that Houdini introduces
+
+1057
+00:42:52,596 --> 00:42:54,555
+a couple of security weaknesses
+
+1058
+00:42:54,555 --> 00:42:56,887
+into processes using it.
+
+1059
+00:42:56,887 --> 00:42:58,168
+And that would be
+
+1060
+00:42:58,168 --> 00:43:03,168
+ARM native applications
+running on x86 devices.
+
+1061
+00:43:04,154 --> 00:43:05,556
+Some of these impact the security
+
+1062
+00:43:05,556 --> 00:43:06,859
+of the emulator ARM code,
+
+1063
+00:43:06,859 --> 00:43:09,873
+such as the NX bit,
+
+1064
+00:43:09,873 --> 00:43:11,458
+the lack of NX bit check,
+
+1065
+00:43:11,458 --> 00:43:12,912
+while some also impact the security
+
+1066
+00:43:12,912 --> 00:43:14,783
+of the host x86 code,
+
+1067
+00:43:14,783 --> 00:43:18,263
+such as the rewrite
+execute pages everywhere.
+
+1068
+00:43:20,275 --> 00:43:21,108
+Yeah.
+
+1069
+00:43:21,108 --> 00:43:23,273
+And actually think the fact
+
+1070
+00:43:23,273 --> 00:43:26,697
+that Houdini is not
+well-documented publicly,
+
+1071
+00:43:26,697 --> 00:43:28,001
+nor easily accessible,
+
+1072
+00:43:28,001 --> 00:43:29,125
+has something to do with
+
+1073
+00:43:29,125 --> 00:43:30,898
+preventing wider security analysis
+
+1074
+00:43:30,898 --> 00:43:32,770
+and research into this,
+
+1075
+00:43:32,770 --> 00:43:35,593
+which could have caught
+these issues earlier.
+
+1076
+00:43:36,838 --> 00:43:37,840
+Yeah.
+
+1077
+00:43:37,840 --> 00:43:40,703
+Which brings us to our few last slides.
+
+1078
+00:43:40,703 --> 00:43:42,999
+I'd like to give big,
+big, big, special thanks
+
+1079
+00:43:42,999 --> 00:43:45,482
+to Jeff for mentoring this project
+
+1080
+00:43:45,482 --> 00:43:49,173
+and helping develop the methodology.
+
+1081
+00:43:49,173 --> 00:43:50,318
+Also Jennifer for all the support
+
+1082
+00:43:50,318 --> 00:43:52,260
+and research and amazing feedback,
+
+1083
+00:43:52,260 --> 00:43:55,658
+and Effi for basically
+bootstrapping this research.
+
+1084
+00:43:55,658 --> 00:43:56,801
+And with that,
+
+1085
+00:43:56,801 --> 00:43:58,156
+thanks everyone for joining.
+
+1086
+00:43:58,156 --> 00:44:01,163
+And I believe you're at Q and A right now.
+

@@ -1,0 +1,2083 @@
+﻿00:00:00.083-->00:00:04.042
+>> Uh, we're gonna be talking
+about a post-exploitation tool,
+but uh we just have an extra
+
+00:00:04.042-->00:00:10.542
+little add on of this o day. So
+when uh Jenna Magius and I were
+working on the eternal blue, uh
+
+00:00:10.542-->00:00:16.708
+we discovered that uh part of
+the pool grooming process was
+allocating uh memory uh and in a
+
+00:00:16.708-->00:00:21.667
+contiguous way and by abusing
+those memory allocations we were
+able to come up with an attack
+
+00:00:21.667-->00:00:26.667
+that we're calling SMBLoris. Its
+similar to uh the slow Loris
+attack that is for HP servers.
+
+00:00:29.833-->00:00:35.250
+So with that, a single machine
+is able to open, uh many
+connections. Hold on. Just want
+
+00:00:35.250-->00:00:41.708
+to show the flags here. So the
+first uh four bytes of a
+connection are this uh net bio
+
+00:00:41.708-->00:00:47.750
+session setup header. And it has
+a seventeen bit length field. So
+what windows is gonna do is its
+
+00:00:47.750-->00:00:52.333
+gonna see that length field and
+its automatically gonna allocate
+a buffer uh for whatever length
+
+00:00:52.333-->00:00:57.833
+you say, for whatever length you
+say and uh preemptively allocate
+that much memory on the non
+
+00:00:57.833-->00:01:03.333
+paged pool. Which is memory that
+cannot be uh swapped out. Its
+physical RAM that has to be
+
+00:01:03.333-->00:01:08.542
+reserved. So two to the
+seventeen gives you a hundred
+twenty-eight kibibytes and if
+
+00:01:08.542-->00:01:14.250
+you uh send many connections
+that do that uh from a single IP
+you can get to eight kibibytes
+
+00:01:14.250-->00:01:19.250
+which is like eight and a half
+gig- gigabytes. So we're gonna
+demo the attack now. And all
+
+00:01:22.083-->00:01:28.708
+we're doing is opening a lot of
+connections and sending uh this
+packet with the full length. And
+
+00:01:28.708-->00:01:33.708
+as you're seeing now the uh non
+page pool is filling up. Its
+actually down here. Right now
+
+00:01:37.125-->00:01:42.875
+we're at five. Five and a half
+gigs. And eventually this ping
+is gonna die. Because there is
+
+00:01:42.875-->00:01:48.375
+not enough uh RAM and you'll
+also notice that the CPU has
+spiked to a hundred because now
+
+00:01:48.375-->00:01:52.292
+the operating system is
+searching through memory looking
+for a free spot. And now we
+
+00:01:52.292-->00:01:57.333
+actually have free uh- the
+computer, so like Slow Loris if
+we stop this attack, uh the
+
+00:01:57.333-->00:02:02.500
+computer will restore unless you
+sustain the attack. Eventually
+you will get a hard freeze.
+
+00:02:02.500-->00:02:06.500
+Which is worse than a blue
+screen because then you need
+physical access to uh restart
+
+00:02:06.500-->00:02:11.500
+that machine. Uh you can't just
+RDPN. Um, so. [applause] There
+you go. Thank you. Oh and I just
+
+00:02:21.875-->00:02:27.167
+wanna mention that we did report
+that to uh Microsoft Security
+about sixty days ago. Uh they
+
+00:02:27.167-->00:02:31.917
+said they aren't gonna fix it
+right away. So we had to uh go
+to full disclosure. We already
+
+00:02:31.917-->00:02:36.917
+told uh our DDoS partners and
+stuff like that. So. Ha. And it
+works on ipv4 and ipv6. Um so
+
+00:02:39.708-->00:02:46.542
+here's just some of the
+artifacts that we have that
+happened. Um and then you can
+
+00:02:46.542-->00:02:51.542
+crash programs and then right
+here is Microsoft's response.
+Uh, this is fine. Haha. Alright
+
+00:02:54.250-->00:02:59.583
+so onto the main topic of the
+day. Uh we're gonna talk about
+the current open-source malware
+
+00:02:59.583-->00:03:04.958
+options for red teams. So these
+are teams uh that you can use on
+your pen tests to you know own a
+
+00:03:04.958-->00:03:09.667
+network and then we're gonna
+release some new tool uh called
+Koadic C3. It's an advanced
+
+00:03:09.667-->00:03:16.000
+JScript VBScript RAT. Uh it's
+based on a lot of work by
+others. Um subTee, Enigmo, OX3.
+
+00:03:16.000-->00:03:22.542
+Uh Tiraniddo. Um they were doing
+a lot of work on research. A lot
+of research on JScript uh past
+
+00:03:22.542-->00:03:26.708
+year or two. Uh we're gonna talk
+about some of the hell we went
+through with Windows Scripting
+
+00:03:26.708-->00:03:33.458
+host quirks. And then at the end
+we're gonna have a demo of the
+tool. So this uh a list of the
+
+00:03:33.458-->00:03:39.208
+people who helped work on this
+tool. Um, I'm zero sum. That's
+Aleph Naught. We got Jenna
+
+00:03:39.208-->00:03:44.333
+Magius in the audience and The
+Naterz is watching on the live
+screen. Um so we're the red team
+
+00:03:44.333-->00:03:50.500
+at RiskSense, it's a spin off of
+New Mexico Tech. Uh led by Dr.
+Srinivas Mukkamala. He lets us
+
+00:03:50.500-->00:03:56.000
+have time to do some research on
+side projects, so we've done uh
+extra bacon and eternal blue. We
+
+00:03:56.000-->00:04:01.583
+reported both those exploits to
+metasploit uh we're kinda the
+first to uh look at those
+
+00:04:01.583-->00:04:06.583
+exploits. Uh just a couple quick
+notes before we get started. So
+if you use this tool for illegal
+
+00:04:09.125-->00:04:12.708
+activities we're not
+responsible. Uh we're releasing
+this with pen testers, there's
+
+00:04:12.708-->00:04:16.750
+no like ransomware in it or
+anything. Uh like I said,
+there's a ton of overlapping
+
+00:04:16.750-->00:04:22.875
+research uh from subTee, Enigmo,
+OX3. Uh Tiraniddo. Um but we're
+trying to consolidate all those
+
+00:04:22.875-->00:04:26.875
+research techniques into a
+single tool. And we've also
+advanced the state of art a
+
+00:04:26.875-->00:04:33.708
+little bit. Um so this is just
+prototype. There are gonna be
+bugs in it. So submit fixes, not
+
+00:04:33.708-->00:04:39.917
+tixes. Ha. And uh just to be
+very clear, this is a post
+exploitation tools, so this
+
+00:04:39.917-->00:04:44.750
+won't be like metasploit where
+you get access to a box. This
+assumes you already have access
+
+00:04:44.750-->00:04:50.792
+and you want to do something
+better with that shell. You want
+to add pivot, uh dump passwords
+
+00:04:50.792-->00:04:56.667
+and stuff like that. So the
+current state of Windows post
+exploitation, you have you know
+
+00:04:56.667-->00:05:00.792
+Meterpreter, Cobalt Strike,
+PowerShell Empire or you can
+roll your own. Those are
+
+00:05:00.792-->00:05:06.667
+basically your options right
+now. For uh very- and they're
+all very nice tools but, we're
+
+00:05:06.667-->00:05:10.292
+gonna talk about some of the the
+downsides of those tools and
+we're just kind of a very niche
+
+00:05:10.292-->00:05:15.292
+gap. Uh you're not gonna use
+this tool a lot. But it will
+fill uh uh a very niche gap. Um
+
+00:05:17.500-->00:05:23.333
+so the downside to PE Malware.
+This is stuff like Cobalt Strike
+and Meterpreter. Um they're both
+
+00:05:23.333-->00:05:27.292
+amazing software. Uh but most of
+the time in the post
+exploitation scenario you're
+
+00:05:27.292-->00:05:32.958
+gonna be dropping a binary on
+disc and that's what AV loves to
+eat. And you're gonna, you're
+
+00:05:32.958-->00:05:37.167
+gonna have to evade that payload
+with either Veil Evasion or
+Shellter or some type of Crypter
+
+00:05:37.167-->00:05:43.375
+Packer. Um so that's one
+downside. And one of the main
+exploits we have eaten a lot is
+
+00:05:43.375-->00:05:48.375
+uh PS Exec, which is probably
+the most common one you use on a
+pen test. Um, so the downsides
+
+00:05:50.500-->00:05:57.000
+of PowerShell. Again, Empire is
+amazing software. Officially it
+requires PowerShell. Obviously.
+
+00:05:57.000-->00:06:02.875
+Which is server 2008 service
+pack two, you can install on
+earlier versions but officially
+
+00:06:02.875-->00:06:07.958
+that's what Microsoft supports.
+And PowerShell Empire also uses
+some features that are in modern
+
+00:06:07.958-->00:06:14.667
+dot NET. So I've actually had uh
+the case where I compromised a
+box and had PowerShell on it,
+
+00:06:14.667-->00:06:21.042
+tried uh doing an Empire Stager
+and it failed. Uh with the
+error. Another very bad downside
+
+00:06:21.042-->00:06:26.042
+of PowerShell is that it is a
+first class citizen in the logs
+on Windows. So that's that's one
+
+00:06:28.417-->00:06:35.167
+thing you need to realize when
+you're using PowerShell is you
+are uh filling up the logs. So
+
+00:06:35.167-->00:06:40.167
+we fill, we made a tools made
+out of JScript and VBScript. Um
+it works on Windows 2000 service
+
+00:06:42.750-->00:06:48.958
+pack zero, possibly easier. Uh
+the main benefit of that is that
+the Windows Script Host unlike
+
+00:06:48.958-->00:06:53.667
+PowerShell is baked directly
+into the Windows core. Unlike
+PowerShell which was like bolted
+
+00:06:53.667-->00:06:59.000
+on later. Uh so it's a little
+bit harder to limit. And we
+found some creative use of uh
+
+00:06:59.000-->00:07:04.708
+the default EXEs that are in the
+system folder. And we also found
+some ways to execute completely
+
+00:07:04.708-->00:07:10.250
+by memory so there's no dropping
+to disk. And that's the main
+benefit of PowerShell. Need some
+
+00:07:10.250-->00:07:15.250
+water. So the down sides are is
+that there is no access to
+Windows API, uh the only thing
+
+00:07:20.500-->00:07:24.667
+you get is COM objects, which
+I'll talk about in a second.
+There's also no real threading,
+
+00:07:24.667-->00:07:29.958
+so when you have an agent
+running you might want to run
+multiple jobs at the same time
+
+00:07:29.958-->00:07:35.375
+and have them report back. Uh
+there's no threading in JScript.
+It's also missing a lot of uh
+
+00:07:35.375-->00:07:40.625
+standards functions like base
+sixty-four, you can use certutil
+and some other utilities that
+
+00:07:40.625-->00:07:44.875
+are default installed but
+they're not on all versions of
+Windows. And then what's really
+
+00:07:44.875-->00:07:49.875
+bad is uh all the strings are
+UCS two wide unicode. So when
+you insert uh structor shellcode
+
+00:07:52.625-->00:07:58.000
+in memory, it's gonna fill it
+with null bytes or even just
+totally uh clobber all of your
+
+00:07:58.000-->00:08:01.708
+strings and you're not gonna
+have the same shell code that
+you put in. That you thought you
+
+00:08:01.708-->00:08:06.708
+had. So COM was kind of this big
+idea from Microsoft that you
+could write uh a class in one
+
+00:08:09.625-->00:08:15.292
+ob- uh language. And then
+instantiate an object in another
+language. So what they did was
+
+00:08:15.292-->00:08:20.917
+uh write a lot of COM objects in
+C. And then now you can use them
+in JScript and other uh
+
+00:08:20.917-->00:08:27.708
+scripting languages. Um so it's
+language neutral. Object
+oriented. It has a very uh
+
+00:08:27.708-->00:08:33.333
+spelled out binary interface.
+And it's distributed so you can
+actually instantiate objects on
+
+00:08:33.333-->00:08:38.542
+another server. And then use
+them on your local host. Uh uh
+which actually leads to a lot of
+
+00:08:38.542-->00:08:43.917
+pivot opportunities. Uh it's an
+arguable precursor to dot NET.
+It has slightly different goals
+
+00:08:43.917-->00:08:48.833
+than dot NET did and dot NET has
+a lot of tools that you help you
+to interact with COM. And it's
+
+00:08:48.833-->00:08:54.500
+also found everywhere in
+Windows. It's in uh its its own
+secur- or its own registry hive.
+
+00:08:54.500-->00:08:59.500
+It's uh HC- or HK- uh current
+classes or classes. So this uh
+an example of instantiating in a
+
+00:09:02.833-->00:09:09.250
+uh COM object in JScript. So
+what we've done here is we've
+instantiated this object called
+
+00:09:09.250-->00:09:13.750
+html file. And like I said, we
+don't get access to Windows API,
+but we get access to all the
+
+00:09:13.750-->00:09:19.583
+interfaces that this uh COM
+object exposes. And from that
+we're actually able to scape the
+
+00:09:19.583-->00:09:25.583
+clipboard by uh going to the
+parent window and getting the
+text. So we uh- be- originally
+
+00:09:25.583-->00:09:30.583
+started this project back in
+October. Using VBScript.
+VBScript and JScript are
+
+00:09:32.667-->00:09:37.375
+basically the same thing at the
+end of the day. They just have
+slightly different syntax. And
+
+00:09:37.375-->00:09:42.375
+uh couple other things. Uh one
+thing that's really bad is that
+uh it has VBScript has an insane
+
+00:09:44.958-->00:09:50.500
+error handling thing, where you
+have to do on error resume next
+at every function scope. And
+
+00:09:50.500-->00:09:55.708
+then for every uh instruction
+that you run, you have to check
+there's an error condition. So
+
+00:09:55.708-->00:10:02.083
+there's no like uh try catch
+logs that you hit in uh JScript.
+The other thing that we ran into
+
+00:10:02.083-->00:10:06.958
+was Shlemiel the Painter
+problem. So this is a problem
+with string indexing. Normally
+
+00:10:06.958-->00:10:11.750
+for string indexing you want oh
+one look up so you want to look
+at the hundredth element in the
+
+00:10:11.750-->00:10:17.417
+string. That's oh one. Uh with
+JScript, it counts from the
+beginning of er- with VBScript
+
+00:10:17.417-->00:10:23.083
+it counts from the beginning of
+the string. Uh so you actually
+get oh of impactorial to
+
+00:10:23.083-->00:10:29.667
+traverse the entire string
+instead of oh of N. Uh so Jenna
+Magius had a, he solved uh a
+
+00:10:29.667-->00:10:33.750
+parse problem in computer
+science when uh we just grouped
+the bucket with a so every
+
+00:10:33.750-->00:10:38.750
+thousand iterations. We moved
+part of the string pointer up.
+Um while working on this tool we
+
+00:10:40.875-->00:10:47.333
+uh researched a good new
+Readline. Which is a interactive
+shell for um Linux and Unix
+
+00:10:47.333-->00:10:52.333
+systems. So in Metasploit, what
+happens is a as shells start to
+rain in, your input is getting
+
+00:10:55.000-->00:11:00.000
+overwritten by uh all those
+shells raining in. So we were
+able to uh redraw everytime a
+
+00:11:02.500-->00:11:08.083
+shell came in and not mess up
+your input and that's just the
+pictures just an example of uh
+
+00:11:08.083-->00:11:13.917
+kind of the bad input. Uh we
+committed it in PR seventy-five
+seventy to Metasploit uh they've
+
+00:11:13.917-->00:11:19.167
+actually commented it out. They
+have to support Windows and some
+other systems. So, it wasn't,
+
+00:11:19.167-->00:11:24.167
+there was a couple bugs there,
+but we're only supporting Linux.
+So I'll talk about some of the
+
+00:11:27.583-->00:11:32.583
+uh terminology before I talk
+about how we architected this.
+So Zombie is a hooked target,
+
+00:11:35.542-->00:11:40.542
+it's basically like uh a session
+in Meterpreter or an agent in
+PowerShell Empire. Uh Stager is
+
+00:11:44.250-->00:11:51.167
+a web server that we used to
+have the C2 C3 server and then
+Implants uh just starts one or
+
+00:11:51.167-->00:11:56.333
+more jobs on a Zombie. And then
+a Job we figured out a way to
+fork and so you can have a
+
+00:11:56.333-->00:12:01.333
+simultaneous jobs running. And
+then report back to the server.
+So this done by a plugin class.
+
+00:12:03.583-->00:12:08.833
+There's two types of major
+plugins or uh stagers which
+spawn web servers and implants
+
+00:12:08.833-->00:12:14.625
+which starts jobs. Uh they all
+have a load method which has uh
+variables so these are like
+
+00:12:14.625-->00:12:19.333
+things that you set Meterpreter
+kind of. Uh all we do is a
+simple string replace for tilde
+
+00:12:19.333-->00:12:25.792
+and the variable name. Uh inside
+of JS files and then they also
+have a run method. Uh which like
+
+00:12:25.792-->00:12:32.125
+I said starts an HP server or
+starts a job. Uh uh the job
+class is what you instantiate uh
+
+00:12:32.125-->00:12:37.000
+from implants. And then have a
+report handler, so when the job
+reports back to you, you're able
+
+00:12:37.000-->00:12:43.333
+to handle that. And then we also
+implemented a standard lib dot
+js file which uh kind of
+
+00:12:43.333-->00:12:47.083
+abstracts a lot of that COM
+stuff for you. Its so you can
+run commands. Upload, download
+
+00:12:47.083-->00:12:54.042
+files. And uh perform those HTTP
+communications. Uh Uh we have
+all the standard implant
+
+00:12:54.042-->00:12:59.125
+categories you would expect. You
+can pivot to move from machine
+to machine, persistence so you
+
+00:12:59.125-->00:13:05.000
+can uh if a machine reboots, it
+will still call home. Manage and
+Utils are kind of like, they'll
+
+00:13:05.000-->00:13:11.250
+they'll let you enable RDP or
+run commands, download, upload
+files. Elevate is a whole class
+
+00:13:11.250-->00:13:16.250
+of UAC bypasses. Lets the run as
+administrator box on Windows. Um
+Gather will scrape credentials
+
+00:13:18.667-->00:13:24.667
+out of uh from the hives, like
+NTM hashes. We actually wrote a
+TCP scanner which I'll get into
+
+00:13:24.667-->00:13:30.500
+in a little bit. We have a fun
+category like PowerShell Empire
+does uh they play AC/DC
+
+00:13:30.500-->00:13:34.958
+Thunderstruck, they blast the
+volume and do that. We do that
+but we do uh the Cranberries
+
+00:13:34.958-->00:13:41.917
+Zombie song. Um and then we also
+have inject, which is a whole
+category where we've figured out
+
+00:13:41.917-->00:13:46.917
+how to break free of the COM
+chains and uh get to the Windows
+API. And from there we do
+
+00:13:49.000-->00:13:54.000
+reflective dll and mimic hats
+and stuff. We have a cool demo.
+So stager architecture is uh
+
+00:13:56.375-->00:14:00.792
+generally in a post exploitation
+stetting you're gonna hook by a
+manual command. That's what you
+
+00:14:00.792-->00:14:05.375
+do with PowerShell Empire. Uh
+you just run a command and then
+it calls home. Um you can hook
+
+00:14:05.375-->00:14:10.458
+from IE if someone, so you can
+fish somebody. And if they click
+Yes from this you know, huh all
+
+00:14:10.458-->00:14:16.667
+these active X objects, it'll
+work. Uh also off this macros,
+you can do a Stager that way. Um
+
+00:14:16.667-->00:14:21.667
+so all we're using is a simple
+HTPS threaded server and Python
+as the uh main C3 server. Uh so
+
+00:14:24.750-->00:14:29.750
+you get enryption through TLS or
+SSL. There is a caveat there, uh
+couple caveats. So one is uh
+
+00:14:32.125-->00:14:36.917
+older versions won't have TLS
+enabled so you'll have to fall
+back to SSL. And the other one
+
+00:14:36.917-->00:14:40.875
+is you need a valid certificate,
+so you'll have to call home to a
+domain that you own a
+
+00:14:40.875-->00:14:45.875
+certificate for. And how we do
+the uh the call home is if you
+do a long poll. So this is kind
+
+00:14:48.000-->00:14:54.042
+of the old way of doing A checks
+before web sockets is you call
+home to the sever and then the
+
+00:14:54.042-->00:14:59.292
+server hangs you for like a long
+time until there's a job to be
+done. And it tells you that job
+
+00:14:59.292-->00:15:04.292
+and you run that job. So there's
+a couple problems with that.
+Haha. Uh there's no problem with
+
+00:15:07.167-->00:15:12.583
+uh hanging forever 'cause once
+you go into the uh COM object
+and you run that, you're in COM
+
+00:15:12.583-->00:15:17.625
+world. It's outside of your
+script context, but there is uh
+a limited amount of it
+
+00:15:17.625-->00:15:23.667
+instructions you can run in
+JScript. So it's actually
+default five million I believe.
+
+00:15:23.667-->00:15:28.708
+So if you run five million
+instructions in JScript, which
+is actually very easy to do. Uh
+
+00:15:28.708-->00:15:31.917
+even for just a few
+milliseconds, its gonna pop up
+an error saying stop running
+
+00:15:31.917-->00:15:36.542
+this script and it's gonna hang
+the script until the user clicks
+yes or no. So for that reason we
+
+00:15:36.542-->00:15:41.542
+fork on a regular basis. So the
+first time you call home to the
+sever you're not gonna have a
+
+00:15:46.958-->00:15:52.250
+session ID. Um it's gonna assign
+you a session ID. And it's gonna
+fork to a special job called
+
+00:15:52.250-->00:15:57.625
+stage. That stage is gonna do
+that long-poll process I was
+talking about uh until it gets a
+
+00:15:57.625-->00:16:02.458
+job ID. When it gets that job
+ID, it's gonna fork uh that
+special stage job again so we
+
+00:16:02.458-->00:16:08.000
+don't use too many instructions
+and it's gonna fork the job. And
+then uh when that job calls
+
+00:16:08.000-->00:16:12.167
+home, it's gonna have both the
+session ID and the job ID. So
+then it's gonna send the job
+
+00:16:12.167-->00:16:16.208
+payload, which is gonna do some
+work, it's gonna report back to
+the server about that work and
+
+00:16:16.208-->00:16:22.917
+then it's just gonna strictly
+exit. Um so some of the stages
+we have. Uh we do have the
+
+00:16:22.917-->00:16:25.875
+traditional way of running
+JScript and VBScript uh through
+cscript or wscript uh these
+
+00:16:25.875-->00:16:27.875
+require dropping a file on the
+disk so um anti-virus can catch
+that pretty easily. And you can
+
+00:16:27.875-->00:16:32.875
+always disable the windows
+script host. Uh an interesting
+stager we have are MS uh- HTA
+
+00:16:42.750-->00:16:48.042
+html applications. So these are
+kind of like in a weird IE
+security zone. Uh they'll let
+
+00:16:48.042-->00:16:53.958
+you get access to the registry,
+filesystem, the command shell.
+Um and the payload for that is
+
+00:16:53.958-->00:17:00.625
+really tiny, it's the tiniest
+payload we have. All you do is
+run HT- er MSHTA and then URL.
+
+00:17:00.625-->00:17:07.167
+And then it's gonna home with
+that session ID and get assigned
+one and all that. Um so with
+
+00:17:07.167-->00:17:12.042
+these html applications, they're
+gonna pop up like a little
+browser window. So we
+
+00:17:12.042-->00:17:16.375
+experimented with many
+techniques to try to hide this
+window. Uh the best that I could
+
+00:17:16.375-->00:17:22.583
+come up with and I really did a
+lot of experimentation was I
+moved the uh window two thousand
+
+00:17:22.583-->00:17:28.125
+pixels off the screen, resized
+it to one pixel and then I blur
+it so it doesn't steal focus and
+
+00:17:28.125-->00:17:32.917
+then also there's some uh xml
+that we can do to hide it from
+the taskbar. Uh I thought this
+
+00:17:32.917-->00:17:37.292
+was really bad until I looked at
+some malware samples that were
+doing the same thing, so I
+
+00:17:37.292-->00:17:44.250
+didn't feel as bad. Um, so run
+dll thirty-two, uh this kind of
+abuses the way that run dll
+
+00:17:44.250-->00:17:49.250
+thirty-two uh parses. Uh the dll
+it's supposed to run. So in this
+example, its loading the MSHTML
+
+00:17:51.500-->00:17:56.750
+dot dll and it's running run
+HTML application on it. Uh which
+is the same thing that MSHTA
+
+00:17:56.750-->00:18:00.958
+does only this is a little bit
+more hidden. Now when that
+function gets called, it's gonna
+
+00:18:00.958-->00:18:05.208
+parse the entire command line
+and its gonna see it starts with
+JavaScript colon, it's gonna
+
+00:18:05.208-->00:18:12.208
+start. Uh executing JavaScript.
+Such our MSHTA stager as soon as
+we fork uh we go to this one
+
+00:18:12.208-->00:18:17.208
+'cause it has less windows
+visibility. Um another one that
+uh another stager here that uh
+
+00:18:19.333-->00:18:25.375
+subTee rediscovered is uh called
+COM plus scriplets. Uh they
+still get written to disk, but
+
+00:18:25.375-->00:18:30.625
+it's uh this program called red
+server thirty-two dot exe which
+is supposed to assist you in uh
+
+00:18:30.625-->00:18:36.667
+installing uh COM stuff uh you
+can actually feed that URL and
+it's gonna go fetch that
+
+00:18:36.667-->00:18:41.417
+scriplet and then it's gonna run
+some JScript. Um so this is
+actually a stage of this
+
+00:18:41.417-->00:18:46.875
+presently on Windows 2000 MSHTA
+is not uh, maybe it is in a
+service pack, but at the uh
+
+00:18:46.875-->00:18:51.875
+beginning it's not. Um so
+there's a couple of ways to run
+commands. Uh the most common way
+
+00:18:55.000-->00:19:00.500
+is through WScript dot Shell. It
+has two ways to run commands,
+either exec or run uh exec gives
+
+00:19:00.500-->00:19:05.500
+you access to standard out and
+standard error for all of uh
+that processes output. Uh the
+
+00:19:08.000-->00:19:13.792
+only problem is its gonna flash
+a little command dot exe window.
+So it's not good. Uh we had to
+
+00:19:13.792-->00:19:18.792
+resort to dot run uh which does
+not give access to standard out.
+Um but we kind of piped to a new
+
+00:19:21.125-->00:19:26.125
+UID in the temp folder. Temp
+folder text file and we pipe uh
+standard out and standard in to
+
+00:19:26.125-->00:19:30.750
+that file then we read that
+fine. So we were able to get the
+output. Um another way to uh
+
+00:19:30.750-->00:19:37.167
+start a process is is with wami.
+Um win thirty-two process is
+part of that and that's the
+
+00:19:37.167-->00:19:42.167
+windows management
+instrumentation, kind of for
+managing boxes. Um so one of the
+
+00:19:44.542-->00:19:49.750
+main things you wan to do with
+post exploitation tool is upload
+files and download them. Uh the
+
+00:19:49.750-->00:19:54.792
+binary data is very hard to work
+with in JScript. Um so writing,
+if you want to write a file to
+
+00:19:54.792-->00:20:00.708
+disk, writing byte by byte uh
+you use all of your limited
+instructions I was talking
+
+00:20:00.708-->00:20:05.833
+about. Um so what we do what
+what one way you can do that is
+you can write the response body
+
+00:20:05.833-->00:20:10.833
+screen directly to a an A D O D
+B dot stream. Uh the only
+problem is as you can see, uh
+
+00:20:13.042-->00:20:18.042
+you get an error that says
+safety settings on this computer
+prohibit access. Accessing a
+
+00:20:18.042-->00:20:22.250
+data source on another domain.
+So this is part of that IE
+security zone. Sandboxing I was
+
+00:20:22.250-->00:20:27.250
+talking about. Um. So what we do
+is we create a temporary uh A D
+O D B object in memory. We write
+
+00:20:31.333-->00:20:36.875
+that string to that object in
+memory and then so now its on
+our domain or whatever. And then
+
+00:20:36.875-->00:20:40.958
+we're able to write that to
+file. So this is just some
+boilerplate co- code that just
+
+00:20:40.958-->00:20:46.625
+lets you write directly to file
+without using a lot of
+instructions. Another problem we
+
+00:20:46.625-->00:20:50.875
+encountered was with downloading
+files. So this is when you want
+to get a file um its on the
+
+00:20:50.875-->00:20:54.958
+Zombie, you know you see x
+arrays, you see something
+interesting on the fa- uh
+
+00:20:54.958-->00:21:00.250
+target, you want to download it
+to your machine. You're gonna do
+that by having it send an http
+
+00:21:00.250-->00:21:05.417
+request sending a not text
+string, which is gonna have uh
+all that binary data. The only
+
+00:21:05.417-->00:21:10.833
+problem is that Windows is going
+to put uh double encode that
+date uh so through some reverse
+
+00:21:10.833-->00:21:15.333
+engineering we found out it was
+encoding it with Windows twelve
+five two encoding first. And
+
+00:21:15.333-->00:21:20.792
+then you UTF eight uh so we saw
+that the binary data did not
+match up when we got it back. Uh
+
+00:21:20.792-->00:21:25.583
+another thing is if you send a
+null byte, it just ends the
+response string right there, uh
+
+00:21:25.583-->00:21:30.500
+the request string. Uh so we
+added another layer of encoding
+where we then code backslashes
+
+00:21:30.500-->00:21:34.833
+and null bytes. So we have three
+different decodings we have to
+do once it gets back to the
+
+00:21:34.833-->00:21:41.542
+server. Its really slow uh LF
+Knot wrote a hard coded lookup
+table. So it's about one second
+
+00:21:41.542-->00:21:48.167
+per megabyte now. Down from ten
+seconds per megabyte. Um so
+these are all of our UAC
+
+00:21:48.167-->00:21:53.167
+bypasses. These work um because
+on Windows there's the current
+user hive, which a user is able
+
+00:21:58.292-->00:22:03.792
+to write to their current user
+hive, no problem. Um and then
+windows has these binaries in
+
+00:22:03.792-->00:22:08.292
+the system thirty-two folder
+that have a manifest that auto
+elevates them, gives them UAC
+
+00:22:08.292-->00:22:12.458
+bypass privileges and then
+there's a couple binaries that
+are gonna look in that current
+
+00:22:12.458-->00:22:18.042
+user hive that you're allowed to
+write to for a command to run. I
+don't, I don't know why. But ha.
+
+00:22:18.042-->00:22:22.958
+You're so we're just gonna put
+the stager command at those
+registry keys start that process
+
+00:22:22.958-->00:22:28.083
+and its gonna call home and
+we're gonna be elevated. Um
+Microsoft is trying to fix some
+
+00:22:28.083-->00:22:33.375
+of these, they've closed a
+couple of them in red stone two
+and three. Um but the UACME by
+
+00:22:33.375-->00:22:37.667
+hFireFox uh some future work if
+you know these methods get
+closed down, there's thirty-five
+
+00:22:37.667-->00:22:42.667
+plus methods we can use. Uh some
+are applicable. So uh another
+main thing you want to do in the
+
+00:22:45.083-->00:22:51.792
+post-exploitation tool is dump
+the NTLM patches off the server.
+Uh so there's a reg dot exe. I
+
+00:22:51.792-->00:22:55.292
+believe it was added in some
+service pack in windows two
+thousand, its at least present
+
+00:22:55.292-->00:23:00.750
+in windows xp and and higher. Uh
+but from there, if you're
+elevated you can save the same
+
+00:23:00.750-->00:23:06.792
+system security hives and run uh
+CoreSecurityImpacket which will
+uh decode decrypt those hives
+
+00:23:06.792-->00:23:12.292
+and give you the hashes out of
+them. Same thing for domain
+controllers uh you can create a
+
+00:23:12.292-->00:23:17.583
+volume shadow copy. Uh and then
+the system hive you can get
+that. And we get the ntds dot
+
+00:23:17.583-->00:23:24.000
+dit, we can run the same tool uh
+with some different arguments
+and extract uh AV credentials
+
+00:23:24.000-->00:23:29.000
+out of them. So there's several
+different HTTP COM objects um
+most of them are just like like
+
+00:23:32.458-->00:23:37.458
+msxml two dot xmlhttp and then
+there's the server xmlhttp. So
+this dates back to uh the early
+
+00:23:39.958-->00:23:46.375
+days of the internet. Um where
+you first start with ajax and so
+the ones that are not marked
+
+00:23:46.375-->00:23:51.375
+server are going to have a bad
+uh sandboxing policy it's gonna
+have that cross origin ajax
+
+00:23:53.833-->00:23:58.542
+policy you see in web browsers.
+Where as the server versions are
+gonna be what you would have ran
+
+00:23:58.542-->00:24:03.250
+on a classic ASP server to one
+of the server to fetch
+something. So it's gonna be less
+
+00:24:03.250-->00:24:10.042
+sandbox. Um so same interface,
+but a little bit different
+behavior. Um using these objects
+
+00:24:10.042-->00:24:15.333
+uh checking out the error
+messages they do when we try to
+do an http connect- connection
+
+00:24:15.333-->00:24:22.000
+to a uh an IP uh we're able to
+tell which ports are open and so
+we have two different methods.
+
+00:24:22.000-->00:24:28.250
+Um of telling if a port is open
+or not and uh based on the error
+codes, so we're able to write a
+
+00:24:28.250-->00:24:33.250
+TCP scanner using these methods.
+Um another interesting COM
+object is the uh wscript dot
+
+00:24:35.833-->00:24:39.875
+network, this let's you
+enumerate the printer
+connections and the network
+
+00:24:39.875-->00:24:44.458
+drives the that computer is
+connected to. So that's useful
+information. And now we're gonna
+
+00:24:44.458-->00:24:46.458
+talk about uh the the pivoting
+modules. So PS Exec uh was
+originally written by Mark
+
+00:24:46.458-->00:24:48.458
+Russinovich. Um for the sys
+internals before he was hired by
+Microsoft. Uh now it is in
+
+00:24:48.458-->00:24:50.458
+Microsoft signed binary. And
+this lets uh admins run commands
+on different uh boxes remotely.
+
+00:24:50.458-->00:24:55.458
+Um there's no reason for us to
+have to upload this binary to
+the server because Microsoft is
+
+00:25:14.292-->00:25:20.250
+hosting it on a live share on
+the internet. So we just use
+that live share, um we do get a
+
+00:25:20.250-->00:25:25.792
+dirty bit when we do that, but
+the bypass I found was just
+running it uh instead of WScript
+
+00:25:25.792-->00:25:30.083
+dot run I ran it through the BMI
+or something, I forget. But we
+didn't get that dirty bit which
+
+00:25:30.083-->00:25:35.000
+would have popped up a message
+of an error. Um so that that
+just lets you run commands on
+
+00:25:35.000-->00:25:40.000
+another box and we do have a
+working pivot with that. Another
+way to uh pivot is with WMI. Uh
+
+00:25:42.250-->00:25:47.333
+so this lets you spawn that WMI
+uh win thirty-two process I was
+talking about. On another
+
+00:25:47.333-->00:25:53.875
+server. Uh as long as you have
+uh cache, er, either your
+credentials or uh you get
+
+00:25:53.875-->00:26:00.250
+credentials out of memory. You
+can perform a pass the hash uh
+with JScript, we found. Um uh a
+
+00:26:00.250-->00:26:04.958
+really bad problem with this is
+when you start that new process,
+its gonna run a session zero on
+
+00:26:04.958-->00:26:11.292
+the sever, which is GUI-less
+process so you won't be able to
+elevate. Um but it it it does
+
+00:26:11.292-->00:26:17.125
+let you get on those other boxes
+and maybe there's a work around.
+Another things that been uh
+
+00:26:17.125-->00:26:22.125
+making the the the waves the
+past couple uh weeks are uh DCOM
+lateral movement type makes. So
+
+00:26:25.583-->00:26:30.583
+MMC twenty dot application
+enigma oh three, oh x oh three
+uh found back in January, but it
+
+00:26:33.458-->00:26:38.500
+has a you can spawn this object
+on another server and it has an
+interface called Execute Shell
+
+00:26:38.500-->00:26:44.833
+Command let's you re-stage. Um
+and then just this week we had
+Excel dot Application and
+
+00:26:44.833-->00:26:51.125
+Outlook dot Application by Ryan
+Hanson four two four F, four two
+four f and uh staaldraad. But
+
+00:26:51.125-->00:26:56.125
+both of these have ways that you
+can uh load uh commands on
+another server. Um so that's
+
+00:26:58.167-->00:27:02.250
+some future work, we don't
+actually have plugins for this
+yet, but if you know PSExec and
+
+00:27:02.250-->00:27:08.375
+the BMI aren't good enough, the
+we can write a plugin for DCOM.
+Um so now we're gonna talk about
+
+00:27:08.375-->00:27:15.208
+some of the ways we escaped that
+um COM context into windows API.
+So uh work they gave us some
+
+00:27:15.208-->00:27:19.750
+office licenses and we did find
+a good use for them. We gone, we
+didn't actually write any
+
+00:27:19.750-->00:27:25.417
+reports with them, but, um we
+did create a GUI list except
+object in memory and then from
+
+00:27:25.417-->00:27:31.000
+that GUI list Excel object, we
+also wrote some registry keys
+that let us uh uh run macros
+
+00:27:31.000-->00:27:37.125
+without a prompt and so we
+actually eh and when you run
+macros in that its Visual Basic
+
+00:27:37.125-->00:27:43.750
+which is different than VScript.
+That lets you get access to uh
+the the entire windows API. So
+
+00:27:43.750-->00:27:47.625
+whomever we were able to run
+Shellcode or Reflective DLLs. So
+that's one of the ways we
+
+00:27:47.625-->00:27:53.875
+escaped. Uh another technique uh
+was published a couple months
+ago by Tiraniddo this guy from
+
+00:27:53.875-->00:28:00.167
+Google Projects Zero. Um so when
+you install dot NET on a server,
+it gives you or a workstation
+
+00:28:00.167-->00:28:05.667
+error thing. It gives you a
+bunch of COM objects uh for that
+dot NET installation and one of
+
+00:28:05.667-->00:28:09.833
+the and a couple of those COM
+objects that you write to memory
+and then also deserialize a dot
+
+00:28:09.833-->00:28:15.500
+NET object and when you can
+deserialize dot NET object, you
+get access to the Windows API
+
+00:28:15.500-->00:28:20.500
+because dot NET has access to
+Windows API. So uh we can do all
+that from JScript. Um and then
+
+00:28:23.958-->00:28:29.292
+the final way that we found in
+our research was dynamic wrapper
+X. This was a DLL written by
+
+00:28:29.292-->00:28:35.750
+Yuri Popov and releases Freeware
+in like the late nineties or the
+late two thousands uh it does
+
+00:28:35.750-->00:28:41.208
+have zero to sixty-one of virus
+total. Uh people are using this
+for legitimate reasons. Um but
+
+00:28:41.208-->00:28:45.625
+basically this lets you install
+a COM object on the server,
+which gives you access to the
+
+00:28:45.625-->00:28:50.333
+windows API. Um normally
+installing a COM object you're
+gonna have to write a lot of
+
+00:28:50.333-->00:28:57.125
+registry keys and stuff like
+that. Um, but subTee uh
+rediscovered a thing called uh
+
+00:28:57.125-->00:29:01.542
+registration-free COM so we
+don't actually have to write all
+those registry keys. We just
+
+00:29:01.542-->00:29:06.667
+drop a manifest file also on the
+disk and that DLL and then we're
+able to load that COM object. At
+
+00:29:06.667-->00:29:12.625
+least for our process. So now
+that we have access to the
+windows API, one of our design
+
+00:29:12.625-->00:29:17.625
+goals was to use the powerkatz
+dot DLL. So this is the uh
+PowerShell Empire DLL, uh that
+
+00:29:20.208-->00:29:26.292
+lets you get access to Mimikatz.
+Uh there was a problem with this
+and that was that all the DLL
+
+00:29:26.292-->00:29:31.042
+mapping was performed in
+PowerShell, so normally with
+reflective DLL you're gonna
+
+00:29:31.042-->00:29:36.042
+write some C code uh that will
+load itself. And uh they did it
+in PowerShell. Uh so we have
+
+00:29:38.167-->00:29:44.250
+limited instructions, we can't
+do all of that DLL mapping. So
+what I did is I wrote a DLL
+
+00:29:44.250-->00:29:50.958
+called mimishim and that's just
+normal reflective DLL. So all
+the uh loading code is in C,
+
+00:29:50.958-->00:29:56.458
+it's part of the DLL and we just
+say start a thread there and
+it'll load itself. Uh so what
+
+00:29:56.458-->00:30:01.542
+it's gonna do is it's gonna see
+if we're an x sixty-four pro- or
+an eighty-six process on an x
+
+00:30:01.542-->00:30:06.125
+sixty-four system. Which if
+you've ever uh dealed with
+Mimikatz that can be an issue.
+
+00:30:06.125-->00:30:12.458
+If that is an issue, we're gonn-
+uh, we're just gonna fork uh um
+a sys native notepad dot exe.
+
+00:30:12.458-->00:30:17.458
+We're gonna process all of that
+uh and inject the powerkatz dot
+dll into it. And from there
+
+00:30:19.917-->00:30:22.917
+we're gonna do a couple default
+things. We're gonna do, we're
+gonna get the debug privilege
+
+00:30:22.917-->00:30:26.792
+which is kind of a God mode
+privilege on windows and then
+we're gonna elevate our token to
+
+00:30:26.792-->00:30:31.667
+system and then we're gonna run
+whatever custom mimikatz command
+you want to run. Um which will
+
+00:30:31.667-->00:30:36.792
+let you extract plain text
+passwords out of memory. Uh
+provided that credential guard
+
+00:30:36.792-->00:30:42.500
+or some other defense aren't
+enabled. And with that I'll let
+Aleph-Naught uh run the demos.
+
+00:30:42.500-->00:30:47.500
+>> Heard you guys like live
+demos. [applause] Alright so
+what we're gonna do is we're
+
+00:30:53.958-->00:30:58.958
+gonna show our tool. At least we
+have a screen, I heard we had a
+screen problem, so we have it.
+
+00:31:05.917-->00:31:12.458
+[inaudible] Ok, uh so the first
+thing we're gonna do is uh we're
+just gonna load it up and try to
+
+00:31:12.458-->00:31:17.458
+get our stager first right. Uh I
+know we were talking about this
+in the beginning. So. So we lit
+
+00:31:19.458-->00:31:23.417
+up, uh we were greeted with a
+screen like this. Uh we have a
+lot of options in here. So as
+
+00:31:23.417-->00:31:27.000
+you can see its very similar
+kind a structure to like
+Metasploit or other tools of a
+
+00:31:27.000-->00:31:32.000
+similar kind of nature. Uh we
+run info and we set our LHOST.
+This is uh a local hosting
+
+00:31:40.333-->00:31:44.875
+eternal network for a domain
+that we have here uh on a couple
+of VNs right now. >> Yeah, the
+
+00:31:44.875-->00:31:48.792
+only reason why he's setting his
+LHOST manually is because we
+have a weird network setups,
+
+00:31:48.792-->00:31:53.333
+we're not on the main internet.
+Uh normally it will try to go to
+eight dot eight dot eight and uh
+
+00:31:53.333-->00:31:58.333
+get your IP automa- your local
+IP automatically. Spawned a
+stager there. >> So and then
+
+00:32:13.333-->00:32:16.958
+after that's run uh the stager
+is done. You can close the
+window and you see no windows
+
+00:32:16.958-->00:32:22.000
+pop up and nothing seems out of
+the ordinary. But we got a
+stager coming back right here uh
+
+00:32:22.000-->00:32:26.208
+and we'll see uh if you take a
+good look here, it's not an
+elevated prompt uh as you can
+
+00:32:26.208-->00:32:30.833
+tell right here. It would come
+back with a star if it was. Uh
+and so from here we have our
+
+00:32:30.833-->00:32:34.792
+zombie and we can kind of do
+what we want. Uh so to
+demonstrate the kind of
+
+00:32:34.792-->00:32:39.083
+ridiculousness that we had to go
+through, uh we can kind of
+upload a file, get a shasum,
+
+00:32:39.083-->00:32:44.083
+download the file and do a
+shasum again. So we're gonna use
+an implant. And we see
+
+00:32:47.958-->00:32:52.958
+everything has a like a nice
+little options file. So we can
+also get into a command shell
+
+00:33:12.292-->00:33:18.625
+from here. Um so if we look onto
+our hook client right here and
+we take a look at the directory.
+
+00:33:18.625-->00:33:24.000
+Um where we should have uploaded
+the putty. And we'll see it uh
+and it's right here. Nice little
+
+00:33:24.000-->00:33:29.000
+putty. Uh we'll open a local
+window right here and we'll do a
+shasum of the actual putty file.
+
+00:33:31.417-->00:33:36.417
+See it is shasum right here.
+Eight one and ends with five E.
+And so now we will download the
+
+00:33:40.667-->00:33:45.667
+file from the victim client, the
+one that's hooked. Oops. And so
+we go to our file right here.
+
+00:34:23.583-->00:34:28.667
+And we'll see uh that the
+integrity has been kept. Right?
+So we got a nice upload of data.
+
+00:34:28.667-->00:34:33.375
+Uh and the client doesn't notice
+a thing, no windows are coming
+up. Nothing at all. It's uh nice
+
+00:34:33.375-->00:34:37.333
+and in the background. So uh
+what we're gonna do next is
+we're gonna try to elevate the
+
+00:34:37.333-->00:34:42.333
+prompt, right? A little bit of a
+UAC bypass and stuff like that,
+right. So we're gonna use er uh
+
+00:34:46.875-->00:34:51.875
+elevation. So if everything eh-
+if everything goes right, we
+should see uh a shell come back
+
+00:34:58.375-->00:35:04.625
+with the little bit elevating
+code. Looks like we're coming
+back and here we are. And a nice
+
+00:35:04.625-->00:35:09.625
+elevated prompt. Hmm. Ok, here
+we are. Alright so uh from here
+uh you could kind of um move
+
+00:35:24.083-->00:35:26.917
+around and try to pivot across
+the network. I know we were
+trying to explain to everybody
+
+00:35:26.917-->00:35:31.417
+that the ridiculousness that we
+had to do for kind a TCP
+scanning and everything along
+
+00:35:31.417-->00:35:34.875
+that line. So what we could do
+is we could try to find another
+victim or we could scan them for
+
+00:35:34.875-->00:35:39.875
+like an open port five and then
+try to migrate and pivot right?
+Er pivot, just pivot. So. So
+
+00:35:42.542-->00:35:47.542
+we're gonna use another implant
+for this. Doesn't really matter
+what filename you use for this.
+
+00:36:29.458-->00:36:36.167
+This font is ridiculous. We had
+to make it large for everybody.
+So as we see here a nice little
+
+00:36:36.167-->00:36:41.917
+read out. Um a nice scanning
+from one of the hosts to another
+host upon a mate. And right now
+
+00:36:41.917-->00:36:46.917
+uh we're gonna try to pivot ok?
+So so we're going to use.
+Actually uh we should probably
+
+00:36:50.708-->00:36:55.708
+get the hash tags first from the
+current machine that we got,
+right? We're gonna use the uh
+
+00:37:04.292-->00:37:09.667
+elevated zombie uh with the
+elevated crypt tools to kind of
+dump the hashes here. And here
+
+00:37:09.667-->00:37:14.667
+we go. Uh we got hashes from the
+hash machine. Uh and that's uh
+mimikatz. Uh you can kind of run
+
+00:37:18.458-->00:37:23.458
+any command from that uh from
+mimikatz. So uh right now we're
+going to uh kind of pivot from
+
+00:37:36.875-->00:37:39.458
+the one machine that's
+compromised and we're gonna
+pivot and we're gonna get a
+
+00:37:39.458-->00:37:44.208
+stager on the next machine uh
+within the domain, right? We uh
+as you see we got the
+
+00:37:44.208-->00:37:48.500
+credentials from mimikatz and so
+we assume we got plain text
+password or something along that
+
+00:37:48.500-->00:37:53.500
+lines. And we're gonna move onto
+the next machine. So. And here
+we go. Uh we pivoted uh
+
+00:38:44.208-->00:38:50.458
+throughout the network and uh we
+moved. And we can see a command
+shell. Um if you take a look at,
+
+00:38:50.458-->00:38:55.958
+take a look at who am I. We're
+here on the machine pivoting
+through the network, um nice and
+
+00:38:55.958-->00:39:00.958
+small execute COM objects. So.
+[applause] >> Yeah, so you can
+see he has two different or
+
+00:39:12.750-->00:39:17.042
+three different shells here. The
+first one was his medium
+integrity. Next one was one he
+
+00:39:17.042-->00:39:22.042
+elevated and then this has a
+different IP because he pivoted
+uh to another machine. Just
+
+00:39:40.042-->00:39:45.042
+gonna. Um so we're gonna talk
+about some of the mitigations
+we're gonna do against this. Um
+
+00:40:01.792-->00:40:08.458
+there are some uh ransomware
+samples that we saw that do all
+of there uh operations in
+
+00:40:08.458-->00:40:14.833
+JScript including their
+cryptography. Um so people are
+mainly focused on PowerShell
+
+00:40:14.833-->00:40:19.667
+right now. We kind of want to
+point out that uh JScript is
+also an attack surface. So
+
+00:40:19.667-->00:40:23.208
+there's a thing called the
+anti-malware scanning interface.
+I haven't actually played with
+
+00:40:23.208-->00:40:28.667
+it. But it was designed to catch
+PowerShell scripts before they
+execute. It's also hooked with
+
+00:40:28.667-->00:40:35.125
+anti-virus to get uh JScript and
+VB Script uh files before they
+execute. Even if they're uh
+
+00:40:35.125-->00:40:39.958
+using the type of bin memory
+stagers that we talked about. Um
+another thing is device guard,
+
+00:40:39.958-->00:40:46.208
+app locker, CI, it's all kind of
+the same umbrella. Uh for a term
+a common term called app white
+
+00:40:46.208-->00:40:50.792
+listing. Um in your environments
+you only want to run the
+programs that you want to run
+
+00:40:50.792-->00:40:54.625
+and this will actually prevent a
+lot of extra malware that gets
+on your system from running if
+
+00:40:54.625-->00:40:59.542
+you only have a whitelist of
+what can run. Um its kind of a
+pain to setup right now, it
+
+00:40:59.542-->00:41:04.583
+requires a lot of uh PowerShell
+and registry editing uh I've
+heard that there are good things
+
+00:41:04.583-->00:41:11.333
+coming there. So just keep an
+eye out, probably red stone
+four. Uh next year. Um but if
+
+00:41:11.333-->00:41:15.042
+you do get it working, you want
+to block the windows script
+host, you want to block HTA and
+
+00:41:15.042-->00:41:20.042
+uh compost scriplets. Um you can
+also delete uh the MSHTA dot exe
+and red server uh some
+
+00:41:23.458-->00:41:28.375
+components rely on that and
+windows update will probably
+reinstall them um but that's one
+
+00:41:28.375-->00:41:32.833
+thing you can try. Another thing
+is you can delete COM objects if
+you're not using them. It's hard
+
+00:41:32.833-->00:41:36.667
+to tell what you're actually
+using. Uh including the script
+parsers themselves, so like the
+
+00:41:36.667-->00:41:41.292
+JScript and VBScript. Those are
+all COM objects that are script
+parsing. I haven't actually
+
+00:41:41.292-->00:41:47.917
+tried deleting them, I think you
+might break your system, but ha.
+Uh we do have some uh intent to
+
+00:41:47.917-->00:41:54.875
+add this to Metasploit at least
+as target to PSExec uh so right
+um it has a it drops a file or
+
+00:41:54.875-->00:42:00.208
+it runs a PowerShell command. We
+want to do a MSHTA command back
+and then iterate it through all
+
+00:42:00.208-->00:42:05.708
+those methods that we found a
+fork to uh windows API. And try
+to spawn a meterpreter binary
+
+00:42:05.708-->00:42:11.958
+that way. Uh just iterate yeah,
+just iterate all over those
+methods. Um some more future uh
+
+00:42:11.958-->00:42:17.750
+work is exploring COM uh seeing
+what is exposed through the
+interfaces. Uh its a large
+
+00:42:17.750-->00:42:22.750
+attack surface on windows that's
+kind of forgotten about or its
+kind of a difficult concept to
+
+00:42:22.750-->00:42:28.708
+to grasp. Um Tiraniddo has a
+cool tool. I forget what it's
+called. Like LOE Viewer or
+
+00:42:28.708-->00:42:32.917
+something uh that lets you get
+the interfaces for a lot of
+these COM objects and you can
+
+00:42:32.917-->00:42:36.500
+see what you can do with them.
+Uh another thing is that with
+this tool like I said, there's a
+
+00:42:36.500-->00:42:43.125
+lot of bugs. Uh so we do plan to
+clean up the code and uh do a
+small plugin revamp. So uh right
+
+00:42:43.125-->00:42:49.208
+now the plugins are kind of
+reusing a lot of the same code
+and uh we also want to implement
+
+00:42:49.208-->00:42:54.708
+a JavaScript obfuscator so right
+now all the payloads are pretty
+generic. They're all the same um
+
+00:42:54.708-->00:43:01.250
+but if we obfuscator its gonna
+kind of uh add some uh bypasses
+for very obvious lookups of
+
+00:43:01.250-->00:43:07.042
+that. Um we've kind of neglected
+persistence implants. Why we
+didn't talk about them. There
+
+00:43:07.042-->00:43:09.917
+are a few ways to get
+persistence. That's when the
+machine reboots, it will
+
+00:43:09.917-->00:43:16.125
+restage. Uh WMi subscriptions is
+one that we could do. And then
+another things is we're using
+
+00:43:16.125-->00:43:22.500
+the basic uh Python server uh
+just very generic. Uh so we
+actually do have the Slow Loris
+
+00:43:22.500-->00:43:28.250
+attack, I believe it works on
+this similar when we drop that
+oh day. Uh SMBLoris, the- we
+
+00:43:28.250-->00:43:34.458
+have Slow Loris attack on this.
+Um so that's one thing we want
+to close down by throttling the
+
+00:43:34.458-->00:43:41.417
+amount of IPs. Some related
+talks by Tiraniddo. He did COM
+in Sixty Seconds. This is the
+
+00:43:41.417-->00:43:47.667
+best primer on COM you can
+watch. Um better than any book I
+ever read. Um he does it, it's
+
+00:43:47.667-->00:43:53.917
+not actually sixty seconds, it's
+sixty minutes, but he did at
+infiltrate uh this year. Another
+
+00:43:53.917-->00:43:58.875
+one is Windows Archaeology which
+uh subTee and enigma oh x three
+did at BSides Nashville this
+
+00:43:58.875-->00:44:04.792
+year. And then last year subTee
+wrote a very basic uh JScript
+RAT and presented that at
+
+00:44:04.792-->00:44:10.000
+Derbycon, uh we're trying to
+expand that concept and it, uh
+you know, as close to empire as
+
+00:44:10.000-->00:44:15.000
+we could. And so yeah this code
+is available at Github. Uh zero
+sum slash koadic. Uh we're also
+
+00:44:17.958-->00:44:23.667
+doing a workshop today uh it was
+a registration only though. But
+we have also released that code
+
+00:44:23.667-->00:44:28.667
+as well. Uh just check my
+Github. Um more lower level
+stuff. C and shell code. But so
+
+00:44:30.792-->00:44:35.792
+cool stuff. So yeah. Yeah that's
+zerosum and aleph naught. >>
+Thank you guys very much. >>
+
+00:44:39.417-->00:44:44.000
+Thank you. [applause]
+

@@ -1,0 +1,987 @@
+﻿1
+00:00:00,909 --> 00:00:05,790
+Hello everyone, I am Deevashwer, and in this
+presentation, I’ll be talking about SIRNN,
+
+2
+00:00:05,790 --> 00:00:10,440
+which is a math library for secure RNN inference.
+This is a joint work with my colleagues at
+
+3
+00:00:10,440 --> 00:00:14,549
+Microsoft Research India. So, let’s begin.
+
+4
+00:00:14,549 --> 00:00:18,630
+Consider we have two parties, a server with
+a machine learning model, and a client with
+
+5
+00:00:18,630 --> 00:00:20,210
+some input data.
+
+6
+00:00:20,210 --> 00:00:24,849
+The parties want to perform inference, that
+is, they want to learn the output of the model
+
+7
+00:00:24,849 --> 00:00:26,630
+on the input data
+
+8
+00:00:26,630 --> 00:00:30,849
+This should be straightforward, however, the
+model and the data they’re dealing with
+
+9
+00:00:30,849 --> 00:00:36,030
+is sensitive, and thus can’t be disclosed.
+This leads us to the problem of secure inference,
+
+10
+00:00:36,030 --> 00:00:40,579
+which seeks to answer, how these parties can
+perform inference without revealing anything
+
+11
+00:00:40,579 --> 00:00:43,730
+about their sensitive inputs.
+
+12
+00:00:43,730 --> 00:00:48,300
+Secure inference is a particular instance
+of MPC in the two-party context.
+
+13
+00:00:48,300 --> 00:00:52,989
+In MPC, there are two or more parties which
+have some private inputs, and they want to
+
+14
+00:00:52,990 --> 00:00:55,149
+compute a public function F.
+
+15
+00:00:55,149 --> 00:01:00,170
+MPC lays out a series of interactions between
+these parties and provides a mathematical
+
+16
+00:01:00,170 --> 00:01:04,970
+guarantee that at the end of these interactions,
+parties only learn the output.
+
+17
+00:01:04,970 --> 00:01:10,610
+Moreover, MPC is complete, that is, any function
+can be securely computed.
+
+18
+00:01:10,610 --> 00:01:15,950
+Thus, we can do secure inference using MPC,
+in particular, using two-party computation
+
+19
+00:01:15,950 --> 00:01:17,790
+or 2PC.
+
+20
+00:01:17,790 --> 00:01:22,110
+Our focus is on secure inference of deep neural
+networks, which have two types.
+
+21
+00:01:22,110 --> 00:01:27,580
+CNNs, that work on fixed-size input, and RNNs,
+that work on sequential data and can handle
+
+22
+00:01:27,580 --> 00:01:32,270
+arbitrary input lengths
+CNNs are feed-forward networks, while RNNs
+
+23
+00:01:32,270 --> 00:01:34,580
+feed results back into the network.
+
+24
+00:01:34,580 --> 00:01:38,860
+In the context of secure inference, there
+are many works that focus on CNNs and many
+
+25
+00:01:38,860 --> 00:01:42,890
+popular CNNs like ResNet50 have been securely
+evaluated.
+
+26
+00:01:42,890 --> 00:01:48,080
+However, RNNs have received little to no attention
+from the secure inference community.
+
+27
+00:01:48,080 --> 00:01:53,850
+RNNs are the state-of-the-art when dealing
+with sequential and time-series data, and
+
+28
+00:01:53,850 --> 00:01:56,369
+here are some of its applications:
+
+29
+00:01:56,370 --> 00:01:59,300
+First, RNNs are used to analyze DNA sequences.
+
+30
+00:01:59,300 --> 00:02:03,140
+Second, they are widely used in speech recognition,
+
+31
+00:02:03,140 --> 00:02:08,410
+and third, they have also been used in sports
+training to analyze the performance of athletes.
+
+32
+00:02:08,410 --> 00:02:13,609
+All of these applications work on sensitive
+data, and realizing them securely requires
+
+33
+00:02:13,610 --> 00:02:15,610
+secure RNN inference.
+
+34
+00:02:15,610 --> 00:02:21,080
+Now, let’s see what are the challenges in
+performing secure RNN inference.
+
+35
+00:02:21,080 --> 00:02:25,990
+First, RNNs use floating-point arithmetic,
+which is inefficient to implement securely
+
+36
+00:02:25,990 --> 00:02:27,680
+using existing techniques.
+
+37
+00:02:27,680 --> 00:02:33,080
+Fortunately, we have automated float-to-fixed
+converters for this problem, which convert
+
+38
+00:02:33,080 --> 00:02:36,940
+floating-point code to fixed-point code that
+is much more tractable.
+
+39
+00:02:36,940 --> 00:02:42,890
+However, we still have two major challenges
+in running the fixed-point code securely:
+
+40
+00:02:42,890 --> 00:02:48,829
+The first challenge is that RNNs use math
+functions like exponentiation, sigmoid, tanh,
+
+41
+00:02:48,830 --> 00:02:51,010
+and reciprocal of square root.
+
+42
+00:02:51,010 --> 00:02:55,560
+Although there are existing solutions for
+some of these functions, they are either imprecise,
+
+43
+00:02:55,560 --> 00:03:01,220
+thus their applicability is unclear, or they
+have huge performance overhead.
+
+44
+00:03:01,220 --> 00:03:06,090
+The second challenge is that the output fixed-point
+code uses a mix of different bitwidths.
+
+45
+00:03:06,090 --> 00:03:11,690
+All prior works use a single bitwidth uniformly
+for all the values, and as a result, they
+
+46
+00:03:11,690 --> 00:03:16,650
+pay the cost of the largest bitwidth everywhere.
+For example, in the networks we evaluate,
+
+47
+00:03:16,650 --> 00:03:23,040
+there is a mix of 8,16, and 32 as bitwidths,
+which is replaced by 64 everywhere if uniform
+
+48
+00:03:23,040 --> 00:03:24,959
+bitwidth is used.
+
+49
+00:03:24,960 --> 00:03:29,980
+Since the performance of all secure operations
+degrade at least linearly with bitwidths,
+
+50
+00:03:29,980 --> 00:03:32,989
+this leads to inefficient solutions.
+
+51
+00:03:32,990 --> 00:03:37,310
+To address these challenges, we have created
+SIRNN, which is a library for semi-honest
+
+52
+00:03:37,310 --> 00:03:38,560
+secure inference.
+
+53
+00:03:38,560 --> 00:03:44,320
+SIRNN provides support for mixed-bitwidth
+arithmetic, which is enabled by our new 2PC
+
+54
+00:03:44,320 --> 00:03:47,069
+protocols for the required building blocks.
+
+55
+00:03:47,069 --> 00:03:52,069
+SIRNN also supports math functions used in
+RNNs. In particular, we have developed new
+
+56
+00:03:52,069 --> 00:03:58,190
+math implementations that are efficient to
+realize securely using our 2PC building blocks.
+
+57
+00:03:58,190 --> 00:04:03,990
+Additionally, our math functionalities are
+provably precise, which is why, SIRNN suffers
+
+58
+00:04:03,990 --> 00:04:05,770
+no loss in inference accuracy.
+
+59
+00:04:05,770 --> 00:04:11,290
+Thanks to our math implementations and efficient
+building blocks, SIRNN achieves two orders
+
+60
+00:04:11,290 --> 00:04:13,510
+of magnitude improvement over prior works.
+
+61
+00:04:13,510 --> 00:04:19,899
+Finally, with SIRNN, we are the first ones
+to securely evaluate an RNN on speech data
+
+62
+00:04:19,899 --> 00:04:22,719
+and perform head detection on images.
+
+63
+00:04:22,720 --> 00:04:27,790
+Now, consider this figure, which shows the
+hierarchy of the different components we deal
+
+64
+00:04:27,790 --> 00:04:31,290
+with.
+At the top level, we have RNNs, that use basic
+
+65
+00:04:31,290 --> 00:04:37,250
+arithmetic layers like matmul, as well as
+math functions layers such as sigmoid, tanh,
+
+66
+00:04:37,250 --> 00:04:42,370
+and L2-normalization.
+The math function layers in turn rely on exponentiation,
+
+67
+00:04:42,370 --> 00:04:47,711
+reciprocal and reciprocal of sqrt.
+Finally, at the bottom level, we have our
+
+68
+00:04:47,711 --> 00:04:52,910
+building blocks for mixed-bitwidth arithmetic,
+that are used by all the layers.
+
+69
+00:04:52,910 --> 00:04:57,260
+In the rest of this talk, we’ll go bottom-up,
+starting with the building blocks at the bottom
+
+70
+00:04:57,260 --> 00:05:02,530
+level, and then, we’ll sequentially go over
+each level on the more interesting right branch
+
+71
+00:05:02,530 --> 00:05:05,659
+of this hierarchy.
+
+72
+00:05:05,660 --> 00:05:09,900
+Our first building block is zero-extension,
+which simply increases the bitwidth of the
+
+73
+00:05:09,900 --> 00:05:15,870
+input integer without changing its value.
+For example, here a 4-bit integer is extended
+
+74
+00:05:15,870 --> 00:05:19,630
+to an 8-bit integer by prepending 4 zeros.
+
+75
+00:05:19,630 --> 00:05:26,320
+Next, we have logical right-shift, which takes
+a shift amount s as input and does the following:
+
+76
+00:05:26,320 --> 00:05:31,900
+it shifts the bits of the input integer to
+the right by s places, and in the process,
+
+77
+00:05:31,900 --> 00:05:37,280
+discards the lower s bits. To maintain the
+same bitwidth, it also puts zero in the upper
+
+78
+00:05:37,280 --> 00:05:39,150
+s bits.
+
+79
+00:05:39,150 --> 00:05:44,109
+We have another variant of truncation called
+truncate reduce, which is more commonly used.
+
+80
+00:05:44,110 --> 00:05:49,950
+It does exactly what logical right shift does,
+except it also reduces the bitwidth by shift
+
+81
+00:05:49,950 --> 00:05:50,950
+amount.
+
+82
+00:05:50,950 --> 00:05:56,669
+Then, we have an operator that multiplies
+operands of unequal bitwidths. This operator
+
+83
+00:05:56,669 --> 00:06:02,500
+has an additional parameter ell which denotes
+the output bitwidth. For instance, here we
+
+84
+00:06:02,500 --> 00:06:07,220
+have a multiplication between a 3-bit and
+a 4-bit integer and the output is stored in
+
+85
+00:06:07,220 --> 00:06:08,220
+6-bits.
+
+86
+00:06:08,220 --> 00:06:13,979
+Finally, we have digit decomposition, which
+simply takes an ell-bit integer and splits
+
+87
+00:06:13,979 --> 00:06:16,919
+it into blocks of d bits each.
+
+88
+00:06:16,919 --> 00:06:21,940
+For extension, truncation and multiplication,
+we also have signed variants, which take signed
+
+89
+00:06:21,940 --> 00:06:28,210
+integers as input. In the paper, we show how
+to reduce signed operations to unsigned operations
+
+90
+00:06:28,210 --> 00:06:30,320
+at no additional cost.
+
+91
+00:06:30,320 --> 00:06:36,290
+Here is a comparison between the communication
+of our 2PC building blocks with the best baselines
+
+92
+00:06:36,290 --> 00:06:40,840
+possible through existing techniques.
+From communication, I mean the total amount
+
+93
+00:06:40,840 --> 00:06:44,479
+of data transferred between the parties during
+the secure computation.
+
+94
+00:06:44,480 --> 00:06:49,650
+We focus on communication improvements here
+because for our protocols, as well as these
+
+95
+00:06:49,650 --> 00:06:54,859
+baselines, communication dictates the performance.
+Moreover, the computations we’re dealing
+
+96
+00:06:54,860 --> 00:07:00,389
+with are wide enough that rounds of communication
+are easily amortized.
+
+97
+00:07:00,389 --> 00:07:05,030
+For extension and digit decomposition, garbled
+circuits is the baseline and we’re around
+
+98
+00:07:05,030 --> 00:07:10,020
+6x better in both cases.
+For right shift and truncate reduce, the baseline
+
+99
+00:07:10,020 --> 00:07:14,299
+is the right shift protocol from CrypTFlow2.
+For computing right-shifts, we are better
+
+100
+00:07:14,300 --> 00:07:19,650
+than this baseline by up to 2x and our improvements
+are much larger for truncate reduce, which
+
+101
+00:07:19,650 --> 00:07:24,840
+we use more frequently throughout SIRNN.
+Finally, we have multiplication, the baseline
+
+102
+00:07:24,840 --> 00:07:29,758
+for which is to first extend the operands
+to the output bitwidth, and then multiply
+
+103
+00:07:29,759 --> 00:07:35,389
+them via the standard approach of using Beaver
+triples. We have a new protocol for multiplication,
+
+104
+00:07:35,389 --> 00:07:39,300
+which is up to 2x better than this baseline.
+
+105
+00:07:39,300 --> 00:07:43,610
+On top of the improvements I just showed,
+we have an additional optimization, which
+
+106
+00:07:43,610 --> 00:07:47,260
+can be used if the most significant bit of
+the input is known.
+
+107
+00:07:47,260 --> 00:07:52,770
+This is great, as we designed our math functionalities
+in such a way that we always know the MSB
+
+108
+00:07:52,770 --> 00:07:54,799
+from domain knowledge.
+
+109
+00:07:54,800 --> 00:07:59,730
+Here are the updated improvements when this
+optimization is used. Extensions become very
+
+110
+00:07:59,730 --> 00:08:05,039
+cheap, the right-shifts become almost as cheap
+as truncate-reduce in most cases, and our
+
+111
+00:08:05,039 --> 00:08:09,139
+improvements grow up to 5x for multiplication.
+
+112
+00:08:09,139 --> 00:08:13,039
+Now we are done with the bottom level and
+we move on to the next level.
+
+113
+00:08:13,039 --> 00:08:16,979
+But before we get into the details of our
+math functionalities, we first discuss some
+
+114
+00:08:16,980 --> 00:08:21,759
+background on fixed-point representation that
+will be pertinent in the next slide.
+
+115
+00:08:21,759 --> 00:08:26,520
+Specifically, a floating-point value x can
+be converted to a fixed-point integer with
+
+116
+00:08:26,520 --> 00:08:32,640
+scale s by multiplying it with 2^s and dropping
+the fractional part of the multiplication
+
+117
+00:08:32,640 --> 00:08:36,759
+output.
+Note that using a larger scale s in this conversion
+
+118
+00:08:36,759 --> 00:08:40,049
+leads to a more precise fixed-point representation.
+
+119
+00:08:40,049 --> 00:08:45,362
+For example, here we have the constant pi
+represented with 3 different scales, and it
+
+120
+00:08:45,362 --> 00:08:48,998
+can be seen that the error is inversely proportional
+to scale.
+
+121
+00:08:48,999 --> 00:08:53,741
+Since different parts of computations require
+different precision, the scales vary, and
+
+122
+00:08:53,741 --> 00:08:58,779
+in order to use minimal bitwidths, the bitwidths
+also vary accordingly.
+
+123
+00:08:58,779 --> 00:09:02,769
+Now that we know what fixed-point integers
+and their scales are, let’s look at our
+
+124
+00:09:02,769 --> 00:09:06,179
+math implementations, which are inspired by
+embedded systems.
+
+125
+00:09:06,179 --> 00:09:11,779
+In particular, we also use lookup tables to
+avoid performing complex operations and we
+
+126
+00:09:11,779 --> 00:09:16,850
+use low-bitwidth fixed-point arithmetic, which
+is used in embedded systems to reduce memory
+
+127
+00:09:16,850 --> 00:09:18,329
+consumption.
+
+128
+00:09:18,329 --> 00:09:23,309
+The first functionality we look at is that
+for exponentiation, which is defined as e^-x,
+
+129
+00:09:23,309 --> 00:09:29,050
+where x is always positive.
+The idea here is to split x into x_i’s of
+
+130
+00:09:29,050 --> 00:09:34,420
+smaller bitwidths, compute exponentiation
+on smaller x_i’s, and then multiply these
+
+131
+00:09:34,420 --> 00:09:37,160
+results to get e^-x.
+
+132
+00:09:37,160 --> 00:09:42,100
+To understand the specifics, let’s see a
+concrete toy example. Let’s say we have
+
+133
+00:09:42,100 --> 00:09:48,329
+an 8-bit input with scale 4, and we want a
+10-bit output with scale 6.
+
+134
+00:09:48,329 --> 00:09:55,670
+We start with our input x, the fixed-point
+integer 27 with scale 4 and real value 1.6875.
+
+135
+00:09:55,670 --> 00:10:02,779
+First, we use digit decomposition to split
+x into two 4-bit chunks, x_0 and x_1. Note
+
+136
+00:10:02,779 --> 00:10:06,660
+that the scale of x_1 is 0 and the scale of
+x_0 is 4.
+
+137
+00:10:06,660 --> 00:10:13,949
+Next, x_0 and x_1 are fed into lookup tables
+that exponentiate their real values, and then
+
+138
+00:10:13,949 --> 00:10:18,699
+convert the results to fixed-point integers
+with scale 6 and bitwidth 8.
+
+139
+00:10:18,699 --> 00:10:24,128
+Splitting x into x_i’s here has the advantage
+that much smaller lookup tables can used,
+
+140
+00:10:24,129 --> 00:10:29,439
+which is important as the cost of lookup tables
+grows exponentially with input bitwidth.
+
+141
+00:10:29,439 --> 00:10:35,230
+Next, the outputs from the lookup tables are
+multiplied in 14 bits to get a fixed-point
+
+142
+00:10:35,230 --> 00:10:40,819
+integer g_0 which represents e^-x, but with
+scale 12.
+
+143
+00:10:40,819 --> 00:10:47,490
+Since the output scale is 6, we truncate-reduce
+g_0 by 6 bits to get h, which has scale 6
+
+144
+00:10:47,490 --> 00:10:49,259
+and the bitwidth is 8.
+
+145
+00:10:49,259 --> 00:10:54,199
+Finally, to get a 10-bit output, we perform
+an extension.
+
+146
+00:10:54,199 --> 00:11:00,309
+Since we know that e^-x always lies in 0 to
+1, we have setup the bitwidths in this computation
+
+147
+00:11:00,309 --> 00:11:06,689
+in such a way that the MSB of f_i, g_i, and
+h are publicly known to be always 0. Thus,
+
+148
+00:11:06,689 --> 00:11:10,769
+our MSB optimization from before is applicable
+here.
+
+149
+00:11:10,769 --> 00:11:16,079
+In this example, we had an 8-bit input. For
+cases with larger bitwidths, this functionality
+
+150
+00:11:16,079 --> 00:11:21,179
+straightforwardly generalizes to more than
+2 chunks.
+
+151
+00:11:21,179 --> 00:11:26,160
+After exponentiation, we have reciprocal and
+reciprocal of sqrt, which we evaluate with
+
+152
+00:11:26,160 --> 00:11:32,100
+the following strategy: first, we use a lookup
+table to get an initial approximation of the
+
+153
+00:11:32,100 --> 00:11:33,769
+output.
+
+154
+00:11:33,769 --> 00:11:38,519
+And then, we use Goldschmidt iterations to
+iteratively improve upon that approximation.
+
+155
+00:11:38,519 --> 00:11:45,009
+Here, we again extensively use mixed-bitwidths,
+varying scales, and ensure that MSBs of all
+
+156
+00:11:45,009 --> 00:11:47,399
+the intermediates are known.
+
+157
+00:11:47,399 --> 00:11:52,389
+Moving on to the next level, we have sigmoid,
+tanh, and L2-normalization. They are easy
+
+158
+00:11:52,389 --> 00:11:56,540
+to implement given our building blocks and
+functionalities for exponentiation, reciprocal,
+
+159
+00:11:56,540 --> 00:12:00,540
+and reciprocal sqrt, as is evident from their
+formulas.
+
+160
+00:12:00,540 --> 00:12:07,069
+We verified correctness of all our math functionalities
+through exhaustive enumeration, which is basically
+
+161
+00:12:07,069 --> 00:12:11,839
+checking the output on all possible inputs,
+and is tractable for the bitwidths used in
+
+162
+00:12:11,839 --> 00:12:12,839
+ML.
+
+163
+00:12:12,839 --> 00:12:18,239
+We found that our functionalities are precise,
+having at most 4 ULP error, which means that
+
+164
+00:12:18,239 --> 00:12:22,639
+their output is contaminated in at most 2
+bits.
+
+165
+00:12:22,639 --> 00:12:28,449
+Now, we move on to the evaluation of our system,
+which was performed on two servers with commodity
+
+166
+00:12:28,449 --> 00:12:31,949
+hardware in a LAN setting.
+
+167
+00:12:31,949 --> 00:12:37,349
+This table shows our comparison with prior
+works for securely evaluating 10^5 sigmoid
+
+168
+00:12:37,350 --> 00:12:41,269
+instances.
+MiniONN used a 12-piece linear spline to evaluate
+
+169
+00:12:41,269 --> 00:12:45,009
+their benchmarks, which we found has large
+ULP errors.
+
+170
+00:12:45,009 --> 00:12:49,980
+To achieve comparable precision to SIRNN,
+MiniONN’s recipe would instead require 48
+
+171
+00:12:49,980 --> 00:12:56,339
+pieces, which makes it 115x slower than SIRNN.
+The other two works, namely, DeepSecure and
+
+172
+00:12:56,339 --> 00:13:00,299
+MP-SPDZ are also at least 80x slower.
+
+173
+00:13:00,299 --> 00:13:07,079
+Thus, evaluating sigmoid using SIRNN is precise
+and 80-115x faster than prior works.
+
+174
+00:13:07,079 --> 00:13:11,859
+In the paper, we have performed many other
+comparisons against prior works with similar
+
+175
+00:13:11,860 --> 00:13:16,850
+improvements that I don’t have the time
+to discuss here. For a more comprehensive
+
+176
+00:13:16,850 --> 00:13:18,790
+comparison, please refer the paper.
+
+177
+00:13:18,790 --> 00:13:22,660
+Now, let’s look at the new benchmarks we
+evaluated.
+
+178
+00:13:22,660 --> 00:13:28,499
+First, we have the Google-30 benchmark, which
+evaluates an RNN for keyword spotting trained
+
+179
+00:13:28,499 --> 00:13:29,499
+on the Google-30 dataset.
+
+180
+00:13:29,499 --> 00:13:36,050
+It takes speech data as input and identifies
+simple commands like “yes” or “no”,
+
+181
+00:13:36,050 --> 00:13:38,878
+digits, and directions from the speech data.
+
+182
+00:13:38,879 --> 00:13:44,589
+It has 99 layers for both sigmoid and tanh,
+which have 100 instances each.
+
+183
+00:13:44,589 --> 00:13:49,799
+The table shows that using SIRNN, a single
+inference on this RNN takes around 50 seconds
+
+184
+00:13:49,799 --> 00:13:52,309
+and half a GB of communication.
+
+185
+00:13:52,309 --> 00:13:56,670
+Batched inference, on the other hand, has
+much better performance as costs are amortized,
+
+186
+00:13:56,670 --> 00:14:00,319
+taking just 1.1s per inference.
+
+187
+00:14:00,319 --> 00:14:05,339
+And as alluded to earlier, this benchmark
+is the first secure evaluation of RNN on speech
+
+188
+00:14:05,339 --> 00:14:06,470
+data.
+
+189
+00:14:06,470 --> 00:14:12,319
+Next, we have the Heads benchmark, which evaluates
+a state-of-the-art network combining CNNs
+
+190
+00:14:12,319 --> 00:14:13,870
+and RNNs.
+
+191
+00:14:13,870 --> 00:14:18,259
+The task of this network is to identify human
+heads in an image.
+
+192
+00:14:18,259 --> 00:14:22,949
+It contains 3 million sigmoid and tanh calls,
+which is three orders of magnitude more than
+
+193
+00:14:22,949 --> 00:14:28,769
+the benchmarks considered in prior works.
+These calls are distributed across 136 layers,
+
+194
+00:14:28,769 --> 00:14:32,399
+with some layers containing 72000 instances.
+
+195
+00:14:32,399 --> 00:14:39,209
+This network also has 3 L2-norm layers containing
+up to 1200 instances of recirprocal sqrt.
+
+196
+00:14:39,209 --> 00:14:45,339
+It takes us just 7 minutes and 85.5 GB of
+communication to evaluate this huge neural
+
+197
+00:14:45,339 --> 00:14:46,339
+network.
+
+198
+00:14:46,339 --> 00:14:51,879
+Lastly, we observed that around half the time
+in this network is spent on sigmoid and tanh
+
+199
+00:14:51,879 --> 00:14:56,470
+despite our large improvements. This clearly
+signifies the importance of having efficient
+
+200
+00:14:56,470 --> 00:15:00,759
+implementations for math functions.
+
+201
+00:15:00,759 --> 00:15:04,439
+In conclusion, we created a new math library
+for secure inference that is two orders of
+
+202
+00:15:04,439 --> 00:15:07,149
+magnitude faster than prior work.
+
+203
+00:15:07,149 --> 00:15:11,389
+It has support for mixed-bitwidth arithmetic
+and the corresponding 2PC building blocks
+
+204
+00:15:11,389 --> 00:15:13,829
+are of independent interest.
+
+205
+00:15:13,829 --> 00:15:19,069
+Our math implementations are efficient and
+provably precise, and can be used in non-RNN
+
+206
+00:15:19,069 --> 00:15:20,069
+contexts.
+
+207
+00:15:20,069 --> 00:15:24,449
+Our code is publicly available on GitHub and
+I hope you enjoy reading our paper. Thank
+
+208
+00:15:24,449 --> 00:15:25,269
+you for your attention!
+

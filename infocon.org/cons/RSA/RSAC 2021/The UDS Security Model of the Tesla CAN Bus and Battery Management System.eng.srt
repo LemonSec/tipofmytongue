@@ -1,0 +1,2747 @@
+﻿1
+00:00:01,290 --> 00:00:04,400
+- Hi there, welcome to my RSA talk.
+
+2
+00:00:04,400 --> 00:00:05,752
+The UDS security model
+
+3
+00:00:05,752 --> 00:00:10,200
+of the Tesla CAN Bus and
+Battery Management System.
+
+4
+00:00:10,200 --> 00:00:11,370
+My name is Patrick Kiley,
+
+5
+00:00:11,370 --> 00:00:13,669
+I'm a principal security
+consultant at Rapid7.
+
+6
+00:00:14,780 --> 00:00:18,509
+I'm gonna go through this as a fun talk
+
+7
+00:00:18,510 --> 00:00:21,090
+on some pretty cool research I did
+
+8
+00:00:21,090 --> 00:00:24,600
+on a vehicle that I was able
+to hack and make faster.
+
+9
+00:00:24,600 --> 00:00:25,810
+And I hope you enjoy it.
+
+10
+00:00:25,810 --> 00:00:28,290
+There'll be some q&a at the end.
+
+11
+00:00:28,290 --> 00:00:31,180
+In addition, since this
+is a prerecorded talk,
+
+12
+00:00:31,180 --> 00:00:33,010
+you're welcome to ask questions
+
+13
+00:00:33,010 --> 00:00:36,010
+during I'll be following
+during the actual presentation.
+
+14
+00:00:36,010 --> 00:00:38,089
+I'll try and answer them as best I can
+
+15
+00:00:38,090 --> 00:00:39,240
+during the talk itself.
+
+16
+00:00:40,160 --> 00:00:42,809
+So the first steps I want to go through
+
+17
+00:00:42,810 --> 00:00:43,970
+I want to talk a little bit
+
+18
+00:00:43,970 --> 00:00:48,370
+about the architecture
+of the Tesla model S
+
+19
+00:00:48,370 --> 00:00:53,370
+and some of the security
+components that are relevant to it
+
+20
+00:00:53,440 --> 00:00:56,079
+as well as my journey to
+actually do the upgrade,
+
+21
+00:00:56,079 --> 00:00:58,713
+and add (indistinct) to it.
+
+22
+00:00:59,920 --> 00:01:02,920
+So Tesla is a big target
+for the hacking community.
+
+23
+00:01:02,920 --> 00:01:07,920
+This is a picture taken
+at the car hacking village
+
+24
+00:01:08,050 --> 00:01:09,899
+at DEF CON a couple years ago.
+
+25
+00:01:09,899 --> 00:01:14,050
+But they're also a very
+proactive security company.
+
+26
+00:01:14,050 --> 00:01:16,640
+They've got a good bug bonding program.
+
+27
+00:01:16,640 --> 00:01:20,560
+They participate in CanSecWest
+with big prize payouts
+
+28
+00:01:20,560 --> 00:01:23,520
+where they actually
+give away a model three,
+
+29
+00:01:23,520 --> 00:01:25,380
+but the original one the Tesla
+
+30
+00:01:25,380 --> 00:01:28,229
+that I actually did the work on the SOC
+
+31
+00:01:28,230 --> 00:01:31,750
+the main display that you see
+on the right in this image,
+
+32
+00:01:31,750 --> 00:01:35,110
+it actually has a hardware level flaw,
+
+33
+00:01:35,110 --> 00:01:39,530
+that was the same one that
+effected Nintendo switch.
+
+34
+00:01:39,530 --> 00:01:43,160
+So there was the one that
+allowed the boot loader
+
+35
+00:01:43,160 --> 00:01:46,509
+to be updated and hacked.
+
+36
+00:01:46,510 --> 00:01:49,870
+And that's one of the
+big reasons that Tesla
+
+37
+00:01:49,870 --> 00:01:50,800
+did and moved
+
+38
+00:01:50,800 --> 00:01:53,770
+to the Intel Atom Based
+CPUs on the newer cars
+
+39
+00:01:53,770 --> 00:01:55,652
+the model three in the near S/X.
+
+40
+00:01:56,820 --> 00:01:58,586
+So the topics that we're
+gonna cover on this
+
+41
+00:01:58,587 --> 00:02:01,230
+we're going to go over the architecture.
+
+42
+00:02:01,230 --> 00:02:03,790
+We're going to talk about the process
+
+43
+00:02:03,790 --> 00:02:07,760
+of the ludicrous upgrade,
+do some firmware analysis,
+
+44
+00:02:07,760 --> 00:02:10,340
+cover logical security on the BMS board
+
+45
+00:02:10,340 --> 00:02:14,330
+and then go deep into the
+CAN Bus uniform diagnostics
+
+46
+00:02:14,330 --> 00:02:16,940
+which is the main kind
+of meat of the talk,
+
+47
+00:02:16,940 --> 00:02:19,880
+and then follow up with some
+security recommendations
+
+48
+00:02:19,880 --> 00:02:21,912
+and final notes.
+
+49
+00:02:23,040 --> 00:02:27,700
+So the original model S it's
+an Ubuntu based Linux system
+
+50
+00:02:28,820 --> 00:02:31,799
+the autopilot that you see in the picture
+
+51
+00:02:31,800 --> 00:02:33,700
+the version three and
+newer are all actually
+
+52
+00:02:33,700 --> 00:02:38,700
+Tesla Silicon earlier
+versions were Nvidia based
+
+53
+00:02:39,087 --> 00:02:41,339
+and actually has an ethernet connection
+
+54
+00:02:41,340 --> 00:02:46,220
+between the instrument cluster
+and the central display.
+
+55
+00:02:46,220 --> 00:02:49,070
+The one that you saw
+in the previous image,
+
+56
+00:02:49,070 --> 00:02:50,850
+but then there's a security
+gateway that exists
+
+57
+00:02:50,850 --> 00:02:53,730
+between the ethernet buses, you know,
+
+58
+00:02:53,730 --> 00:02:56,399
+all the Bluetooth cellular connection
+
+59
+00:02:56,400 --> 00:02:59,543
+and the all the individual
+vehicle controllers.
+
+60
+00:03:00,830 --> 00:03:02,590
+So the security gateway
+
+61
+00:03:02,590 --> 00:03:05,510
+it's a pretty important
+part of the system overall,
+
+62
+00:03:05,510 --> 00:03:07,959
+it's a free RTOS based system.
+
+63
+00:03:07,960 --> 00:03:08,793
+Again it sits
+
+64
+00:03:08,793 --> 00:03:12,383
+between the Tegra SOC and
+the various CAN buses,
+
+65
+00:03:12,383 --> 00:03:16,050
+you know, for example,
+powertrain, chasses, and body,
+
+66
+00:03:16,050 --> 00:03:18,690
+but it's also heavily involved
+in the update process.
+
+67
+00:03:18,690 --> 00:03:20,770
+You hear about people, you know,
+
+68
+00:03:20,770 --> 00:03:22,613
+getting new software for the, the vehicle.
+
+69
+00:03:22,613 --> 00:03:26,310
+The gateway is a component
+that handles a major part
+
+70
+00:03:26,310 --> 00:03:28,320
+of that update process.
+
+71
+00:03:28,320 --> 00:03:30,950
+And it's the one that
+actually handles the updating
+
+72
+00:03:30,950 --> 00:03:34,780
+of all the individual
+CAN connected modules
+
+73
+00:03:34,780 --> 00:03:36,243
+on the vehicle itself.
+
+74
+00:03:36,243 --> 00:03:39,553
+And a really interesting
+about the security gateway is
+
+75
+00:03:39,553 --> 00:03:42,700
+that actually stores the configuration
+
+76
+00:03:42,700 --> 00:03:44,820
+of the vehicle as a text file.
+
+77
+00:03:44,820 --> 00:03:47,840
+Now newer versions of this file actually
+
+78
+00:03:47,840 --> 00:03:51,440
+have protections that
+prevent anyone from changing,
+
+79
+00:03:51,440 --> 00:03:53,829
+but on older versions of
+software all you had to
+
+80
+00:03:53,830 --> 00:03:56,989
+do is basically pull
+this file off the gateway
+
+81
+00:03:56,989 --> 00:04:00,730
+make some edits, and then
+upload it back again.
+
+82
+00:04:00,730 --> 00:04:03,679
+So for example you can control ludicrous
+
+83
+00:04:03,680 --> 00:04:06,260
+with a performance ad on one line
+
+84
+00:04:06,260 --> 00:04:08,609
+you can turn on and off supercharging.
+
+85
+00:04:08,610 --> 00:04:11,210
+In fact that's how Tesla disabled it
+
+86
+00:04:11,210 --> 00:04:15,800
+on salvage vehicles and as
+well as control the level
+
+87
+00:04:15,800 --> 00:04:17,510
+of autopilot that was actually purchased.
+
+88
+00:04:17,510 --> 00:04:21,289
+So there's a lot of relevant
+
+89
+00:04:21,290 --> 00:04:25,760
+and significant cost changes
+that you can actually make
+
+90
+00:04:25,760 --> 00:04:30,430
+on that, on that file to, to do that work.
+
+91
+00:04:30,430 --> 00:04:32,720
+So the battery management system itself
+
+92
+00:04:32,720 --> 00:04:34,521
+here's kind of a little
+hardware overview of it
+
+93
+00:04:34,521 --> 00:04:36,180
+of the unit itself.
+
+94
+00:04:36,180 --> 00:04:41,180
+It uses a DSP TI TMS three
+20 that runs its own version
+
+95
+00:04:42,310 --> 00:04:43,143
+of software.
+
+96
+00:04:43,143 --> 00:04:44,900
+It's, it's not, you know, a Linux-based,
+
+97
+00:04:44,900 --> 00:04:48,549
+or anything else that
+runs the TI code base
+
+98
+00:04:48,550 --> 00:04:49,690
+and then there's a backup to it
+
+99
+00:04:49,690 --> 00:04:53,700
+to CPLD that's the also kind of exists
+
+100
+00:04:53,700 --> 00:04:56,360
+alongside the TI unit
+
+101
+00:04:56,360 --> 00:04:58,730
+that acts as a more hardware backup.
+
+102
+00:04:58,730 --> 00:05:02,680
+There's a current shunt
+running just a small STM.
+
+103
+00:05:02,680 --> 00:05:04,640
+And that's an important
+device that actually
+
+104
+00:05:04,640 --> 00:05:06,430
+measures the amount of current coming
+
+105
+00:05:06,430 --> 00:05:10,720
+from the battery through a
+very, very small resistor,
+
+106
+00:05:10,720 --> 00:05:12,520
+a very low value resistor.
+
+107
+00:05:12,520 --> 00:05:15,450
+And then there's a
+pre-charge resistor that is
+
+108
+00:05:15,450 --> 00:05:18,580
+used to prevent damage
+when the contactors close
+
+109
+00:05:18,580 --> 00:05:20,830
+prevent immerse current damage.
+
+110
+00:05:20,830 --> 00:05:22,180
+And then there's BMB boards
+
+111
+00:05:22,180 --> 00:05:25,500
+on each individual battery
+pack that also include
+
+112
+00:05:25,500 --> 00:05:27,530
+bleed resistors to allow the app packs
+
+113
+00:05:27,530 --> 00:05:28,729
+to get all balanced out.
+
+114
+00:05:30,040 --> 00:05:32,040
+Here's a good image that actually
+
+115
+00:05:32,040 --> 00:05:33,890
+shows all those individual components.
+
+116
+00:05:33,890 --> 00:05:36,550
+You can see the shunt
+with the large bus bars
+
+117
+00:05:36,550 --> 00:05:38,970
+and then there's a small known resistance.
+
+118
+00:05:38,970 --> 00:05:40,690
+And then it just measures
+the voltage differential
+
+119
+00:05:40,690 --> 00:05:42,560
+between the two of those.
+
+120
+00:05:42,560 --> 00:05:45,760
+There's a sample BMB of
+voltage sense connectors
+
+121
+00:05:45,760 --> 00:05:47,630
+that actually connect to the contactors.
+
+122
+00:05:47,630 --> 00:05:49,450
+There's a positive and negative contactor
+
+123
+00:05:49,450 --> 00:05:50,753
+inside the battery pack.
+
+124
+00:05:52,514 --> 00:05:54,840
+And you know a couple other components
+
+125
+00:05:54,840 --> 00:05:57,080
+there's a big logic connector that goes
+
+126
+00:05:57,080 --> 00:05:58,495
+outside the battery pack as well.
+
+127
+00:05:58,495 --> 00:06:01,490
+It's the gray connector which
+you can see on the right here.
+
+128
+00:06:02,560 --> 00:06:06,440
+So how does the ludicrous
+upgrade process work?
+
+129
+00:06:06,440 --> 00:06:07,503
+How did I do that?
+
+130
+00:06:08,460 --> 00:06:10,150
+What happened was the
+
+131
+00:06:10,150 --> 00:06:14,760
+the PD five D was released
+and then a ludicrous was the
+
+132
+00:06:14,760 --> 00:06:17,746
+the PA for the PD five D
+was an aftermarket upgrade
+
+133
+00:06:17,746 --> 00:06:20,010
+or an after purchase upgrade.
+
+134
+00:06:20,010 --> 00:06:21,050
+So the car was
+
+135
+00:06:21,050 --> 00:06:22,830
+around the car was
+released for several months
+
+136
+00:06:22,830 --> 00:06:25,520
+and then they announced
+the ludicrous upgrade
+
+137
+00:06:25,520 --> 00:06:26,530
+but it was significant.
+
+138
+00:06:26,530 --> 00:06:31,446
+It added a half a second to
+the zero 60, zero to 60 time.
+
+139
+00:06:31,447 --> 00:06:36,447
+And it was a $5,000 retrofit
+or to $10,000 new purchase.
+
+140
+00:06:37,830 --> 00:06:39,340
+But today it's a standard feature.
+
+141
+00:06:39,340 --> 00:06:42,450
+And then, you know, by the
+time there was talk there,
+
+142
+00:06:42,450 --> 00:06:45,229
+Tesla claims that the Plaid
+model S will actually be the
+
+143
+00:06:45,230 --> 00:06:47,900
+the one that's out and available.
+
+144
+00:06:47,900 --> 00:06:50,590
+So after a certain
+window, after, you know,
+
+145
+00:06:50,590 --> 00:06:53,349
+a couple of years, it
+was no longer possible
+
+146
+00:06:53,350 --> 00:06:57,190
+to get a ludicrous upgrade
+on an existing PD, five D?
+
+147
+00:06:57,190 --> 00:06:58,023
+So I took
+
+148
+00:06:58,023 --> 00:07:01,093
+upon the goal to actually
+reverse engineer that process
+
+149
+00:07:01,093 --> 00:07:03,667
+because I figured if
+they actually had that
+
+150
+00:07:03,667 --> 00:07:05,450
+and it was available
+in the service centers
+
+151
+00:07:05,450 --> 00:07:06,807
+I might actually be able to figure it out.
+
+152
+00:07:06,807 --> 00:07:09,060
+And it turns out it was really complicated
+
+153
+00:07:09,060 --> 00:07:12,490
+like I say it was a
+ludicrously foolish endeavor
+
+154
+00:07:12,490 --> 00:07:14,860
+but luckily I had used it in a garage.
+
+155
+00:07:14,860 --> 00:07:17,469
+There was a friend on one of the
+
+156
+00:07:17,469 --> 00:07:19,980
+the hacking forums that I got in touch
+
+157
+00:07:19,980 --> 00:07:23,070
+with and he let me use his
+garage for the weekend.
+
+158
+00:07:23,070 --> 00:07:25,480
+So what I had to do is bring it there.
+
+159
+00:07:25,480 --> 00:07:27,540
+We dropped the battery pack on it
+
+160
+00:07:27,540 --> 00:07:29,933
+and then I did the high voltage surgery.
+
+161
+00:07:31,310 --> 00:07:34,630
+So what I had to do is
+drop that battery pack,
+
+162
+00:07:34,630 --> 00:07:36,670
+replace the the pyro fuse,
+
+163
+00:07:36,670 --> 00:07:40,150
+which was a safety mechanism
+with a higher current version,
+
+164
+00:07:40,150 --> 00:07:41,739
+had to replace the contactors,
+
+165
+00:07:41,740 --> 00:07:43,767
+and I had to modify the current shunt,
+
+166
+00:07:43,767 --> 00:07:46,290
+but I also had to do
+firmware changes settings
+
+167
+00:07:46,290 --> 00:07:49,150
+to the vehicle which I
+kind of covered in the
+
+168
+00:07:49,150 --> 00:07:52,419
+the gateway thing recalibrate
+the high current shunt.
+
+169
+00:07:52,420 --> 00:07:54,600
+And so I showed the
+picture of that earlier.
+
+170
+00:07:54,600 --> 00:07:57,110
+And then once I was done
+with the entire process
+
+171
+00:07:57,110 --> 00:07:58,980
+I managed to brick the vehicle.
+
+172
+00:07:58,980 --> 00:08:01,410
+I couldn't drive it back from California,
+
+173
+00:08:01,410 --> 00:08:02,623
+I had to tow it back.
+
+174
+00:08:04,130 --> 00:08:08,830
+Ah, here's a picture of the
+fuse on the left and the,
+
+175
+00:08:08,830 --> 00:08:12,885
+contactor Bay on the right with
+the old contactors removed.
+
+176
+00:08:12,886 --> 00:08:16,150
+I did some research on
+what the safety protocols
+
+177
+00:08:16,150 --> 00:08:17,070
+were for doing this.
+
+178
+00:08:17,070 --> 00:08:19,590
+And these were the
+components you had to buy.
+
+179
+00:08:19,590 --> 00:08:21,409
+You have to buy some
+high voltage gloves that
+
+180
+00:08:21,410 --> 00:08:23,923
+are the venues, glove protectors.
+
+181
+00:08:24,890 --> 00:08:26,450
+So even though everything's isolated
+
+182
+00:08:26,450 --> 00:08:30,050
+you can still get yourself
+quite a bit of nasty shock.
+
+183
+00:08:30,050 --> 00:08:32,309
+So there's a protocol
+which you have to follow.
+
+184
+00:08:32,309 --> 00:08:36,659
+You want to discharge the
+battery down to probably
+
+185
+00:08:36,659 --> 00:08:38,837
+a 15 or lower percent.
+
+186
+00:08:38,837 --> 00:08:42,049
+So it's there's still a significant amount
+
+187
+00:08:42,049 --> 00:08:44,459
+of voltage in it at around 300 volts.
+
+188
+00:08:44,460 --> 00:08:46,500
+So once the fuse was removed,
+
+189
+00:08:46,500 --> 00:08:49,580
+it separates one half of
+the pack from the other,
+
+190
+00:08:49,580 --> 00:08:51,940
+but and then after it was all done
+
+191
+00:08:51,940 --> 00:08:54,490
+I had to do some isolation testing
+
+192
+00:08:54,490 --> 00:08:55,640
+which was basically making sure
+
+193
+00:08:55,640 --> 00:08:57,890
+that there wasn't anything
+there to shock me.
+
+194
+00:08:59,540 --> 00:09:04,461
+So what I was actually able to do
+
+195
+00:09:04,461 --> 00:09:06,990
+during all this process is actually figure
+
+196
+00:09:06,990 --> 00:09:11,990
+out how the firmware were
+actually works on the model S.
+
+197
+00:09:12,630 --> 00:09:17,630
+So within the MCU, within
+the Ubuntu based system,
+
+198
+00:09:19,350 --> 00:09:20,930
+there are a series
+
+199
+00:09:20,930 --> 00:09:23,329
+of folders that actually
+store all the firmware
+
+200
+00:09:23,330 --> 00:09:28,140
+for all the various modules,
+CAN Bus modules on the vehicle.
+
+201
+00:09:28,140 --> 00:09:29,560
+So we have the Tegra three
+
+202
+00:09:29,560 --> 00:09:31,300
+that's basically just an arm cortex.
+
+203
+00:09:31,300 --> 00:09:34,359
+It's a custom Ubuntu,
+it's a squash file system.
+
+204
+00:09:34,360 --> 00:09:35,480
+But if you can extract
+
+205
+00:09:35,480 --> 00:09:38,360
+that from the system itself,
+
+206
+00:09:38,360 --> 00:09:40,090
+get to this deployed directory,
+
+207
+00:09:40,090 --> 00:09:40,923
+and then you can actually
+
+208
+00:09:40,923 --> 00:09:44,293
+see all the various firmware
+components in there.
+
+209
+00:09:45,230 --> 00:09:49,320
+And then the gateway itself has files
+
+210
+00:09:49,320 --> 00:09:53,340
+that identify the vehicle
+firmer and configuration.
+
+211
+00:09:53,340 --> 00:09:55,390
+So the hardware IDs
+actually identify all the
+
+212
+00:09:55,390 --> 00:09:56,260
+various modules that are
+
+213
+00:09:56,260 --> 00:10:00,871
+on the vehicle and
+firmware dot RC is the one
+
+214
+00:10:00,871 --> 00:10:05,290
+that controls basically
+has all the current
+
+215
+00:10:05,290 --> 00:10:07,689
+all the necessary firmer
+that's supposed to be running
+
+216
+00:10:07,690 --> 00:10:10,660
+on the vehicle itself
+for the revision number.
+
+217
+00:10:10,660 --> 00:10:14,180
+So we have a hardware ID
+and then a revision number.
+
+218
+00:10:14,180 --> 00:10:18,540
+And the RC file was the one
+that actually got messed
+
+219
+00:10:18,540 --> 00:10:21,380
+up during my ludicrous upgrade process.
+
+220
+00:10:21,380 --> 00:10:24,460
+I had to manually rebuild
+that for the BMS value.
+
+221
+00:10:24,460 --> 00:10:27,893
+So when the BMS firmware
+changed it's firmware,
+
+222
+00:10:28,860 --> 00:10:30,300
+its CRC value changed.
+
+223
+00:10:30,300 --> 00:10:31,330
+I had to recalculate the CRC,
+
+224
+00:10:31,331 --> 00:10:33,810
+upload that to the gateway
+
+225
+00:10:33,810 --> 00:10:36,262
+and then wake the car back up.
+
+226
+00:10:37,900 --> 00:10:42,900
+So the structure in the file,
+it actually shows you, okay,
+
+227
+00:10:43,770 --> 00:10:45,000
+so here's the module.
+
+228
+00:10:45,000 --> 00:10:48,000
+It shows like the signature value of the
+
+229
+00:10:48,000 --> 00:10:49,170
+of the firmware itself.
+
+230
+00:10:49,170 --> 00:10:50,703
+And it uses this to actually build the
+
+231
+00:10:50,703 --> 00:10:53,030
+a CRC values for that
+
+232
+00:10:55,440 --> 00:10:56,747
+individual module on the vehicle.
+
+233
+00:10:56,747 --> 00:10:57,938
+And so once I, I extracted that out,
+
+234
+00:10:57,938 --> 00:11:00,013
+figured out the correct firmware
+
+235
+00:11:00,013 --> 00:11:05,013
+that was supposed to be on the BMS unit,
+
+236
+00:11:05,054 --> 00:11:08,069
+I calculated the correct
+CRC, adjusted the file,
+
+237
+00:11:08,070 --> 00:11:10,023
+and that allowed me to fix it.
+
+238
+00:11:10,940 --> 00:11:13,410
+So what is the individual files?
+
+239
+00:11:13,410 --> 00:11:16,530
+How there the store, what
+does that actually look like?
+
+240
+00:11:16,530 --> 00:11:19,250
+And here's a single line from one
+
+241
+00:11:19,250 --> 00:11:23,505
+of the hex files from the
+veteran management system.
+
+242
+00:11:23,505 --> 00:11:27,550
+The other Intel hex files are similar
+
+243
+00:11:27,550 --> 00:11:29,670
+and this is how the format looks.
+
+244
+00:11:29,670 --> 00:11:32,900
+So first we have a colon as a delimiter
+
+245
+00:11:32,900 --> 00:11:35,069
+we have the size, address,
+
+246
+00:11:35,070 --> 00:11:38,310
+and memory where it goes, record type,
+
+247
+00:11:38,310 --> 00:11:39,959
+and then we actually have the data
+
+248
+00:11:39,960 --> 00:11:42,683
+and then small one myte checksum.
+
+249
+00:11:44,996 --> 00:11:47,650
+That's going to become
+important later when
+
+250
+00:11:47,650 --> 00:11:49,716
+we get into further.
+
+251
+00:11:49,716 --> 00:11:51,450
+So one of the things I
+actually wanted to look
+
+252
+00:11:51,450 --> 00:11:52,490
+at when I was digging
+
+253
+00:11:52,490 --> 00:11:57,350
+into this is how well protected
+is the BMS board itself.
+
+254
+00:11:57,350 --> 00:11:58,930
+So I got a few of these.
+
+255
+00:11:58,930 --> 00:12:00,839
+I was experimenting around on a test bench
+
+256
+00:12:00,840 --> 00:12:02,240
+before I was actually trying this
+
+257
+00:12:02,240 --> 00:12:06,530
+on a production vehicle
+that can actually drive to
+
+258
+00:12:06,530 --> 00:12:08,060
+actually figure out this process.
+
+259
+00:12:08,060 --> 00:12:09,729
+Before I tried this
+
+260
+00:12:09,730 --> 00:12:10,629
+I thought I had everything
+figured out, but,
+
+261
+00:12:10,629 --> 00:12:12,510
+except for that CRC thing
+
+262
+00:12:12,510 --> 00:12:15,030
+that caused me to have to tow away car.
+
+263
+00:12:15,030 --> 00:12:18,170
+But one of the things that I found was
+
+264
+00:12:18,170 --> 00:12:21,010
+on an earlier BMS that I purchased
+
+265
+00:12:21,010 --> 00:12:26,003
+there was this a header
+that perfectly mirrored
+
+266
+00:12:27,340 --> 00:12:30,270
+the debugging connector used
+
+267
+00:12:30,270 --> 00:12:33,563
+by Texas instruments for the TMS three 20.
+
+268
+00:12:35,190 --> 00:12:36,830
+So that was interesting.
+
+269
+00:12:36,830 --> 00:12:37,663
+It's like,
+
+270
+00:12:37,663 --> 00:12:40,063
+wonder if I can actually
+connect J tag and do anything.
+
+271
+00:12:41,510 --> 00:12:43,500
+The other thing that I did
+was download the data sheet
+
+272
+00:12:43,500 --> 00:12:47,570
+for the TMS three 20
+and identify where the
+
+273
+00:12:48,430 --> 00:12:49,579
+how J tag was protected.
+
+274
+00:12:49,580 --> 00:12:51,490
+And there's a TI uses
+something called a code
+
+275
+00:12:51,490 --> 00:12:52,886
+security password.
+
+276
+00:12:52,886 --> 00:12:54,512
+It's a 128 bit password.
+
+277
+00:12:55,450 --> 00:12:57,280
+So not really easily guessable
+
+278
+00:12:57,280 --> 00:12:59,819
+but let's see if we can
+find it in firmware.
+
+279
+00:12:59,820 --> 00:13:03,423
+So we can see that it's
+stored at a seven FF eight.
+
+280
+00:13:04,610 --> 00:13:05,840
+So what I did is I actually looked
+
+281
+00:13:05,840 --> 00:13:08,685
+in the address portion of this to see
+
+282
+00:13:08,685 --> 00:13:12,030
+if I can actually find the seven FF eight.
+
+283
+00:13:12,030 --> 00:13:15,280
+No we have the code entry
+point at seven FF six
+
+284
+00:13:15,280 --> 00:13:18,230
+but seven FF eight was
+not actually in there,
+
+285
+00:13:18,230 --> 00:13:19,182
+but the CRC value was
+
+286
+00:13:19,182 --> 00:13:22,313
+that was something I thought
+that was pretty interesting.
+
+287
+00:13:23,640 --> 00:13:24,949
+Well, what about the bootloader?
+
+288
+00:13:24,950 --> 00:13:28,590
+So during the ludicrous
+upgrade process I figured
+
+289
+00:13:28,590 --> 00:13:31,351
+out I actually had to
+replace the bootloader
+
+290
+00:13:31,351 --> 00:13:34,960
+and all the bootloader firmware is stored
+
+291
+00:13:34,960 --> 00:13:39,100
+inside Python source of
+the Toolbox executable.
+
+292
+00:13:39,100 --> 00:13:42,480
+Toolbox is a diagnostic application used
+
+293
+00:13:44,690 --> 00:13:49,010
+by Tesla to fix the vehicles that are
+
+294
+00:13:50,380 --> 00:13:52,390
+of various issues.
+
+295
+00:13:52,390 --> 00:13:55,750
+And one of the things that
+it can actually do is do the
+
+296
+00:13:55,750 --> 00:13:58,280
+if you have the proper
+version you can actually
+
+297
+00:13:58,280 --> 00:14:01,480
+flash individual units with
+various versions of firmware
+
+298
+00:14:01,480 --> 00:14:06,380
+but the Toolbox python
+source that I was actually
+
+299
+00:14:06,380 --> 00:14:09,400
+able to decrypt and pull out
+
+300
+00:14:09,400 --> 00:14:12,459
+actually described the entire
+ludicrous upgrade process
+
+301
+00:14:12,460 --> 00:14:13,351
+or using that.
+
+302
+00:14:13,351 --> 00:14:14,560
+And one of the other tools I'll show you
+
+303
+00:14:14,560 --> 00:14:17,469
+in a little bit is how
+I was actually able to
+
+304
+00:14:17,470 --> 00:14:19,560
+update the bootloader
+
+305
+00:14:19,560 --> 00:14:22,329
+as well as the individual flash firmware
+
+306
+00:14:22,330 --> 00:14:24,950
+on the battery management system.
+
+307
+00:14:24,950 --> 00:14:27,350
+So looking at the bootloader, let's see,
+
+308
+00:14:27,350 --> 00:14:29,690
+if I can find the seven FF eight.
+
+309
+00:14:29,690 --> 00:14:30,631
+And we did seven FF eight
+
+310
+00:14:30,631 --> 00:14:35,631
+128 but value, put that into
+the TI unit flash program,
+
+311
+00:14:37,360 --> 00:14:40,463
+and boom, we actually
+unlocked the TMS three 20.
+
+312
+00:14:42,240 --> 00:14:43,159
+And for some reason
+
+313
+00:14:43,159 --> 00:14:45,830
+this took me like half an hour to figure
+
+314
+00:14:45,830 --> 00:14:47,966
+out the fact that they
+put the keys backwards
+
+315
+00:14:47,966 --> 00:14:50,220
+and started key seven and end at key zero
+
+316
+00:14:50,220 --> 00:14:52,340
+but you put those values in
+
+317
+00:14:53,750 --> 00:14:58,170
+and you actually are able
+to unlock the TNS three 20.
+
+318
+00:14:58,170 --> 00:15:01,490
+So it was able to do a
+full memory dump of that
+
+319
+00:15:01,490 --> 00:15:03,080
+and then import into IDA
+
+320
+00:15:03,080 --> 00:15:05,451
+which actually supports the TMS three 20
+
+321
+00:15:05,451 --> 00:15:10,451
+as a processor that it
+can do disassembly on.
+
+322
+00:15:12,020 --> 00:15:14,480
+So here we have a seven FF six
+
+323
+00:15:14,480 --> 00:15:16,890
+it points to the code entry point.
+
+324
+00:15:16,890 --> 00:15:19,020
+For those of you actually
+done reverse engineering
+
+325
+00:15:19,020 --> 00:15:22,120
+finding code entry point
+can sometimes be a challenge
+
+326
+00:15:22,120 --> 00:15:24,020
+but that did it.
+
+327
+00:15:24,020 --> 00:15:25,699
+Then it manually then
+what you actually have to
+
+328
+00:15:25,700 --> 00:15:27,840
+do is manually figure
+out the assembly language
+
+329
+00:15:27,840 --> 00:15:32,840
+but that's the full set of code
+actually running on the BMS.
+
+330
+00:15:33,140 --> 00:15:35,266
+So you have full access to an (inaudible).
+
+331
+00:15:36,480 --> 00:15:38,548
+So what's the big takeaway from that?
+
+332
+00:15:38,548 --> 00:15:40,610
+Disabled JTAG altogether?
+
+333
+00:15:40,610 --> 00:15:42,010
+Not really sure if he can do that
+
+334
+00:15:42,010 --> 00:15:45,780
+on the C 2000 series DSP but having
+
+335
+00:15:45,780 --> 00:15:50,780
+that JTAG password and a piece
+of code that's, you know,
+
+336
+00:15:51,130 --> 00:15:54,000
+used as something as ubiquitous
+as the service centers
+
+337
+00:15:54,000 --> 00:15:56,400
+it's more likely to fall
+into third party hands.
+
+338
+00:15:57,570 --> 00:15:59,320
+I knew some people had got ahold of it.
+
+339
+00:15:59,320 --> 00:16:00,960
+They were able to share it with me.
+
+340
+00:16:00,960 --> 00:16:05,630
+That's how I found it and
+really just, you know,
+
+341
+00:16:05,630 --> 00:16:07,730
+big take away from that as
+maybe just you're stripped
+
+342
+00:16:07,730 --> 00:16:11,220
+that to factory engineers
+and limit that as much
+
+343
+00:16:11,220 --> 00:16:13,900
+as possible because having
+something completely
+
+344
+00:16:13,900 --> 00:16:17,660
+open like that obviously
+allows bad people to
+
+345
+00:16:17,660 --> 00:16:20,023
+do stuff when it comes to, you know,
+
+346
+00:16:20,023 --> 00:16:24,000
+the vehicles possibly do dangerous levels.
+
+347
+00:16:24,000 --> 00:16:26,583
+For me, it is more of
+an academic exercise.
+
+348
+00:16:28,380 --> 00:16:32,439
+So now we get into the, the
+meat of the, the system itself,
+
+349
+00:16:32,440 --> 00:16:36,760
+and how does actually CAN Bus
+work on these Tesla modules?
+
+350
+00:16:36,760 --> 00:16:40,170
+So for those who are not
+familiar with CAN Bus
+
+351
+00:16:40,170 --> 00:16:43,921
+it's really just like any other bus.
+
+352
+00:16:43,922 --> 00:16:47,210
+You have a bunch of hex data
+that gets updated regularly.
+
+353
+00:16:47,210 --> 00:16:50,260
+You have CAN IDs, which
+are similar to an address,
+
+354
+00:16:50,260 --> 00:16:52,420
+but there's not really a
+send and receive address
+
+355
+00:16:52,420 --> 00:16:55,089
+unless you get into a
+higher level protocols
+
+356
+00:16:55,090 --> 00:16:58,220
+you really just have a bunch of hex values
+
+357
+00:16:58,220 --> 00:17:02,160
+but there is a format for
+actually decoding those
+
+358
+00:17:02,160 --> 00:17:04,859
+and that's called a CAN
+database or DBC file.
+
+359
+00:17:04,859 --> 00:17:06,649
+It's an open standard.
+
+360
+00:17:06,650 --> 00:17:09,520
+And it was actually able
+to extract the DBC files
+
+361
+00:17:09,520 --> 00:17:11,760
+from both firmware.
+
+362
+00:17:11,760 --> 00:17:14,569
+So on any vehicle, they
+have the DBC files,
+
+363
+00:17:14,569 --> 00:17:16,050
+but they're also in Toolbox,
+
+364
+00:17:16,050 --> 00:17:18,220
+which is a little bit easier to work with.
+
+365
+00:17:18,220 --> 00:17:20,609
+So here we have raw CAN data
+
+366
+00:17:20,609 --> 00:17:22,459
+and now we have decoded CAN data
+
+367
+00:17:22,460 --> 00:17:23,900
+and you can see there's a huge difference
+
+368
+00:17:23,900 --> 00:17:26,329
+while hex data that you
+have to reverse engineer
+
+369
+00:17:26,329 --> 00:17:28,039
+versus everything with all the labels
+
+370
+00:17:28,039 --> 00:17:30,879
+and all the signals declared for you.
+
+371
+00:17:30,880 --> 00:17:35,330
+Well here we have some
+drive inverter DIS and DI
+
+372
+00:17:35,330 --> 00:17:38,590
+are the modules for the drive inverter
+
+373
+00:17:38,590 --> 00:17:40,053
+and the front drive inverter.
+
+374
+00:17:41,130 --> 00:17:43,230
+And the DBC files
+
+375
+00:17:43,230 --> 00:17:46,810
+those are directly able to
+import them into vehicle spy.
+
+376
+00:17:46,810 --> 00:17:49,659
+That's what you see a
+screenshot from here.
+
+377
+00:17:49,660 --> 00:17:53,010
+And then you're able to
+edit it with the, you know,
+
+378
+00:17:53,010 --> 00:17:55,090
+something like the Kvaser DBC editors
+
+379
+00:17:55,090 --> 00:17:58,459
+a free version that allows
+you to edit those DBC files
+
+380
+00:17:58,460 --> 00:18:01,010
+and add additional or modify the values.
+
+381
+00:18:01,010 --> 00:18:02,800
+So one of the things I
+was actually able to do
+
+382
+00:18:02,800 --> 00:18:06,980
+once I got all those DBC files is thinking
+
+383
+00:18:06,980 --> 00:18:08,240
+about the power curve of the vehicles.
+
+384
+00:18:08,240 --> 00:18:12,750
+So one of the things that's
+unique about the Teslas
+
+385
+00:18:12,750 --> 00:18:17,750
+in general is the amount of
+power available varies based
+
+386
+00:18:18,240 --> 00:18:21,690
+on how hot the battery is
+and its state of charge.
+
+387
+00:18:21,690 --> 00:18:26,690
+So as to do what's called
+ludicrous plus mode
+
+388
+00:18:28,450 --> 00:18:31,260
+what the car actually does
+is it heats the battery pack
+
+389
+00:18:31,260 --> 00:18:33,450
+up to get it to an optimal temperature
+
+390
+00:18:33,450 --> 00:18:35,940
+to actually give you the
+maximum amount of power.
+
+391
+00:18:35,940 --> 00:18:40,047
+And you can see there's a
+huge variance between the
+
+392
+00:18:40,047 --> 00:18:42,940
+and this is all in Celsius.
+
+393
+00:18:42,940 --> 00:18:47,180
+So 80 percent state of charge.
+
+394
+00:18:47,180 --> 00:18:49,560
+And unfortunately I wasn't
+able to graph all of
+
+395
+00:18:49,560 --> 00:18:52,149
+these variables cause I had
+to heat the battery pack
+
+396
+00:18:52,150 --> 00:18:55,100
+up in addition to
+charging at the same time.
+
+397
+00:18:55,100 --> 00:18:59,169
+But the lowest value I had
+was around eight Celsius.
+
+398
+00:18:59,170 --> 00:19:02,940
+So at eight Celsius and 81
+percent state of charge,
+
+399
+00:19:02,940 --> 00:19:04,490
+We had 343 kilowatts
+
+400
+00:19:04,490 --> 00:19:08,950
+but at full charge and
+a fully heated battery.
+
+401
+00:19:08,950 --> 00:19:12,639
+We have all the way up to 482 kilowatts
+
+402
+00:19:12,639 --> 00:19:16,189
+which roughly equates
+to about 647 horsepower.
+
+403
+00:19:16,190 --> 00:19:17,486
+So and this was
+
+404
+00:19:17,486 --> 00:19:19,950
+after the ludicrous upgrade
+that I actually mapped
+
+405
+00:19:19,950 --> 00:19:21,043
+out this power curve.
+
+406
+00:19:22,660 --> 00:19:26,630
+So one of the other things that's unique
+
+407
+00:19:26,630 --> 00:19:29,890
+about UDS is there's a standard.
+
+408
+00:19:29,890 --> 00:19:32,250
+There are protocols that
+sit on top of it, sorry,
+
+409
+00:19:32,250 --> 00:19:33,470
+That sit on CAN Bus,
+
+410
+00:19:33,470 --> 00:19:37,133
+but this UDS is a protocol
+that sits on top of CAN Bus.
+
+411
+00:19:38,150 --> 00:19:43,150
+And ODX is a standard for specifying files
+
+412
+00:19:45,560 --> 00:19:49,050
+that use the uniform
+diagnostic standard to
+
+413
+00:19:51,740 --> 00:19:53,510
+to actually do diagnostics
+
+414
+00:19:53,510 --> 00:19:56,540
+or basically tell the CAN Bus modules to
+
+415
+00:19:56,540 --> 00:19:59,270
+do things that they wouldn't
+otherwise normally do.
+
+416
+00:19:59,270 --> 00:20:01,870
+A really important one is 27
+
+417
+00:20:01,870 --> 00:20:05,419
+which brands security
+access that then, you know,
+
+418
+00:20:05,420 --> 00:20:09,480
+31 routine control, upload
+download, read memory.
+
+419
+00:20:09,480 --> 00:20:12,140
+I was able to actually recover
+all these ODX files also
+
+420
+00:20:12,140 --> 00:20:13,540
+from Toolbox.
+
+421
+00:20:13,540 --> 00:20:15,510
+But the other way you
+can do is you can just
+
+422
+00:20:15,510 --> 00:20:18,160
+connect a CAN Bus sniffer
+and capture this data
+
+423
+00:20:18,160 --> 00:20:20,400
+during an upgrade and then a decoder.
+
+424
+00:20:20,400 --> 00:20:23,490
+So there are two CAN
+Bus ids that define kind
+
+425
+00:20:23,490 --> 00:20:25,320
+of send and receive
+
+426
+00:20:25,320 --> 00:20:30,169
+and then they basically
+send data back and forth.
+
+427
+00:20:30,170 --> 00:20:32,380
+So if you actually look at this picture
+
+428
+00:20:32,380 --> 00:20:33,828
+you can see we have six oh two
+
+429
+00:20:33,828 --> 00:20:37,850
+and six 12 for send and receive,
+
+430
+00:20:37,850 --> 00:20:42,850
+and this is the actual a
+security access routine
+
+431
+00:20:43,060 --> 00:20:47,470
+for Toolbox itself for
+sorry, for the BMS itself.
+
+432
+00:20:47,470 --> 00:20:50,620
+So all Tesla modules and here's really
+
+433
+00:20:51,750 --> 00:20:53,827
+where we get into kind
+of the other big thing
+
+434
+00:20:53,827 --> 00:20:55,950
+that we found this was well-known
+
+435
+00:20:55,950 --> 00:20:57,720
+it just wasn't really talked about as much
+
+436
+00:20:57,720 --> 00:21:00,129
+in conferences and gone
+into this much detail
+
+437
+00:21:00,129 --> 00:21:03,203
+but all Tesla modules use a static seed.
+
+438
+00:21:04,570 --> 00:21:07,240
+The static seed is basically just X
+
+439
+00:21:08,350 --> 00:21:10,409
+with our value of 35.
+
+440
+00:21:10,410 --> 00:21:13,290
+So you request a seed
+
+441
+00:21:13,290 --> 00:21:17,399
+and then your response is
+the X or 35 value of it.
+
+442
+00:21:17,400 --> 00:21:19,780
+But what the vehicle sends
+
+443
+00:21:19,780 --> 00:21:23,120
+as a seed is zero zero zero
+one zero two, et cetera,
+
+444
+00:21:23,120 --> 00:21:24,800
+all the way up through zero F.
+
+445
+00:21:24,800 --> 00:21:27,530
+So the response is basically
+just the XR of that.
+
+446
+00:21:27,530 --> 00:21:30,639
+So even the seed itself doesn't change.
+
+447
+00:21:30,640 --> 00:21:34,260
+It's the same from every single vehicle,
+
+448
+00:21:34,260 --> 00:21:35,743
+every single module,
+
+449
+00:21:36,701 --> 00:21:39,420
+throughout all the
+different firmware versions.
+
+450
+00:21:39,420 --> 00:21:41,010
+It's all static.
+
+451
+00:21:41,010 --> 00:21:43,000
+Like it's basically
+the only thing that you
+
+452
+00:21:43,000 --> 00:21:45,930
+could really do that would
+be less secure is just
+
+453
+00:21:45,930 --> 00:21:47,890
+to not use security access at all.
+
+454
+00:21:47,890 --> 00:21:51,080
+It's a completely static seeding key
+
+455
+00:21:51,080 --> 00:21:53,429
+basically like having a
+static password almost.
+
+456
+00:21:55,405 --> 00:21:57,760
+So here's an example of the actual read,
+
+457
+00:21:59,780 --> 00:22:02,226
+you can see the key and then the response
+
+458
+00:22:02,226 --> 00:22:07,226
+the values two point seven
+showing it's accepted
+
+459
+00:22:07,619 --> 00:22:11,379
+but it's not all, all bad news.
+
+460
+00:22:11,380 --> 00:22:14,010
+So the read security by address
+
+461
+00:22:14,010 --> 00:22:15,720
+which is basically what
+allows us to do the same
+
+462
+00:22:15,720 --> 00:22:20,720
+thing we did using JTAG the
+routine 23 read security
+
+463
+00:22:21,760 --> 00:22:24,110
+by address that was actually disabled.
+
+464
+00:22:24,110 --> 00:22:24,990
+I tested that
+
+465
+00:22:24,990 --> 00:22:27,840
+and under several different
+conditions was not
+
+466
+00:22:27,840 --> 00:22:31,409
+able to get any type of valid response
+
+467
+00:22:31,410 --> 00:22:34,500
+from the battery management
+system to actually read
+
+468
+00:22:34,500 --> 00:22:39,470
+out memory using the 23 routine.
+
+469
+00:22:39,470 --> 00:22:42,120
+So what I then went through
+and as I actually went through
+
+470
+00:22:42,120 --> 00:22:46,510
+and enumerated all the various
+routines that were available
+
+471
+00:22:46,510 --> 00:22:48,800
+and you can see our list
+of the disabled ones.
+
+472
+00:22:48,800 --> 00:22:51,220
+There's a really good link down here.
+
+473
+00:22:51,220 --> 00:22:53,790
+The automotive wiki will
+actually tell you about
+
+474
+00:22:53,790 --> 00:22:57,990
+the ISO 14 to 29 routines
+are and what they do.
+
+475
+00:22:57,990 --> 00:23:00,460
+And then the ones that
+I actually was able to
+
+476
+00:23:00,460 --> 00:23:03,690
+get a valid response from or
+when I found a valid value
+
+477
+00:23:03,690 --> 00:23:07,000
+in the ODX files are
+all listed right here.
+
+478
+00:23:07,000 --> 00:23:10,260
+And some of there are some
+pretty cool, interesting ones,
+
+479
+00:23:10,260 --> 00:23:12,763
+which we'll show a couple of slides.
+
+480
+00:23:14,380 --> 00:23:17,250
+So here's a really important
+one that was involved
+
+481
+00:23:17,250 --> 00:23:22,250
+in the new ludicrous upgrade
+three data by ID routine 22.
+
+482
+00:23:22,530 --> 00:23:25,180
+And that was to actually
+read the calibration data
+
+483
+00:23:25,180 --> 00:23:27,690
+for the current chart.
+
+484
+00:23:27,690 --> 00:23:31,870
+I kind of showed way back at
+the beginning of the talk.
+
+485
+00:23:31,870 --> 00:23:33,229
+And that's one of the process.
+
+486
+00:23:33,230 --> 00:23:35,630
+One of the steps that involves
+is actually recalibrating
+
+487
+00:23:35,630 --> 00:23:38,010
+that which what that
+means is you're actually
+
+488
+00:23:38,010 --> 00:23:41,680
+replacing the CGI one CAU one data
+
+489
+00:23:41,680 --> 00:23:46,230
+from the shunt using values,
+also extracted from Toolbox.
+
+490
+00:23:46,230 --> 00:23:50,757
+So read data by ID, read the shunt values,
+
+491
+00:23:50,757 --> 00:23:54,160
+and it actually spits this out on CAN Bus.
+
+492
+00:23:54,160 --> 00:23:57,450
+And then to recalibrate it, you actually,
+
+493
+00:23:57,450 --> 00:24:01,500
+there's a table of every
+single PD, five D BMS.
+
+494
+00:24:01,500 --> 00:24:05,140
+You extract the one for the
+serial number for the shunt.
+
+495
+00:24:05,140 --> 00:24:07,050
+You can see that there's
+a serial number here
+
+496
+00:24:07,050 --> 00:24:09,533
+it's a 25, 1007.
+
+497
+00:24:09,534 --> 00:24:12,070
+And then you go through
+
+498
+00:24:12,070 --> 00:24:15,750
+and actually write the
+new values from that table
+
+499
+00:24:15,750 --> 00:24:18,350
+to that shunt as a part
+of the upgrade process.
+
+500
+00:24:18,350 --> 00:24:20,602
+So that, that table, that,
+
+501
+00:24:20,603 --> 00:24:22,696
+that pickle file actually had all the
+
+502
+00:24:22,696 --> 00:24:26,999
+that's a yes or they figured
+out how they would do the
+
+503
+00:24:26,999 --> 00:24:31,203
+and make it available all again,
+all extracted from Toolbox.
+
+504
+00:24:32,450 --> 00:24:36,910
+So here's the other
+interesting thing that kind
+
+505
+00:24:36,910 --> 00:24:38,313
+of was able to reverse.
+
+506
+00:24:39,720 --> 00:24:41,980
+This is how you upload new BMS firmware.
+
+507
+00:24:41,980 --> 00:24:46,943
+And of course, if you just
+watch a, a firmware upgrade,
+
+508
+00:24:46,943 --> 00:24:50,190
+as long as the car is actually
+pushing new firmware to a car
+
+509
+00:24:50,190 --> 00:24:52,430
+you can not capture all
+this and see it for all
+
+510
+00:24:52,430 --> 00:24:55,100
+the modules that are
+get upgraded right now
+
+511
+00:24:55,100 --> 00:24:56,929
+Tesla pushes new code.
+
+512
+00:24:56,930 --> 00:24:58,580
+So first it does an ECU reset.
+
+513
+00:24:58,580 --> 00:25:00,480
+That's a routine 11 on
+
+514
+00:25:00,480 --> 00:25:02,070
+then it does test your present for awhile.
+
+515
+00:25:02,070 --> 00:25:05,560
+Which kind of what you see
+at the very top, the three E.
+
+516
+00:25:05,560 --> 00:25:07,470
+Then it opens up a diagnostic session
+
+517
+00:25:07,470 --> 00:25:11,740
+request security access,
+and starts a route.
+
+518
+00:25:11,740 --> 00:25:13,690
+Those through several iterations of this
+
+519
+00:25:13,690 --> 00:25:17,040
+this is not an exact
+sequence but basically
+
+520
+00:25:17,040 --> 00:25:19,490
+at first it erases the old flash
+
+521
+00:25:19,490 --> 00:25:22,420
+and then it goes through
+and requests the download
+
+522
+00:25:22,420 --> 00:25:24,020
+and basically writes the new firmware
+
+523
+00:25:24,020 --> 00:25:28,760
+over UDS using those Intel
+hex files that we see in the
+
+524
+00:25:28,760 --> 00:25:29,620
+in the BMS.
+
+525
+00:25:31,060 --> 00:25:32,370
+So when we get
+
+526
+00:25:32,370 --> 00:25:35,199
+to the final thing where
+it's a final thoughts
+
+527
+00:25:36,310 --> 00:25:38,060
+some recommendations that we made,
+
+528
+00:25:38,060 --> 00:25:42,780
+I actually was able to
+consult with a friend of mine,
+
+529
+00:25:42,780 --> 00:25:45,410
+also head of the car hacking village,
+
+530
+00:25:45,410 --> 00:25:47,720
+Rob Leale from CAN Bus hack
+
+531
+00:25:47,720 --> 00:25:49,980
+he provided some good
+recommendations that I'll be going
+
+532
+00:25:49,980 --> 00:25:51,860
+through in these steps.
+
+533
+00:25:51,860 --> 00:25:55,949
+The biggest thing is do something other
+
+534
+00:25:55,950 --> 00:25:57,080
+than a static key
+
+535
+00:25:57,080 --> 00:26:00,241
+or don't use a static key
+for that security access.
+
+536
+00:26:00,241 --> 00:26:03,850
+Even a simple cryptographic
+system that moves the ease
+
+537
+00:26:03,850 --> 00:26:08,850
+of access down auto soar
+was really a proposal to
+
+538
+00:26:08,880 --> 00:26:11,700
+actually implement
+encryption across CAN Bus
+
+539
+00:26:11,700 --> 00:26:13,360
+but it's pretty much dead
+
+540
+00:26:13,360 --> 00:26:15,919
+the manufacturers who actually write
+
+541
+00:26:15,920 --> 00:26:18,190
+and create a CAN Bus systems
+
+542
+00:26:18,190 --> 00:26:22,780
+this is that it introduces
+too much latency but maybe
+
+543
+00:26:22,780 --> 00:26:25,760
+with future CPU architectures
+we can actually implement
+
+544
+00:26:25,760 --> 00:26:29,760
+something that's some
+more encrypted CAN Bus
+
+545
+00:26:29,760 --> 00:26:32,010
+but some manufacturers have actually moved
+
+546
+00:26:32,010 --> 00:26:33,800
+to a PKI based token.
+
+547
+00:26:33,800 --> 00:26:35,550
+So what happens is
+
+548
+00:26:35,550 --> 00:26:37,300
+if you have to do
+something really sensitive
+
+549
+00:26:37,300 --> 00:26:41,233
+like remove miles from an
+odometer, something else,
+
+550
+00:26:41,233 --> 00:26:44,050
+that's a really sensitive to the team.
+
+551
+00:26:44,050 --> 00:26:45,919
+They issue a PKI based token that has
+
+552
+00:26:45,920 --> 00:26:47,130
+our longest duration times.
+
+553
+00:26:47,130 --> 00:26:49,630
+So basically we've gotten
+contact with the factory
+
+554
+00:26:50,530 --> 00:26:51,790
+explain what you need it for.
+
+555
+00:26:51,790 --> 00:26:56,580
+They give you a token based
+on something in the vehicle
+
+556
+00:26:56,580 --> 00:26:58,350
+some routine that they have built in
+
+557
+00:26:58,350 --> 00:27:00,110
+and then it'll just
+have a longer expiration
+
+558
+00:27:00,110 --> 00:27:03,928
+time that you have to
+actually make that change.
+
+559
+00:27:03,929 --> 00:27:06,350
+The other thing that, you know,
+
+560
+00:27:06,350 --> 00:27:09,500
+that's kind of like a standard,
+our hardware based thing,
+
+561
+00:27:09,500 --> 00:27:11,970
+just move all code to
+a secure boot format.
+
+562
+00:27:11,970 --> 00:27:15,040
+You can store your keys
+securely within the
+
+563
+00:27:16,980 --> 00:27:18,410
+the device itself.
+
+564
+00:27:18,410 --> 00:27:22,960
+So it's external flash
+encrypt code transfer.
+
+565
+00:27:22,960 --> 00:27:27,580
+So right now the hex codes
+are all sent insecurely.
+
+566
+00:27:27,580 --> 00:27:30,000
+I actually validated that
+that stuff's running memory
+
+567
+00:27:30,000 --> 00:27:33,780
+and stuff stored in the hex
+files at the same value.
+
+568
+00:27:33,780 --> 00:27:37,612
+So if there's a process
+to actually encrypt that
+
+569
+00:27:37,612 --> 00:27:39,700
+and then do a little bit
+stronger authentication
+
+570
+00:27:39,700 --> 00:27:41,073
+on those code transfers, other than,
+
+571
+00:27:41,073 --> 00:27:44,430
+because the signature is
+actually just done upstream
+
+572
+00:27:44,430 --> 00:27:47,490
+before it's actually
+pushed, pushed to the unit,
+
+573
+00:27:47,490 --> 00:27:49,680
+and then just leave
+the other routines open
+
+574
+00:27:49,680 --> 00:27:50,980
+for normal diagnostics.
+
+575
+00:27:50,980 --> 00:27:53,734
+You can just do all this
+with existing UBS routine
+
+576
+00:27:53,734 --> 00:27:58,734
+and then kind of some,
+yeah, process changes.
+
+577
+00:28:00,650 --> 00:28:02,820
+Don't store the bootloader
+in the diagnostics software.
+
+578
+00:28:02,820 --> 00:28:04,659
+It just it's too sensitive.
+
+579
+00:28:04,660 --> 00:28:07,063
+It contains the JTAG security password.
+
+580
+00:28:08,180 --> 00:28:10,030
+Get it out of there,
+
+581
+00:28:10,030 --> 00:28:12,280
+have it special cases
+
+582
+00:28:12,280 --> 00:28:14,950
+for when it's needed and, you know,
+
+583
+00:28:14,950 --> 00:28:16,566
+have your engineering
+departments handle those.
+
+584
+00:28:16,566 --> 00:28:21,566
+This investigation just kind of really
+
+585
+00:28:21,820 --> 00:28:22,790
+cracked open the case
+
+586
+00:28:22,790 --> 00:28:24,450
+and revealed just a large
+amount of information
+
+587
+00:28:24,450 --> 00:28:27,080
+of how that architecture,
+that system work,
+
+588
+00:28:27,080 --> 00:28:29,240
+just by going through
+that diagnostic software
+
+589
+00:28:29,240 --> 00:28:32,480
+and I'm digging into the system itself.
+
+590
+00:28:32,480 --> 00:28:35,650
+So it was just a large amount
+
+591
+00:28:35,650 --> 00:28:36,727
+of information that was available
+
+592
+00:28:36,727 --> 00:28:40,560
+and something that was
+pretty freely available.
+
+593
+00:28:40,560 --> 00:28:43,020
+So some credits
+
+594
+00:28:43,020 --> 00:28:46,139
+intrepid control systems for the software
+
+595
+00:28:46,140 --> 00:28:48,130
+that they have of both tools
+
+596
+00:28:48,130 --> 00:28:53,130
+and a diagnostic software
+for doing a CAN Bus research.
+
+597
+00:28:53,560 --> 00:28:56,540
+Rob Leale for all the UDS
+and CAN assistance for stuff
+
+598
+00:28:56,540 --> 00:28:58,340
+I didn't understand.
+
+599
+00:28:58,340 --> 00:29:00,060
+Tesla's security team to thank you
+
+600
+00:29:00,060 --> 00:29:02,720
+for letting me do this talk and a blessing
+
+601
+00:29:02,720 --> 00:29:05,220
+everything I was talking about here,
+
+602
+00:29:05,220 --> 00:29:07,850
+thank you to the team that
+I was working on with the
+
+603
+00:29:07,850 --> 00:29:10,219
+a Toolbox reverse engineering.
+
+604
+00:29:10,220 --> 00:29:12,100
+Buster from Rancho Cucamonga
+
+605
+00:29:12,100 --> 00:29:14,300
+thanks for letting me use your lift
+
+606
+00:29:14,300 --> 00:29:18,010
+and then just I'll leave
+that disclaimer there.
+
+607
+00:29:18,010 --> 00:29:21,740
+Those are all the trademarks
+are not associated
+
+608
+00:29:21,740 --> 00:29:23,790
+with their sponsor by Tesla for this talk
+
+609
+00:29:24,780 --> 00:29:29,230
+but here's a short little
+screen with some references.
+
+610
+00:29:29,230 --> 00:29:32,470
+This will be available on
+the, the media centers.
+
+611
+00:29:32,470 --> 00:29:35,010
+You can actually access those later.
+
+612
+00:29:35,010 --> 00:29:36,510
+And I just like to say
+
+613
+00:29:36,510 --> 00:29:39,290
+thank you for letting me do this talk
+
+614
+00:29:39,290 --> 00:29:43,853
+and this presentation for RSA 2021.
+

@@ -1,0 +1,4596 @@
+﻿1
+00:00:07,200 --> 00:00:07,520
+hi
+
+2
+00:00:07,520 --> 00:00:09,920
+and uh welcome to our presentation boot
+
+3
+00:00:09,920 --> 00:00:13,679
+to root auditing bootloaders by example
+
+4
+00:00:13,679 --> 00:00:15,920
+i am joseph tartaro an associate
+
+5
+00:00:15,920 --> 00:00:17,600
+principal security consultant with iowa
+
+6
+00:00:17,600 --> 00:00:18,880
+active
+
+7
+00:00:18,880 --> 00:00:21,119
+and i am elijah hospindal the director
+
+8
+00:00:21,119 --> 00:00:22,320
+of penetration testing
+
+9
+00:00:22,320 --> 00:00:25,359
+at io active so
+
+10
+00:00:25,359 --> 00:00:27,119
+the audience that we expect for this
+
+11
+00:00:27,119 --> 00:00:28,640
+presentation would be
+
+12
+00:00:28,640 --> 00:00:31,199
+embedded systems engineers security
+
+13
+00:00:31,199 --> 00:00:32,960
+people that deal with embedded systems
+
+14
+00:00:32,960 --> 00:00:33,600
+or just
+
+15
+00:00:33,600 --> 00:00:35,600
+generally curious security people that
+
+16
+00:00:35,600 --> 00:00:37,680
+want to get more knowledge of the lower
+
+17
+00:00:37,680 --> 00:00:39,360
+levels
+
+18
+00:00:39,360 --> 00:00:41,040
+so here's a quick agenda of what we'll
+
+19
+00:00:41,040 --> 00:00:42,960
+be covering we're going to go over boot
+
+20
+00:00:42,960 --> 00:00:44,000
+loaders why they're
+
+21
+00:00:44,000 --> 00:00:46,320
+interesting some of the attack surface
+
+22
+00:00:46,320 --> 00:00:47,760
+that we want to cover
+
+23
+00:00:47,760 --> 00:00:49,360
+examples of bugs we found and our
+
+24
+00:00:49,360 --> 00:00:51,920
+overall conclusions
+
+25
+00:00:51,920 --> 00:00:54,079
+so you'll notice that we'll use a wide
+
+26
+00:00:54,079 --> 00:00:55,760
+interpretation of quote unquote
+
+27
+00:00:55,760 --> 00:00:57,039
+bootloaders
+
+28
+00:00:57,039 --> 00:00:58,719
+and what we really mean throughout this
+
+29
+00:00:58,719 --> 00:01:00,399
+presentation is stuff that's
+
+30
+00:01:00,399 --> 00:01:03,840
+in your secure boot chain so
+
+31
+00:01:03,840 --> 00:01:05,519
+uh if you don't have a lot of experience
+
+32
+00:01:05,519 --> 00:01:07,680
+with this or not aware of it
+
+33
+00:01:07,680 --> 00:01:11,280
+think of um the secure worlds
+
+34
+00:01:11,280 --> 00:01:13,840
+of of a bootloader such as system
+
+35
+00:01:13,840 --> 00:01:15,360
+management mode or trustzone
+
+36
+00:01:15,360 --> 00:01:17,840
+as the same thing as userland code
+
+37
+00:01:17,840 --> 00:01:19,520
+calling into a kernel
+
+38
+00:01:19,520 --> 00:01:23,119
+it's it's very similar so
+
+39
+00:01:23,119 --> 00:01:24,640
+why are they interesting well
+
+40
+00:01:24,640 --> 00:01:26,640
+bootloaders are pretty much the most
+
+41
+00:01:26,640 --> 00:01:28,400
+critical foundation of your device's
+
+42
+00:01:28,400 --> 00:01:29,439
+security
+
+43
+00:01:29,439 --> 00:01:31,040
+uh they're the key component of your
+
+44
+00:01:31,040 --> 00:01:32,640
+chain of trust they
+
+45
+00:01:32,640 --> 00:01:34,560
+if they get compromised anything that
+
+46
+00:01:34,560 --> 00:01:36,799
+gets loaded and booted after that
+
+47
+00:01:36,799 --> 00:01:38,799
+can be compromised or controlled or
+
+48
+00:01:38,799 --> 00:01:40,479
+affected in some manner
+
+49
+00:01:40,479 --> 00:01:42,240
+and we've noticed over the years that a
+
+50
+00:01:42,240 --> 00:01:44,320
+lot of device designers are really poor
+
+51
+00:01:44,320 --> 00:01:45,759
+at hardening their devices
+
+52
+00:01:45,759 --> 00:01:48,799
+and limiting their attack surface and
+
+53
+00:01:48,799 --> 00:01:51,360
+another common uh misconception that
+
+54
+00:01:51,360 --> 00:01:52,079
+designers have
+
+55
+00:01:52,079 --> 00:01:54,000
+is they underestimate reverse
+
+56
+00:01:54,000 --> 00:01:56,000
+engineering they kind of assume that
+
+57
+00:01:56,000 --> 00:01:58,240
+there's no bad actors in certain areas
+
+58
+00:01:58,240 --> 00:02:00,960
+and they just assume that the weird
+
+59
+00:02:00,960 --> 00:02:02,960
+quirky design that they decided to do
+
+60
+00:02:02,960 --> 00:02:04,560
+nobody will actually figure it out or
+
+61
+00:02:04,560 --> 00:02:06,399
+understand it which is not a good way to
+
+62
+00:02:06,399 --> 00:02:07,360
+do it
+
+63
+00:02:07,360 --> 00:02:08,878
+and a quick story behind this
+
+64
+00:02:08,878 --> 00:02:10,878
+presentation is um
+
+65
+00:02:10,878 --> 00:02:12,879
+ilya and i were actually on a train
+
+66
+00:02:12,879 --> 00:02:14,720
+together we were heading to a baseball
+
+67
+00:02:14,720 --> 00:02:15,520
+game
+
+68
+00:02:15,520 --> 00:02:16,879
+and we were talking about some
+
+69
+00:02:16,879 --> 00:02:19,120
+vulnerabilities we found in a bootloader
+
+70
+00:02:19,120 --> 00:02:22,480
+and we decided to pull up
+
+71
+00:02:22,480 --> 00:02:24,800
+the u-boot source code on my cell phone
+
+72
+00:02:24,800 --> 00:02:26,239
+opened up the github page
+
+73
+00:02:26,239 --> 00:02:28,160
+and we started looking through through
+
+74
+00:02:28,160 --> 00:02:30,239
+it for for bugs and just on that short
+
+75
+00:02:30,239 --> 00:02:31,920
+train ride we stumbled into
+
+76
+00:02:31,920 --> 00:02:34,640
+like 10 plus bugs and at that moment we
+
+77
+00:02:34,640 --> 00:02:35,440
+decided
+
+78
+00:02:35,440 --> 00:02:36,640
+you know somebody should really go
+
+79
+00:02:36,640 --> 00:02:38,400
+through and look at a lot of these open
+
+80
+00:02:38,400 --> 00:02:40,560
+source boot loaders and see what kind of
+
+81
+00:02:40,560 --> 00:02:41,760
+issues are out there
+
+82
+00:02:41,760 --> 00:02:45,040
+and that's this presentation so
+
+83
+00:02:45,040 --> 00:02:48,160
+to give credit where credit is due uh we
+
+84
+00:02:48,160 --> 00:02:49,519
+we are standing on the shoulders of
+
+85
+00:02:49,519 --> 00:02:50,800
+giants
+
+86
+00:02:50,800 --> 00:02:53,280
+this is a list of people that either
+
+87
+00:02:53,280 --> 00:02:54,879
+directly or indirectly
+
+88
+00:02:54,879 --> 00:02:56,800
+helped this presentation through various
+
+89
+00:02:56,800 --> 00:02:58,080
+conversations or
+
+90
+00:02:58,080 --> 00:03:01,680
+ideas presentations pieces of code
+
+91
+00:03:01,680 --> 00:03:04,159
+across the board so if you enjoy this
+
+92
+00:03:04,159 --> 00:03:05,599
+type of information
+
+93
+00:03:05,599 --> 00:03:07,120
+you should look into these people and
+
+94
+00:03:07,120 --> 00:03:09,519
+see what they do
+
+95
+00:03:09,519 --> 00:03:12,159
+so where are bootloaders they're
+
+96
+00:03:12,159 --> 00:03:13,519
+basically everywhere
+
+97
+00:03:13,519 --> 00:03:16,400
+they're in your computers your phones
+
+98
+00:03:16,400 --> 00:03:18,720
+your tvs all those little
+
+99
+00:03:18,720 --> 00:03:20,879
+internet of thing devices you buy so
+
+100
+00:03:20,879 --> 00:03:21,760
+when you get your
+
+101
+00:03:21,760 --> 00:03:24,239
+your smart light bulb and plug it in so
+
+102
+00:03:24,239 --> 00:03:25,920
+you can talk to it through bluetooth
+
+103
+00:03:25,920 --> 00:03:28,000
+like that has a boot loader on it
+
+104
+00:03:28,000 --> 00:03:30,959
+and uh not all devices really care about
+
+105
+00:03:30,959 --> 00:03:32,080
+security
+
+106
+00:03:32,080 --> 00:03:33,840
+like sometimes there's just not really
+
+107
+00:03:33,840 --> 00:03:35,760
+that dependency but
+
+108
+00:03:35,760 --> 00:03:38,879
+in in most cases the bootlegger security
+
+109
+00:03:38,879 --> 00:03:42,080
+matters so
+
+110
+00:03:42,080 --> 00:03:43,440
+there are a lot of boot loaders out
+
+111
+00:03:43,440 --> 00:03:45,040
+there and we limited ourselves to
+
+112
+00:03:45,040 --> 00:03:46,159
+publicly available
+
+113
+00:03:46,159 --> 00:03:48,959
+open source ones there's no point in
+
+114
+00:03:48,959 --> 00:03:51,040
+trying to focus on proprietary ones
+
+115
+00:03:51,040 --> 00:03:53,439
+because we can't really talk about those
+
+116
+00:03:53,439 --> 00:03:57,120
+so even though these are open source and
+
+117
+00:03:57,120 --> 00:03:59,439
+just what's available on github
+
+118
+00:03:59,439 --> 00:04:01,920
+they're they're widely used and devices
+
+119
+00:04:01,920 --> 00:04:03,120
+that you own
+
+120
+00:04:03,120 --> 00:04:06,239
+across the board uh just one one caveat
+
+121
+00:04:06,239 --> 00:04:06,720
+would be
+
+122
+00:04:06,720 --> 00:04:09,040
+that if you take a device and start
+
+123
+00:04:09,040 --> 00:04:10,239
+analyzing it
+
+124
+00:04:10,239 --> 00:04:12,239
+it probably has some very specific
+
+125
+00:04:12,239 --> 00:04:13,680
+hardware changes to it
+
+126
+00:04:13,680 --> 00:04:16,079
+or custom drivers that were written that
+
+127
+00:04:16,079 --> 00:04:17,759
+aren't public so you'll have to reverse
+
+128
+00:04:17,759 --> 00:04:18,478
+those
+
+129
+00:04:18,478 --> 00:04:20,639
+and so just keep that in mind but this
+
+130
+00:04:20,639 --> 00:04:21,759
+is a list of
+
+131
+00:04:21,759 --> 00:04:25,120
+more or less what we looked at so
+
+132
+00:04:25,120 --> 00:04:27,440
+first off we have youboop and what makes
+
+133
+00:04:27,440 --> 00:04:28,160
+this interesting
+
+134
+00:04:28,160 --> 00:04:30,800
+is it's extremely common and it supports
+
+135
+00:04:30,800 --> 00:04:32,479
+a ton of chipsets
+
+136
+00:04:32,479 --> 00:04:34,320
+and it's extremely customizable they
+
+137
+00:04:34,320 --> 00:04:36,560
+have this massive config file that you
+
+138
+00:04:36,560 --> 00:04:37,199
+can
+
+139
+00:04:37,199 --> 00:04:40,240
+modify all across the board and it also
+
+140
+00:04:40,240 --> 00:04:42,240
+has an interesting command shell
+
+141
+00:04:42,240 --> 00:04:45,360
+that some people like to let that end
+
+142
+00:04:45,360 --> 00:04:47,199
+users have access to
+
+143
+00:04:47,199 --> 00:04:50,240
+there's tons of drivers for ubu
+
+144
+00:04:50,240 --> 00:04:52,160
+and it also supports a full network
+
+145
+00:04:52,160 --> 00:04:54,880
+stack a handful of file systems and
+
+146
+00:04:54,880 --> 00:04:56,800
+loads next stage images through
+
+147
+00:04:56,800 --> 00:05:00,720
+all sorts of weird protocols and buses
+
+148
+00:05:00,720 --> 00:05:03,039
+next thing is core boot and core bit is
+
+149
+00:05:03,039 --> 00:05:03,919
+targeted at
+
+150
+00:05:03,919 --> 00:05:06,000
+modern operating systems there's really
+
+151
+00:05:06,000 --> 00:05:09,120
+no support for legacy bios calls
+
+152
+00:05:09,120 --> 00:05:11,600
+generally the the core boot team is
+
+153
+00:05:11,600 --> 00:05:12,560
+quite good at
+
+154
+00:05:12,560 --> 00:05:14,639
+not bloating their software up with a
+
+155
+00:05:14,639 --> 00:05:15,919
+bunch of features they don't want to
+
+156
+00:05:15,919 --> 00:05:16,800
+manage
+
+157
+00:05:16,800 --> 00:05:18,400
+so if you're trying to do some sort of
+
+158
+00:05:18,400 --> 00:05:20,880
+pixie boot you use core boot to boot
+
+159
+00:05:20,880 --> 00:05:23,600
+into ipxc for example
+
+160
+00:05:23,600 --> 00:05:25,520
+these are used in chromebooks for
+
+161
+00:05:25,520 --> 00:05:26,720
+example and
+
+162
+00:05:26,720 --> 00:05:28,800
+uh obviously the most interesting parts
+
+163
+00:05:28,800 --> 00:05:31,440
+of the source code come from google
+
+164
+00:05:31,440 --> 00:05:33,600
+and um one interesting thing about it is
+
+165
+00:05:33,600 --> 00:05:35,199
+that they do have a
+
+166
+00:05:35,199 --> 00:05:38,720
+smm mode uh grub
+
+167
+00:05:38,720 --> 00:05:41,440
+um i'm sure everyone who's watching this
+
+168
+00:05:41,440 --> 00:05:43,520
+has known or interacted with grab in in
+
+169
+00:05:43,520 --> 00:05:44,320
+some way
+
+170
+00:05:44,320 --> 00:05:46,479
+its primary concern is multi-boot specs
+
+171
+00:05:46,479 --> 00:05:48,479
+so the interesting components there for
+
+172
+00:05:48,479 --> 00:05:50,080
+attack surface would be
+
+173
+00:05:50,080 --> 00:05:51,600
+all the different file systems that it
+
+174
+00:05:51,600 --> 00:05:53,759
+supports another interesting thing
+
+175
+00:05:53,759 --> 00:05:55,759
+is that there are signed versions of
+
+176
+00:05:55,759 --> 00:05:57,120
+grab for ufe
+
+177
+00:05:57,120 --> 00:05:58,560
+so if you have a vulnerability in the
+
+178
+00:05:58,560 --> 00:06:00,479
+signed version you can load that
+
+179
+00:06:00,479 --> 00:06:03,199
+on a secure boot environment and you
+
+180
+00:06:03,199 --> 00:06:06,000
+know break secure boot
+
+181
+00:06:06,000 --> 00:06:09,039
+uh c bios is the default bios for qmu
+
+182
+00:06:09,039 --> 00:06:10,160
+and kvm
+
+183
+00:06:10,160 --> 00:06:13,039
+uh since it supports legacy calls you'll
+
+184
+00:06:13,039 --> 00:06:14,000
+also see
+
+185
+00:06:14,000 --> 00:06:15,919
+a lot of people boot into it from core
+
+186
+00:06:15,919 --> 00:06:17,199
+boot
+
+187
+00:06:17,199 --> 00:06:19,440
+and um interesting things about it is it
+
+188
+00:06:19,440 --> 00:06:22,160
+supports the tpm
+
+189
+00:06:22,160 --> 00:06:25,280
+and broadcom cafe bootloader this is
+
+190
+00:06:25,280 --> 00:06:27,360
+used in all sorts of wireless routers
+
+191
+00:06:27,360 --> 00:06:27,840
+and
+
+192
+00:06:27,840 --> 00:06:31,280
+home devices and tvs and whatnot
+
+193
+00:06:31,280 --> 00:06:33,280
+um the interesting components would be
+
+194
+00:06:33,280 --> 00:06:35,840
+the network stack
+
+195
+00:06:36,000 --> 00:06:38,720
+and ipixi this is something that i'm
+
+196
+00:06:38,720 --> 00:06:39,120
+sure
+
+197
+00:06:39,120 --> 00:06:41,120
+a lot of you have have dealt with or
+
+198
+00:06:41,120 --> 00:06:42,240
+used
+
+199
+00:06:42,240 --> 00:06:44,319
+um including network stack it also
+
+200
+00:06:44,319 --> 00:06:46,639
+supports 802.11 and such
+
+201
+00:06:46,639 --> 00:06:49,680
+which is interesting and the uh similar
+
+202
+00:06:49,680 --> 00:06:53,759
+to grub there are eufy side versions
+
+203
+00:06:53,759 --> 00:06:56,880
+and tiana core um this is yuffie it
+
+204
+00:06:56,880 --> 00:06:58,319
+really needs no introduction
+
+205
+00:06:58,319 --> 00:07:00,639
+there's tons of documentation out there
+
+206
+00:07:00,639 --> 00:07:02,240
+and there's been uh
+
+207
+00:07:02,240 --> 00:07:05,199
+tons of research and uh vulnerabilities
+
+208
+00:07:05,199 --> 00:07:06,319
+and presentations
+
+209
+00:07:06,319 --> 00:07:08,560
+and and whatnot for the last 15 years or
+
+210
+00:07:08,560 --> 00:07:09,520
+so it's
+
+211
+00:07:09,520 --> 00:07:11,840
+by far the most scrutinized out of
+
+212
+00:07:11,840 --> 00:07:13,280
+everything on this list
+
+213
+00:07:13,280 --> 00:07:16,639
+and a result of that makes it uh from
+
+214
+00:07:16,639 --> 00:07:18,080
+from what we've seen that's really
+
+215
+00:07:18,080 --> 00:07:20,000
+mature compared to the others
+
+216
+00:07:20,000 --> 00:07:21,599
+you'll also see a number of
+
+217
+00:07:21,599 --> 00:07:23,599
+implementations on top of tiana core
+
+218
+00:07:23,599 --> 00:07:25,680
+such as qualcomm's abl and
+
+219
+00:07:25,680 --> 00:07:28,560
+xbl loaders
+
+220
+00:07:28,800 --> 00:07:31,440
+so also related to bootloaders are the
+
+221
+00:07:31,440 --> 00:07:32,720
+various trust zone
+
+222
+00:07:32,720 --> 00:07:35,039
+secure world os's and armed trusted
+
+223
+00:07:35,039 --> 00:07:36,080
+firmware
+
+224
+00:07:36,080 --> 00:07:38,479
+as well as the host operating systems
+
+225
+00:07:38,479 --> 00:07:41,280
+because uh certain configurations can be
+
+226
+00:07:41,280 --> 00:07:43,520
+modified or set in bootloader land once
+
+227
+00:07:43,520 --> 00:07:46,560
+it boots up the os
+
+228
+00:07:47,199 --> 00:07:50,240
+so this slide is just for reference
+
+229
+00:07:50,240 --> 00:07:53,120
+it will give you a page with the source
+
+230
+00:07:53,120 --> 00:07:55,120
+code of each project and instructions on
+
+231
+00:07:55,120 --> 00:07:56,960
+how to build it if you wanted to build
+
+232
+00:07:56,960 --> 00:07:58,000
+one of these and start
+
+233
+00:07:58,000 --> 00:07:59,599
+looking through the code and and mess
+
+234
+00:07:59,599 --> 00:08:01,919
+with it
+
+235
+00:08:02,319 --> 00:08:05,199
+so just a quick high-level overview of
+
+236
+00:08:05,199 --> 00:08:06,080
+your
+
+237
+00:08:06,080 --> 00:08:09,280
+secure chain of trust this is pretty
+
+238
+00:08:09,280 --> 00:08:10,000
+much
+
+239
+00:08:10,000 --> 00:08:12,160
+what it what it is you see the different
+
+240
+00:08:12,160 --> 00:08:13,599
+uh stages
+
+241
+00:08:13,599 --> 00:08:16,160
+you sometimes have uh measured boot or
+
+242
+00:08:16,160 --> 00:08:16,879
+trusted boot
+
+243
+00:08:16,879 --> 00:08:18,800
+situation sometimes there's a tpm
+
+244
+00:08:18,800 --> 00:08:20,560
+involvement sometimes there's secure
+
+245
+00:08:20,560 --> 00:08:22,160
+worlds and trust zones
+
+246
+00:08:22,160 --> 00:08:24,840
+and sometimes there's os booting
+
+247
+00:08:24,840 --> 00:08:26,160
+interactions
+
+248
+00:08:26,160 --> 00:08:29,440
+so the the first stage um lives in the
+
+249
+00:08:29,440 --> 00:08:30,240
+boot rom
+
+250
+00:08:30,240 --> 00:08:32,958
+which is read only and if there is a bug
+
+251
+00:08:32,958 --> 00:08:34,479
+inside the boot rom it would actually
+
+252
+00:08:34,479 --> 00:08:36,399
+require hardware revision
+
+253
+00:08:36,399 --> 00:08:38,799
+and you've seen this happen in devices
+
+254
+00:08:38,799 --> 00:08:39,599
+like
+
+255
+00:08:39,599 --> 00:08:42,479
+the iphone checkmate bugs or the switch
+
+256
+00:08:42,479 --> 00:08:44,560
+bootrom vulnerabilities
+
+257
+00:08:44,560 --> 00:08:47,200
+and generally this does the very bare
+
+258
+00:08:47,200 --> 00:08:47,760
+minimum
+
+259
+00:08:47,760 --> 00:08:49,519
+its job is to initialize certain
+
+260
+00:08:49,519 --> 00:08:51,600
+components of hardware to set up the
+
+261
+00:08:51,600 --> 00:08:52,959
+next stages
+
+262
+00:08:52,959 --> 00:08:54,720
+some interesting parts is sometimes
+
+263
+00:08:54,720 --> 00:08:56,560
+you'll see something like fastboot get
+
+264
+00:08:56,560 --> 00:08:57,920
+implemented so you know that there's a
+
+265
+00:08:57,920 --> 00:08:58,480
+usb
+
+266
+00:08:58,480 --> 00:09:01,200
+stack working inside there and that's
+
+267
+00:09:01,200 --> 00:09:03,360
+great attack surface for you
+
+268
+00:09:03,360 --> 00:09:05,279
+and you'll notice that the trend for
+
+269
+00:09:05,279 --> 00:09:07,040
+every single stage is that
+
+270
+00:09:07,040 --> 00:09:09,120
+it will grab the next stage it will
+
+271
+00:09:09,120 --> 00:09:10,160
+verify it
+
+272
+00:09:10,160 --> 00:09:12,720
+and after it checks that it's valid then
+
+273
+00:09:12,720 --> 00:09:14,320
+it will move over and start booting and
+
+274
+00:09:14,320 --> 00:09:15,839
+executing that next step
+
+275
+00:09:15,839 --> 00:09:18,000
+and sometimes there's also a measuring
+
+276
+00:09:18,000 --> 00:09:20,399
+that happens which is more for auditing
+
+277
+00:09:20,399 --> 00:09:22,880
+logs it will not block anything but it
+
+278
+00:09:22,880 --> 00:09:26,240
+helps you detect if something happened
+
+279
+00:09:26,240 --> 00:09:27,760
+and then once you get to the second
+
+280
+00:09:27,760 --> 00:09:29,839
+stage that's where things get a little
+
+281
+00:09:29,839 --> 00:09:31,519
+a little bit more interesting you start
+
+282
+00:09:31,519 --> 00:09:33,200
+getting the network stacks and s
+
+283
+00:09:33,200 --> 00:09:35,040
+m handlers dealing with different
+
+284
+00:09:35,040 --> 00:09:37,040
+environment variables
+
+285
+00:09:37,040 --> 00:09:40,560
+and it then continues moving on to the
+
+286
+00:09:40,560 --> 00:09:42,959
+next stages which may or may not include
+
+287
+00:09:42,959 --> 00:09:45,959
+uh various secure world trust zones uh
+
+288
+00:09:45,959 --> 00:09:48,800
+vtl0vtl1 type stuff
+
+289
+00:09:48,800 --> 00:09:52,640
+sgx and at this point it it then
+
+290
+00:09:52,640 --> 00:09:55,200
+starts to move on to booting the
+
+291
+00:09:55,200 --> 00:09:56,560
+operating system
+
+292
+00:09:56,560 --> 00:09:59,040
+which it will eventually grab the kernel
+
+293
+00:09:59,040 --> 00:10:01,120
+validate it similar to every other stage
+
+294
+00:10:01,120 --> 00:10:01,920
+and ultimately
+
+295
+00:10:01,920 --> 00:10:05,440
+run it and when it hands off to the os
+
+296
+00:10:05,440 --> 00:10:08,079
+that's when um i mentioned earlier some
+
+297
+00:10:08,079 --> 00:10:08,640
+of the
+
+298
+00:10:08,640 --> 00:10:10,000
+interactions that you can do from the
+
+299
+00:10:10,000 --> 00:10:12,240
+bootloader land because the os will
+
+300
+00:10:12,240 --> 00:10:14,480
+sometimes take configuration changes
+
+301
+00:10:14,480 --> 00:10:18,560
+from environment variables through npram
+
+302
+00:10:18,560 --> 00:10:21,519
+so uh sort of our early observations
+
+303
+00:10:21,519 --> 00:10:22,720
+just from looking at
+
+304
+00:10:22,720 --> 00:10:25,120
+all these is that everything we looked
+
+305
+00:10:25,120 --> 00:10:27,120
+at was entirely privileged there really
+
+306
+00:10:27,120 --> 00:10:27,839
+was no
+
+307
+00:10:27,839 --> 00:10:30,880
+separation between components and what
+
+308
+00:10:30,880 --> 00:10:33,200
+we mean by that is if you found
+
+309
+00:10:33,200 --> 00:10:36,320
+a vulnerability in in one smart uh
+
+310
+00:10:36,320 --> 00:10:39,760
+one small piece of one stage and you got
+
+311
+00:10:39,760 --> 00:10:41,279
+code execution or something you pretty
+
+312
+00:10:41,279 --> 00:10:41,920
+much owned
+
+313
+00:10:41,920 --> 00:10:44,079
+the world at that point there there was
+
+314
+00:10:44,079 --> 00:10:46,560
+no sort of separation that that
+
+315
+00:10:46,560 --> 00:10:49,600
+made you move on and try further to get
+
+316
+00:10:49,600 --> 00:10:51,440
+somewhere else
+
+317
+00:10:51,440 --> 00:10:52,800
+you're starting to see some of that
+
+318
+00:10:52,800 --> 00:10:55,120
+behavior in proprietary boot loaders
+
+319
+00:10:55,120 --> 00:10:58,839
+for example apple is starting to use
+
+320
+00:10:58,839 --> 00:11:00,240
+that
+
+321
+00:11:00,240 --> 00:11:02,560
+so from our perspective what we looked
+
+322
+00:11:02,560 --> 00:11:04,640
+at this is a list of interesting attack
+
+323
+00:11:04,640 --> 00:11:05,440
+surface
+
+324
+00:11:05,440 --> 00:11:07,920
+you have the nvram which uh stores the
+
+325
+00:11:07,920 --> 00:11:09,600
+environment variables
+
+326
+00:11:09,600 --> 00:11:11,839
+and this can also be physically modified
+
+327
+00:11:11,839 --> 00:11:12,959
+by an attacker
+
+328
+00:11:12,959 --> 00:11:14,320
+you have the different files and file
+
+329
+00:11:14,320 --> 00:11:16,160
+systems that get parsed the different
+
+330
+00:11:16,160 --> 00:11:18,560
+network stacks and various buses
+
+331
+00:11:18,560 --> 00:11:21,920
+as well as smm and dma and just hardware
+
+332
+00:11:21,920 --> 00:11:24,800
+attacks in general
+
+333
+00:11:24,959 --> 00:11:27,120
+so starting with nvram the environment
+
+334
+00:11:27,120 --> 00:11:28,800
+variables are interesting
+
+335
+00:11:28,800 --> 00:11:31,680
+because it is user controlled you're
+
+336
+00:11:31,680 --> 00:11:33,519
+dealing with your standard
+
+337
+00:11:33,519 --> 00:11:35,519
+parsing of user controlled data type
+
+338
+00:11:35,519 --> 00:11:36,959
+issues and
+
+339
+00:11:36,959 --> 00:11:38,880
+like i said before even if there's no
+
+340
+00:11:38,880 --> 00:11:41,040
+sort of software interaction that allows
+
+341
+00:11:41,040 --> 00:11:42,480
+you to modify that
+
+342
+00:11:42,480 --> 00:11:45,200
+a hardware hacker could open up and
+
+343
+00:11:45,200 --> 00:11:48,560
+modify mdram to manipulate these things
+
+344
+00:11:48,560 --> 00:11:50,000
+if you decide to look at some of the
+
+345
+00:11:50,000 --> 00:11:52,000
+source code bases that we
+
+346
+00:11:52,000 --> 00:11:54,000
+that we played with uh here's a list of
+
+347
+00:11:54,000 --> 00:11:55,040
+the interesting
+
+348
+00:11:55,040 --> 00:11:57,440
+functions for example on youboot if you
+
+349
+00:11:57,440 --> 00:11:59,519
+look for environment git
+
+350
+00:11:59,519 --> 00:12:01,200
+that's the function that will take an
+
+351
+00:12:01,200 --> 00:12:03,360
+environment variable and
+
+352
+00:12:03,360 --> 00:12:05,279
+and start working with the data so if
+
+353
+00:12:05,279 --> 00:12:06,480
+you want to start looking through the
+
+354
+00:12:06,480 --> 00:12:08,000
+code bases on what they're doing with
+
+355
+00:12:08,000 --> 00:12:09,200
+these environment variables
+
+356
+00:12:09,200 --> 00:12:11,920
+is where you can start so just to show
+
+357
+00:12:11,920 --> 00:12:13,760
+some quick examples
+
+358
+00:12:13,760 --> 00:12:15,600
+we can see that they call an environment
+
+359
+00:12:15,600 --> 00:12:17,279
+get on the boot p vci
+
+360
+00:12:17,279 --> 00:12:20,160
+variable they will then check if it
+
+361
+00:12:20,160 --> 00:12:22,079
+existed if it did they'll pass it to the
+
+362
+00:12:22,079 --> 00:12:23,120
+put vci
+
+363
+00:12:23,120 --> 00:12:25,920
+function and they'll immediately grab
+
+364
+00:12:25,920 --> 00:12:26,959
+stir length and
+
+365
+00:12:26,959 --> 00:12:29,279
+and then them copy it into a buffer with
+
+366
+00:12:29,279 --> 00:12:31,120
+zero validation on if it
+
+367
+00:12:31,120 --> 00:12:32,800
+can fit inside the buffer so it's a
+
+368
+00:12:32,800 --> 00:12:34,720
+classic smash
+
+369
+00:12:34,720 --> 00:12:37,920
+and when touring with this bug we
+
+370
+00:12:37,920 --> 00:12:39,600
+decided to fill the buffer up with junk
+
+371
+00:12:39,600 --> 00:12:42,000
+and we started seeing weird uh boot p
+
+372
+00:12:42,000 --> 00:12:45,760
+um uh network uh packets that got sent
+
+373
+00:12:45,760 --> 00:12:46,720
+out and we thought it was kind of
+
+374
+00:12:46,720 --> 00:12:47,760
+interesting so
+
+375
+00:12:47,760 --> 00:12:50,000
+we thought we'd provide some screenshots
+
+376
+00:12:50,000 --> 00:12:51,600
+and see if somebody wanted to go play
+
+377
+00:12:51,600 --> 00:12:52,959
+with that see if they can do something
+
+378
+00:12:52,959 --> 00:12:53,680
+neat
+
+379
+00:12:53,680 --> 00:12:55,519
+um it was just kind of kind of funny you
+
+380
+00:12:55,519 --> 00:12:56,720
+can control like
+
+381
+00:12:56,720 --> 00:13:00,079
+complete full raw packets um
+
+382
+00:13:00,079 --> 00:13:02,240
+but as you can see there's tons of
+
+383
+00:13:02,240 --> 00:13:03,839
+examples of this environment gift for
+
+384
+00:13:03,839 --> 00:13:04,880
+host name
+
+385
+00:13:04,880 --> 00:13:07,519
+and just immediately stir length and
+
+386
+00:13:07,519 --> 00:13:09,839
+then copy it into a buffer
+
+387
+00:13:09,839 --> 00:13:12,399
+you have a buffer here that's 128 bytes
+
+388
+00:13:12,399 --> 00:13:13,040
+environment
+
+389
+00:13:13,040 --> 00:13:15,839
+on boot dev and then directly stir copy
+
+390
+00:13:15,839 --> 00:13:17,040
+into the buffer
+
+391
+00:13:17,040 --> 00:13:19,440
+and keep in mind these configuration
+
+392
+00:13:19,440 --> 00:13:20,160
+files
+
+393
+00:13:20,160 --> 00:13:22,800
+um you know they can be configured for
+
+394
+00:13:22,800 --> 00:13:24,399
+how how large the environment variable
+
+395
+00:13:24,399 --> 00:13:25,200
+can be
+
+396
+00:13:25,200 --> 00:13:28,079
+i believe the default might be 512 bytes
+
+397
+00:13:28,079 --> 00:13:28,399
+but
+
+398
+00:13:28,399 --> 00:13:30,160
+but some of these device configurations
+
+399
+00:13:30,160 --> 00:13:31,519
+allow up to
+
+400
+00:13:31,519 --> 00:13:35,360
+you know 2048 bytes and and such so
+
+401
+00:13:35,360 --> 00:13:38,160
+uh smashing these buffers is you know
+
+402
+00:13:38,160 --> 00:13:38,880
+trivial
+
+403
+00:13:38,880 --> 00:13:41,279
+at that point and you can see the
+
+404
+00:13:41,279 --> 00:13:44,880
+behavior the behaviors everywhere
+
+405
+00:13:45,839 --> 00:13:47,839
+right here they they get an environment
+
+406
+00:13:47,839 --> 00:13:48,880
+variable right there
+
+407
+00:13:48,880 --> 00:13:51,920
+and they control the the index count and
+
+408
+00:13:51,920 --> 00:13:56,160
+they they can smash the buffer
+
+409
+00:13:56,639 --> 00:13:58,800
+and uh this is an interesting one uh
+
+410
+00:13:58,800 --> 00:14:01,839
+this is related to the jffs2
+
+411
+00:14:01,839 --> 00:14:03,680
+file system loading there's environment
+
+412
+00:14:03,680 --> 00:14:05,839
+git for the boot file of what it wants
+
+413
+00:14:05,839 --> 00:14:06,720
+to load
+
+414
+00:14:06,720 --> 00:14:08,960
+it will then calculate the size
+
+415
+00:14:08,960 --> 00:14:11,120
+[Music]
+
+416
+00:14:11,120 --> 00:14:13,760
+and then it will stir copy into a buffer
+
+417
+00:14:13,760 --> 00:14:14,880
+and
+
+418
+00:14:14,880 --> 00:14:18,000
+just to show you a quick demo of that
+
+419
+00:14:18,000 --> 00:14:21,600
+we'll go ahead and boot up this we'll
+
+420
+00:14:21,600 --> 00:14:24,160
+call fs load after we we've already
+
+421
+00:14:24,160 --> 00:14:25,920
+manipulated the environment variable
+
+422
+00:14:25,920 --> 00:14:28,079
+to to smash the buffer and fs load is
+
+423
+00:14:28,079 --> 00:14:28,959
+telling
+
+424
+00:14:28,959 --> 00:14:32,079
+the code to grab the boot file value and
+
+425
+00:14:32,079 --> 00:14:33,680
+try to load it
+
+426
+00:14:33,680 --> 00:14:36,399
+and there we smash it and our shell code
+
+427
+00:14:36,399 --> 00:14:37,040
+runs
+
+428
+00:14:37,040 --> 00:14:40,800
+and we see code execution
+
+429
+00:14:42,160 --> 00:14:45,360
+cool so that covers uh the environment
+
+430
+00:14:45,360 --> 00:14:47,040
+variable parts but there's
+
+431
+00:14:47,040 --> 00:14:48,800
+usually other things stored on flash as
+
+432
+00:14:48,800 --> 00:14:50,399
+well uh
+
+433
+00:14:50,399 --> 00:14:52,880
+and this is usually the file system and
+
+434
+00:14:52,880 --> 00:14:54,560
+then uh inside the files that we will
+
+435
+00:14:54,560 --> 00:14:55,519
+see files
+
+436
+00:14:55,519 --> 00:14:57,600
+um quite often the file system itself is
+
+437
+00:14:57,600 --> 00:14:59,839
+not signed or integrity protected
+
+438
+00:14:59,839 --> 00:15:02,720
+um and so that makes it a private tax
+
+439
+00:15:02,720 --> 00:15:03,760
+service so this could be
+
+440
+00:15:03,760 --> 00:15:06,880
+a phantom flash or something usb but
+
+441
+00:15:06,880 --> 00:15:08,480
+these file systems tend not to be
+
+442
+00:15:08,480 --> 00:15:13,279
+integrity protected
+
+443
+00:15:13,279 --> 00:15:15,360
+um as i said before file the source side
+
+444
+00:15:15,360 --> 00:15:16,720
+of the file system
+
+445
+00:15:16,720 --> 00:15:19,920
+depending on your bootloader it may
+
+446
+00:15:19,920 --> 00:15:21,600
+parse certain files that may not be
+
+447
+00:15:21,600 --> 00:15:23,519
+integrity protected
+
+448
+00:15:23,519 --> 00:15:24,800
+again these would be prime attack
+
+449
+00:15:24,800 --> 00:15:26,959
+surface our first advice
+
+450
+00:15:26,959 --> 00:15:29,199
+sort of for people that have to maintain
+
+451
+00:15:29,199 --> 00:15:30,560
+or build boot loaders
+
+452
+00:15:30,560 --> 00:15:32,399
+is if you have any kind of file or file
+
+453
+00:15:32,399 --> 00:15:33,600
+system parsers
+
+454
+00:15:33,600 --> 00:15:36,560
+is to at the very least throw afl at it
+
+455
+00:15:36,560 --> 00:15:38,839
+and try to weed out the low hanging
+
+456
+00:15:38,839 --> 00:15:41,120
+fruits
+
+457
+00:15:41,120 --> 00:15:42,720
+right so next up uh we'll show some
+
+458
+00:15:42,720 --> 00:15:44,480
+examples of uh trivial
+
+459
+00:15:44,480 --> 00:15:47,360
+bugs and fasting without parsing um this
+
+460
+00:15:47,360 --> 00:15:47,839
+can be
+
+461
+00:15:47,839 --> 00:15:49,600
+you know this will be x2 or it can be
+
+462
+00:15:49,600 --> 00:15:51,040
+drivers with binaries it can be a
+
+463
+00:15:51,040 --> 00:15:52,240
+partition table
+
+464
+00:15:52,240 --> 00:15:54,240
+could be a capsule update it could be a
+
+465
+00:15:54,240 --> 00:15:57,600
+bitmap a splash image
+
+466
+00:15:57,600 --> 00:15:59,759
+so this for example is grubbs x2 files
+
+467
+00:15:59,759 --> 00:16:01,839
+enforcer and you'll see it'll basically
+
+468
+00:16:01,839 --> 00:16:02,240
+do
+
+469
+00:16:02,240 --> 00:16:05,199
+uh um try to parse the sim link from an
+
+470
+00:16:05,199 --> 00:16:06,320
+x2
+
+471
+00:16:06,320 --> 00:16:08,000
+and it looks at the i note size and the
+
+472
+00:16:08,000 --> 00:16:09,920
+sinus i suppose one ends it off to grab
+
+473
+00:16:09,920 --> 00:16:10,720
+malloc
+
+474
+00:16:10,720 --> 00:16:13,040
+i mean grub malloc will uh gladly do a
+
+475
+00:16:13,040 --> 00:16:14,800
+zero by alloc so it gives you
+
+476
+00:16:14,800 --> 00:16:16,079
+a pointer to something that's zero
+
+477
+00:16:16,079 --> 00:16:18,079
+length and then it will refer to
+
+478
+00:16:18,079 --> 00:16:20,880
+into this pointer that's um uh can only
+
+479
+00:16:20,880 --> 00:16:22,720
+hold zero bytes which will obviously uh
+
+480
+00:16:22,720 --> 00:16:23,759
+smash memory
+
+481
+00:16:23,759 --> 00:16:26,160
+uh interestingly this is one of the bugs
+
+482
+00:16:26,160 --> 00:16:28,320
+that got fixed as part of the
+
+483
+00:16:28,320 --> 00:16:31,279
+boot hole fixes
+
+484
+00:16:32,160 --> 00:16:34,240
+and yeah so this is uh this is a tiano
+
+485
+00:16:34,240 --> 00:16:36,000
+core's a bit about portion it had a
+
+486
+00:16:36,000 --> 00:16:37,360
+there was a bug in there too which was
+
+487
+00:16:37,360 --> 00:16:40,079
+fixed uh recently
+
+488
+00:16:40,079 --> 00:16:43,360
+um so moving on from sort of uh storage
+
+489
+00:16:43,360 --> 00:16:43,920
+and
+
+490
+00:16:43,920 --> 00:16:46,560
+and sort of flash itself um another
+
+491
+00:16:46,560 --> 00:16:47,600
+interesting attack surface in boot
+
+492
+00:16:47,600 --> 00:16:48,560
+loaders uh
+
+493
+00:16:48,560 --> 00:16:50,079
+is the network stack and particularly
+
+494
+00:16:50,079 --> 00:16:51,839
+dcp um
+
+495
+00:16:51,839 --> 00:16:52,959
+you'll see you see more and more
+
+496
+00:16:52,959 --> 00:16:54,880
+bootloaders nowadays uh allowing
+
+497
+00:16:54,880 --> 00:16:57,040
+some kind of boot over the network um
+
+498
+00:16:57,040 --> 00:16:58,000
+and so they'll have
+
+499
+00:16:58,000 --> 00:17:00,160
+uh the general tcp sometimes they'll
+
+500
+00:17:00,160 --> 00:17:01,600
+have ipv6 as well
+
+501
+00:17:01,600 --> 00:17:03,040
+and then they'll have the the normal
+
+502
+00:17:03,040 --> 00:17:05,280
+services they need to boot so it'll be
+
+503
+00:17:05,280 --> 00:17:09,039
+would be the atp dns iscs your nfs
+
+504
+00:17:09,039 --> 00:17:12,240
+sometimes ipsec some hp hps
+
+505
+00:17:12,240 --> 00:17:15,839
+sometimes ftp and tftp
+
+506
+00:17:16,319 --> 00:17:19,119
+so these obviously you know these are
+
+507
+00:17:19,119 --> 00:17:19,520
+new
+
+508
+00:17:19,520 --> 00:17:21,679
+and so there are sort of known attacks
+
+509
+00:17:21,679 --> 00:17:23,199
+that can be tried against this right
+
+510
+00:17:23,199 --> 00:17:26,240
+so obviously for the tcvip stuff uh
+
+511
+00:17:26,240 --> 00:17:27,760
+there's a lot of tlps in there so
+
+512
+00:17:27,760 --> 00:17:29,520
+there's you know uh
+
+513
+00:17:29,520 --> 00:17:31,679
+historically we know implementations
+
+514
+00:17:31,679 --> 00:17:33,600
+will have plenty of uh denial service
+
+515
+00:17:33,600 --> 00:17:34,559
+bugs in their world
+
+516
+00:17:34,559 --> 00:17:36,400
+you'll see out of bound reads or endless
+
+517
+00:17:36,400 --> 00:17:37,760
+loops and so forth
+
+518
+00:17:37,760 --> 00:17:40,240
+um for dns and the atp you know there's
+
+519
+00:17:40,240 --> 00:17:41,760
+the standard sort of poisoning and least
+
+520
+00:17:41,760 --> 00:17:43,440
+stealing attacks
+
+521
+00:17:43,440 --> 00:17:45,200
+and then more generally you know there's
+
+522
+00:17:45,200 --> 00:17:46,960
+um memory
+
+523
+00:17:46,960 --> 00:17:48,480
+potential memory corruption issues and
+
+524
+00:17:48,480 --> 00:17:50,160
+information leaks um
+
+525
+00:17:50,160 --> 00:17:51,360
+and similar to sort of the files and
+
+526
+00:17:51,360 --> 00:17:53,360
+files from stop or advice to people that
+
+527
+00:17:53,360 --> 00:17:55,039
+make boot loaders is
+
+528
+00:17:55,039 --> 00:17:57,440
+before you ship at the very least run
+
+529
+00:17:57,440 --> 00:17:58,880
+the network stack fuzzy right use
+
+530
+00:17:58,880 --> 00:18:02,000
+a asic or something like it
+
+531
+00:18:02,000 --> 00:18:03,440
+so here's an example of u-boot for
+
+532
+00:18:03,440 --> 00:18:06,640
+example where the dns id is static
+
+533
+00:18:06,640 --> 00:18:08,799
+it's one which makes dns cache poisoning
+
+534
+00:18:08,799 --> 00:18:11,200
+trivial since you know you can 100
+
+535
+00:18:11,200 --> 00:18:15,840
+reliably predict what the tcip id is
+
+536
+00:18:15,840 --> 00:18:17,760
+um so this is an example in coffee it's
+
+537
+00:18:17,760 --> 00:18:19,679
+a dcp handler
+
+538
+00:18:19,679 --> 00:18:22,240
+where it'll read a one byte link field
+
+539
+00:18:22,240 --> 00:18:23,760
+and then we'll use that link build
+
+540
+00:18:23,760 --> 00:18:27,679
+that link field to write into 128 bytes
+
+541
+00:18:27,679 --> 00:18:29,600
+buffer on the stack i'm given that it's
+
+542
+00:18:29,600 --> 00:18:30,799
+a one byte length field
+
+543
+00:18:30,799 --> 00:18:33,280
+it can hold value of 255 and so you can
+
+544
+00:18:33,280 --> 00:18:33,919
+easily
+
+545
+00:18:33,919 --> 00:18:36,799
+smash the stack
+
+546
+00:18:37,120 --> 00:18:38,480
+now this is another example this is the
+
+547
+00:18:38,480 --> 00:18:40,400
+three parser in coffee
+
+548
+00:18:40,400 --> 00:18:42,799
+uh it basically just uh has a buffer
+
+549
+00:18:42,799 --> 00:18:44,080
+five or twelve bytes and then it just
+
+550
+00:18:44,080 --> 00:18:45,919
+reads from udp and so you can smash that
+
+551
+00:18:45,919 --> 00:18:47,919
+buffer
+
+552
+00:18:47,919 --> 00:18:49,520
+uh here's another coffee blog this is
+
+553
+00:18:49,520 --> 00:18:51,600
+the icp handler and a little bit
+
+554
+00:18:51,600 --> 00:18:53,200
+complicated but eventually uh
+
+555
+00:18:53,200 --> 00:18:54,720
+there's a timing based double free
+
+556
+00:18:54,720 --> 00:18:57,840
+attack here
+
+557
+00:18:59,520 --> 00:19:01,679
+and this is yet another uh coffee bug
+
+558
+00:19:01,679 --> 00:19:02,960
+which is the vip handler
+
+559
+00:19:02,960 --> 00:19:06,080
+where uh ip handling uh is is never
+
+560
+00:19:06,080 --> 00:19:08,080
+validated and that can lead to out of
+
+561
+00:19:08,080 --> 00:19:09,760
+bound reading and then certain
+
+562
+00:19:09,760 --> 00:19:13,679
+and issues like that um so now we've
+
+563
+00:19:13,679 --> 00:19:14,799
+covered txvip
+
+564
+00:19:14,799 --> 00:19:17,919
+um some bootloaders will also support a
+
+565
+00:19:17,919 --> 00:19:19,919
+wi-fi stack
+
+566
+00:19:19,919 --> 00:19:22,080
+and so you have to look at the protocols
+
+567
+00:19:22,080 --> 00:19:23,120
+you know so below
+
+568
+00:19:23,120 --> 00:19:25,840
+tcp so the 8 or 2.11 stuff right and
+
+569
+00:19:25,840 --> 00:19:26,320
+those
+
+570
+00:19:26,320 --> 00:19:28,960
+protocols are interesting uh because
+
+571
+00:19:28,960 --> 00:19:30,720
+either that parsing may happen on the
+
+572
+00:19:30,720 --> 00:19:31,520
+radio
+
+573
+00:19:31,520 --> 00:19:34,960
+or the parsing may happen on on
+
+574
+00:19:34,960 --> 00:19:36,799
+on the boot loader or in the os very
+
+575
+00:19:36,799 --> 00:19:39,679
+much depends on the radio you're using
+
+576
+00:19:39,679 --> 00:19:41,280
+um so some are passed through and some
+
+577
+00:19:41,280 --> 00:19:43,600
+are direct to host um
+
+578
+00:19:43,600 --> 00:19:45,600
+one of the things is that uh there's
+
+579
+00:19:45,600 --> 00:19:47,679
+only a handful of bootloaders so far in
+
+580
+00:19:47,679 --> 00:19:48,720
+811
+
+581
+00:19:48,720 --> 00:19:50,840
+but i think moving forward towards the
+
+582
+00:19:50,840 --> 00:19:52,000
+future
+
+583
+00:19:52,000 --> 00:19:55,200
+we'll probably see more of that
+
+584
+00:19:57,440 --> 00:20:00,240
+um so here's an example in ipxc where um
+
+585
+00:20:00,240 --> 00:20:00,720
+you know
+
+586
+00:20:00,720 --> 00:20:03,120
+the the interface goes up and it does
+
+587
+00:20:03,120 --> 00:20:04,960
+the standard sort of a
+
+588
+00:20:04,960 --> 00:20:08,000
+scanning for s for access points
+
+589
+00:20:08,000 --> 00:20:10,480
+um and it looks at any kind of received
+
+590
+00:20:10,480 --> 00:20:12,720
+frame and looks at the ie and says okay
+
+591
+00:20:12,720 --> 00:20:14,960
+what's this ssid and even though when i
+
+592
+00:20:14,960 --> 00:20:16,640
+e can all 255 bytes
+
+593
+00:20:16,640 --> 00:20:18,320
+an sid can only be up to three or two
+
+594
+00:20:18,320 --> 00:20:20,640
+bytes so it's up to the stack in this
+
+595
+00:20:20,640 --> 00:20:21,280
+case that
+
+596
+00:20:21,280 --> 00:20:23,840
+probe step function um to make sure that
+
+597
+00:20:23,840 --> 00:20:24,799
+the set is no
+
+598
+00:20:24,799 --> 00:20:27,039
+it's not bigger than 32 which is not
+
+599
+00:20:27,039 --> 00:20:28,480
+happening here
+
+600
+00:20:28,480 --> 00:20:30,320
+and so you'll see that mem copy of the
+
+601
+00:20:30,320 --> 00:20:32,080
+ie
+
+602
+00:20:32,080 --> 00:20:35,440
+into a 255 buffer into a 32 byte buffer
+
+603
+00:20:35,440 --> 00:20:39,200
+obviously causing memory corruption
+
+604
+00:20:40,159 --> 00:20:42,240
+um and then so lastly sort of in sort of
+
+605
+00:20:42,240 --> 00:20:44,559
+the the network area of things is
+
+606
+00:20:44,559 --> 00:20:46,080
+on occasion you'll see bluetooth in the
+
+607
+00:20:46,080 --> 00:20:48,000
+bootloader we haven't seen it that much
+
+608
+00:20:48,000 --> 00:20:49,440
+but we've seen a couple of bootloaders
+
+609
+00:20:49,440 --> 00:20:50,720
+that use bluetooth
+
+610
+00:20:50,720 --> 00:20:53,120
+um this is usually for uh like a
+
+611
+00:20:53,120 --> 00:20:54,720
+keyboard or a mouse or something like
+
+612
+00:20:54,720 --> 00:20:55,280
+that
+
+613
+00:20:55,280 --> 00:20:58,000
+um as sort of the attacks we've seen in
+
+614
+00:20:58,000 --> 00:21:00,080
+bluetooth stacks
+
+615
+00:21:00,080 --> 00:21:03,280
+where where we've observed issues is
+
+616
+00:21:03,280 --> 00:21:06,320
+uh generally speaking if you send very
+
+617
+00:21:06,320 --> 00:21:08,400
+large frames so you can send up to about
+
+618
+00:21:08,400 --> 00:21:11,760
+65k of data using fragmentation
+
+619
+00:21:11,760 --> 00:21:13,520
+i mean that tends to break some embedded
+
+620
+00:21:13,520 --> 00:21:14,960
+stacks um
+
+621
+00:21:14,960 --> 00:21:16,799
+similarly sending very short frames
+
+622
+00:21:16,799 --> 00:21:18,240
+shorter than what's expected
+
+623
+00:21:18,240 --> 00:21:20,799
+that tends to cause issues um and then
+
+624
+00:21:20,799 --> 00:21:23,360
+also as previously referenced um
+
+625
+00:21:23,360 --> 00:21:25,200
+some kind like fragmentation games tend
+
+626
+00:21:25,200 --> 00:21:28,799
+to break embedded stacks too
+
+627
+00:21:29,039 --> 00:21:31,919
+um so uh moving on from networking let's
+
+628
+00:21:31,919 --> 00:21:33,039
+start looking at buses
+
+629
+00:21:33,039 --> 00:21:36,240
+um most common obviously is usb um
+
+630
+00:21:36,240 --> 00:21:37,840
+almost any bootloader we've looked at
+
+631
+00:21:37,840 --> 00:21:40,240
+has some kind of usb support
+
+632
+00:21:40,240 --> 00:21:42,159
+uh it could be for storage it could be
+
+633
+00:21:42,159 --> 00:21:43,600
+for ethernet dongles
+
+634
+00:21:43,600 --> 00:21:46,880
+it could be for things like fastboot um
+
+635
+00:21:46,880 --> 00:21:50,240
+so sort of on depending on what's being
+
+636
+00:21:50,240 --> 00:21:51,360
+done how it's being set up
+
+637
+00:21:51,360 --> 00:21:53,280
+it'll either be a usb stack for the host
+
+638
+00:21:53,280 --> 00:21:55,760
+side or usb stack for device side
+
+639
+00:21:55,760 --> 00:21:58,559
+i'm on the host side um sort of the two
+
+640
+00:21:58,559 --> 00:21:59,919
+things that keep popping up
+
+641
+00:21:59,919 --> 00:22:02,400
+or just straight up overflows where no
+
+642
+00:22:02,400 --> 00:22:03,360
+bounce checking just
+
+643
+00:22:03,360 --> 00:22:04,799
+related from the scripture into a fixed
+
+644
+00:22:04,799 --> 00:22:06,720
+buffer and cause memory corruption
+
+645
+00:22:06,720 --> 00:22:08,799
+the other one are so called uh these
+
+646
+00:22:08,799 --> 00:22:10,159
+descriptor double fetches
+
+647
+00:22:10,159 --> 00:22:12,640
+so usb works uh in that you send the
+
+648
+00:22:12,640 --> 00:22:13,760
+scriptures but they can be variable
+
+649
+00:22:13,760 --> 00:22:14,240
+linked
+
+650
+00:22:14,240 --> 00:22:15,919
+so the first thing you ask is the
+
+651
+00:22:15,919 --> 00:22:17,679
+descriptor header and then that gives
+
+652
+00:22:17,679 --> 00:22:18,960
+you the length of the whole thing
+
+653
+00:22:18,960 --> 00:22:20,880
+and then you fetch the thing again
+
+654
+00:22:20,880 --> 00:22:22,000
+including the header
+
+655
+00:22:22,000 --> 00:22:25,039
+um with with the content and the header
+
+656
+00:22:25,039 --> 00:22:26,559
+on the first one and second one can be
+
+657
+00:22:26,559 --> 00:22:27,200
+different
+
+658
+00:22:27,200 --> 00:22:28,799
+and if the stack doesn't check that they
+
+659
+00:22:28,799 --> 00:22:30,720
+match then you can have sort of
+
+660
+00:22:30,720 --> 00:22:34,559
+uh sort of usb script for double fetches
+
+661
+00:22:35,360 --> 00:22:37,360
+so here's an example in grub for example
+
+662
+00:22:37,360 --> 00:22:38,480
+so this is uh grub
+
+663
+00:22:38,480 --> 00:22:41,200
+goes and gets the um uh the device
+
+664
+00:22:41,200 --> 00:22:42,000
+descriptor
+
+665
+00:22:42,000 --> 00:22:43,360
+and then the device scripter basically
+
+666
+00:22:43,360 --> 00:22:45,679
+has a configuration count
+
+667
+00:22:45,679 --> 00:22:47,120
+and then uh it'll loop over
+
+668
+00:22:47,120 --> 00:22:48,559
+configuration account and copy that into
+
+669
+00:22:48,559 --> 00:22:49,919
+internal data structure
+
+670
+00:22:49,919 --> 00:22:51,840
+um this is def config and that can hold
+
+671
+00:22:51,840 --> 00:22:53,120
+i believe up to 32
+
+672
+00:22:53,120 --> 00:22:55,039
+elements uh the conflict count can be up
+
+673
+00:22:55,039 --> 00:22:56,559
+to 255
+
+674
+00:22:56,559 --> 00:22:59,200
+there's no bound check and so if if the
+
+675
+00:22:59,200 --> 00:23:00,960
+device goes to grub and says oh hey
+
+676
+00:23:00,960 --> 00:23:02,240
+here's uh
+
+677
+00:23:02,240 --> 00:23:04,720
+50 uh config counts it will gladly write
+
+678
+00:23:04,720 --> 00:23:07,600
+50 elements into whatever you
+
+679
+00:23:07,600 --> 00:23:09,280
+element array which will cause memory
+
+680
+00:23:09,280 --> 00:23:10,799
+corruption and then similarly
+
+681
+00:23:10,799 --> 00:23:14,240
+um any uh config basically contains a
+
+682
+00:23:14,240 --> 00:23:15,600
+number of interfaces
+
+683
+00:23:15,600 --> 00:23:17,679
+and then um it parsed out interface and
+
+684
+00:23:17,679 --> 00:23:19,120
+puts those in interface array
+
+685
+00:23:19,120 --> 00:23:20,799
+and that array i believe could hold up
+
+686
+00:23:20,799 --> 00:23:22,640
+to eight elements and again there's no
+
+687
+00:23:22,640 --> 00:23:23,520
+bound check so
+
+688
+00:23:23,520 --> 00:23:26,000
+if you say nine or ten or twenty or a
+
+689
+00:23:26,000 --> 00:23:26,640
+hundred
+
+690
+00:23:26,640 --> 00:23:28,799
+uh it'll gladly copy into it and cause
+
+691
+00:23:28,799 --> 00:23:30,960
+memory corruption
+
+692
+00:23:30,960 --> 00:23:33,360
+um and so there's plenty other examples
+
+693
+00:23:33,360 --> 00:23:37,840
+so tiana core had some usb issues
+
+694
+00:23:38,640 --> 00:23:42,080
+again this is diana core
+
+695
+00:23:42,320 --> 00:23:44,400
+and this is a c bias this is an example
+
+696
+00:23:44,400 --> 00:23:45,679
+of a straight up
+
+697
+00:23:45,679 --> 00:23:50,000
+double fetch
+
+698
+00:23:50,000 --> 00:23:52,640
+and so for example the uh the nvidia uh
+
+699
+00:23:52,640 --> 00:23:53,360
+was owned
+
+700
+00:23:53,360 --> 00:23:55,279
+the nintendo switch uh was owned in
+
+701
+00:23:55,279 --> 00:23:57,200
+nvidia uh tegra uh
+
+702
+00:23:57,200 --> 00:24:00,480
+portability inside of uh the usb stack
+
+703
+00:24:00,480 --> 00:24:03,679
+so this just sort of demonstrates uh the
+
+704
+00:24:03,679 --> 00:24:06,080
+real world cases like these are this is
+
+705
+00:24:06,080 --> 00:24:08,240
+usb is one of the sort of prime targets
+
+706
+00:24:08,240 --> 00:24:09,039
+right now
+
+707
+00:24:09,039 --> 00:24:12,480
+of how boot loaders get old
+
+708
+00:24:13,760 --> 00:24:15,039
+so similarly you know the iphone
+
+709
+00:24:15,039 --> 00:24:17,600
+checkmate again this was a usb stack it
+
+710
+00:24:17,600 --> 00:24:18,000
+was used
+
+711
+00:24:18,000 --> 00:24:19,919
+after free and obviously this this led
+
+712
+00:24:19,919 --> 00:24:22,960
+to a jailbreak
+
+713
+00:24:22,960 --> 00:24:26,320
+um so other buses obviously usb is the
+
+714
+00:24:26,320 --> 00:24:27,520
+most common one but
+
+715
+00:24:27,520 --> 00:24:30,240
+quite often in most cases you'll see spy
+
+716
+00:24:30,240 --> 00:24:31,520
+for talking to flash
+
+717
+00:24:31,520 --> 00:24:34,559
+and you'll see sdio for like talking
+
+718
+00:24:34,559 --> 00:24:38,159
+to wi-fi and maybe you see i2c
+
+719
+00:24:38,159 --> 00:24:41,200
+or maybe you see lpc for tpm there's a
+
+720
+00:24:41,200 --> 00:24:43,760
+number of these buses that are non-dma
+
+721
+00:24:43,760 --> 00:24:46,880
+that where you would have to do
+
+722
+00:24:46,880 --> 00:24:48,159
+validation on the input
+
+723
+00:24:48,159 --> 00:24:49,440
+and one thing i particularly want to
+
+724
+00:24:49,440 --> 00:24:51,679
+call out is is we've seen some devices
+
+725
+00:24:51,679 --> 00:24:52,480
+that
+
+726
+00:24:52,480 --> 00:24:55,600
+will map in a flash over spy and they'll
+
+727
+00:24:55,600 --> 00:24:57,919
+do it using uh they'll do memory mapping
+
+728
+00:24:57,919 --> 00:25:00,159
+and so the idea is like you won't see a
+
+729
+00:25:00,159 --> 00:25:01,600
+read or write through the device you'll
+
+730
+00:25:01,600 --> 00:25:02,159
+just see
+
+731
+00:25:02,159 --> 00:25:04,559
+the referencing and address um and that
+
+732
+00:25:04,559 --> 00:25:06,480
+kind of abstraction can be dangerous
+
+733
+00:25:06,480 --> 00:25:07,360
+because
+
+734
+00:25:07,360 --> 00:25:09,279
+um you can you'll have this thing where
+
+735
+00:25:09,279 --> 00:25:10,559
+someone does okay
+
+736
+00:25:10,559 --> 00:25:12,080
+verify this adders with this length and
+
+737
+00:25:12,080 --> 00:25:14,080
+i was verified and then they run it and
+
+738
+00:25:14,080 --> 00:25:15,520
+what's happening underneath is that for
+
+739
+00:25:15,520 --> 00:25:16,080
+every time you
+
+740
+00:25:16,080 --> 00:25:18,880
+reference that address it does a it
+
+741
+00:25:18,880 --> 00:25:20,640
+fetches out to the flash
+
+742
+00:25:20,640 --> 00:25:23,600
+um and so if your memory map spy um
+
+743
+00:25:23,600 --> 00:25:25,520
+there's a high risk of having these kind
+
+744
+00:25:25,520 --> 00:25:26,320
+of uh double
+
+745
+00:25:26,320 --> 00:25:28,960
+sort of tim check time of use issues or
+
+746
+00:25:28,960 --> 00:25:32,400
+you can bypass verification
+
+747
+00:25:33,039 --> 00:25:36,320
+so this is that uh cbs tpm for example
+
+748
+00:25:36,320 --> 00:25:38,559
+uh where it reads the link field over
+
+749
+00:25:38,559 --> 00:25:40,799
+this uh over this uh
+
+750
+00:25:40,799 --> 00:25:43,360
+lpc bus and then it doesn't a malloc
+
+751
+00:25:43,360 --> 00:25:44,720
+high with that linked
+
+752
+00:25:44,720 --> 00:25:47,520
+and then it copies uh into that link and
+
+753
+00:25:47,520 --> 00:25:48,240
+malachi
+
+754
+00:25:48,240 --> 00:25:51,039
+internally um has an integer overflow so
+
+755
+00:25:51,039 --> 00:25:52,720
+you give it a really big size
+
+756
+00:25:52,720 --> 00:25:54,159
+locate something small and then copy
+
+757
+00:25:54,159 --> 00:25:55,200
+something really big into that very
+
+758
+00:25:55,200 --> 00:25:57,840
+small size
+
+759
+00:25:59,440 --> 00:26:02,320
+and so here's the inflation of malachi
+
+760
+00:26:02,320 --> 00:26:03,760
+and it has an intro flow
+
+761
+00:26:03,760 --> 00:26:05,679
+but it's a bit complicated and i'll
+
+762
+00:26:05,679 --> 00:26:07,360
+leave it as an exercise for the viewer
+
+763
+00:26:07,360 --> 00:26:08,880
+to figure out exactly where the into
+
+764
+00:26:08,880 --> 00:26:11,840
+overflow is
+
+765
+00:26:12,799 --> 00:26:14,880
+um so another uh attack surface that's
+
+766
+00:26:14,880 --> 00:26:16,080
+interesting and
+
+767
+00:26:16,080 --> 00:26:18,880
+joseph alluded to this earlier is smm so
+
+768
+00:26:18,880 --> 00:26:19,840
+smm is this
+
+769
+00:26:19,840 --> 00:26:22,080
+thing called system management mode and
+
+770
+00:26:22,080 --> 00:26:23,520
+it's a very privileged mode
+
+771
+00:26:23,520 --> 00:26:25,200
+uh so if you and this is mostly related
+
+772
+00:26:25,200 --> 00:26:27,039
+to x86 and intel
+
+773
+00:26:27,039 --> 00:26:28,480
+so if you recall intel you'll have you
+
+774
+00:26:28,480 --> 00:26:30,640
+have these privileged rings so it starts
+
+775
+00:26:30,640 --> 00:26:30,960
+at
+
+776
+00:26:30,960 --> 00:26:32,880
+three which is unpurposed and again uh
+
+777
+00:26:32,880 --> 00:26:34,480
+you know two and one which are usually
+
+778
+00:26:34,480 --> 00:26:35,840
+not used and then there's zero which is
+
+779
+00:26:35,840 --> 00:26:37,679
+the kernel
+
+780
+00:26:37,679 --> 00:26:39,440
+and then people started adding these
+
+781
+00:26:39,440 --> 00:26:41,840
+quote-unquote virtual rings
+
+782
+00:26:41,840 --> 00:26:43,039
+so ring minus one would be the
+
+783
+00:26:43,039 --> 00:26:45,039
+hypervisor ring minus two system
+
+784
+00:26:45,039 --> 00:26:46,080
+management mode
+
+785
+00:26:46,080 --> 00:26:47,279
+and then most recently people sort of
+
+786
+00:26:47,279 --> 00:26:50,720
+added -3 which is the management engine
+
+787
+00:26:50,720 --> 00:26:53,200
+so the thing about smm at ring minus two
+
+788
+00:26:53,200 --> 00:26:54,720
+is that this gets set up
+
+789
+00:26:54,720 --> 00:26:57,600
+and initialized sort of uh by by by your
+
+790
+00:26:57,600 --> 00:26:59,120
+boot loader by bios
+
+791
+00:26:59,120 --> 00:27:02,480
+uh by you usually um and so this is
+
+792
+00:27:02,480 --> 00:27:04,480
+currently privileged as access to
+
+793
+00:27:04,480 --> 00:27:05,919
+certain devices and certain hardware and
+
+794
+00:27:05,919 --> 00:27:07,200
+certain pieces of memory
+
+795
+00:27:07,200 --> 00:27:09,279
+that you know at later stages the os
+
+796
+00:27:09,279 --> 00:27:10,799
+would not have access to
+
+797
+00:27:10,799 --> 00:27:13,520
+um doing some memory is hard there have
+
+798
+00:27:13,520 --> 00:27:14,000
+been
+
+799
+00:27:14,000 --> 00:27:16,240
+plenty like dozens and dozens and dozens
+
+800
+00:27:16,240 --> 00:27:18,240
+of smm bugs
+
+801
+00:27:18,240 --> 00:27:21,840
+for the last 10 15 years um and so
+
+802
+00:27:21,840 --> 00:27:23,440
+somebody finds a bug and then usually if
+
+803
+00:27:23,440 --> 00:27:24,640
+you guys they don't fix it somebody
+
+804
+00:27:24,640 --> 00:27:25,600
+finds not a bug
+
+805
+00:27:25,600 --> 00:27:27,600
+you fix it and then you know you find a
+
+806
+00:27:27,600 --> 00:27:29,200
+third bugger there's a pattern you fee
+
+807
+00:27:29,200 --> 00:27:31,279
+tends to like okay go okay well let's do
+
+808
+00:27:31,279 --> 00:27:32,399
+a mitigation
+
+809
+00:27:32,399 --> 00:27:34,159
+and this is back and forth back and
+
+810
+00:27:34,159 --> 00:27:36,480
+forth and this has led to uh yuffie at
+
+811
+00:27:36,480 --> 00:27:38,559
+the present time being pretty robust
+
+812
+00:27:38,559 --> 00:27:41,440
+um the smm handlers have don't really
+
+813
+00:27:41,440 --> 00:27:42,960
+have that many bugs anymore
+
+814
+00:27:42,960 --> 00:27:44,960
+um occasionally you'll still see the
+
+815
+00:27:44,960 --> 00:27:46,960
+electric party uh um
+
+816
+00:27:46,960 --> 00:27:50,240
+extensions for you fee um but you fee
+
+817
+00:27:50,240 --> 00:27:51,840
+in general does pretty well these days
+
+818
+00:27:51,840 --> 00:27:53,360
+uh however if you're writing your own
+
+819
+00:27:53,360 --> 00:27:54,080
+bootloader
+
+820
+00:27:54,080 --> 00:27:55,679
+and you're re-implementing this from
+
+821
+00:27:55,679 --> 00:27:58,480
+scratch this is really hard and you will
+
+822
+00:27:58,480 --> 00:27:59,919
+probably get it wrong the first couple
+
+823
+00:27:59,919 --> 00:28:02,399
+of times
+
+824
+00:28:02,399 --> 00:28:04,159
+so here's an example of core boot uh
+
+825
+00:28:04,159 --> 00:28:05,679
+which has an smm
+
+826
+00:28:05,679 --> 00:28:06,960
+routine and you know they get these
+
+827
+00:28:06,960 --> 00:28:08,799
+pointers from outside smm and they go oh
+
+828
+00:28:08,799 --> 00:28:10,640
+well we should range check these before
+
+829
+00:28:10,640 --> 00:28:11,919
+we use which is clever
+
+830
+00:28:11,919 --> 00:28:13,760
+and that's what you're supposed to do
+
+831
+00:28:13,760 --> 00:28:15,279
+except if you look at the raincheck
+
+832
+00:28:15,279 --> 00:28:16,720
+function it's actually not implemented
+
+833
+00:28:16,720 --> 00:28:18,240
+it says studio fill in
+
+834
+00:28:18,240 --> 00:28:19,600
+so they think they range check but they
+
+835
+00:28:19,600 --> 00:28:22,799
+really don't range check
+
+836
+00:28:23,440 --> 00:28:24,880
+uh and so the last thing for your next
+
+837
+00:28:24,880 --> 00:28:27,120
+surface what i want to talk about is dma
+
+838
+00:28:27,120 --> 00:28:29,120
+so previously i talked about buses that
+
+839
+00:28:29,120 --> 00:28:30,720
+didn't have memory access
+
+840
+00:28:30,720 --> 00:28:32,880
+dna and so buses like pci and things
+
+841
+00:28:32,880 --> 00:28:34,640
+like that um
+
+842
+00:28:34,640 --> 00:28:37,120
+they do have memory act directory access
+
+843
+00:28:37,120 --> 00:28:37,760
+and uh
+
+844
+00:28:37,760 --> 00:28:40,240
+historically what that meant is that
+
+845
+00:28:40,240 --> 00:28:40,799
+there
+
+846
+00:28:40,799 --> 00:28:42,640
+is really a trust relationship between
+
+847
+00:28:42,640 --> 00:28:44,000
+your host and your device
+
+848
+00:28:44,000 --> 00:28:46,159
+if you have dma accesses historically it
+
+849
+00:28:46,159 --> 00:28:47,360
+was game over
+
+850
+00:28:47,360 --> 00:28:48,720
+more recently with sort of the
+
+851
+00:28:48,720 --> 00:28:50,399
+development of luxury devices
+
+852
+00:28:50,399 --> 00:28:52,159
+people said okay well we still want to
+
+853
+00:28:52,159 --> 00:28:54,320
+be able to share memory with devices
+
+854
+00:28:54,320 --> 00:28:56,559
+but we don't want devices to access all
+
+855
+00:28:56,559 --> 00:28:57,520
+of memory
+
+856
+00:28:57,520 --> 00:28:59,279
+and so people came up and said okay well
+
+857
+00:28:59,279 --> 00:29:01,120
+let's create this device we'll call an
+
+858
+00:29:01,120 --> 00:29:02,159
+imu
+
+859
+00:29:02,159 --> 00:29:04,559
+and we'll put it between dram and the
+
+860
+00:29:04,559 --> 00:29:05,840
+devices
+
+861
+00:29:05,840 --> 00:29:08,799
+and that'll be the gatekeeper and so by
+
+862
+00:29:08,799 --> 00:29:11,360
+default it'll not allow any devices to
+
+863
+00:29:11,360 --> 00:29:13,679
+touch memory and then the host could
+
+864
+00:29:13,679 --> 00:29:15,600
+program the imu and say okay
+
+865
+00:29:15,600 --> 00:29:17,520
+this particular device can access this
+
+866
+00:29:17,520 --> 00:29:18,880
+memory uh
+
+867
+00:29:18,880 --> 00:29:21,760
+with up to this length using read or
+
+868
+00:29:21,760 --> 00:29:23,200
+write or a combination of read
+
+869
+00:29:23,200 --> 00:29:26,559
+write um and that is that is how how
+
+870
+00:29:26,559 --> 00:29:27,360
+this is
+
+871
+00:29:27,360 --> 00:29:29,919
+done these days in secure devices um
+
+872
+00:29:29,919 --> 00:29:32,080
+what this means is that all of a sudden
+
+873
+00:29:32,080 --> 00:29:35,200
+dma becomes attack service um this is
+
+874
+00:29:35,200 --> 00:29:36,320
+problematic
+
+875
+00:29:36,320 --> 00:29:38,000
+uh for many things mostly because it
+
+876
+00:29:38,000 --> 00:29:39,520
+wasn't before
+
+877
+00:29:39,520 --> 00:29:42,720
+and so also the enemy itself becomes
+
+878
+00:29:42,720 --> 00:29:43,840
+attack surface right so
+
+879
+00:29:43,840 --> 00:29:45,600
+any side channels maybe there's logic
+
+880
+00:29:45,600 --> 00:29:47,360
+bugs maybe there's heart rate relation
+
+881
+00:29:47,360 --> 00:29:48,559
+bugs
+
+882
+00:29:48,559 --> 00:29:50,399
+and i would love to talk about this more
+
+883
+00:29:50,399 --> 00:29:51,840
+in depth but it's kind of outside the
+
+884
+00:29:51,840 --> 00:29:53,600
+scope of this presentation
+
+885
+00:29:53,600 --> 00:29:55,600
+in fact uh joe and i are doing a
+
+886
+00:29:55,600 --> 00:29:58,000
+presentation just about imu
+
+887
+00:29:58,000 --> 00:30:00,720
+in about three four weeks um at a
+
+888
+00:30:00,720 --> 00:30:02,799
+heartward.io so i recommend you watch
+
+889
+00:30:02,799 --> 00:30:05,440
+that video too
+
+890
+00:30:05,440 --> 00:30:07,600
+um i did want to cover like one kind of
+
+891
+00:30:07,600 --> 00:30:10,080
+dma related bug and imu relate plug
+
+892
+00:30:10,080 --> 00:30:13,279
+so this is an issue um in yuffie and so
+
+893
+00:30:13,279 --> 00:30:15,039
+uf actually supports the imu
+
+894
+00:30:15,039 --> 00:30:17,919
+which is great but once ufe is done and
+
+895
+00:30:17,919 --> 00:30:20,720
+does the handover to the os
+
+896
+00:30:20,720 --> 00:30:23,840
+it turns the imu off and then the ied is
+
+897
+00:30:23,840 --> 00:30:24,720
+that the os will
+
+898
+00:30:24,720 --> 00:30:27,279
+turn on again but that leaves a window
+
+899
+00:30:27,279 --> 00:30:28,480
+where you can attack
+
+900
+00:30:28,480 --> 00:30:31,200
+a dram and the reason this is done is
+
+901
+00:30:31,200 --> 00:30:32,080
+because
+
+902
+00:30:32,080 --> 00:30:34,480
+currently ufe does not define a handover
+
+903
+00:30:34,480 --> 00:30:36,240
+protocol for i for the imu
+
+904
+00:30:36,240 --> 00:30:39,679
+uh settings so i knew if the
+
+905
+00:30:39,679 --> 00:30:41,520
+uf has programmed it the u.s doesn't
+
+906
+00:30:41,520 --> 00:30:43,039
+know how to handle it then
+
+907
+00:30:43,039 --> 00:30:45,520
+us will have problems interacting with
+
+908
+00:30:45,520 --> 00:30:47,120
+the os
+
+909
+00:30:47,120 --> 00:30:49,039
+so there's a bit that allows you to say
+
+910
+00:30:49,039 --> 00:30:50,720
+leave it on but because the handover
+
+911
+00:30:50,720 --> 00:30:52,080
+protocol isn't there yet
+
+912
+00:30:52,080 --> 00:30:54,159
+and this is an open bug right now uh
+
+913
+00:30:54,159 --> 00:30:55,679
+this can't really be done
+
+914
+00:30:55,679 --> 00:30:57,679
+unless you have a proprietary uh
+
+915
+00:30:57,679 --> 00:30:59,039
+extension so
+
+916
+00:30:59,039 --> 00:31:00,880
+uh apple for example given that they
+
+917
+00:31:00,880 --> 00:31:02,240
+make their own hardware and they have
+
+918
+00:31:02,240 --> 00:31:03,360
+their own sort of
+
+919
+00:31:03,360 --> 00:31:04,880
+youth modified you fee and they have
+
+920
+00:31:04,880 --> 00:31:06,960
+their own os uh they
+
+921
+00:31:06,960 --> 00:31:08,399
+have their own handover protocol and so
+
+922
+00:31:08,399 --> 00:31:11,918
+they they can do this
+
+923
+00:31:14,799 --> 00:31:18,159
+so we mentioned uh hardware earlier and
+
+924
+00:31:18,159 --> 00:31:19,760
+a lot of this was just outside the scope
+
+925
+00:31:19,760 --> 00:31:21,919
+of the presentation but we wanted to at
+
+926
+00:31:21,919 --> 00:31:22,320
+least
+
+927
+00:31:22,320 --> 00:31:24,320
+give a quick overview to let people know
+
+928
+00:31:24,320 --> 00:31:26,399
+that there is this entire world out here
+
+929
+00:31:26,399 --> 00:31:28,799
+people doing these things and it is a
+
+930
+00:31:28,799 --> 00:31:33,039
+concern that you need to be aware of
+
+931
+00:31:33,039 --> 00:31:35,679
+so the first one would be glitching and
+
+932
+00:31:35,679 --> 00:31:37,919
+this is introducing some form of a fault
+
+933
+00:31:37,919 --> 00:31:38,880
+injection
+
+934
+00:31:38,880 --> 00:31:41,600
+people do it by messing with the clock
+
+935
+00:31:41,600 --> 00:31:42,640
+by
+
+936
+00:31:42,640 --> 00:31:45,039
+messing with voltage using lasers or
+
+937
+00:31:45,039 --> 00:31:46,559
+coils magnets
+
+938
+00:31:46,559 --> 00:31:48,720
+things like that and the whole concept
+
+939
+00:31:48,720 --> 00:31:50,159
+is to glitch
+
+940
+00:31:50,159 --> 00:31:53,440
+a portion of code integrity checking
+
+941
+00:31:53,440 --> 00:31:56,799
+and so what can happen is for example
+
+942
+00:31:56,799 --> 00:31:59,200
+uh this is a real world attack against
+
+943
+00:31:59,200 --> 00:32:00,159
+the playstation
+
+944
+00:32:00,159 --> 00:32:02,000
+4 sis con chip that was done by fell
+
+945
+00:32:02,000 --> 00:32:03,440
+overflow
+
+946
+00:32:03,440 --> 00:32:04,720
+where when you tried to communicate with
+
+947
+00:32:04,720 --> 00:32:07,120
+the chip it would check am i allowed to
+
+948
+00:32:07,120 --> 00:32:07,440
+be
+
+949
+00:32:07,440 --> 00:32:09,840
+in debug mode or can this person talk to
+
+950
+00:32:09,840 --> 00:32:10,799
+me if not
+
+951
+00:32:10,799 --> 00:32:13,600
+okay just enter this infinite loop and
+
+952
+00:32:13,600 --> 00:32:15,120
+what would happen is that you could
+
+953
+00:32:15,120 --> 00:32:17,039
+perform a glitch
+
+954
+00:32:17,039 --> 00:32:18,960
+and if you did it at the right time
+
+955
+00:32:18,960 --> 00:32:21,039
+where it was checking should i be inside
+
+956
+00:32:21,039 --> 00:32:22,799
+this loop it will actually glitch over
+
+957
+00:32:22,799 --> 00:32:23,760
+that check
+
+958
+00:32:23,760 --> 00:32:25,679
+and then just start executing its normal
+
+959
+00:32:25,679 --> 00:32:29,200
+code as if it was not in that loop
+
+960
+00:32:29,200 --> 00:32:31,679
+another one would be side channel and
+
+961
+00:32:31,679 --> 00:32:33,919
+this is done by monitoring things like
+
+962
+00:32:33,919 --> 00:32:35,840
+timing discrepancies or
+
+963
+00:32:35,840 --> 00:32:38,080
+power consumption discrepancies and
+
+964
+00:32:38,080 --> 00:32:40,240
+exploiting things like cpu bugs such as
+
+965
+00:32:40,240 --> 00:32:41,519
+spectrum meltdown
+
+966
+00:32:41,519 --> 00:32:44,640
+the entire idea here is to leak secrets
+
+967
+00:32:44,640 --> 00:32:46,240
+and obtain information
+
+968
+00:32:46,240 --> 00:32:48,240
+and you'll see attacks like this happen
+
+969
+00:32:48,240 --> 00:32:49,919
+on embedded devices all the time where
+
+970
+00:32:49,919 --> 00:32:51,679
+people are able to extract
+
+971
+00:32:51,679 --> 00:32:56,240
+the um the keys for in encryption or um
+
+972
+00:32:56,240 --> 00:32:59,440
+or such as the kabbalaks for example
+
+973
+00:32:59,440 --> 00:33:01,519
+people were able to extract the combos
+
+974
+00:33:01,519 --> 00:33:02,960
+when it would check if you entered the
+
+975
+00:33:02,960 --> 00:33:05,919
+right combination
+
+976
+00:33:05,919 --> 00:33:07,760
+and then there's the entire world of
+
+977
+00:33:07,760 --> 00:33:09,440
+chipset and this is where there are
+
+978
+00:33:09,440 --> 00:33:11,840
+people who are decapping chips
+
+979
+00:33:11,840 --> 00:33:13,919
+using things like fibs and sems to look
+
+980
+00:33:13,919 --> 00:33:15,679
+at the silicon dies
+
+981
+00:33:15,679 --> 00:33:17,440
+generally you're dealing with this very
+
+982
+00:33:17,440 --> 00:33:19,919
+sophisticated attacker but the world is
+
+983
+00:33:19,919 --> 00:33:21,519
+changing a little bit
+
+984
+00:33:21,519 --> 00:33:23,600
+you know years ago you were dealing with
+
+985
+00:33:23,600 --> 00:33:25,519
+somebody who was in a lab environment
+
+986
+00:33:25,519 --> 00:33:27,039
+who had a quarter of a million dollars
+
+987
+00:33:27,039 --> 00:33:28,480
+worth of equipment
+
+988
+00:33:28,480 --> 00:33:30,480
+and now there are a handful of people
+
+989
+00:33:30,480 --> 00:33:32,480
+that are part of the security industry
+
+990
+00:33:32,480 --> 00:33:33,200
+now
+
+991
+00:33:33,200 --> 00:33:35,919
+that have a sam in their garage and they
+
+992
+00:33:35,919 --> 00:33:38,159
+decap chips for fun and they they
+
+993
+00:33:38,159 --> 00:33:40,559
+take images and and check for things and
+
+994
+00:33:40,559 --> 00:33:42,000
+usually they're doing
+
+995
+00:33:42,000 --> 00:33:45,200
+um optical rom extraction
+
+996
+00:33:45,200 --> 00:33:47,519
+so they'll de-layer the chip down
+
+997
+00:33:47,519 --> 00:33:48,720
+they'll
+
+998
+00:33:48,720 --> 00:33:52,080
+image the boot rom and pick out the bits
+
+999
+00:33:52,080 --> 00:33:54,720
+and extract the entire boot rom and then
+
+1000
+00:33:54,720 --> 00:33:56,159
+uh reverse it and
+
+1001
+00:33:56,159 --> 00:33:58,640
+if they find a bug in that you're you're
+
+1002
+00:33:58,640 --> 00:33:59,440
+basically
+
+1003
+00:33:59,440 --> 00:34:01,840
+screwed because like we said it's it's
+
+1004
+00:34:01,840 --> 00:34:03,279
+all read only and you'll have to do some
+
+1005
+00:34:03,279 --> 00:34:03,919
+sort of
+
+1006
+00:34:03,919 --> 00:34:06,399
+hardware revision but like we said it's
+
+1007
+00:34:06,399 --> 00:34:08,079
+outside of the scope but
+
+1008
+00:34:08,079 --> 00:34:09,440
+but now you're aware that there's this
+
+1009
+00:34:09,440 --> 00:34:11,280
+world out there of people doing these
+
+1010
+00:34:11,280 --> 00:34:13,918
+things that you can go research on
+
+1011
+00:34:13,918 --> 00:34:15,918
+um a quick note that we wanted to make
+
+1012
+00:34:15,918 --> 00:34:17,440
+on code integrity
+
+1013
+00:34:17,440 --> 00:34:20,159
+is doing it right is hard we see
+
+1014
+00:34:20,159 --> 00:34:22,079
+mistakes all the time
+
+1015
+00:34:22,079 --> 00:34:24,399
+um developers tend to use things like
+
+1016
+00:34:24,399 --> 00:34:25,520
+weak crypto
+
+1017
+00:34:25,520 --> 00:34:29,119
+or weak algorithms they make weird logic
+
+1018
+00:34:29,119 --> 00:34:29,760
+errors
+
+1019
+00:34:29,760 --> 00:34:32,719
+they they'll do stuff like check that a
+
+1020
+00:34:32,719 --> 00:34:34,000
+signature exists but
+
+1021
+00:34:34,000 --> 00:34:37,040
+not actually check that if it's valid
+
+1022
+00:34:37,040 --> 00:34:39,918
+um there's also blacklist concerns if if
+
+1023
+00:34:39,918 --> 00:34:41,918
+you have a ton of signed
+
+1024
+00:34:41,918 --> 00:34:43,918
+uf blobs for example and they're
+
+1025
+00:34:43,918 --> 00:34:45,760
+vulnerable like they can continue
+
+1026
+00:34:45,760 --> 00:34:47,199
+blacklisting them but
+
+1027
+00:34:47,199 --> 00:34:49,199
+eventually that that's a finite amount
+
+1028
+00:34:49,199 --> 00:34:50,879
+of space that we have to store the
+
+1029
+00:34:50,879 --> 00:34:52,159
+blacklist so
+
+1030
+00:34:52,159 --> 00:34:53,839
+eventually the list will be exhausted
+
+1031
+00:34:53,839 --> 00:34:55,599
+and then what do you do
+
+1032
+00:34:55,599 --> 00:34:57,280
+you'll also find a lot of weird
+
+1033
+00:34:57,280 --> 00:34:58,640
+situations where
+
+1034
+00:34:58,640 --> 00:35:00,880
+in out of memory states uh things will
+
+1035
+00:35:00,880 --> 00:35:03,760
+just be a fail open scenario
+
+1036
+00:35:03,760 --> 00:35:06,880
+or or a fail close scenario um
+
+1037
+00:35:06,880 --> 00:35:09,680
+it's it's uh quite interesting like
+
+1038
+00:35:09,680 --> 00:35:10,560
+sometimes you'll see
+
+1039
+00:35:10,560 --> 00:35:12,720
+people make mistakes about uh not
+
+1040
+00:35:12,720 --> 00:35:14,480
+signing the entire blob of something but
+
+1041
+00:35:14,480 --> 00:35:16,720
+only components so you can modify
+
+1042
+00:35:16,720 --> 00:35:18,240
+certain parts and that would affect the
+
+1043
+00:35:18,240 --> 00:35:19,359
+execution
+
+1044
+00:35:19,359 --> 00:35:22,640
+the ilia finds bugs like this all the
+
+1045
+00:35:22,640 --> 00:35:23,119
+time
+
+1046
+00:35:23,119 --> 00:35:25,520
+and uh they're not they're not um
+
+1047
+00:35:25,520 --> 00:35:27,440
+they're not rare at all so it's
+
+1048
+00:35:27,440 --> 00:35:29,200
+something that we wanted to call out to
+
+1049
+00:35:29,200 --> 00:35:31,359
+make people aware of
+
+1050
+00:35:31,359 --> 00:35:34,880
+um so our overall conclusions um
+
+1051
+00:35:34,880 --> 00:35:36,640
+basically this presentation just kind of
+
+1052
+00:35:36,640 --> 00:35:39,200
+covers the tip of the iceberg we did not
+
+1053
+00:35:39,200 --> 00:35:42,640
+exhaustively audit all these projects we
+
+1054
+00:35:42,640 --> 00:35:45,280
+we really just went to the parts that we
+
+1055
+00:35:45,280 --> 00:35:46,480
+thought were interesting for attack
+
+1056
+00:35:46,480 --> 00:35:48,160
+surface and wanted to try to find an
+
+1057
+00:35:48,160 --> 00:35:50,480
+example for the presentation we did not
+
+1058
+00:35:50,480 --> 00:35:51,440
+uh
+
+1059
+00:35:51,440 --> 00:35:53,920
+go through a full-fledged audit so
+
+1060
+00:35:53,920 --> 00:35:54,800
+there's gonna be
+
+1061
+00:35:54,800 --> 00:35:56,400
+all sorts of interesting things in the
+
+1062
+00:35:56,400 --> 00:35:59,440
+future attack wise as well as weird new
+
+1063
+00:35:59,440 --> 00:36:01,520
+cpu feature specific attacks that you'll
+
+1064
+00:36:01,520 --> 00:36:02,560
+be seeing
+
+1065
+00:36:02,560 --> 00:36:05,440
+um it was kind of shocking to us the
+
+1066
+00:36:05,440 --> 00:36:07,760
+amount of low quality code that we saw
+
+1067
+00:36:07,760 --> 00:36:09,599
+at the beginning you saw those like stir
+
+1068
+00:36:09,599 --> 00:36:12,079
+copy and sprint f type bugs we did not
+
+1069
+00:36:12,079 --> 00:36:13,920
+really expect to run into that on
+
+1070
+00:36:13,920 --> 00:36:15,119
+something that
+
+1071
+00:36:15,119 --> 00:36:17,119
+is so important such as the bootloader
+
+1072
+00:36:17,119 --> 00:36:18,160
+but
+
+1073
+00:36:18,160 --> 00:36:19,680
+you know that's what that's what happens
+
+1074
+00:36:19,680 --> 00:36:21,280
+i guess and
+
+1075
+00:36:21,280 --> 00:36:23,280
+um another interesting thing is if you
+
+1076
+00:36:23,280 --> 00:36:25,359
+wanted to start looking at these
+
+1077
+00:36:25,359 --> 00:36:27,680
+um when you try to dive into any sort of
+
+1078
+00:36:27,680 --> 00:36:29,599
+proprietary bootloader you're going to
+
+1079
+00:36:29,599 --> 00:36:31,040
+quickly end up into
+
+1080
+00:36:31,040 --> 00:36:34,320
+an nda hell they they tend to want you
+
+1081
+00:36:34,320 --> 00:36:34,800
+to
+
+1082
+00:36:34,800 --> 00:36:37,119
+sell your soul and your firstborn to be
+
+1083
+00:36:37,119 --> 00:36:38,640
+able to look at their
+
+1084
+00:36:38,640 --> 00:36:41,040
+their boot rom and uh so don't be
+
+1085
+00:36:41,040 --> 00:36:42,240
+surprised if
+
+1086
+00:36:42,240 --> 00:36:45,359
+if that's what you run into so
+
+1087
+00:36:45,359 --> 00:36:48,640
+obviously our advice um would be to try
+
+1088
+00:36:48,640 --> 00:36:50,079
+to minimize your images
+
+1089
+00:36:50,079 --> 00:36:51,920
+minimize your your boot environment and
+
+1090
+00:36:51,920 --> 00:36:54,640
+your host operating system if you don't
+
+1091
+00:36:54,640 --> 00:36:56,000
+need some of these features
+
+1092
+00:36:56,000 --> 00:36:58,720
+they really shouldn't be compiled in and
+
+1093
+00:36:58,720 --> 00:36:59,520
+and available
+
+1094
+00:36:59,520 --> 00:37:00,960
+like if you don't have a network stack
+
+1095
+00:37:00,960 --> 00:37:02,560
+you don't need network stack remove it
+
+1096
+00:37:02,560 --> 00:37:03,359
+completely
+
+1097
+00:37:03,359 --> 00:37:05,280
+if you don't need usb just remove it
+
+1098
+00:37:05,280 --> 00:37:07,119
+because every time you have some of
+
+1099
+00:37:07,119 --> 00:37:08,400
+these features available
+
+1100
+00:37:08,400 --> 00:37:10,800
+you're just giving you're just leaving
+
+1101
+00:37:10,800 --> 00:37:12,160
+attack surface laying around for
+
+1102
+00:37:12,160 --> 00:37:14,400
+somebody to leverage
+
+1103
+00:37:14,400 --> 00:37:16,480
+and um a common issue that we see with
+
+1104
+00:37:16,480 --> 00:37:18,640
+these embedded linux devices is
+
+1105
+00:37:18,640 --> 00:37:21,359
+they tend to have more drivers than our
+
+1106
+00:37:21,359 --> 00:37:23,359
+desktop computer which is just crazy
+
+1107
+00:37:23,359 --> 00:37:25,119
+they're they're not really configured
+
+1108
+00:37:25,119 --> 00:37:28,000
+um to be hardened or slimmed down at all
+
+1109
+00:37:28,000 --> 00:37:29,920
+and it's it's just um
+
+1110
+00:37:29,920 --> 00:37:33,359
+a total mess of of attack surface so
+
+1111
+00:37:33,359 --> 00:37:35,680
+um really really work on kind of
+
+1112
+00:37:35,680 --> 00:37:37,760
+trimming those down
+
+1113
+00:37:37,760 --> 00:37:40,160
+um another observation was just the lack
+
+1114
+00:37:40,160 --> 00:37:42,800
+of exploit mitigations across the board
+
+1115
+00:37:42,800 --> 00:37:44,400
+though you didn't never really had stack
+
+1116
+00:37:44,400 --> 00:37:46,240
+protectors or dep or
+
+1117
+00:37:46,240 --> 00:37:49,040
+dslr or any anything along those lines
+
+1118
+00:37:49,040 --> 00:37:49,680
+um
+
+1119
+00:37:49,680 --> 00:37:52,000
+the the one the one project that was
+
+1120
+00:37:52,000 --> 00:37:54,160
+ahead of the game was tiana core
+
+1121
+00:37:54,160 --> 00:37:56,079
+and there's a link here of uh of a
+
+1122
+00:37:56,079 --> 00:37:57,599
+github repo where
+
+1123
+00:37:57,599 --> 00:38:00,000
+a developer put together some security
+
+1124
+00:38:00,000 --> 00:38:02,079
+examples of these different mitigations
+
+1125
+00:38:02,079 --> 00:38:02,720
+for
+
+1126
+00:38:02,720 --> 00:38:06,400
+for ufe so um yeah that's uh
+
+1127
+00:38:06,400 --> 00:38:08,000
+across the board for the other projects
+
+1128
+00:38:08,000 --> 00:38:09,760
+we really never saw any sort of exploit
+
+1129
+00:38:09,760 --> 00:38:11,839
+mitigations though
+
+1130
+00:38:11,839 --> 00:38:14,400
+so obviously our little call to action
+
+1131
+00:38:14,400 --> 00:38:14,880
+would be
+
+1132
+00:38:14,880 --> 00:38:17,520
+um clearly we need more people reviewing
+
+1133
+00:38:17,520 --> 00:38:19,440
+these things and looking at them
+
+1134
+00:38:19,440 --> 00:38:22,079
+if you're a developer designer you need
+
+1135
+00:38:22,079 --> 00:38:22,960
+to be fuzzing
+
+1136
+00:38:22,960 --> 00:38:25,119
+all your interfaces all your parsers
+
+1137
+00:38:25,119 --> 00:38:27,200
+that's it's not a black box to you this
+
+1138
+00:38:27,200 --> 00:38:27,680
+is
+
+1139
+00:38:27,680 --> 00:38:30,240
+your code that you're running you really
+
+1140
+00:38:30,240 --> 00:38:32,000
+should be hammering it out you should
+
+1141
+00:38:32,000 --> 00:38:32,880
+guys
+
+1142
+00:38:32,880 --> 00:38:35,280
+you should be performing static analysis
+
+1143
+00:38:35,280 --> 00:38:36,160
+you should be
+
+1144
+00:38:36,160 --> 00:38:38,480
+performing periodic internal reviews as
+
+1145
+00:38:38,480 --> 00:38:39,280
+well as
+
+1146
+00:38:39,280 --> 00:38:41,680
+third-party reviews get get multiple
+
+1147
+00:38:41,680 --> 00:38:44,799
+eyes on the code base
+
+1148
+00:38:45,119 --> 00:38:49,119
+and uh yeah we hope you enjoyed the
+
+1149
+00:38:53,960 --> 00:38:56,960
+presentation
+

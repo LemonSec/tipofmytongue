@@ -1,0 +1,2558 @@
+﻿00:00:00.083-->00:00:04.667
+>>My name is Patrick Wardle,
+I've worked at a variety of
+acronymed places, currently the
+
+00:00:04.667-->00:00:09.542
+chief security researcher at
+Synack. So briefly, at Synack we
+do crowd source vulnerability
+
+00:00:09.542-->00:00:14.750
+discovery with vetted security
+researchers. So if you are
+interested in signing up with us
+
+00:00:14.750-->00:00:19.750
+to be a freelance researcher /
+hacker and get paid to find
+vulnerabilities in our customer
+
+00:00:19.750-->00:00:26.667
+web apps, mobile apps and IOT
+devices check out synack dot
+com. Alright, today we're going
+
+00:00:26.667-->00:00:31.583
+to be covering, ah, a lot of
+interesting stuff. We're going
+to start by looking at what
+
+00:00:31.583-->00:00:36.458
+happens when an application,
+which is running at the
+privileged level of the user
+
+00:00:36.458-->00:00:41.208
+once to perform a more
+privileged action. We'll then
+discuss some core issues with
+
+00:00:41.208-->00:00:47.250
+how apps perform temporary
+elevation of privileges and due
+to these core issues will then
+
+00:00:47.250-->00:00:53.167
+show a lot of bugs. We'll talk
+about how to find these bugs.
+Discuss actual vulnerabilities
+
+00:00:53.167-->00:00:58.167
+and then end with some exploits.
+So our goal for today is to
+describe a reliable way to
+
+00:01:00.958-->00:01:06.292
+locally escalate privileges. Um,
+such privileges escalation is
+often an essential step that
+
+00:01:06.292-->00:01:11.542
+malware wants to accomplish. So
+again step one: malware kinda
+gets on your box. Normally then
+
+00:01:11.542-->00:01:14.750
+it's going to be running in
+somewhat of a constrained
+environment or at least at the
+
+00:01:14.750-->00:01:20.125
+privileged level of normal user,
+not root. So then for step
+number two, the malware's going
+
+00:01:20.125-->00:01:26.708
+to want to escalate its
+privileges generally to root.
+Focusing on this second step,
+
+00:01:26.708-->00:01:31.958
+number two, and talk about how
+to escalate privileges
+specifically by exploiting bugs,
+
+00:01:31.958-->00:01:36.958
+vulnerabilities in installers
+and updates. So first let's look
+at how an application can
+
+00:01:39.000-->00:01:44.125
+authenticate with the operating
+system, to be authorised to be
+temporarily perform high
+
+00:01:44.125-->00:01:49.708
+privileged actions. So, if
+you're a MAC user I'm sure
+you're very familiar with these
+
+00:01:49.708-->00:01:54.333
+authentication dialogues, what
+Apple calls them, so we'll also
+refer to them as authentication
+
+00:01:54.333-->00:02:00.833
+or auth prompts. So, apps run at
+user privileges, but sometimes
+they need to perform higher
+
+00:02:00.833-->00:02:05.458
+privilege actions, most
+commonly, installers updaters,
+you know, are going to have to
+
+00:02:05.458-->00:02:10.167
+write files to the system
+directory, perhaps update a
+kernel extension. Obviously,
+
+00:02:10.167-->00:02:14.667
+this needs to be done at higher
+privileges. Other actions, for
+example, debugging another
+
+00:02:14.667-->00:02:20.000
+process or even changing
+operating system settings, such
+as the time, will often require
+
+00:02:20.000-->00:02:24.750
+the user to reauthenticate in
+order for the application to
+perform that higher privilege
+
+00:02:24.750-->00:02:28.917
+action. So these are quite
+common, I get them about one a
+day on my box, and you know, and
+
+00:02:28.917-->00:02:34.875
+if not that, at least a few
+every week. So, first let's look
+at a conceptual overview of
+
+00:02:34.875-->00:02:39.750
+kinda what happens behind the
+scenes, when an application, for
+example, an installer, wants to
+
+00:02:39.750-->00:02:45.292
+perform a privileged action. So
+first it's going to invoke an
+authentication API, and we'll
+
+00:02:45.292-->00:02:50.583
+talk about what these are on the
+next slide. This will generate
+an XPC message, which is sent to
+
+00:02:50.583-->00:02:56.500
+the authorization daemon. This
+daemon then consults the
+authorization database and it
+
+00:02:56.500-->00:03:00.833
+usually says, OK, I will allow
+you to perform this action, but
+first you have to
+
+00:03:00.833-->00:03:07.042
+reauthenticate. So, it does this
+by sending another XPC message
+to the security agent. This
+
+00:03:07.042-->00:03:11.250
+agent is then responsible for
+showing the actual
+authentication prompt. And then
+
+00:03:11.250-->00:03:16.458
+once the user enters the correct
+credentials and they're
+validated, the application that
+
+00:03:16.458-->00:03:21.500
+requested this higher privileged
+action, is then allowed to
+perform it. So, let's take a
+
+00:03:21.500-->00:03:26.667
+closer look at these steps.Can
+assume we have an application
+for example installer that wants
+
+00:03:26.667-->00:03:31.958
+to perform a higher privileged
+action. So it kicks this off by
+invoking something like
+
+00:03:31.958-->00:03:36.500
+authorization execute with
+privileges. And this is a
+function we'll talk about a lot.
+
+00:03:36.500-->00:03:41.958
+You can see on the slides, when
+you invoke this function, you
+basically just specify a path of
+
+00:03:41.958-->00:03:46.208
+what you want to be executing
+with these higher privileges.
+And once the user is
+
+00:03:46.208-->00:03:51.292
+authenticated, this will then be
+executed. So if you look at this
+function, it's open source, we
+
+00:03:51.292-->00:03:56.292
+can see it calls execv system
+binary named security underscore
+auth trampoline. This binary is
+
+00:03:59.833-->00:04:05.625
+what sends the XPC message to
+the authorization daemon auth D.
+We can verify this by using the
+
+00:04:05.625-->00:04:11.042
+lsmp utility, which is a utility
+that can show you sending and
+receiving of mock messages.
+
+00:04:11.042-->00:04:17.292
+Alright, so once the
+authentication daemon receives
+this XPC message, which is
+
+00:04:17.292-->00:04:21.833
+basically an authorization
+request, it will consult, as I
+mentioned, the authorization
+
+00:04:21.833-->00:04:26.833
+database. This is in slash var
+slash db auth dot db and the
+system auth trampoline requests
+
+00:04:29.500-->00:04:35.125
+the system dot privileges dot
+admin rights. So we can dump
+this authorization database and
+
+00:04:35.125-->00:04:40.042
+we can see that privilege exists
+and as the comments or the
+information in the database
+
+00:04:40.042-->00:04:45.792
+shows, this is often associated
+with the authorization execute
+with privilege function, which
+
+00:04:45.792-->00:04:50.083
+is what the application just
+invoked. So again the
+authorization daemon is probably
+
+00:04:50.083-->00:04:54.292
+going to say sure, I'll allow
+you, or I'll grant you this
+privilege temporarily, but first
+
+00:04:54.292-->00:04:58.958
+the user is going to have to
+reauthenticate. So, in order to
+facilitate this, the daemon then
+
+00:04:58.958-->00:05:04.417
+sends an XPC message, as I
+mentioned, to the security
+agent. So, the security now has
+
+00:05:04.417-->00:05:09.083
+received the XPC message and it
+is what displays the
+authentication dialogue. Now,
+
+00:05:09.083-->00:05:14.042
+this is done by design, because
+Apple didn't want the user to
+have to trust the application
+
+00:05:14.042-->00:05:18.625
+with their password. So since a
+trusted system utility is
+displaying this authentication
+
+00:05:18.625-->00:05:23.917
+prompt the application that's
+requesting the higher privilege
+actually has no access to the
+
+00:05:23.917-->00:05:29.542
+user's actual password. So we
+can use the LS app info utility
+and see, yes the security agent
+
+00:05:29.542-->00:05:33.583
+is actually the last process
+that was spawned. And again,
+this is because it was spawned
+
+00:05:33.583-->00:05:38.750
+on when it gets these XPC
+requirements from the
+authentication data. It again
+
+00:05:38.750-->00:05:43.542
+displays that prompt and handles
+the verification of user's
+credentials. Once the user has
+
+00:05:43.542-->00:05:49.917
+verified him or herself, control
+flow returns back to the
+security underscore trampoline,
+
+00:05:49.917-->00:05:55.833
+ah, utility, which via at a call
+to execv executes the binary
+which the app location
+
+00:05:55.833-->00:06:02.250
+originally requested. And again,
+since this security underscore
+off trampoline utility is setUID
+
+00:06:02.250-->00:06:07.500
+and owned, and is owned by root,
+the binary or the script that
+the application requested to be
+
+00:06:07.500-->00:06:13.333
+executed will now be executed
+with root privileges. OK, so
+that was a behind the scenes
+
+00:06:13.333-->00:06:18.500
+look at what happens again when
+an application requests or needs
+to perform some action at a
+
+00:06:18.500-->00:06:23.542
+higher privilege level. Now
+let's talk about how to abuse
+this process, starting with some
+
+00:06:23.542-->00:06:29.708
+core or funda- fundamental
+issues. So one of the main
+issues is these pop-ups cannot
+
+00:06:29.708-->00:06:35.917
+be easily verified. Anybody can
+spoof them, they're just a
+window asking for credentials.
+
+00:06:35.917-->00:06:41.333
+So on the left we have a legit
+pop-up from the Slack
+application, and on the right -
+
+00:06:41.333-->00:06:46.500
+who knows? Is it spoofed? You
+now, is this some malware just
+asking for credentials? Or is it
+
+00:06:46.500-->00:06:51.250
+even a legi - legit
+authentication prompt that was
+spawned via the security agent,
+
+00:06:51.250-->00:06:55.833
+but is going to execute
+something malicious? And, what
+is Slack doing anyways, why does
+
+00:06:55.833-->00:07:00.375
+it need to perform a privileged
+action? So, we'll look at some
+real life examples that abuse
+
+00:07:00.375-->00:07:05.250
+this. Um, again, playing off the
+fact that the user generally
+trusts these authentication
+
+00:07:05.250-->00:07:09.583
+prompts and they are not easily
+verified. Now, I do want to
+point out though that these are
+
+00:07:09.583-->00:07:14.167
+not, in my opinion, real
+vulnerabilities. I mean, they're
+like somewhat UI issues, but you
+
+00:07:14.167-->00:07:18.000
+know when I mentioned to a few
+people that this is what my talk
+was gonna be about, a lot people
+
+00:07:18.000-->00:07:21.708
+immediately jumped on this. So
+again, as we'll see we'll
+actually talk about some more
+
+00:07:21.708-->00:07:26.667
+problematic vulnerabilities, but
+I wanted to mention this and,
+and cover this here. Especially
+
+00:07:26.667-->00:07:31.750
+since, Mac, Mac malware often
+uses this, or abuses this in
+order to get root credentials.
+
+00:07:31.750-->00:07:38.208
+So the first example is a Mac
+malware called OSX Proton B.
+what happened was, the malware
+
+00:07:38.208-->00:07:44.333
+authors or hackers, infected the
+legitimate application website
+of an application named
+
+00:07:44.333-->00:07:49.667
+Transmission...sorry called
+Handbrake. Handbrake is an open
+source video transcoder, so
+
+00:07:49.667-->00:07:55.125
+again the hackers access that
+website, um, got access to the
+application, infected it with
+
+00:07:55.125-->00:08:00.708
+some malicious code, and then,
+anytime moving on in the future
+when the users would then
+
+00:08:00.708-->00:08:05.333
+download this application they
+themselves would then become
+infected. So, when the malware
+
+00:08:05.333-->00:08:10.000
+runs, the first thing it does is
+spawns one of these windows, but
+it doesn't do it through the
+
+00:08:10.000-->00:08:16.500
+security agent, it creates its
+own NS window. So, it's 100%
+fake. But it mimicks and looks
+
+00:08:16.500-->00:08:20.750
+exactly like a real
+authentication prompt. However,
+when the user enters their
+
+00:08:20.750-->00:08:26.583
+password, since it's fake, the
+malware has access to the actual
+bytes or value of the user's
+
+00:08:26.583-->00:08:31.500
+password. So we can see this in
+a debugger, attached to the
+malware when the user enters
+
+00:08:31.500-->00:08:36.250
+their password, we can see it's
+present in the malware's memory.
+And then the malware used this
+
+00:08:36.250-->00:08:41.917
+to execute something root. Now
+also there's also nothing
+stopping malicious code from
+
+00:08:41.917-->00:08:47.083
+creating a real authentication
+prompt and then get something to
+get executed as root once the
+
+00:08:47.083-->00:08:52.875
+user authenticates. And by real,
+I mean, via the system API which
+is: authorization execute with
+
+00:08:52.875-->00:08:57.750
+privileges. Again, it's about
+three lines of code, so here's
+an example of how trivial it is
+
+00:08:57.750-->00:09:02.292
+to create a legit authentication
+prompt that will then execute
+something malicious. If you want
+
+00:09:02.292-->00:09:07.500
+to make it malicious, um, but
+convincing, very easy to do, ah,
+here I just grabbed the actual
+
+00:09:07.500-->00:09:13.833
+icons from the legitimate Slack
+application, copied them into my
+X code project. Ah, you then set
+
+00:09:13.833-->00:09:19.625
+the ico - icon file key in the
+apps info dot P list file, which
+will then be displayed in this
+
+00:09:19.625-->00:09:26.042
+legitimate, albeit, malicious
+authentication dialogue.So, if
+we execute this, a pop-up will
+
+00:09:26.042-->00:09:30.625
+be displayed on screen and it's
+legit again, in the sense that
+this is being displayed by the
+
+00:09:30.625-->00:09:35.875
+s-s-ssystem security agent. And
+since Slack, or at least on my
+box, is popping up this
+
+00:09:35.875-->00:09:40.625
+authentication dialogue all the
+time, like you know, it's very
+easy to trick users. And once
+
+00:09:40.625-->00:09:46.583
+they enter their credentials,
+whatever we asked to be executed
+as root, will be. So here's an
+
+00:09:46.583-->00:09:51.750
+example of a piece of malware
+that actually does this. It's
+iWorm. So iWorm was distributed
+
+00:09:51.750-->00:09:58.000
+via cracked applications, on
+Pirate Bay. So users think they
+would be getting, for example of
+
+00:09:58.000-->00:10:02.292
+PhotoShop, and they would but it
+would also be packaged with
+iWorm. When the malware was
+
+00:10:02.292-->00:10:07.292
+executed it would invoke the
+authorization execute with
+privileges function, which would
+
+00:10:07.292-->00:10:12.750
+then display an authentication
+prompt. Now, users would likely
+enter their password, because
+
+00:10:12.750-->00:10:16.417
+again there's no way to verify
+this, and also they're
+installing software so they are
+
+00:10:16.417-->00:10:20.458
+used to seeing this, especially
+when they are performing some
+installer. Now once the user
+
+00:10:20.458-->00:10:25.208
+enters their credentials the
+malware executes something named
+zero and this will be executed
+
+00:10:25.208-->00:10:30.750
+as root. If we look at what the
+zero binary does, it persists
+the malware as a launch daemon,
+
+00:10:30.750-->00:10:36.625
+which means the malware will now
+always be running as root
+persistently. Now again, malware
+
+00:10:36.625-->00:10:40.208
+spoofing or creating these
+authentication prompts, pretty
+much comes down to social
+
+00:10:40.208-->00:10:44.292
+engineering. These are not bugs,
+these are not vulnerabilities,
+but they work so we can't not
+
+00:10:44.292-->00:10:49.792
+get too much. So now I want to
+talk about some real issues.
+Some fundamental core
+
+00:10:49.792-->00:10:54.333
+vulnerabilities. So we've been
+talking about this authorization
+execute with privilege API
+
+00:10:54.333-->00:10:59.708
+function. The good thing about
+this API is that's very easy to
+use, again you just specify
+
+00:10:59.708-->00:11:04.208
+whenever you want to be executed
+as root and then the system will
+take place of everything else,
+
+00:11:04.208-->00:11:08.542
+displaying the authentication
+prompt, and then when the user
+verifies and enters his or her
+
+00:11:08.542-->00:11:13.792
+credentials, whatever you ask to
+be executed by root will be by
+the system. So, that's great.
+
+00:11:13.792-->00:11:19.625
+The problem is, it performs no
+verification of what it's
+executing, it's open to massive
+
+00:11:19.625-->00:11:24.625
+race condition. So, an example,
+a legitimate application, say an
+installer, needs to perform some
+
+00:11:26.958-->00:11:31.167
+privileged ac-action, needs to
+execute something as root. So
+what it'll do is, it'll invoke
+
+00:11:31.167-->00:11:36.250
+that authentication execute with
+privilege function and give it a
+path or something to execute,
+
+00:11:36.250-->00:11:41.417
+for example an installer script.
+In the meantime, while the user
+is entering their credentials,
+
+00:11:41.417-->00:11:47.208
+some local malicious code that
+doesn't have these higher level
+privileges can actually modify
+
+00:11:47.208-->00:11:52.208
+that installation script. And
+then once the user finishes
+entering his or her credentials,
+
+00:11:52.208-->00:11:56.833
+the system will blindly execute
+what the app originally
+requested with no validation or
+
+00:11:56.833-->00:12:03.500
+verification that hasn't been
+modified or infected in some
+manner. Another issue is legit
+
+00:12:03.500-->00:12:08.125
+applications, imagine they have
+authenticated securely and we'll
+talk about how to do this in a
+
+00:12:08.125-->00:12:13.125
+minute, often then do authorized
+actions that are insecure. So
+for example they can persist non
+
+00:12:15.167-->00:12:20.500
+validated components, they can
+create insecure temporary files,
+they even load and execute other
+
+00:12:20.500-->00:12:25.042
+non validated components. So
+imagine for example, there's an
+installer app that is now
+
+00:12:25.042-->00:12:30.125
+running as root authenticated,
+securely, correctly, but then it
+creates, in the temporary
+
+00:12:30.125-->00:12:35.500
+directory a property list of P
+listed file. A few second later
+it then moves that P list file
+
+00:12:35.500-->00:12:39.542
+out of temp into the system's
+launch daemon directory, where
+the launch daemon will be
+
+00:12:39.542-->00:12:45.083
+executed as root. Obviously
+again, some local non privileged
+code can modify that property
+
+00:12:45.083-->00:12:49.250
+list while it's in the temporary
+directory and the when it's
+moved into the launch daemon's
+
+00:12:49.250-->00:12:55.958
+directory the malicious code
+will have inherited root
+permissions. Alright, so now
+
+00:12:55.958-->00:13:00.292
+let's talk about actually
+finding some these bugs. And
+since we will see this as such a
+
+00:13:00.292-->00:13:05.292
+systemic problem. We're actually
+only look at software I has
+installed on my box. So first
+
+00:13:07.333-->00:13:12.417
+let's look at who calls this
+horribly insecure authorization
+execute with privilege function.
+
+00:13:12.417-->00:13:16.458
+So you can corrupt the file
+system looking for binaries
+which import this. Start maybe
+
+00:13:16.458-->00:13:20.792
+by looking at slash
+applications. It actually turns
+out that whenever this API is
+
+00:13:20.792-->00:13:27.167
+called apple will log this,
+specifically to the var slash
+log slash diagnostic messages
+
+00:13:27.167-->00:13:31.417
+logs. Now unfortunately these
+logs are only kept for a few
+days, but you can start by
+
+00:13:31.417-->00:13:35.375
+looking there to see, basically
+who has displayed one of these
+authentication prompts, because
+
+00:13:35.375-->00:13:40.500
+they invoke the authorization
+execute with privileges
+function. So if we grab or dump
+
+00:13:40.500-->00:13:45.125
+these we can see that pretty
+much everyone calls this
+function, ah, again on my box,
+
+00:13:45.125-->00:13:50.125
+slack, demo fusion, chrome,
+snitch, free dome, sparkle,
+everybody. Now, just because
+
+00:13:52.417-->00:13:57.667
+someone calls this function,
+doesn't mean it's necessarily an
+exploitable bug. It's kind
+
+00:13:57.667-->00:14:02.250
+similar to stir copy, right? We
+know like stir copy is a
+dangerous API, but if stir copy
+
+00:14:02.250-->00:14:07.417
+is used correctly, it doesn't
+necessarily mean there's going
+to be a buffer overflow. An
+
+00:14:07.417-->00:14:12.500
+example of a safe use of this
+function is - imagine an
+installer wants to perform
+
+00:14:12.500-->00:14:18.250
+privileged system command. For
+example, it wants to execute
+reboot. Now obviously, local
+
+00:14:18.250-->00:14:23.750
+malicious code can't modify this
+slash sbin reboot utility,
+right? It's protected with
+
+00:14:23.750-->00:14:28.833
+system integrity protection and
+etcetera etcetera etcetera. So
+this, for example, is safe. So
+
+00:14:28.833-->00:14:33.250
+in order through for some thing
+to be exploitable - what
+authorization execute with
+
+00:14:33.250-->00:14:38.583
+privileges is about to execute?
+It has to be writeable,
+modifiable and infectable by the
+
+00:14:38.583-->00:14:44.250
+local non privileged code. Turns
+out though, this is pretty much
+always the case. So the question
+
+00:14:44.250-->00:14:50.333
+is, how do we tell what is about
+to be executed as root, is, is
+verifiable, is accessible by
+
+00:14:50.333-->00:14:55.708
+this, er, local unprivileged
+code? So the question is is
+first - what is this going to
+
+00:14:55.708-->00:15:00.958
+execute, and then: is this
+writeable? So, there's two ways
+to tell, or figure out what this
+
+00:15:00.958-->00:15:05.333
+function is about to execute.
+The first is if you use a
+process monitor or utility. I
+
+00:15:05.333-->00:15:09.958
+wrote a free one, that's open
+source and will be online after
+this talk. We can basically look
+
+00:15:09.958-->00:15:15.667
+at the arguments to the security
+underscore auth trampoline.
+Again, this is the set UID
+
+00:15:15.667-->00:15:20.875
+process that gets invoked when
+someone calls authorization
+execute with privileges. So here
+
+00:15:20.875-->00:15:25.000
+for example we can see it's
+downloading, or rather going to
+execute an installer application
+
+00:15:25.000-->00:15:30.333
+that's in slash downloads.
+Obviously, local non privileged
+code can modify that. Another
+
+00:15:30.333-->00:15:35.250
+example is you can basically
+just debug the process and set
+breakpoint on the authorization
+
+00:15:35.250-->00:15:40.042
+execute with privilege function,
+and then look at the arguments,
+specifically the third argument
+
+00:15:40.042-->00:15:45.792
+RSI and look at what this is.
+Again, this will be the path of
+what is about to be executed as
+
+00:15:45.792-->00:15:50.250
+root. And once we know what is
+about to be executed, we can
+check the permissions of this
+
+00:15:50.250-->00:15:55.583
+file, usually a script or a
+binary, and if it's owned by the
+user, which it normally is, this
+
+00:15:55.583-->00:16:00.250
+means code which is running as
+ruser user, user not root can
+modify this code. And again,
+
+00:16:00.250-->00:16:06.000
+once the user then authen -
+authenticates, we will have
+root. So later we'll talk also
+
+00:16:06.000-->00:16:10.542
+about how apps should securely
+authorize or authenticate
+themselves, but as we mentioned,
+
+00:16:10.542-->00:16:15.083
+even if they do that securely,
+if then they execute other
+actions, which themselves are
+
+00:16:15.083-->00:16:21.083
+insecure, this still gives us,
+gives us an opportunity to
+elevate privileges to root. So,
+
+00:16:21.083-->00:16:26.250
+in order to find these bugs,
+pretty much, what I do at least,
+is monitor the file system, or
+
+00:16:26.250-->00:16:31.625
+watch what processes these
+higher elevated privilege
+application's will then execute.
+
+00:16:31.625-->00:16:37.875
+So again, the question is: can
+the unprivileged code modify
+these? Example, a property list
+
+00:16:37.875-->00:16:42.417
+installer application, it might
+have in it's slash resource
+folder in the downloads
+
+00:16:42.417-->00:16:47.042
+directory, it might be
+authenticated correctly and
+securely, but then goes to
+
+00:16:47.042-->00:16:51.917
+execute that, that secondary
+component itself has not been
+validated. So again, perhaps,
+
+00:16:51.917-->00:16:56.917
+local malicious code can modify
+that and get root via that
+means. Alright, enough with
+
+00:16:58.917-->00:17:03.125
+conceptual blabbering, ah it's
+time to talk about some
+exploitable bugs. In this
+
+00:17:03.125-->00:17:07.542
+section we will talk about the
+bugs, and then in the next
+section how to generically
+
+00:17:07.542-->00:17:11.958
+exploit such vulnerabilities.
+And note, if I don't mention a
+CVE associated with a
+
+00:17:11.958-->00:17:18.917
+vulnerability, it's a 0day bug
+that a vendor has decided not to
+patch. So the first bug is on a
+
+00:17:18.917-->00:17:25.625
+popular IOT device, one that I
+use, dropcam, basically, when
+you buy a new dropcam and you go
+
+00:17:25.625-->00:17:29.792
+to configure it, the
+instructions say: plug it into
+the computer. This will mount
+
+00:17:29.792-->00:17:34.875
+something, ah, on a drive,
+double click that - which is the
+installer application, and then
+
+00:17:34.875-->00:17:38.625
+follow the authentication prompt
+and it will install and
+configure the dropcam for you.
+
+00:17:38.625-->00:17:44.125
+Basically setting up the wifi
+network etcetera for the IOT
+device. So, it turns out though,
+
+00:17:44.125-->00:17:48.750
+when it executes this
+application off this mounted
+share, what is does, it makes a
+
+00:17:48.750-->00:17:53.250
+copy of the installer
+application into the user's
+temporary directory. It then
+
+00:17:53.250-->00:17:58.042
+executes this via the
+authorization execute with
+privilege function in order to
+
+00:17:58.042-->00:18:03.125
+execute that with root
+privileges. So what we can do do
+is, we can attach this process
+
+00:18:03.125-->00:18:09.417
+with a debugger, here we use
+LLDB. We set a breakpoint on the
+authorization execute with
+
+00:18:09.417-->00:18:15.000
+privilege function, and when we
+hit this breakpoint, we can dump
+the third argument, again, RSI,
+
+00:18:15.000-->00:18:19.833
+and this is the path of what is
+about to be executed with root
+privileges. And again we can see
+
+00:18:19.833-->00:18:25.333
+it's the installer application
+has been copied into the user's
+temporary directory. Now again,
+
+00:18:25.333-->00:18:31.042
+there's a large window of time
+when the user is legitimately
+authenticating, where local
+
+00:18:31.042-->00:18:36.583
+malicious code could modify that
+installer application in the
+temporary directory. And again,
+
+00:18:36.583-->00:18:41.292
+since the authorization execute
+with privilege function does not
+validate what is about to be
+
+00:18:41.292-->00:18:46.125
+executed, as soon as the user
+completes the authentication,
+our malicious code will be
+
+00:18:46.125-->00:18:51.750
+executed now with root
+privileges. Next is Chrome. This
+is a rather popular browser that
+
+00:18:51.750-->00:18:57.500
+i use on my box. It also invokes
+the authorization execute with
+privilege function in a variety
+
+00:18:57.500-->00:19:02.458
+of instances. For example, if
+you're installing it as a non
+admin user or if you're setting
+
+00:19:02.458-->00:19:08.208
+things up like auto updates. So
+we can observe this by running
+our process monitor and again we
+
+00:19:08.208-->00:19:14.000
+see that security underscore off
+trampoline process. And if we
+look at what that is about to
+
+00:19:14.000-->00:19:19.333
+execute as root, we can see it's
+a script named keystone
+underscore promote underscore
+
+00:19:19.333-->00:19:25.667
+preflight dot SH. the script,
+which again is run, is root,
+once the user authenticates is
+
+00:19:25.667-->00:19:30.667
+owned by a normal user, so that
+means that any point local non
+root code your box could modify
+
+00:19:32.792-->00:19:37.625
+that and then when the user
+performs, for example, sets up
+an auto update, Chrome will
+
+00:19:37.625-->00:19:44.167
+blindly execute that as root.
+Next up is little snitch, this
+is everyone's firewall on Mac
+
+00:19:44.167-->00:19:49.208
+OS, something I used to run,
+until I wrote my own, ah,
+unfortunately their installer
+
+00:19:49.208-->00:19:54.083
+had a local privilege
+escalation, and this is an
+example of something that
+
+00:19:54.083-->00:19:59.958
+authenticates correctly, but
+then performs malicious actions
+that then non local privilege
+
+00:19:59.958-->00:20:05.375
+code could leverage to elevate
+its privileges to root. So, the
+issue was the authorized
+
+00:20:05.375-->00:20:10.667
+installer, which again is
+running as root, wrote a
+property list to the temporary
+
+00:20:10.667-->00:20:15.250
+directory. It then moved that
+into the launched daemon's
+directory, where it will be
+
+00:20:15.250-->00:20:21.083
+loaded and executed as root. So
+again, what local privilege code
+could do was modify that
+
+00:20:21.083-->00:20:25.250
+property list when it was in the
+temporary directory and then
+once it was moved into the
+
+00:20:25.250-->00:20:30.625
+system launch daemon directory
+and executed, the malicious code
+would get root. So we take a
+
+00:20:30.625-->00:20:35.042
+closer look at this bug on the
+screen on the top right we can
+see the little snitch installer
+
+00:20:35.042-->00:20:41.708
+calls something write P list
+owner mode to file. And we can
+see this calls the NS temporary
+
+00:20:41.708-->00:20:46.708
+directory function to the get
+the user's temporary directory
+and write out what will be the
+
+00:20:46.708-->00:20:52.333
+launch daemon's property list.
+So what we can do is, we can
+attach a debugger to the
+
+00:20:52.333-->00:20:58.250
+installer, and then set a
+breakpoint on the method execute
+command as root. And what we can
+
+00:20:58.250-->00:21:02.625
+see, we can see what this
+command is then doing, is moving
+the P list from the temporary
+
+00:21:02.625-->00:21:08.625
+directory into the system launch
+daemon directory and then
+setting it to be owned as root .
+
+00:21:08.625-->00:21:12.833
+Obviously again, while this is
+in temp, a user who doesn't have
+correct privileges or some
+
+00:21:12.833-->00:21:17.542
+malicious malware could modify
+that and then it could execute
+with higher privileges to root.
+
+00:21:17.542-->00:21:24.542
+Little snitch actually patched
+this pretty quickly, so kudos on
+their response, as CVE 2017 26
+
+00:21:24.542-->00:21:29.542
+75. I also do a lot of malware
+analysis, though I use VM ware,
+so whenever you go install the
+
+00:21:32.083-->00:21:37.458
+mware, or when it tells you
+there's an update, what it does
+is it saves various scripts into
+
+00:21:37.458-->00:21:43.083
+the user's temporary directory,
+and then executes them as root
+via the authorization execute
+
+00:21:43.083-->00:21:49.375
+with privileges functions. So we
+can see this by debugging the
+VMware installer or updater -
+
+00:21:49.375-->00:21:54.083
+again you set a breakpoint on
+the authorization execute with
+privileges function, and then
+
+00:21:54.083-->00:21:58.208
+when the breakpont is hit, dump
+the third arg and you can see
+what's being executed - again
+
+00:21:58.208-->00:22:03.417
+it's these scripts that are out
+of the overwritable temp
+directory. Again,nothing is
+
+00:22:03.417-->00:22:08.250
+verified so these will then be
+executed as root. Alright, more
+security software - yes. This is
+
+00:22:08.250-->00:22:13.708
+the VPN I run, that secures free
+dome, turns out that is
+vulnerable as well. So when you
+
+00:22:13.708-->00:22:18.625
+install this VPN, it tell you,
+hey, I'm about to show you a
+pop-up please enter your
+
+00:22:18.625-->00:22:23.250
+credentials. And then when this
+pop-up is displayed, it doesn't
+actually say what free dome is
+
+00:22:23.250-->00:22:28.958
+doing, it says, something OSA
+script, which is Apple script.
+So I wonder what is Apple script
+
+00:22:28.958-->00:22:34.042
+executing? So, if you
+disassemble free dome, we have
+some disassembly on the sly, we
+
+00:22:34.042-->00:22:39.750
+can see it's executing an Apple
+script to authenticate and then
+execute something as root via
+
+00:22:39.750-->00:22:44.667
+the do shell script script as
+script with admin privs. This
+thing calls Apple script to
+
+00:22:44.667-->00:22:49.167
+display an authentication prompt
+and when the user enters their
+credentials, whatever was
+
+00:22:49.167-->00:22:55.542
+requested, is executed as root.
+So our process monitor shows
+that Apple script is executing a
+
+00:22:55.542-->00:23:01.458
+script in the application's
+bundle, which is of course
+writeable or modifiable by local
+
+00:23:01.458-->00:23:06.458
+non privileged code. Next up is
+sofos, yes, due to you know work
+compliance I have to run
+
+00:23:08.750-->00:23:12.917
+anti-virus on my computer, my
+boss told me though, that if I
+found a vulnerability in it, I
+
+00:23:12.917-->00:23:18.208
+could uninstall it, and so this
+was kind of the motivation for
+that [laughs] gonna hold him to
+
+00:23:18.208-->00:23:23.792
+that! So when you download
+sofos, ah it's a zip file. When
+you unzip it, it executes an
+
+00:23:23.792-->00:23:28.500
+installer application, and you
+guessed this, then this in turn
+executes a secondary component
+
+00:23:28.500-->00:23:33.750
+via the authorization execute
+with privileges. And we can dump
+via the debugger what's it about
+
+00:23:33.750-->00:23:38.625
+to execute - and it's something
+called installation dot
+deployer. Again if there's some
+
+00:23:38.625-->00:23:44.083
+malicious code on the box that
+has not root privileges, it can
+modify this component and then
+
+00:23:44.083-->00:23:50.292
+that will be executed as root.
+Alright, finally we've got
+sparkle. Now sparkle is an auto
+
+00:23:50.292-->00:23:55.042
+update library that's used in a
+good number of apps. Now I do
+want to point out this is merely
+
+00:23:55.042-->00:23:59.708
+a list of apps from 2016 that
+used sparkle. I have not
+validated if these are all
+
+00:23:59.708-->00:24:05.292
+vulnerable but i just wanted a
+list. Let's look at a example or
+a specific instance of an
+
+00:24:05.292-->00:24:09.542
+application that uses sparkle
+that is vulnerable. So I do a
+lot of reverse engineering, I
+
+00:24:09.542-->00:24:15.333
+use hopper dot app occasionally,
+it's a nice app, anytime it has
+an update or a new version the
+
+00:24:15.333-->00:24:20.125
+sparkle library it's compiled in
+displays this pop up telling me
+that there's a new version. If
+
+00:24:20.125-->00:24:25.333
+we click on it, sparkle will
+download something called auto
+update dot app into a non
+
+00:24:25.333-->00:24:30.667
+protected cache directory, it
+then executes this. Now
+depending on the user's
+
+00:24:30.667-->00:24:35.500
+permissions, for example if
+they're a standard user versus
+an admin user, this will display
+
+00:24:35.500-->00:24:40.458
+an authentication prompt. If we
+view this in a debugger,
+attaching to the auto update
+
+00:24:40.458-->00:24:45.458
+process, set a breakpoint on an
+authorization execute with
+privileges - we can see it's
+
+00:24:45.458-->00:24:51.208
+trying to execute something
+named file op out of a user
+writeable cache directory.
+
+00:24:51.208-->00:24:56.417
+Again, if there's any local non
+privileged code it can obviously
+modify anything in this cache
+
+00:24:56.417-->00:25:02.458
+directory and then that will be
+executed by root when sparkle
+completes the update process.
+
+00:25:02.458-->00:25:06.833
+Alright, enough knocking on
+third party apps, I think by
+this time we understand that the
+
+00:25:06.833-->00:25:11.833
+authorization execute with
+privileges function is, you
+know, sh*tty, don't use it, um
+
+00:25:11.833-->00:25:16.958
+but everyone pretty much does.
+So I want to talk about some
+issues in Apple's code now,
+
+00:25:16.958-->00:25:20.625
+they're not safe from these
+issues either. So, the first
+thing is, I'm not really sure
+
+00:25:20.625-->00:25:26.375
+this is a bug, it's more of a
+silly issue, but when a user
+drags something via finder into
+
+00:25:26.375-->00:25:31.917
+a higher privileged directory
+the finder dot app displays an
+authentication prompt. Basically
+
+00:25:31.917-->00:25:36.833
+saying, hey you need to provide
+correct creds in order for me to
+com-complete this copy action.
+
+00:25:36.833-->00:25:42.708
+The problem is, it doesn't
+validate that what the user
+originally meant to copy wasn't
+
+00:25:42.708-->00:25:47.500
+modified during the time they
+were authenticating. So we can
+imagine a scenario where a user
+
+00:25:47.500-->00:25:51.333
+is trying to move an app into
+for example slash applications,
+they have to provide the
+
+00:25:51.333-->00:25:56.583
+credentials - again some local
+unprivileged code could perhaps
+modify what they're moving into
+
+00:25:56.583-->00:26:01.792
+applications, and then the move
+would still succeed and now they
+just got some malicious code
+
+00:26:01.792-->00:26:06.167
+into a higher privilege
+directory - which might be
+executed by other users.
+
+00:26:06.167-->00:26:12.208
+Alright, something though that I
+think is a real issue. So
+Apple's package installer is
+
+00:26:12.208-->00:26:18.375
+called installer dot app.
+Basically, when you double click
+on a PKG file, installer dot app
+
+00:26:18.375-->00:26:23.458
+will automatically executed to
+handle the installation update
+of this package. And why does
+
+00:26:23.458-->00:26:28.875
+this happen? Well, if we dump
+the info dot P list file of the
+installer dot app, we can see it
+
+00:26:28.875-->00:26:35.125
+advertizes as the default
+handler for packages. Note also,
+it's a signed utility via Apple
+
+00:26:35.125-->00:26:40.500
+and also has some special
+privileges or entitlements. So
+here's an example when a user
+
+00:26:40.500-->00:26:45.375
+double clicks on a PKG file -
+installer dot app will be
+executed to handle that, it will
+
+00:26:45.375-->00:26:50.625
+display this nice installation
+prompt and then request user
+permissions. Again, this is all
+
+00:26:50.625-->00:26:57.375
+just standard stuff. I took a
+closer look at this process and
+realized this signed trusted and
+
+00:26:57.375-->00:27:02.583
+[inaudible 26:57] application
+would load dynamic libraries
+from slash temp. I have no idea
+
+00:27:02.583-->00:27:08.417
+why. No we'll talk shortly about
+weaponizing this, but let's look
+at what is going on. So when the
+
+00:27:08.417-->00:27:13.583
+user double clicks on a PKG file
+that has a plugins directory,
+installer dot app would take
+
+00:27:13.583-->00:27:19.542
+those plugins, copy them into
+the user's directory and then
+load them into its trusted
+
+00:27:19.542-->00:27:25.000
+process context. In a debugger
+we can set a breakpoint on DL
+open in the installer dot
+
+00:27:25.000-->00:27:29.542
+application and then we can dump
+what is about to be loaded and
+we can see yes, it's about to
+
+00:27:29.542-->00:27:34.000
+actually load an unsigned
+dynamic library from the user's
+temporary directory. You can
+
+00:27:34.000-->00:27:38.667
+also use an application like
+task explorer, which I wrote, we
+can filter on unsigned dynamic
+
+00:27:38.667-->00:27:42.958
+libraries and see, yup, there's
+an unsigned dynamic library
+loaded from the temporary
+
+00:27:42.958-->00:27:49.625
+directory. Alright, so that's
+about a thousand ways to get
+root but what if you want more?
+
+00:27:49.625-->00:27:54.958
+And not because we're greedy but
+on recent versions of Mac OS,
+you're actually still somewhat
+
+00:27:54.958-->00:27:59.125
+limited when you have root
+permissions. You can't bypass
+system integrity protection to
+
+00:27:59.125-->00:28:03.958
+modify operating system
+components. And you can, you can
+also not run unsigned code in
+
+00:28:03.958-->00:28:08.625
+the kernel. So the bugs I find,
+found that I'm going to talk
+about here need root in order to
+
+00:28:08.625-->00:28:13.333
+trigger, but once you then
+exploit these vulnerabilities,
+you have these even higher
+
+00:28:13.333-->00:28:19.208
+privileges. So the first bug
+allows us to bypass system
+integrity protection and also
+
+00:28:19.208-->00:28:25.000
+survive a full OS upgrade. This
+is something malware would like
+to do. Alright, so it's time to
+
+00:28:25.000-->00:28:31.417
+upgrade, what happens is the
+user will download the OS update
+from the app store. Long story
+
+00:28:31.417-->00:28:38.417
+short, an entitled binary named
+OSI helper D will tell the
+system to boot off an installer
+
+00:28:38.417-->00:28:43.708
+image. Install ESD dot DMG -
+this is what is downloaded from
+the app store - and then this is
+
+00:28:43.708-->00:28:49.042
+when the system reboots what it
+actually installs the new
+version of the operating system.
+
+00:28:49.042-->00:28:54.917
+So our goal is to get into this
+installer image because once the
+system has booted off it we're
+
+00:28:54.917-->00:29:00.167
+essentially booting or executing
+outside the context of the
+operating system, so operating
+
+00:29:00.167-->00:29:05.792
+system level protection - such
+as system integrity protection
+are no longer in play. So Apple
+
+00:29:05.792-->00:29:09.000
+generically realises an attack
+vector, or that is to say
+[inaudible 29:08] off an
+
+00:29:09.000-->00:29:15.125
+untrusted disk image so they
+block that ability unless you
+have the correct entitlements,
+
+00:29:15.125-->00:29:20.125
+which an Apple utility such as
+OS IS Helper D has. So step one
+is to get into the OS installer
+
+00:29:22.917-->00:29:27.083
+application which is downloaded
+from the app store when the user
+wants to perform an upgrade. And
+
+00:29:27.083-->00:29:32.833
+we can use a neat run time dylib
+injection technique I like to
+call dylib proxying. Basically
+
+00:29:32.833-->00:29:38.417
+what you do is you replace a
+dynamic library that the
+application is dependent on and
+
+00:29:38.417-->00:29:44.292
+then proxy request through the
+original one as not to break any
+system functionality. And then
+
+00:29:44.292-->00:29:49.250
+when that application is
+executed, the dynamic loader
+will naively and blindly load
+
+00:29:49.250-->00:29:54.500
+the the malicious dylib in
+place. Ah, this was a technique
+that was used in some Israeli
+
+00:29:54.500-->00:29:59.292
+malware on the Windows platform.
+I haven't seen it used on the
+Mac operating system, I'm not
+
+00:29:59.292-->00:30:05.292
+sure why kind a neat technique.
+Alright, so now we have code
+executed in the trusted context
+
+00:30:05.292-->00:30:10.042
+of the operating system
+installer application. So what
+we can do now is mod-modify and
+
+00:30:10.042-->00:30:15.042
+infect the install DSD disk
+image and then the OS IS helper
+already blesses it. Oops,
+
+00:30:17.250-->00:30:22.083
+there's no validation that what
+it's about to bless has not been
+tampered with. So now the system
+
+00:30:22.083-->00:30:27.417
+reboots, we're running in the
+process context outside the
+operating system and so we can
+
+00:30:27.417-->00:30:31.875
+obviously bypass system
+integrity protection and ensure
+also that our malware fully
+
+00:30:31.875-->00:30:37.583
+lives or survives through a full
+OS upgrade. So as a proof of
+concept I took i Worm, which is
+
+00:30:37.583-->00:30:41.625
+a well known piece of malware
+that we talked about earlier,
+and injected this into the
+
+00:30:41.625-->00:30:47.125
+installation image and then
+during this install process I
+copied it into a system
+
+00:30:47.125-->00:30:52.333
+integrity protection protected
+directory - which means that
+once the OS install upgrade
+
+00:30:52.333-->00:30:59.000
+completed, that malware was
+essentially undeletable. Apple
+fixed this as CVE 2017 69 74.
+
+00:30:59.000-->00:31:04.958
+Alright, what about a pure
+kernel bug, again our goal is to
+get unsigned arbitrary code
+
+00:31:04.958-->00:31:09.750
+running in the context of the
+kernel. Again, root for this bug
+is a prerequisite, but showed a
+
+00:31:09.750-->00:31:15.292
+lot of ways to get root
+privileges, so that's OK. So, I
+stumbled across this bug, ah, I
+
+00:31:15.292-->00:31:20.292
+was writing some code that uses
+the audit system and I noticed
+there was an interesting B copy.
+
+00:31:20.292-->00:31:25.500
+So B copy is essentially a mem
+copy, copy something from source
+to destination, by some number
+
+00:31:25.500-->00:31:31.542
+of bytes, here we can see the B
+copy source is a sock added
+struck named SA, destination is
+
+00:31:31.542-->00:31:33.708
+sock adder underscore storage
+named ARG sock adder and it's
+max size of the destination size
+
+00:31:33.708-->00:31:38.708
+of the buffer is 128. Now,
+interestingly, the number of
+bytes that are copied is the
+
+00:31:44.833-->00:31:50.083
+size of the sock adder source
+structure. So any time you see a
+B copy, using the number of
+
+00:31:50.083-->00:31:56.000
+bytes to copy based on the
+source, always take a closer
+look at that. So how, how do -
+
+00:31:56.000-->00:32:00.833
+we know the destination object
+is of max size 128, so the
+question then becomes can we
+
+00:32:00.833-->00:32:02.833
+make the source the subject a
+sock adder bigger than that?
+Turns out the answer is yes. You
+
+00:32:02.833-->00:32:04.833
+can create a unix socket that
+creates a path that allows us to
+create a socket structure that's
+
+00:32:04.833-->00:32:06.833
+bigger than 128 bytes. So what
+we do is, we create that then we
+call bind which will trigger the
+
+00:32:06.833-->00:32:08.833
+vulnerable B copy, because it's
+trying to audit that socket
+operation, and via the diagram
+
+00:32:08.833-->00:32:10.833
+we can see that since these sock
+adder structure is bigger than
+128 this will a cause a heap
+
+00:32:10.833-->00:32:15.167
+overflow. For example, here we
+can see the 41 41 41 is now in a
+kernel pointer we can control.
+
+00:32:15.167-->00:32:20.167
+So exploiting this bug will give
+this arbitrary unsigned code
+execution in the context of the
+
+00:32:22.500-->00:32:27.500
+kernel. Alright so that was the
+deal with bugs, but what good
+are bugs if we can't exploit
+
+00:32:41.542-->00:32:46.542
+them? So let's talk now about
+how to exploit such
+vulnerabilities. Alright, so
+
+00:32:49.042-->00:32:53.583
+again back to the user assisted
+elevation of privileges. Our
+goal is to get root when a
+
+00:32:53.583-->00:32:59.542
+vulnerable but legitimate
+application invokes or displays
+an authentication prompt. So as
+
+00:32:59.542-->00:33:05.000
+a limited process, or limited
+local code, to do the exploit we
+have to three things. We have to
+
+00:33:05.000-->00:33:10.375
+wait for a vulnerable
+application to start, VMWare,
+Sparkle, Little snitch, whatever
+
+00:33:10.375-->00:33:15.125
+- then we have to wait for it to
+perform a insecure
+authentication request, and then
+
+00:33:15.125-->00:33:19.750
+while the user's entering their
+credentials, quickly infect the
+vulnerable file, and then as
+
+00:33:19.750-->00:33:24.917
+soon as the user completes the
+authentication we will have
+root. So step one, we need to
+
+00:33:24.917-->00:33:29.333
+monitor for the execution of
+these vulnerable application,
+doubt this is really easy to do,
+
+00:33:29.333-->00:33:35.167
+or have have special privileges.
+You can use the NSworkspace
+notification center and register
+
+00:33:35.167-->00:33:41.417
+a notification for application
+launches and exits. So in our
+notification handler we bail an
+
+00:33:41.417-->00:33:45.292
+application if it's not of
+interest, for example,
+calculator. But if it is, for
+
+00:33:45.292-->00:33:50.917
+example it's SOFO VM Ware or one
+of the myriad of applications we
+talked about, we move on to step
+
+00:33:50.917-->00:33:55.792
+two - which is monitoring for
+the vulnerable file to be
+created. We also care about
+
+00:33:55.792-->00:34:02.792
+application exits, because we
+want to stop monitoring once the
+application exits. Ok. so as non
+
+00:34:02.792-->00:34:08.292
+privileged code, you can watch
+for specific files and
+directories using FS events. So
+
+00:34:08.292-->00:34:13.208
+here's some code where we
+watched for a target file. Now,
+this will be application
+
+00:34:13.208-->00:34:17.292
+specific, for little snitch, for
+example, it's the property list
+in the user's temporary
+
+00:34:17.292-->00:34:22.167
+directory. For Free Dome it's a
+script in their application
+bundle. For Sparkle, it's the
+
+00:34:22.167-->00:34:27.167
+auto update dow- application
+that's downloaded. Either way
+though, we can detect when these
+
+00:34:27.167-->00:34:33.708
+vulnerable files are created.
+And once we get a call back in
+our call back handler, we know
+
+00:34:33.708-->00:34:39.708
+it's go time - let's go infect.
+Alright, now we've seen the file
+has been created. Again, once
+
+00:34:39.708-->00:34:45.250
+the user authenticates, this
+will be executed as root with no
+verification. So we mention
+
+00:34:45.250-->00:34:51.208
+again this file will be
+application specific so dictates
+the infection technique. So for
+
+00:34:51.208-->00:34:56.458
+example for a property list of P
+list file, we're probably going
+to modify the program arguments
+
+00:34:56.458-->00:35:01.000
+array and point it to a
+malicious binary. For a script,
+you can just infect adding some
+
+00:35:01.000-->00:35:05.167
+extra commands that you want to
+be executed as root. And if it's
+going to execute as mock
+
+00:35:05.167-->00:35:10.250
+binaries as root, you can either
+infect that or actually just
+replace it with your own binary
+
+00:35:10.250-->00:35:15.375
+and again that will be executed
+as root. And a very valid
+question is: don't we have to
+
+00:35:15.375-->00:35:20.542
+win a race - and the answer is:
+yes. So again, the application
+is usually going to drop
+
+00:35:20.542-->00:35:24.875
+whatever it wants to execute as
+root, then throw off the
+authentication prompt, and then
+
+00:35:24.875-->00:35:30.375
+while the user is authenticating
+we can jump in and infect that.
+So this user authentication
+
+00:35:30.375-->00:35:35.042
+usually takes at least one or
+two seconds, and that is like a
+massive window that we can
+
+00:35:35.042-->00:35:41.958
+always win. Now a prerequisite
+of this exploitation is that
+this non privileged local
+
+00:35:41.958-->00:35:47.542
+malicious code has to have the
+ability to write to the item
+that's about to be executed,
+
+00:35:47.542-->00:35:53.083
+right? If it's non writeable we
+can't modify or touch it. This
+is usually just an issue, not
+
+00:35:53.083-->00:35:56.583
+because we don't have the
+correct permissions, but because
+of what is about to be executed
+
+00:35:56.583-->00:36:03.000
+is on a read only share. So one
+example is do to gatekeeper. So
+I found a bunch of issues with
+
+00:36:03.000-->00:36:07.625
+gatekeeper, and the way Apple
+fixed them is to implement
+something called apps trans
+
+00:36:07.625-->00:36:12.500
+location. Basically now on
+modern versions Mac OSX, you
+download a zip file from the
+
+00:36:12.500-->00:36:16.792
+internet, when you go to double
+click and unzip and execute the
+app within it, it's
+
+00:36:16.792-->00:36:22.875
+transparently copied to a read
+only share, and executed from
+that share. And this is to deal
+
+00:36:22.875-->00:36:28.250
+with a bunch of gatekeeper
+issues. This read-only is bad
+for us because imagine that
+
+00:36:28.250-->00:36:33.083
+application is executing
+something in it's application
+bundle as root. Now it's sitting
+
+00:36:33.083-->00:36:37.458
+on this read-only share, so we
+can't modify that anymore. Well,
+it turns out this is pretty easy
+
+00:36:37.458-->00:36:42.917
+to bypass - again if your local
+non privileged code - you can
+just remove the quarantine
+
+00:36:42.917-->00:36:47.417
+attribute from that downloaded
+zip file and then app trans
+location won't happen. The
+
+00:36:47.417-->00:36:50.750
+application will remain in the
+downloads directory and you can
+modify it as much as you want.
+
+00:36:52.792-->00:36:57.292
+Recall also, Apple's
+installation dot app - which is
+the default handler for PKGs,
+
+00:36:57.292-->00:37:02.333
+can be coerced into loading
+unsigned malicious dylibs. What
+if the package though doesn't
+
+00:37:02.333-->00:37:07.333
+have plugins? Well, would be
+great if we could infect
+arbitrary PKG files. So normally
+
+00:37:09.500-->00:37:14.458
+PKG files are distributed on
+disk images, DMG's, and when you
+double click a DMG, it's
+
+00:37:14.458-->00:37:20.042
+mounted, but on a read-only
+share. So, again, this is
+problematic for us. What we can
+
+00:37:20.042-->00:37:25.250
+do though is as local non
+privileged code, we can register
+to be the default handler for
+
+00:37:25.250-->00:37:31.000
+DMG images. Then when the user
+double clicks on that, it'll
+execute our code we can then
+
+00:37:31.000-->00:37:36.625
+force that DMG to be mounted
+with read-write privileges. We
+can then modify that package,
+
+00:37:36.625-->00:37:42.167
+inject a malicious plugin and
+then when the user double clicks
+on that, that malicious unsigned
+
+00:37:42.167-->00:37:47.333
+dynamic library will loaded into
+the trusted process context of
+Apple's installation
+
+00:37:47.333-->00:37:53.292
+application. So that was
+generically how to exploit some
+vulnerabilities, and how to deal
+
+00:37:53.292-->00:37:59.625
+with read-only issues. Let's now
+look at some actual exploits. So
+demo time, here we have VM Ware
+
+00:37:59.625-->00:38:03.750
+it's telling us to do an update.
+And we're good users so we know
+that when an application
+
+00:38:03.750-->00:38:07.750
+requests an update, we should
+listen, because it's going to
+patch security fixes and give us
+
+00:38:07.750-->00:38:12.750
+all these great new features. So
+in the demo we'll see the
+exploiter utility which running
+
+00:38:12.750-->00:38:17.542
+with normal low-level
+privileges, is going to detect
+that the mware is running, it's
+
+00:38:17.542-->00:38:22.542
+going to register a file watch
+for the scripts that the VM ware
+drops into the temporary
+
+00:38:22.542-->00:38:27.417
+directory, and then infects
+those scripts. And then when the
+updater completes, by asking the
+
+00:38:27.417-->00:38:33.542
+user to please provide their
+credentials - we will pop it out
+as root. So watch closely, we're
+
+00:38:33.542-->00:38:39.500
+waiting for VMware, see if the
+VMware is running...we detected
+that the script is about to be
+
+00:38:39.500-->00:38:44.500
+present, in a second, infect
+that, VMware legitimately asks
+for creds... via the
+
+00:38:46.542-->00:38:52.250
+authentication execute with
+privilege function. As soon as
+that executes whatever the Mware
+
+00:38:52.250-->00:38:56.250
+asks to executed which are
+scripts out of the temp
+directory are now executed as
+
+00:38:56.250-->00:39:00.500
+root. And again there's no
+verification on these so we pop
+calc as root. Here's
+
+00:39:00.500-->00:39:05.500
+an...[clapping] yes! [laughs]
+[applause]...I saw a funny
+tweet, it was like, clap at
+
+00:39:08.667-->00:39:15.208
+DefCon if you see calculator
+running....gotta use calc even
+on Mac. So here's another demo
+
+00:39:15.208-->00:39:19.667
+on Chrome. This is pretty much
+the the simplest, stupidest
+exploit ever. Basically you have
+
+00:39:19.667-->00:39:25.833
+a Python script that's running
+as non privileged user and it's
+going to infect that script that
+
+00:39:25.833-->00:39:30.667
+Chrome runs, or requests to run
+with root privileges. Again
+Chromes asks the user to
+
+00:39:30.667-->00:39:35.542
+authenticate, and they do, will
+be able to pop calc. Really the
+hardest thing here was basically
+
+00:39:35.542-->00:39:40.625
+to get calc to run as root. So
+we run our Python script, it
+infects that script, because we
+
+00:39:40.625-->00:39:44.542
+have the right privileges,
+Chrome asks the user to
+authenticate because they want
+
+00:39:44.542-->00:39:49.792
+to execute the script as root,
+again there's no validation so,
+then Chrome executes the script
+
+00:39:49.792-->00:39:55.792
+as root which we've infected to
+execute calc. Ah, again, Chrome
+said yeah we're not going to fix
+
+00:39:55.792-->00:40:01.875
+this. Finally let's talk about
+exploiting Apple's installer. I
+think this is kinda my
+
+00:40:01.875-->00:40:07.375
+favourite. Why? It's because
+people use installer dot app all
+the time. And what we can do is
+
+00:40:07.375-->00:40:12.458
+basically, inject malicious
+code, unsigned dynamic libraries
+into the package which is about
+
+00:40:12.458-->00:40:17.750
+to be installed, and then
+installer dot application will
+load them. So, in three steps,
+
+00:40:17.750-->00:40:24.625
+we basically expand the PKG,
+inject our malicious dylibs into
+it, repackage it up, and then
+
+00:40:24.625-->00:40:31.083
+when the user double clicks to
+execute this, installer dot app
+will load our malicious unsigned
+
+00:40:31.083-->00:40:36.625
+dylibs into its process context.
+So now we're running within
+installer dot app. So what could
+
+00:40:36.625-->00:40:40.875
+we do here? We can either
+display our own authentication
+prompt which everyone will
+
+00:40:40.875-->00:40:44.458
+trust, because it's the
+installer application displaying
+an authentication prompt which
+
+00:40:44.458-->00:40:49.500
+is what is always does anyways.
+Or to be even more stealthy, we
+can just wait until installer
+
+00:40:49.500-->00:40:55.417
+dot app requests the user to
+authenticate any way. And then
+piggyback off that. Reported
+
+00:40:55.417-->00:41:00.292
+this to Apple via their bug
+reporting website. Got no
+response. Maybe they're just
+
+00:41:00.292-->00:41:04.958
+sick of hearing from me.
+[laughs] Probably. [laughs].
+They don't really like me.
+
+00:41:04.958-->00:41:11.083
+Alright, so let's start by
+wrapping...end by wrapping this
+all up. So, hopefully you have a
+
+00:41:11.083-->00:41:16.958
+healthy paranoia of these
+authentication prompts. I do.
+Why? First, they can be spoofed,
+
+00:41:16.958-->00:41:22.667
+like there's no way really to
+easily validate that is not
+completely fake. And even if it
+
+00:41:22.667-->00:41:24.667
+is, a legitimate pop-up that the
+security agent has displayed -
+like how do you know what it's
+
+00:41:24.667-->00:41:29.667
+about to execute? And again,
+every freaking application
+invokes this insecure API,
+
+00:41:34.500-->00:41:39.042
+meaning local code that's on
+your box, if it wants to elevate
+its privileges as root can very
+
+00:41:39.042-->00:41:44.875
+easily infect there. So, if
+you're a malware author, stop
+spoofing these boxes, like it's
+
+00:41:44.875-->00:41:48.625
+like really lame, do something a
+little cooler. Um, yeah know,
+I'm getting bored as a Mac
+
+00:41:48.625-->00:41:53.875
+analyst, malware analyst CND,
+Ahmet knows what I'm talking
+about [laughs] [clapping] he
+
+00:41:53.875-->00:41:58.750
+complains to me all the time
+[laughs] so instead like be
+patient, wait till one these
+
+00:41:58.750-->00:42:04.542
+vulnerable applications which is
+pretty much most applications
+needs to perform an upgrade or
+
+00:42:04.542-->00:42:09.625
+is installed - and again what
+you can then do is piggyback
+into that and then when the user
+
+00:42:09.625-->00:42:15.125
+authenticates, you will have
+root again, a lot more stealthy,
+a lot more elegant. So what is
+
+00:42:15.125-->00:42:21.167
+the answer, well the answer is
+to use SM job bless,this is an
+API that recently introduced by
+
+00:42:21.167-->00:42:25.917
+Apple and it does allow you, or
+applications to do secure
+authentication, but it's
+
+00:42:25.917-->00:42:30.542
+incredibly complicated. So what
+you have to do is put whatever
+you want to be executed as root,
+
+00:42:30.542-->00:42:36.583
+this is called the Helper tool,
+in the contents slash libraries
+slash launch services directory.
+
+00:42:36.583-->00:42:41.375
+Then in your application's info
+dot P list file, you have to
+identify the signing information
+
+00:42:41.375-->00:42:46.875
+of the Helper tool. Then you
+invoke SM Job Bless, which will
+cause the service management
+
+00:42:46.875-->00:42:52.917
+daemon to copy your helper
+application into a secure
+location. Then in that secure
+
+00:42:52.917-->00:42:58.208
+location it is cryptographically
+verified that it hasn't been
+tampered with. Only then, once
+
+00:42:58.208-->00:43:03.583
+that verification has been
+validated, it's copied to the
+system launch daemon directory
+
+00:43:03.583-->00:43:09.375
+and executed as root via a
+launch daemon. So here's code to
+do it, you can see it's actually
+
+00:43:09.375-->00:43:14.625
+not too complex in code once you
+get everything set up and again,
+this will allow you to securely
+
+00:43:14.625-->00:43:19.667
+install and execute something
+with higher privileges that
+local malicious code cannot
+
+00:43:19.667-->00:43:24.583
+tamper with. So why aren't
+people using it? Why is Chrome
+Mware, SoFO , little snitch, why
+
+00:43:24.583-->00:43:28.917
+is everyone using the insecure
+variant? Well, first, your
+application has to be signed,
+
+00:43:28.917-->00:43:33.875
+which means you have to give
+Apple 99 dollars a year. Also
+you can't specify command line
+
+00:43:33.875-->00:43:37.167
+arguments, you can't pass
+command line arguments to
+whatever you're about to
+
+00:43:37.167-->00:43:42.792
+execute. You can use XPC but,
+this is kinda a pain the butt, I
+consider myself a decent coder,
+
+00:43:42.792-->00:43:47.208
+it took me hours to get it
+working. And also then it
+persistently installs something
+
+00:43:47.208-->00:43:51.500
+as a launch daemon, this is like
+massive overkill, if all you
+want to do is run a simple
+
+00:43:51.500-->00:43:56.792
+installation script. And then
+there's kinda a catch 22, this
+you know launch agent has been
+
+00:43:56.792-->00:44:00.250
+installed as running as root,
+you app can't now actually
+uninstall it because it's
+
+00:44:00.250-->00:44:04.375
+running with higher privileges
+so again you have to set up this
+XPC channel or tell the launch
+
+00:44:04.375-->00:44:11.250
+daemon to uninstall itself -
+just incredibly complicated and
+usually way overkill. Alright,
+
+00:44:11.250-->00:44:14.583
+so before we end I assume you're
+at this talk because you're
+somewhat interested in Mac
+
+00:44:14.583-->00:44:19.000
+security shameless plug for my
+Mac security website, but
+everything here is free so I
+
+00:44:19.000-->00:44:22.750
+hope this doesn't sound like a
+sales pitch. Ah, in my free time
+I like to write, ah, security
+
+00:44:22.750-->00:44:27.417
+tools, blog about this kind of
+stuff, um write about about a
+lot of malware analysis,
+
+00:44:27.417-->00:44:31.458
+etcetera. So if you're
+interested in the stuff, check
+it out. Well, alright that's a
+
+00:44:31.458-->00:44:35.208
+wrap, again, thank you so much
+for attending my talk - and
+again if you're interested in
+
+00:44:35.208-->00:44:40.583
+being a security researcher with
+Synack, er, check our Synack dot
+com or come chat with me. So, if
+
+00:44:40.583-->00:44:43.833
+there's any questions, or I'll
+be here afterwards, er, I'd love
+to chat with you more about
+
+00:44:43.833-->00:44:48.833
+this. [applause]. Thank you.
+

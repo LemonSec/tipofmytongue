@@ -1,0 +1,2180 @@
+﻿00:00:00.042-->00:00:05.458
+>>Uh, hi, I’m Joe Rozner. Um,
+I’m an engineer at Prevoty where
+I’ve been working on, uh, some
+
+00:00:05.458-->00:00:11.042
+mitigation techniques for CSRF
+and this is a kind of run
+through of some of the research
+
+00:00:11.042-->00:00:17.750
+we’ve been doing and how it all
+works. Um, this is kind of a
+deep dive into CSRF as an attack
+
+00:00:17.750-->00:00:23.917
+vector, how it works, um, the
+solutions that exist currently
+and, uh, some new ways we can
+
+00:00:23.917-->00:00:29.625
+basically help to avoid it in
+the future. Uh, and I know what
+you’re gonna say. It’s 2017. Why
+
+00:00:29.625-->00:00:35.375
+are we still talking about this?
+We know about CSRF. It’s nothing
+new. It’s this attack that we’ve
+
+00:00:35.375-->00:00:41.417
+known about for like ten years.
+Um, what could I possibly have
+to add to this that hasn’t been
+
+00:00:41.417-->00:00:47.167
+said already? All the modern
+frameworks take care of this.
+They do it for you. As long as
+
+00:00:47.167-->00:00:52.917
+you play within their- their
+rules you get it for free. But
+people still f**k it up and
+
+00:00:52.917-->00:00:58.000
+there’s- there’s lots and lots
+of apps out there that exist and
+they have vulnerabilities and
+
+00:00:58.000-->00:01:04.333
+they’re never going to get
+patched. Uh, so this is kind of
+a solution that you can use for
+
+00:01:04.333-->00:01:09.333
+those situations where you are
+unable to patch it and fix the
+underlying flaw or you need a
+
+00:01:11.417-->00:01:16.417
+remediation right now. So what
+is CSRF? At its most basic
+level, CSRF is when an attacker
+
+00:01:19.083-->00:01:24.083
+forces a victim to create a
+request on their behalf. Uh, so
+I, the attacker, forces your
+
+00:01:26.750-->00:01:31.458
+browser to initiate a request
+that does something on your
+behalf and that has some action
+
+00:01:31.458-->00:01:36.458
+that is probably bad for you.
+Uh, it comes from three
+different, uh, conditions that
+
+00:01:40.542-->00:01:45.542
+exist within HTTP and those
+three are- are, begin with, uh,
+the concept of safe and unsafe
+
+00:01:49.083-->00:01:55.042
+request types. Um, so safe
+methods are traditionally
+designed for accessing data so
+
+00:01:55.042-->00:01:59.667
+you make a- a get request or a
+head or an options and you’re
+asking the server for some kind
+
+00:01:59.667-->00:02:04.458
+of restful resource. And this is
+designed to have no side
+effects. It’s designed to, uh,
+
+00:02:04.458-->00:02:10.875
+basically have no impact on the
+data on the server. You’re just
+pulling it back down and- and
+
+00:02:10.875-->00:02:16.792
+getting a copy of something.
+Unsafe requests like post and,
+uh, put and delete these- these
+
+00:02:16.792-->00:02:21.833
+are designed for having some
+kind of impact where you want to
+create a new resource, you want
+
+00:02:21.833-->00:02:27.833
+to create a new object, um. And
+part of the problem is that
+these aren’t typically used
+
+00:02:27.833-->00:02:33.375
+correctly, especially in older,
+uh, like PHP apps and, uh, apps
+that don’t really have the
+
+00:02:33.375-->00:02:39.500
+concept of a router or any kind
+of, uh, way to distinguish
+between different request verbs.
+
+00:02:39.500-->00:02:43.750
+You’ll see a lot of times they
+will respond to whatever is sent
+to them. And that’s really bad
+
+00:02:43.750-->00:02:50.208
+and we’ll see why. Um, usually
+it’s due to laziness or just not
+understanding it or just a lot
+
+00:02:50.208-->00:02:56.833
+of legacy code that never took
+advantage of, uh, building out
+to the HTTP spec. The other, uh,
+
+00:02:56.833-->00:03:03.792
+main issue is- is cookies. Um,
+and- and these are kind of a
+work around for the concept of-
+
+00:03:03.792-->00:03:08.542
+of HTTP being a stateless
+protocol. Um, we- we get around
+this by having what’s called
+
+00:03:08.542-->00:03:14.333
+sessions. And- and sessions are
+some server side storage that
+can be trusted, uh, that you can
+
+00:03:14.333-->00:03:19.333
+basically say, uh, throughout
+every request for this user for
+this session I want to bring
+
+00:03:21.542-->00:03:24.917
+this data along with me. And you
+might store things in there
+like, uh, y’know, a session ID,
+
+00:03:24.917-->00:03:29.875
+a user ID, some information
+whether or not they’re logged
+in, uh, and so- and the way that
+
+00:03:29.875-->00:03:34.917
+you typically implement this is
+on the server when you initially
+log in or come to the page for
+
+00:03:34.917-->00:03:39.708
+the first time you generate a
+cookie. That cookie gets sent
+down and that cookie has some
+
+00:03:39.708-->00:03:45.625
+unique identifier. Every
+following request that cookie
+gets sent up with it and the
+
+00:03:45.625-->00:03:56.750
+server will look up that ID,
+pull the data out, and let you
+access it. Um, cookies are- are
+
+00:03:56.750-->00:04:03.417
+kind of this- this weird thing
+that, um, we- we depend on the
+browser to secure for us. Um, it
+
+00:04:03.417-->00:04:06.625
+has some concepts of security
+like- like locking it to a
+specific domain so the cookie
+
+00:04:06.625-->00:04:11.042
+will only be sent if the domain
+matches the domain that the
+request is for. So if my cookie
+
+00:04:11.042-->00:04:17.000
+is set for google dot com and
+I’m going to google dot com,
+that cookie will be sent. If I’m
+
+00:04:17.000-->00:04:23.500
+going somewhere else, that
+cookie won’t be sent. Um. And-
+and the cookies work across tabs
+
+00:04:23.500-->00:04:28.833
+and they work automatically
+across tabs. So if you have ten
+tabs open all to the same site,
+
+00:04:28.833-->00:04:32.000
+they’re all going to sa- share
+that same cookie even if they
+are being used at the same time.
+
+00:04:32.000-->00:04:35.417
+Um, they- they- they all share
+that information and they’re all
+going to update it accordingly.
+
+00:04:35.417-->00:04:41.958
+And- and each tab will always
+send the cookie as long as it
+matches the required domain and
+
+00:04:41.958-->00:04:48.792
+path. That’s always going to- to
+happen. So this is an example
+of- of what you might see in a
+
+00:04:48.792-->00:04:53.458
+cookie when you’re setting it
+from the response. Uh, in the
+headers you’ll just see the, uh,
+
+00:04:53.458-->00:04:59.333
+this- this cookie name, the
+value, uh, if there is a domain,
+it will be set. It’s not
+
+00:04:59.333-->00:05:06.667
+required. Um. Oh I’m sorry, it
+is required but it’s uh, uh, the
+rest are not. Uh, secure is used
+
+00:05:06.667-->00:05:13.042
+to say you only want the cookie
+to be sent over an HTTPS channel
+so if the secure flag is set and
+
+00:05:13.042-->00:05:18.458
+I’m connecting over HTTP, the
+cookie will not send and that’s
+a security mechanism that we’ll
+
+00:05:18.458-->00:05:24.875
+discuss a little bit later. HTTP
+only, uh, is also, uh, an idea
+that if you set that, the
+
+00:05:24.875-->00:05:31.208
+javascript on the page will not
+be able to access the cookie.
+Um, we need to make sure that
+
+00:05:31.208-->00:05:36.417
+this is always false. Uh,
+typically you’ll want this to be
+true because it’s a- it’s a
+
+00:05:36.417-->00:05:41.458
+really good security mechanism
+that helps you avoid, like, uh,
+theft of cookies. Um, but for
+
+00:05:41.458-->00:05:47.167
+this specific example it’s not
+going to matter so much in this
+case and it’s important that it
+
+00:05:47.167-->00:05:54.792
+not be set. The- the last is XSS
+and this isn’t strictly CSRF,
+but it- it enables it. Uh, CSRF
+
+00:05:54.792-->00:06:04.750
+or cross request, um, uh, cross
+site request, uh, is- is the
+idea that you have, y’know, a
+
+00:06:04.750-->00:06:08.500
+cross site to two different
+ones. Um, but you can also do
+the same kind of idea from
+
+00:06:08.500-->00:06:12.667
+within the site if you get XSS.
+And so you- you can inject
+payloads that will make requests
+
+00:06:12.667-->00:06:18.708
+and have the same sort of
+effect. Um, in the case of XSS,
+like, this is bad and you should
+
+00:06:18.708-->00:06:26.417
+feel bad if you have it. Like,
+it’s- it’s just- it’s a bad
+time. Um, no matter what you do,
+
+00:06:26.417-->00:06:32.917
+if- if you have XSS, you will
+never be able to stop CSRF. Uh,
+it is- once- once you have that,
+
+00:06:32.917-->00:06:39.292
+any mechanism that you add, uh,
+that is a countermeasure to that
+attack can be bypassed once you
+
+00:06:39.292-->00:06:43.458
+have sufficient code execution
+on the browser. And there’s-
+there’s basically nothing you
+
+00:06:43.458-->00:06:51.167
+can do about that. You just have
+to eliminate the XSS. So how
+does it work? There’s- there’s
+
+00:06:51.167-->00:06:55.833
+three distinct types that I’m
+gonna cover and this covers the
+vast majority of the kinds of
+
+00:06:55.833-->00:07:00.000
+requests that you might see. Um,
+the canonical one that you’ll-
+you’ll typically see
+
+00:07:00.000-->00:07:07.208
+demonstrated is resource
+inclusion. Um, and by this I
+mean tags that specifically
+
+00:07:07.208-->00:07:12.958
+allow for external resources,
+for instance image tags, audio
+tags, video tags, objects. Um,
+
+00:07:12.958-->00:07:19.083
+when you specify the source,
+when the browser loads that and-
+and renders it on page, it’s
+
+00:07:19.083-->00:07:23.042
+going to call out to whatever
+resource that is, and try to
+pull that resource down. Uh. And
+
+00:07:23.042-->00:07:28.750
+so, for the case where you’re
+not using, uh, get requests
+correctly and you’re not
+
+00:07:28.750-->00:07:33.375
+enforcing the safe and unsafe
+correctly, uh, these can be used
+to make get requests to
+
+00:07:33.375-->00:07:38.417
+arbitrary places. In the case
+of, like, an image, you’ll see
+it show up as a broken image but
+
+00:07:38.417-->00:07:44.583
+that request will still get made
+and so the damage will already
+be done. Um, this specific type
+
+00:07:44.583-->00:07:51.167
+is limited to, uh, only get
+requests so if you are doing the
+safe and unsafe correctly, um,
+
+00:07:51.167-->00:07:57.167
+this technique will most likely
+not be useable for you. Uh, an
+example of this is- is something
+
+00:07:57.167-->00:08:02.292
+like this. Um, we’ll be using a
+banking demo that I- that I
+built, uh, shortly, uh, and so
+
+00:08:02.292-->00:08:07.292
+this is how a trans- uh,
+transfer would occur. Um, it’s
+the get request. It has a two
+
+00:08:07.292-->00:08:11.833
+and an amount. Um, so if you
+were to put this into an image
+tab you would see, uh, the
+
+00:08:11.833-->00:08:19.250
+transaction went through. The
+next is form based and, uh, this
+is typically what you’ll see a
+
+00:08:19.250-->00:08:24.167
+lot of the time when you’re
+dealing with people who do do
+safe and unsafe correctly. Um,
+
+00:08:24.167-->00:08:29.000
+you’ll build like a form based
+template and on your attacker’s
+control website you’ll put this
+
+00:08:29.000-->00:08:34.625
+in. It will post back to
+whatever the, uh, the- the-
+whatever the page is that
+
+00:08:34.625-->00:08:39.667
+actually does the- the request
+and you’ll usually have some
+javascript in there so that it
+
+00:08:39.667-->00:08:46.208
+forces the user to click, uh,
+and it’ll be really quick. It’s
+common with phishing emails or
+
+00:08:46.208-->00:08:51.542
+other methods where you’ll
+direct the victim to a page,
+they’ll load it, and immediately
+
+00:08:51.542-->00:08:56.167
+the javascript will just force a
+click of the form and submit it
+and you’ll never even know you
+
+00:08:56.167-->00:09:02.125
+were there. You’ll wind up on
+the page wherever you were
+trying to go to, um, and this is
+
+00:09:02.125-->00:09:08.208
+a really good option if you have
+to bypass CORS. CORS is a- a
+cross origin request so, um,
+
+00:09:08.208-->00:09:13.375
+something really important is
+the- the “same origin policy,”
+which basically dictates that,
+
+00:09:13.375-->00:09:19.792
+um, if you’re making like an XHR
+request you can’t go to a
+different domain than where the
+
+00:09:19.792-->00:09:26.625
+origin was and one way around
+this was with CORS. Uh, it’s
+used sometimes, um, but it’s a
+
+00:09:26.625-->00:09:34.125
+good way to avoid this. Uh, and
+so an example of a really basic
+template you might see is a form
+
+00:09:34.125-->00:09:38.542
+like this. It basically just has
+a bunch of hidden elements. So
+you would go in when you’re
+
+00:09:38.542-->00:09:45.292
+creating it and you would put in
+all the values you want them to
+submit for you. Uh, and then the
+
+00:09:45.292-->00:09:49.292
+little, uh, script at the bottom
+just causes the form to submit
+and they’ll never know it
+
+00:09:49.292-->00:09:54.167
+happened. They’ll end up on the
+page where the- the action is
+here and it will just have been
+
+00:09:54.167-->00:10:03.583
+done. The last is XHR and this
+is, uh, pretty much only ever
+going to happen if you have XSS
+
+00:10:03.583-->00:10:09.542
+on the page. Um, the only other
+exception is if CORS is enabled
+for the endpoint and you can put
+
+00:10:09.542-->00:10:16.042
+some XHR code on a- an attacker
+controlled place and get the
+victim to go there, um, and
+
+00:10:16.042-->00:10:22.500
+utilize, uh, CORS for that. Uh,
+like I said, y’know, with XSS it
+doesn’t really matter because
+
+00:10:22.500-->00:10:27.542
+it’s game over anyways, um, but
+this is the other type you might
+see. Um, the cool thing about
+
+00:10:27.542-->00:10:33.625
+this is that no pe- page reload
+is required so when the victim
+does get hit, they’re not gonna
+
+00:10:33.625-->00:10:37.708
+know it. Basically the only way
+you’re going to see it is if
+you’re watching network traffic
+
+00:10:37.708-->00:10:41.958
+or you’re in, like, the web
+inspector tools and you see the-
+the request go by. Um, it’s
+
+00:10:41.958-->00:10:46.625
+really difficult to detect and,
+like, you’re probably not going
+to see it. There’s also all
+
+00:10:46.625-->00:10:52.625
+kinds of cool tricks you can do
+like hiding stuff, um, like, uh,
+in like a real page so it looks
+
+00:10:52.625-->00:10:56.500
+like they’re actually at a real
+site or something. Um, the cool
+for this is actually pretty
+
+00:10:56.500-->00:11:06.667
+simple. Um, this is all it is.
+This is a basic X- XHR request.
+Um, and that’s pretty much it.
+
+00:11:06.667-->00:11:10.792
+Uh, let me jump into a demo
+really quick and I’ll kind of
+show off, uh. This is a, uh, a
+
+00:11:10.792-->00:11:19.250
+demo banking app. Um, basically,
+it allows you to perform
+transactions, uh, to transfer
+
+00:11:19.250-->00:11:25.542
+money from an account to another
+account. Uh, so I’m just going
+to send myself some money. Uh,
+
+00:11:25.542-->00:11:30.875
+I’ll send myself a hundred
+bucks, a thousand dollars. Um,
+and so it just goes through and
+
+00:11:30.875-->00:11:40.625
+it will do the thing. Um, so
+this is an example of an image
+based one. Uh, you’ll see here,
+
+00:11:40.625-->00:11:46.833
+uh, it’s basically just the
+image tag that I used before.
+Uh, I’ll refresh the page and
+
+00:11:46.833-->00:11:53.958
+we’ll now see that the request
+went through. We- we forced the
+victim to go make this
+
+00:11:53.958-->00:11:59.917
+transaction. So if- if I,
+y’know, sent this over instant
+messenger or an email and got
+
+00:11:59.917-->00:12:04.042
+them to click on, y’know, a page
+that had that image, it would
+have the same effect on them if
+
+00:12:04.042-->00:12:11.833
+they were logged into, uh, this
+bank because they had their
+session active still. Next
+
+00:12:11.833-->00:12:20.750
+example is the, uh, the form
+based one. I’m gonna really
+quick go back and reset this. If
+
+00:12:20.750-->00:12:37.000
+I can find my mouse. Uh, and so
+we end up at the transfer page.
+This is the JSON that comes back
+
+00:12:37.000-->00:12:49.417
+and if we go back to this tab
+we’ll see, uh, the request has
+gone through. Well. And then the
+
+00:12:49.417-->00:12:57.208
+last one is XHR. Um, we’ll see
+this is the code I had in there.
+Um. I’m gonna go ahead and reset
+
+00:12:57.208-->00:13:05.125
+this. We’ll refresh the page and
+we can see in the network tab
+here, uh, the XHR request went
+
+00:13:05.125-->00:13:11.583
+through. It sent money from- um,
+to the attacker, a bunch of
+money. Uh, and it should be
+
+00:13:11.583-->00:13:23.625
+showing up here. C’mon mouse,
+you can do it. So there’s like a
+bunch of current solutions that
+
+00:13:23.625-->00:13:30.792
+exist and we- we see these all
+the time. Um, bas-basically you-
+you want to have a combination
+
+00:13:30.792-->00:13:36.500
+of at least two of these. Um,
+all three would be great. Uh,
+first is using safe verbs
+
+00:13:36.500-->00:13:42.458
+correctly. Uh, if you’re
+building your app, uh, make sure
+that get requests don’t have any
+
+00:13:42.458-->00:13:48.542
+kind of, uh, side effect. Don’t
+let it modify data. Just do it.
+It’s- it’s gonna make things so
+
+00:13:48.542-->00:13:53.667
+much easier. Uh, and- and I know
+that a- a lot of what I’ve been
+talking about it is around the
+
+00:13:53.667-->00:13:58.625
+idea of fixing this in
+applications we can’t go in and
+rewrite for whatever reason. Um.
+
+00:13:58.625-->00:14:02.292
+This is not one of those easy
+things to fix, but if you’re
+doing it from the beginning just
+
+00:14:02.292-->00:14:07.417
+go ahead and do this. It’s going
+to make things so much easier.
+Go use a router and- and - and
+
+00:14:07.417-->00:14:12.792
+let it be nice. Um, verifying
+the origin. Uh. This is useful
+if you’re doing CORs
+
+00:14:12.792-->00:14:18.333
+specifically, um, but it also is
+very helpful if you want to
+avoid, uh, attacker hosted pages
+
+00:14:18.333-->00:14:25.375
+that are coming into your site,
+uh, with form, uh, requests. If
+you’re already using the safe
+
+00:14:25.375-->00:14:30.750
+verbs correctly, you should only
+have to worry about unsafe which
+is why it would be the forms.
+
+00:14:30.750-->00:14:35.083
+Uh, the images, um, would be a
+little bit more complicated
+because if people are, like,
+
+00:14:35.083-->00:14:40.708
+hotlinking into your images on
+your website it might be a
+problem. Um, and the last
+
+00:14:40.708-->00:14:45.333
+is synchronizer tokens or crypto
+tokens. This is, like, kind of
+the industry standards and what
+
+00:14:45.333-->00:14:49.792
+everyone uses. If you are using
+any modern framework this is
+what it’s probably doing under
+
+00:14:49.792-->00:14:59.833
+the hood. It’s creating a token
+and then verifying it on the
+requests. And a little bit of a
+
+00:14:59.833-->00:15:07.208
+disclaimer before, uh, we- we go
+into the real, like, how the-
+the technique works. Um, this is
+
+00:15:07.208-->00:15:13.958
+a greatly simplified, um,
+walkthrough of the code. There’s
+a lot of very specific domain
+
+00:15:13.958-->00:15:19.125
+knowledge that goes into
+wherever you’re going to build
+this. Um. We’ve built it in- in
+
+00:15:19.125-->00:15:24.625
+java and dot net but like you
+could go and you could build
+this literally anywhere, uh,
+
+00:15:24.625-->00:15:29.292
+where you could intercept and
+modify HTTP requests and
+responses. Uh. But in doing this
+
+00:15:29.292-->00:15:35.500
+you’re trading a lot of
+complexity, uh, of the platform
+where you have to know a lot
+
+00:15:35.500-->00:15:40.500
+about that and work within this
+really, really complicated
+platform for solving the problem
+
+00:15:40.500-->00:15:45.417
+in your app and just like doing
+it, um, there and probably a
+simpler solution but requires,
+
+00:15:45.417-->00:15:52.458
+uh, potentially more work. Um,
+so this may or may not work out
+of the box for you but this will
+
+00:15:52.458-->00:15:56.917
+be all the information that you
+need in order to basically
+implement something like this to
+
+00:15:56.917-->00:16:05.042
+the needs that you have. Uh, and
+so why is this important? Like
+I’ve already said, um, if- if we
+
+00:16:05.042-->00:16:09.000
+can’t modify the application.
+Maybe it’s, y’know, a ten year
+old legacy application, twenty
+
+00:16:09.000-->00:16:12.625
+year old legacy application, and
+we can’t do anything about it.
+We don’t have the source code.
+
+00:16:12.625-->00:16:19.250
+The risk is too high. Um, this
+would be a good solution, um, as
+a mitigation if you have a
+
+00:16:19.250-->00:16:23.375
+problem you can’t fix right now.
+Um, for bulk support across
+applications, if you wanted to
+
+00:16:23.375-->00:16:29.250
+put this at the load balancer,
+or a proxy, or a WAF, um, this
+would be a good solution for
+
+00:16:29.250-->00:16:34.917
+that. There’s already some that
+exist out there in WAFs where
+they’ll, uh, rewrite the forms
+
+00:16:34.917-->00:16:43.292
+and the responses. Uh, that’s
+great. Uh, it doesn’t have the
+effect of working with XHR, uh,
+
+00:16:43.292-->00:16:47.625
+and some of the other request
+types that we’ve talked about so
+far. Um, and last, if you wanted
+
+00:16:47.625-->00:16:52.083
+to provide this to, like, your
+customers if you were, like, a
+hosting company and you wanted
+
+00:16:52.083-->00:16:56.042
+to say, “Hey. All you guys that
+have really insecure apps
+running on my host- hosted
+
+00:16:56.042-->00:17:00.250
+servers, like, here’s some
+security for you.” Um, this
+would also be like something you
+
+00:17:00.250-->00:17:04.458
+could offer them and it would
+probably solve a lot of their
+problems, uh, for like the low
+
+00:17:04.458-->00:17:10.917
+hanging fruit. So what are we
+looking for in a solution? Um,
+we needed something that can be
+
+00:17:10.917-->00:17:14.917
+easily added into apps, whether
+we’re doing it at the network
+level in an appliance or doing
+
+00:17:14.917-->00:17:18.958
+it in the application itself. We
+need it to work across browsers
+because one of the things about
+
+00:17:18.958-->00:17:29.792
+CSRF is that it’s a totally
+client side attack when you’re
+performing it. You’re- you’re
+
+00:17:29.792-->00:17:36.292
+attacking the- the victim brow-
+the victim’s browser, not the
+server. Uh. So we- we need good
+
+00:17:36.292-->00:17:43.958
+cross browser support. Um, and
+it needs to work for XHR, for
+forms, and resources. It needs
+
+00:17:43.958-->00:17:50.167
+to be low impact. Uh, it can’t
+uh, take down our, uh, our
+servers. It can’t, uh, reduce
+
+00:17:50.167-->00:17:53.917
+the throughput we can do. It
+needs to be something that is
+really, really efficient. Uh.
+
+00:17:53.917-->00:17:58.458
+And we can't do any additional
+requests because there are some
+solutions out there. They’ll
+
+00:17:58.458-->00:18:02.292
+make outside requests up to the
+server to pull down new tokens
+and then get them back and then
+
+00:18:02.292-->00:18:07.208
+do this whole verification,
+like, dance and we- we want to
+avoid that. We want something
+
+00:18:07.208-->00:18:11.417
+that fits in with the standard
+request response that you would
+normally see with your
+
+00:18:11.417-->00:18:17.292
+application. And that’s what
+we’re shooting for. Um.
+I’ve already talked about this.
+
+00:18:17.292-->00:18:24.542
+Just do it. It’s- it’s gonna be
+so much better for you. Um.
+There- there’s routers for
+
+00:18:24.542-->00:18:28.542
+basically every language out
+there. They basically will allow
+you to define a whole bunch of
+
+00:18:28.542-->00:18:34.000
+endpoints and then match it up
+with a, uh, a verb and then pass
+it off to the correct, uh,
+
+00:18:34.000-->00:18:38.500
+handler during dispatch. Just do
+it. It won’t solve your CSRF
+problem out of the box but it
+
+00:18:38.500-->00:18:47.875
+will make things easier. Uh, so
+the- verifying the refer the
+origin. Uh, this is used, like I
+
+00:18:47.875-->00:18:55.458
+said, to detect, uh, permitted
+CORS requests and to detect, uh,
+outside requests coming into the
+
+00:18:55.458-->00:19:04.833
+application. And this is done,
+uh, by looking at the- the
+origin and the refer. The- the
+
+00:19:04.833-->00:19:10.750
+refer is, uh, one of the headers
+that tells the server where you
+were coming from. So if I’m on,
+
+00:19:10.750-->00:19:17.708
+y’know, account dot php, uh, and
+then I go to transfer dot php,
+the refer is going to have the
+
+00:19:17.708-->00:19:22.708
+url of account dot php so it can
+track where I was before I got
+to this url and how I got there.
+
+00:19:22.708-->00:19:28.375
+Uh, the origin header is used
+mostly for cross origin requests
+and XHR. Uh, so you may or may
+
+00:19:28.375-->00:19:32.667
+not see it in all request but
+it- it could be there. These are
+both headers that are not
+
+00:19:32.667-->00:19:37.833
+supposed to be settable by
+javascript in the browser, so
+you can have a reasonable sense
+
+00:19:37.833-->00:19:45.917
+of se- of assurance that these
+values are, uh, safe. They are
+something that can be spoofed if
+
+00:19:45.917-->00:19:51.667
+you’re making a request. But in
+the case of CSRF, because it’s
+coming from the victim, the only
+
+00:19:51.667-->00:19:57.708
+way you’d ever have a spoofed
+value there is if the victim was
+attacking themselves. So the
+
+00:19:57.708-->00:20:01.958
+values should be trustworthy and
+you shouldn’t have to worry
+about the fact that it’s not
+
+00:20:01.958-->00:20:06.750
+always going to be, um,
+accurate. It is possible that
+you won’t see it and, in our
+
+00:20:06.750-->00:20:11.042
+case, we’ve found the best way
+to go forward with this is if
+it’s not there and you can’t
+
+00:20:11.042-->00:20:16.417
+validate it, uh, just fail open.
+Uh, you might have more strict
+requirements, um, but on the off
+
+00:20:16.417-->00:20:21.125
+chance that, like, there’s
+running a- a privacy plugin that
+strips it out of their requests,
+
+00:20:21.125-->00:20:25.250
+um, you don’t want, like,
+legitimate traffic to be
+stopped. Uh, and that’s one
+
+00:20:25.250-->00:20:34.250
+potential downside to, uh, fail
+enclosed in this situation. Um.
+This can be sufficient, uh,
+
+00:20:34.250-->00:20:39.875
+alone if you are using safe
+verbs correctly because doing
+that should eliminate the
+
+00:20:39.875-->00:20:45.417
+possibility of resource
+inclusion attacks. So as long as
+you don’t have XSS and as long
+
+00:20:45.417-->00:20:50.000
+as, uh, you are doing this, you
+should theoretically be able to
+block form based attacks from
+
+00:20:50.000-->00:20:57.292
+outside. Um, I wouldn’t bet on
+that. Um. There’s a really good
+write up, uh, from this company
+
+00:20:57.292-->00:21:02.708
+“Mix Max” that, uh, implemented
+something like this and, uh,
+they used just this technique,
+
+00:21:02.708-->00:21:07.250
+uh, for their CORS system, uh,
+and you should definitely go
+read it if you're, uh,
+
+00:21:07.250-->00:21:11.750
+interested in- in how that
+works. Um I- I’ll cover a little
+bit, but they have a much more
+
+00:21:11.750-->00:21:16.667
+in depth write up of it. Uh, and
+this is just a typical request.
+This is what you would see with
+
+00:21:16.667-->00:21:21.792
+origin, uh, refer. Uh, their
+actual form is a little bit
+different so a little bit of
+
+00:21:21.792-->00:21:27.167
+parsing is required in order to
+get the correct data out of it
+to- to figure out, uh, whether
+
+00:21:27.167-->00:21:32.667
+or not it’s valid. The code is
+pretty simple. Uh. This is
+essentially taking it straight
+
+00:21:32.667-->00:21:40.542
+out of the code that we use. And
+basically we just look for the
+presence of the origin header.
+
+00:21:40.542-->00:21:45.417
+If it’s there we parse it. If
+it’s not there we fall back to
+the refer and if it’s there we
+
+00:21:45.417-->00:21:51.125
+parse it and if it’s not, we’ll
+fail open. Um, and then we- we
+compare the authority, uh, which
+
+00:21:51.125-->00:21:55.625
+is the host and the port and-
+and then that’s basically the
+origin. Um, we compare that with
+
+00:21:55.625-->00:22:00.833
+what’s in the host, uh, which is
+another header that you would
+see and that is required as of
+
+00:22:00.833-->00:22:04.958
+HTTP 1 point 1 so basically,
+like, every server on the
+internet now pretty much. The
+
+00:22:04.958-->00:22:14.292
+last is tokens, um, and this is,
+like I said, the most common
+system you’ll see. Uh, the
+
+00:22:14.292-->00:22:19.458
+actual solution that we’re doing
+this is where- where we’re going
+to focus most of your time on.
+
+00:22:19.458-->00:22:24.833
+Um, just walking through the
+token implementation that I’ve
+built, how it works, and the
+
+00:22:24.833-->00:22:29.458
+benefits to it over a
+traditional approach that you
+might see, uh, in most of the
+
+00:22:29.458-->00:22:36.292
+frameworks. Uh, so these
+typically comes in t- two forms.
+You’ll have synchronizers tokens
+
+00:22:36.292-->00:22:41.250
+which are kind of just like a
+random value and those are
+typically stored in the sessions
+
+00:22:41.250-->00:22:46.500
+and- and used for a straight
+comparison. Uh, you’ll also have
+crypt tokens which are basically
+
+00:22:46.500-->00:22:52.750
+a random value that’s encrypted
+and then the server can, uh,
+decrypt that and verify it. Uh,
+
+00:22:52.750-->00:22:58.125
+this is cool because it’s
+stateless so it doesn’t require
+having, um, any kind of shared
+
+00:22:58.125-->00:23:02.708
+state across your app servers so
+if- if you have like, y’know,
+fifty app servers behind a load
+
+00:23:02.708-->00:23:08.125
+balancer you don’t have to worry
+about like, redis or sharing
+state or- or anything or sticky
+
+00:23:08.125-->00:23:15.125
+sessions. Um, the solution that
+I’ve built uses the best of both
+worlds. You should basically
+
+00:23:15.125-->00:23:19.667
+never use the crypto stuff. It’s
+usually slow even with A- AS
+acceleration and that’s probably
+
+00:23:19.667-->00:23:24.083
+what you're going to want
+because it’s a, um, preshared
+key that you can share across
+
+00:23:24.083-->00:23:31.458
+all your servers. Uh, instead
+we’ll rely on HMAC, uh, SHA2 um,
+but we get the stateless aspect
+
+00:23:31.458-->00:23:38.125
+of it, uh, as well, which is
+really nice. Um, and so tokens
+are designed to basically tie a
+
+00:23:38.125-->00:23:45.833
+action to a specific user, uh,
+at a specific time and enforce
+that they’re not going to be
+
+00:23:45.833-->00:23:50.917
+repeating these and that only
+this user is actually performing
+those actions. Um, and you’ll
+
+00:23:50.917-->00:23:58.375
+typically see these used mostly,
+uh, for logged in users because
+the idea is that if you’re not
+
+00:23:58.375-->00:24:03.208
+logged in there’s not much you
+can do that’s dangerous. That’s
+not always true. A lot of the
+
+00:24:03.208-->00:24:08.333
+time, like, I’ll see, uh, like,
+people won’t pay out bounties
+for, like, like a log out CSRF
+
+00:24:08.333-->00:24:13.458
+because who cares if you can
+force someone to log out? It’s
+not like a- a dangerous thing
+
+00:24:13.458-->00:24:21.250
+usually. Um, so cost an- uh,
+analysis there, whether or not
+it’s worth it, um, and, like,
+
+00:24:21.250-->00:24:24.542
+they can sometimes be used for
+stopping replays which is cool
+if you want to stop animation.
+
+00:24:24.542-->00:24:29.958
+Uh, its- um, you can work around
+that but it’s possible and it
+adds a little bit of- of nicity
+
+00:24:29.958-->00:24:37.250
+there. So the way that they’re
+composed, um, typically there-
+there's four pieces you need to
+
+00:24:37.250-->00:24:44.375
+have any successful token that-
+that’s safe, um, and you may not
+see all these in the token value
+
+00:24:44.375-->00:24:49.917
+itself. They might be taken care
+of, um, in other ways. So the
+first part is- is the random
+
+00:24:49.917-->00:24:56.167
+value or the nonce and in the
+traditional type of token when
+you’re using session storage,
+
+00:24:56.167-->00:25:00.625
+basically this gets stored in
+the session and then it's then
+compared against. Uh, the user
+
+00:25:00.625-->00:25:07.125
+ID, uh, this could be anything.
+It- it just needs to be a unique
+thing that is tied to a user and
+
+00:25:07.125-->00:25:13.958
+that no one else is going to
+have. Uh, in our case we go
+ahead and- and use the session
+
+00:25:13.958-->00:25:19.208
+identifier, uh, ‘cause no one-
+no two people should ever have
+the same session ID and not be
+
+00:25:19.208-->00:25:24.625
+the same person. Um, but you can
+use anything here. Uh, in- in
+the case of, like, a normal
+
+00:25:24.625-->00:25:29.500
+session system you would
+typically rely on the fact that
+the session is tied to the user
+
+00:25:29.500-->00:25:34.833
+and so you get that- um, that
+for free. You don’t have to,
+like, build any kind of, um,
+
+00:25:34.833-->00:25:41.792
+additional check for that. Uh,
+there’s usually an expiration
+time. Um, you want these to be
+
+00:25:41.792-->00:25:46.917
+relatively, like, short lived so
+that, if someone steals it, it’s
+not going to be good forever and
+
+00:25:46.917-->00:25:49.833
+they can just keep reusing it
+over and over again. Uh, this is
+usually tied to the session
+
+00:25:49.833-->00:25:55.583
+lifetime, so when the session
+expires, the user logs out, it’s
+not longer valid. And then
+
+00:25:55.583-->00:26:06.542
+authenticity verification, uh,
+like I said, we rely on
+HMAC-SHA2 with a preshared key,
+
+00:26:06.542-->00:26:11.917
+um. You could do a whole bunch
+of different things here.
+Typical session implementations
+
+00:26:11.917-->00:26:18.708
+rely on the fact that, uh, a
+user can’t typically modify
+session state directly, so if
+
+00:26:18.708-->00:26:23.000
+they can’t do it, then the data
+should be authentic because it
+hasn’t been modified other than
+
+00:26:23.000-->00:26:28.500
+by the server itself. If any one
+of these is missing, you
+severely compromised the, uh,
+
+00:26:28.500-->00:26:34.167
+security of the token. Um, if
+you don’t have an expiration
+time, it lasts forever. If you
+
+00:26:34.167-->00:26:39.750
+not verifkit- verifying
+authenticity, you could forge
+tokens potentially. Um, user ID,
+
+00:26:39.750-->00:26:44.750
+if you don’t scope it to a
+specific user, you could steal a
+token from any one user and use
+
+00:26:44.750-->00:26:49.333
+it for everyone else, or if you
+were a valid user on there too,
+you could grab a token for
+
+00:26:49.333-->00:26:56.375
+yourself, then use it for other
+users and just kind of like
+force it in. This is the
+
+00:26:56.375-->00:27:01.333
+typical life cycle you’ll see,
+uh, for a client in the server.
+You’ll make your initial get
+
+00:27:01.333-->00:27:07.125
+requests, um, this is usually
+unprotected and then this will
+send back a token. That token is
+
+00:27:07.125-->00:27:16.667
+then forwarded, uh, in the, uh,
+unsafe requests either in a
+header or in the, uh, request
+
+00:27:16.667-->00:27:23.708
+body depending on the
+implementation that you’re
+using. We use both. Uh, and then
+
+00:27:23.708-->00:27:26.833
+on the server side once it goes
+back up the server will verify
+the token. If it’s good, it
+
+00:27:26.833-->00:27:29.292
+let’s it go through. If it’s
+bad, it fails it, like with a
+403 or something. Um, I’ve
+
+00:27:29.292-->00:27:37.458
+already kind of talked about
+this. You- you really don’t want
+to use crypto. It’s nice because
+
+00:27:37.458-->00:27:42.458
+it’s stateless but y- the
+performance is usually pretty
+s***ty and, uh, you just kind of
+
+00:27:42.458-->00:27:47.667
+don’t want to bother. There’s
+better ways to do it. The
+generation is pretty simple. Uh,
+
+00:27:47.667-->00:27:52.708
+this is the code that we used to
+handle it. Uh, you pass in user
+ID and a key, you wrap a random
+
+00:27:52.708-->00:27:56.875
+value. Uh, you should make sure
+to use a secure random value
+here so like, from, like, a good
+
+00:27:56.875-->00:28:02.125
+entropy source. Um, then you
+sign it. You can catenate it.
+Uh, one thing to note here is we
+
+00:28:02.125-->00:28:07.083
+use hyphens. Uh, this is one of
+those little gotchas but the
+colon is actually not a valid
+
+00:28:07.083-->00:28:13.542
+character in the value of a
+version one cookie, uh, so it
+will force an upgrade. Uh, if
+
+00:28:13.542-->00:28:19.333
+you’re gonna do this, don’t use
+a colon as a delimiter, uh, or
+you might have issues with com-
+
+00:28:19.333-->00:28:25.833
+project compatibility.
+Validation is also pretty
+simple. Uh, you just split it up
+
+00:28:25.833-->00:28:32.917
+based on your delimiter, uh, and
+you recompute the, uh, the- the
+hash or the- the- the mac from
+
+00:28:32.917-->00:28:41.333
+the parts, and then you make
+sure that it is not past the
+expiration time. You verify that
+
+00:28:41.333-->00:28:53.167
+the user is correct and
+everything is cool. Uh, that is
+a valid token. Uh, so the way
+
+00:28:53.167-->00:29:01.375
+that we handle, uh, putting the
+tokens into the- the- the client
+browser, um, basically we use
+
+00:29:01.375-->00:29:06.833
+middleware and various other,
+uh, systems whether- wherever
+you’re- you’re doing your
+
+00:29:06.833-->00:29:10.875
+interception. And you basically
+just look at the requests, you
+determine whether or not you
+
+00:29:10.875-->00:29:17.292
+have to generate a token, uh,
+and you add it in if you have,
+um, and the browsers take care
+
+00:29:17.292-->00:29:23.292
+of the rest. Uh. We’ll be
+appending a little bit of a- a
+JSON payload to the response
+
+00:29:23.292-->00:29:29.583
+that will handle putting that
+into further requests that need
+to be protected. Uh, and ther-
+
+00:29:29.583-->00:29:33.375
+there’s a lot involved here that
+you may not be aware of. Uh,
+there’s all kinds of, like,
+
+00:29:33.375-->00:29:38.000
+weird, uh, edge cases with
+regard to uh, like, dealing with
+the request coming in. It’s like
+
+00:29:38.000-->00:29:44.917
+typically it’s middleware if
+you’re gonna read the body of a
+request. Like, if you read it
+
+00:29:44.917-->00:29:49.250
+in, there’s no more data on the
+wire, so you have to buffer that
+and then expose it, and, like,
+
+00:29:49.250-->00:29:55.125
+on the java side it’s a huge
+pain in the a**, um, everything
+with it is different and this is
+
+00:29:55.125-->00:29:59.875
+like that complexity thing I
+mentioned about you have to
+trade off a lot of domain
+
+00:29:59.875-->00:30:04.250
+knowledge here to make sure you
+do things right and you don’t
+break the app downstream, um,
+
+00:30:04.250-->00:30:10.583
+giving it something it doesn’t
+expect. Sending tokens back.
+This is like the real innovation
+
+00:30:10.583-->00:30:14.917
+and, like, where, like, the bulk
+of the work went into was
+building something that could
+
+00:30:14.917-->00:30:19.042
+take the tokens out of the
+cookie that we sent down and
+send it back up in a secure way
+
+00:30:19.042-->00:30:24.875
+that allowed us to put it into
+basically any kind of request
+tha- that needs to be protected.
+
+00:30:24.875-->00:30:32.042
+Uh, we’ll be talking about two
+different forms which are, uh,
+form based and XHR. Um, I’m not
+
+00:30:32.042-->00:30:35.958
+going to touch resource
+inclusion because there’s not
+really, like, a good way to do
+
+00:30:35.958-->00:30:41.042
+it. You can use some weird
+techniques and I’m happy to talk
+about it later, um, but it’s
+
+00:30:41.042-->00:30:45.417
+going to be kind of error prone
+and very dependant on your site.
+If you’re using safe and unsafe
+
+00:30:45.417-->00:30:51.792
+verbs correctly this shouldn't
+be a problem for you. Uh, and I
+did a ton of browser testing
+
+00:30:51.792-->00:30:56.042
+across all this work, uh, and
+I’ll show the matrix. It
+basically works back to, like,
+
+00:30:56.042-->00:31:00.750
+ancient browsers so this should
+be pretty good. Uh, and you
+could probably get it back
+
+00:31:00.750-->00:31:07.833
+farther even, um, if you wanted.
+Um, so the way that it works for
+forms is basically on document
+
+00:31:07.833-->00:31:11.833
+we’re going to attach a- an
+event listener and we’re doing
+it on document and not on the
+
+00:31:11.833-->00:31:16.667
+form itself because the form may
+not be rendered yet on the page
+and we have to ensure that, uh,
+
+00:31:16.667-->00:31:23.875
+we can get to it at any point in
+time. So we- we delegate from
+documents and so whenever the
+
+00:31:23.875-->00:31:28.792
+event fires it will bubble up
+and bubble up and bubble up and
+eventually we’ll just say “Is
+
+00:31:28.792-->00:31:33.250
+this the right thing? Do I have
+to fire on this thing?” and it
+will do whatever it needs to do
+
+00:31:33.250-->00:31:39.250
+and we can walk through the code
+for that right now. Uh, so this
+is what you would see in your,
+
+00:31:39.250-->00:31:44.750
+uh, your click handler and it’s
+important that you use click and
+not on submit because submit
+
+00:31:44.750-->00:31:51.917
+does not bubble but click does.
+So if you were to, uh, try to
+attach it to document for submit
+
+00:31:51.917-->00:31:56.417
+you’ll never see your event
+fire. Uh, and this was tested
+across browsers and we didn’t
+
+00:31:56.417-->00:32:01.208
+see bubbling in any of them as
+far as I remember. Uh, so
+basically we- we set our target
+
+00:32:01.208-->00:32:06.708
+and the target is the, uh, the
+element that was clicked on. So
+this is the HTML element that
+
+00:32:06.708-->00:32:13.333
+the event was fired for. And
+what we’re going to do is we’re
+going to walk up t- the dom
+
+00:32:13.333-->00:32:19.167
+trying to find one of the, uh,
+elements that we care about, uh,
+delegating to. And we do this
+
+00:32:19.167-->00:32:25.292
+because you might click on a
+span that is, y’know, three
+levels deep in the dom of a
+
+00:32:25.292-->00:32:35.000
+submit button or an A-tag or a
+button and so the event is going
+to fire on that span but not the
+
+00:32:35.000-->00:32:40.792
+actual thing you care about
+that’s gonna do the submission.
+So we need to walk up until we
+
+00:32:40.792-->00:32:47.208
+find it. And it’s possible that
+we won’t find it. We may get all
+the way up the dom to the very
+
+00:32:47.208-->00:32:51.958
+top and we’ll see nothing and in
+that case we just don’t have to
+worry about it. We’re not inside
+
+00:32:51.958-->00:33:00.625
+of, uh, a form or anything and
+so it’s not something we have to
+worry about. From here, we’re
+
+00:33:00.625-->00:33:06.000
+gonna look at the type, um, if
+it’s a- if it’s an input we have
+to make sure that it’s a submit
+
+00:33:06.000-->00:33:10.333
+and not like a- uh, like a text
+input or something. Uh, this is
+just a bunch of edge case code
+
+00:33:10.333-->00:33:15.167
+that basically finds out whether
+or not it’s something we care
+about. Uh, from here, we know
+
+00:33:15.167-->00:33:21.208
+we’re in an element we care
+about but we then need to go
+look up the form. We have to go
+
+00:33:21.208-->00:33:26.333
+find the form that we’re in. You
+might have more than one form on
+a page but luckily we’re in a
+
+00:33:26.333-->00:33:28.958
+tree so we just continue to walk
+up and we’ll either hit the top-
+we’ll either hit a form or we’re
+
+00:33:28.958-->00:33:34.792
+gonna hit, uh, the top of the
+dom and then we know we can just
+stop wo- worrying about it. If
+
+00:33:34.792-->00:33:42.167
+we’re in the form we’re good.
+From here we’re gonna determine
+if a token already exists in the
+
+00:33:42.167-->00:33:47.875
+form. Um, we’re gonna look it up
+by the thing that we’re
+inserting. If we find it, we’re
+
+00:33:47.875-->00:33:54.375
+gonna verify that the value of
+that token is valid. It’s the
+one that’s in our cookie. If
+
+00:33:54.375-->00:33:58.125
+it’s not we’re going to update
+it. Uh. And if it’s not there
+then we’re just going to go and
+
+00:33:58.125-->00:34:02.542
+we’re just going to append it
+into the, uh, into the form. And
+so then when they’re actual
+
+00:34:02.542-->00:34:10.542
+request happens the form data
+will be sent with that token.
+For XHR it’s a little bit
+
+00:34:10.542-->00:34:19.667
+different. We’re basically gonna
+be monkeypatching, uh, XHR to
+rewrite the open send, uh,
+
+00:34:19.667-->00:34:25.042
+methods and add some additional
+code that we wrap. Uh, and this
+allows us to have some
+
+00:34:25.042-->00:34:30.542
+additional functionality like
+adding in the token value into
+the headers. Uh, this is
+
+00:34:30.542-->00:34:36.667
+specifically, uh, bottlenecked
+at IE8. Um, most other browsers
+are basically supported back to
+
+00:34:36.667-->00:34:44.250
+anything anyone would use. Uh,
+IE8 is specifically the
+bottleneck because before IE8,
+
+00:34:44.250-->00:34:51.500
+uh, it used, uh, activeX
+controls to do XHR and so
+because of that, uh, we can’t
+
+00:34:51.500-->00:35:00.250
+monkeypatch a code. Technically
+in 7 was, uh, where they moved
+over to XHR, like the normals
+
+00:35:00.250-->00:35:05.833
+standards compliant version, but
+you can’t, uh, use prototype in
+7 so we don’t have the ability
+
+00:35:05.833-->00:35:11.958
+to monkeypatch any of it. Uh,
+you might be able to- to
+simulate some of this with
+
+00:35:11.958-->00:35:15.333
+activeX controls. I don’t know.
+I didn’t try that. But if it's,
+like, a real use case you have
+
+00:35:15.333-->00:35:20.542
+that might be an option. Um,
+this is essentially the code we-
+were writing. Uh, it's important
+
+00:35:20.542-->00:35:25.458
+that this runs early on so you
+want this code to execute. And
+basically we’re gonna save a- a
+
+00:35:25.458-->00:35:31.667
+copy of the original send and
+open and we’re going to just
+overwrite it with our own that
+
+00:35:31.667-->00:35:36.958
+goes in and grabs the token and
+then inserts it into the header.
+Uh, and this is a header that
+
+00:35:36.958-->00:35:46.042
+is, uh, valid to write to as
+javascript. And then we just
+call the original, uh, value.
+
+00:35:46.042-->00:35:51.708
+Oh, the original function. Uh,
+the special toggles you might
+care about. One is the Secure
+
+00:35:51.708-->00:35:58.042
+flag if you want to make sure
+HPS is- is all chill. Uh,
+protecting safe verbs, if this
+
+00:35:58.042-->00:36:01.708
+is something you have to do,
+you’ll have to enable this and
+you do this by basically
+
+00:36:01.708-->00:36:06.000
+creating an exclusion list. And
+this list is safe URLs you can
+go to. So, like, initial page
+
+00:36:06.000-->00:36:10.875
+loads you can hit where you can
+get a valid token ‘cause
+otherwise all your requests will
+
+00:36:10.875-->00:36:17.500
+fail as an invalid, uh, token
+because it won’t be there. Uh,
+and then whether or not you want
+
+00:36:17.500-->00:36:22.042
+to allow cross origin requests
+and what those permitted origins
+are going to be. And this gets
+
+00:36:22.042-->00:36:27.375
+layered on top of your CORS
+config. This is the browser
+support matrix. Like I said, IE8
+
+00:36:27.375-->00:36:31.292
+is the bottleneck, but, like,
+you can see here like everything
+is supported. I mean, like- and
+
+00:36:31.292-->00:36:35.875
+in some of these cases it might
+be that some of the older ones
+are supported. I just couldn't
+
+00:36:35.875-->00:36:45.250
+find older browsers in some of
+these versions so it might work.
+Jump back to, uh, the browser.
+
+00:36:45.250-->00:36:49.625
+Uh, this is like a demo site
+that I put together. And it
+basically walks through a whole
+
+00:36:49.625-->00:36:55.250
+bunch of different use cases
+where, uh, you might need to see
+whether or not this would work.
+
+00:36:55.250-->00:37:00.042
+So in this case, this is like a
+normal form submission, um, and
+the javascript is just gonna
+
+00:37:00.042-->00:37:03.958
+insert the token here and do
+it’s thing so we’ll see, like,
+all of these requests go
+
+00:37:03.958-->00:37:12.583
+through, um, and it’s- oh, my
+token’s expired. It refreshed
+this. And so it succeeded now.
+
+00:37:12.583-->00:37:16.000
+So it- it did the check and it
+failed because, uh, my token’s
+like over an hour old at this
+
+00:37:16.000-->00:37:22.625
+point. Um, and so, like, this
+is, uh, it’s like mock
+validation with bubbling off. So
+
+00:37:22.625-->00:37:28.125
+if I was gonna, y'know, wanted
+to do some javacript validation
+on the client side, but I wanted
+
+00:37:28.125-->00:37:31.625
+to stop bubbling, making sure
+that our javascript will still
+run after the callback that they
+
+00:37:31.625-->00:37:36.417
+registered fires. So all these
+different weird edge cases. Just
+making sure that it works. Um,
+
+00:37:36.417-->00:37:41.667
+this is all going to get
+released so you can use this to
+verify whether or not your
+
+00:37:41.667-->00:37:50.375
+solution is functioning. Um,
+same idea but this has bubbling
+on. Um, preventing defaults. So
+
+00:37:50.375-->00:37:57.083
+what- making sure that our
+stuff’s still gonna fire. Um,
+this is non form based XHR. Um,
+
+00:37:57.083-->00:38:04.250
+this is a button submitting a
+form. So you click the button.
+The button has a callback. It
+
+00:38:04.250-->00:38:07.917
+then hits submit on the form
+rather than using a real
+traditional input element. Um,
+
+00:38:07.917-->00:38:15.125
+this is inserting a form. So
+making sure that the form isn’t
+rendered on page on page load so
+
+00:38:15.125-->00:38:20.000
+that we do actually delegate to
+document and we’re not firing on
+something that was there from
+
+00:38:20.000-->00:38:27.125
+the beginning. Um, and this is
+an anchor tag. So being able to
+overload the behavior of a link
+
+00:38:27.125-->00:38:31.333
+and make that do something else.
+Um, so just a whole bunch of
+different edge cases that you
+
+00:38:31.333-->00:38:34.750
+might run into. And verifying
+this actually does behave in the
+way you expect it to and that
+
+00:38:34.750-->00:38:43.917
+you can actually insert these
+tokens and have it verify for,
+um, everything. Make it back
+
+00:38:43.917-->00:38:50.875
+over to here. I'm’ running kinda
+short on time, um, so let’s get
+into the future. Um, there’s
+
+00:38:50.875-->00:38:57.708
+this really awesome spec out
+right now called “Same Site.”
+Um, this is coming very shortly
+
+00:38:57.708-->00:39:06.000
+and it is basically, um, what
+we’re approaching as possibly
+the final nail in the coffin for
+
+00:39:06.000-->00:39:10.458
+CSRF. Uh, and this is an
+extension to cookies. It
+basically allows you to specify,
+
+00:39:10.458-->00:39:19.000
+um, an origin in your cookie,
+um, or it uses your origin and
+will only send it if it matches.
+
+00:39:19.000-->00:39:24.958
+So there’s two different ways
+you can do it: lax and- and
+strict. You probably only ever
+
+00:39:24.958-->00:39:29.458
+want to use lax because strict
+will probably fail a lot for
+you. The difference being that,
+
+00:39:29.458-->00:39:35.542
+uh, strict will fail on safe
+requests where lax will not. So
+if you're say, going to a page
+
+00:39:35.542-->00:39:43.083
+that requires a cookie being
+there and it’s a get request, so
+like I’m going to the initial,
+
+00:39:43.083-->00:39:49.208
+y'know, google- or gmail dot com
+and I’m already logged in, that
+request would fail because my
+
+00:39:49.208-->00:39:52.833
+cookies wouldn’t be sent with
+it, uh, because I was coming
+from a different origin to that
+
+00:39:52.833-->00:39:58.958
+page because froming- coming
+from my empty tab or another tab
+and going to there, the origin
+
+00:39:58.958-->00:40:04.500
+didn’t match from where I was
+going. Uh, and you’d have to do,
+like, a page reload or you’d
+
+00:40:04.500-->00:40:08.583
+have to do, like, a redirect to
+make it all happy. So lax is
+probably what you want. Um, it’s
+
+00:40:08.583-->00:40:12.917
+fully client side which is the
+coolest thing. There’s no tokens
+required. It basically does what
+
+00:40:12.917-->00:40:25.083
+you’d get out of this, um, by
+securing the session data itself
+rather than, um, relying on a
+
+00:40:25.083-->00:40:32.000
+token to make sure that, uh,
+it’s coming from a trusted
+origin. Um, so we can see here,
+
+00:40:32.000-->00:40:37.917
+this working. We- we send our
+initial page request in, um, and
+it comes back. We make some
+
+00:40:37.917-->00:40:48.333
+requests and it’s all good. Um.
+So look, this is like an example
+of a phishing attack where, uh,
+
+00:40:48.333-->00:40:55.125
+we might get something, uh, a
+link. We go to that link. It dr-
+spawns and that sends us out.
+
+00:40:55.125-->00:41:01.667
+Um, here you would normally see
+the cookie go across but it’s-
+it’s not gonna happen, um. And
+
+00:41:01.667-->00:41:20.000
+then this is the browser support
+matrix, uh, for Same Site. As
+you can see, it basically is
+
+00:41:20.000-->00:41:24.417
+supported on nothing right now.
+If you’re using Chrome, you’re-
+you’re cool but uh, nothing else
+
+00:41:24.417-->00:41:34.417
+really supports it. Um. So the-
+the one issue with this is that
+is doesn’t support CORS so if
+
+00:41:34.417-->00:41:40.250
+you have CORS as a use case, uh,
+you probably won’t be able to
+use Same Site. I talked to the
+
+00:41:40.250-->00:41:44.375
+authors of the spec and they
+didn’t really have a good answer
+for me. Uh, so it probably is
+
+00:41:44.375-->00:41:50.083
+not going to happen and there’s
+going to be, um, nothing that
+happens to make that solved. It
+
+00:41:50.083-->00:41:58.083
+just doesn’t really work
+with,uh, this type of system.
+Uh, so that’s it. Um, this is
+
+00:41:58.083-->00:42:04.042
+the solution that, uh, we’ve
+been working on for the last
+year or so. Um. The code will be
+
+00:42:04.042-->00:42:09.458
+up or some aspect of it. Uh, and
+I’ll be posting the slides. Um,
+this is a pretty good solution.
+
+00:42:09.458-->00:42:15.083
+It- it hits most use cases if-
+if this is the kind of issue you
+have or you have a lot of sites
+
+00:42:15.083-->00:42:27.500
+you need to just add protect for
+but you can’t go modify it, um.
+Like I said, ideally, best case
+
+00:42:27.500-->00:42:32.833
+scenario you go fix the app or
+you use a framework that
+supports it for you. Do your
+
+00:42:32.833-->00:42:37.792
+safe unsafe correctly. Uh,
+you’ll be really happy you did.
+It will make things so much
+
+00:42:37.792-->00:42:44.000
+easier. Uh, and check out Same
+Site. It- it might be a- a valid
+solution in the the future. Uh,
+
+00:42:44.000-->00:42:48.583
+it is backwards compatible so if
+you wanted to start using it
+newer, uh, older browsers that
+
+00:42:48.583-->00:42:52.625
+don’t support it will just
+ignore it like it doesn’t exist.
+Newer browsers it should work.
+
+00:42:52.625-->00:42:59.292
+Um, I've tested it in- in Chrome
+and got good results, uh, but,
+like, if it doesn’t get
+
+00:42:59.292-->00:00:00.000
+supported by anything it’s not
+gonna really matter. Uh. Cool.
+Thank you. [applause]
+

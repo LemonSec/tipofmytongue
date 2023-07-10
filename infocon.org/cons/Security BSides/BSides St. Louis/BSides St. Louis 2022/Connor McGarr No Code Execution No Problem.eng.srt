@@ -1,0 +1,5756 @@
+﻿1
+00:00:00,000 --> 00:00:03,659
+the sweet of features so it's well known
+
+2
+00:00:03,659 --> 00:00:07,319
+but it's not really well adopted in the
+
+3
+00:00:07,319 --> 00:00:08,700
+Enterprise so we'll kind of take a look
+
+4
+00:00:08,700 --> 00:00:11,400
+at how it works and how attackers kind
+
+5
+00:00:11,400 --> 00:00:14,460
+of have to change based on these
+
+6
+00:00:14,460 --> 00:00:15,960
+mitigations
+
+7
+00:00:15,960 --> 00:00:17,820
+so about me my name is Connor I'm one of
+
+8
+00:00:17,820 --> 00:00:19,140
+those dumb developers you heard about
+
+9
+00:00:19,140 --> 00:00:22,560
+earlier I'm at crowdstrike I'm on
+
+10
+00:00:22,560 --> 00:00:25,680
+Twitter and I have a Blog and I'm pretty
+
+11
+00:00:25,680 --> 00:00:27,779
+much interested in anything uh C
+
+12
+00:00:27,779 --> 00:00:31,019
+assembly development related
+
+13
+00:00:31,019 --> 00:00:33,059
+so today we'll kind of talk about what
+
+14
+00:00:33,059 --> 00:00:35,460
+Windows exploitation looks like current
+
+15
+00:00:35,460 --> 00:00:37,079
+in its current state we'll take a look
+
+16
+00:00:37,079 --> 00:00:39,180
+at the internals of the mitigations
+
+17
+00:00:39,180 --> 00:00:40,980
+which we're going to speak about then
+
+18
+00:00:40,980 --> 00:00:42,300
+we'll see how that kind of affects
+
+19
+00:00:42,300 --> 00:00:44,820
+exploitation
+
+20
+00:00:44,820 --> 00:00:47,040
+so when it comes to exploitation today
+
+21
+00:00:47,040 --> 00:00:49,559
+attackers have a few different options
+
+22
+00:00:49,559 --> 00:00:51,719
+when it comes to taking advantage of
+
+23
+00:00:51,719 --> 00:00:53,160
+what we would call memory corruption
+
+24
+00:00:53,160 --> 00:00:54,719
+vulnerabilities
+
+25
+00:00:54,719 --> 00:00:56,579
+um and the way that this usually uh
+
+26
+00:00:56,579 --> 00:00:58,559
+occurs is an attacker will try to
+
+27
+00:00:58,559 --> 00:01:00,960
+execute some sort of unsigned code or
+
+28
+00:01:00,960 --> 00:01:03,140
+Shell Code as you're all familiar with
+
+29
+00:01:03,140 --> 00:01:05,820
+the reason for this being is most C2
+
+30
+00:01:05,820 --> 00:01:07,560
+Frameworks for instance they have a
+
+31
+00:01:07,560 --> 00:01:10,680
+shell code blob they run because they
+
+32
+00:01:10,680 --> 00:01:12,780
+call into Windows apis which are a suite
+
+33
+00:01:12,780 --> 00:01:14,520
+of exported functions on Windows that
+
+34
+00:01:14,520 --> 00:01:16,380
+allow you to open network connections
+
+35
+00:01:16,380 --> 00:01:18,360
+Etc so when you do that in pure Shell
+
+36
+00:01:18,360 --> 00:01:20,159
+Code it easily allows you to call those
+
+37
+00:01:20,159 --> 00:01:23,220
+functions set up arguments Etc and it's
+
+38
+00:01:23,220 --> 00:01:26,220
+the path of least resistance
+
+39
+00:01:26,220 --> 00:01:29,280
+so um most exploit chains today though
+
+40
+00:01:29,280 --> 00:01:31,500
+they take two separate um exploits and
+
+41
+00:01:31,500 --> 00:01:33,119
+the reason for this being is popular
+
+42
+00:01:33,119 --> 00:01:35,280
+initial access targets like web browsers
+
+43
+00:01:35,280 --> 00:01:37,500
+they're sandboxed so an attacker
+
+44
+00:01:37,500 --> 00:01:40,320
+exploits a web browser for instance
+
+45
+00:01:40,320 --> 00:01:41,880
+um the code execution they have is only
+
+46
+00:01:41,880 --> 00:01:44,759
+in context of a very low privileged
+
+47
+00:01:44,759 --> 00:01:47,280
+um sandbox essentially you can't open up
+
+48
+00:01:47,280 --> 00:01:48,900
+network connections do any of the things
+
+49
+00:01:48,900 --> 00:01:50,420
+we want to do
+
+50
+00:01:50,420 --> 00:01:53,759
+drop files Etc so what they'll try to do
+
+51
+00:01:53,759 --> 00:01:55,259
+is they'll try to privilege escalate
+
+52
+00:01:55,259 --> 00:01:56,399
+from there
+
+53
+00:01:56,399 --> 00:01:58,200
+um and the and the main method of that
+
+54
+00:01:58,200 --> 00:01:59,759
+is Through the Windows kernel because
+
+55
+00:01:59,759 --> 00:02:01,860
+obviously it's accessible to anyone that
+
+56
+00:02:01,860 --> 00:02:04,560
+uses the OS
+
+57
+00:02:04,560 --> 00:02:07,079
+so the way that this works is that it's
+
+58
+00:02:07,079 --> 00:02:09,840
+a three-step approach so attackers on
+
+59
+00:02:09,840 --> 00:02:11,340
+Modern operating systems there's really
+
+60
+00:02:11,340 --> 00:02:13,620
+no read write execute memory by default
+
+61
+00:02:13,620 --> 00:02:15,900
+so they'll find a writable portion of
+
+62
+00:02:15,900 --> 00:02:17,280
+memory where they can write their shell
+
+63
+00:02:17,280 --> 00:02:19,739
+code to they'll use some sort of first
+
+64
+00:02:19,739 --> 00:02:22,379
+stage payload to mark that Shell Code as
+
+65
+00:02:22,379 --> 00:02:24,420
+executable because remember that memory
+
+66
+00:02:24,420 --> 00:02:26,879
+is only writable it's not executable and
+
+67
+00:02:26,879 --> 00:02:28,800
+then they'll do something called control
+
+68
+00:02:28,800 --> 00:02:30,599
+flow hijacking where they force the
+
+69
+00:02:30,599 --> 00:02:33,300
+target to execute that memory which
+
+70
+00:02:33,300 --> 00:02:35,160
+obviously it's now executable and so
+
+71
+00:02:35,160 --> 00:02:37,379
+it's going to run your shell code
+
+72
+00:02:37,379 --> 00:02:39,900
+and in the windows kernel here's kind of
+
+73
+00:02:39,900 --> 00:02:42,180
+how this looks a high level diagram so
+
+74
+00:02:42,180 --> 00:02:44,180
+basically we got the memory address
+
+75
+00:02:44,180 --> 00:02:47,760
+ffff780 sign extended and it contains
+
+76
+00:02:47,760 --> 00:02:50,580
+some Shell Code in the red and we can
+
+77
+00:02:50,580 --> 00:02:52,739
+see the acronym pte
+
+78
+00:02:52,739 --> 00:02:54,060
+um below which stands for page table
+
+79
+00:02:54,060 --> 00:02:56,700
+entry that describes this memory region
+
+80
+00:02:56,700 --> 00:02:59,400
+so what this is saying the K stands for
+
+81
+00:02:59,400 --> 00:03:01,459
+kernel it's a kernel mode memory address
+
+82
+00:03:01,459 --> 00:03:04,739
+W stands for writable and v stands for
+
+83
+00:03:04,739 --> 00:03:07,500
+valid so we've taken care of the first
+
+84
+00:03:07,500 --> 00:03:09,120
+step which is writing some shell codes
+
+85
+00:03:09,120 --> 00:03:10,920
+somewhere that's writable but it's not
+
+86
+00:03:10,920 --> 00:03:12,860
+executable
+
+87
+00:03:12,860 --> 00:03:15,540
+then an attacker will use some sort of
+
+88
+00:03:15,540 --> 00:03:17,760
+second stage payload which we talked
+
+89
+00:03:17,760 --> 00:03:19,800
+about and they will find the page table
+
+90
+00:03:19,800 --> 00:03:23,400
+entry that corresponds to the memory so
+
+91
+00:03:23,400 --> 00:03:25,560
+the page table entry describes that page
+
+92
+00:03:25,560 --> 00:03:27,480
+it says hey this is readable writable
+
+93
+00:03:27,480 --> 00:03:30,120
+Etc they locate that metadata and they
+
+94
+00:03:30,120 --> 00:03:32,340
+corrupt it and so now when the memory
+
+95
+00:03:32,340 --> 00:03:35,159
+manager or excuse me when the CPU goes
+
+96
+00:03:35,159 --> 00:03:37,440
+to execute this instruction it looks at
+
+97
+00:03:37,440 --> 00:03:39,300
+uh the metadata and it says oh this is
+
+98
+00:03:39,300 --> 00:03:40,799
+executable that means there's code that
+
+99
+00:03:40,799 --> 00:03:42,840
+needs to be executed there so we've gone
+
+100
+00:03:42,840 --> 00:03:46,260
+from a writable page to executable page
+
+101
+00:03:46,260 --> 00:03:48,599
+and then on the right hand side we can
+
+102
+00:03:48,599 --> 00:03:50,280
+see that we overwrote a function pointer
+
+103
+00:03:50,280 --> 00:03:52,260
+so as the name infers function pointer
+
+104
+00:03:52,260 --> 00:03:55,200
+points to a function so we override it
+
+105
+00:03:55,200 --> 00:03:56,700
+with the memory address of our Shell
+
+106
+00:03:56,700 --> 00:03:58,739
+Code so what will happen now when this
+
+107
+00:03:58,739 --> 00:04:00,720
+function pointer goes to be executed
+
+108
+00:04:00,720 --> 00:04:02,340
+it's going to execute this memory
+
+109
+00:04:02,340 --> 00:04:04,019
+address which is a malicious address
+
+110
+00:04:04,019 --> 00:04:05,819
+that contains Shell Code which is now
+
+111
+00:04:05,819 --> 00:04:07,739
+executable
+
+112
+00:04:07,739 --> 00:04:09,000
+so that's kind of that three-step
+
+113
+00:04:09,000 --> 00:04:11,220
+approach we talked about this is
+
+114
+00:04:11,220 --> 00:04:13,080
+actually mitigated so that was a kernel
+
+115
+00:04:13,080 --> 00:04:15,959
+mode example but in user mode where
+
+116
+00:04:15,959 --> 00:04:18,298
+typical users operate that's actually
+
+117
+00:04:18,298 --> 00:04:19,798
+mitigated with a mitigation called
+
+118
+00:04:19,798 --> 00:04:22,320
+arbitrary code guard and what that does
+
+119
+00:04:22,320 --> 00:04:25,199
+is it basically says it's Windows
+
+120
+00:04:25,199 --> 00:04:27,240
+implementation of write to X or execute
+
+121
+00:04:27,240 --> 00:04:28,620
+which means memory can either be
+
+122
+00:04:28,620 --> 00:04:31,620
+writable or executable but never both so
+
+123
+00:04:31,620 --> 00:04:33,780
+in our example what we did was we
+
+124
+00:04:33,780 --> 00:04:36,120
+corrupted the page table entry to make
+
+125
+00:04:36,120 --> 00:04:38,699
+memory uh memory that was writable
+
+126
+00:04:38,699 --> 00:04:40,979
+executable well that violates the tenet
+
+127
+00:04:40,979 --> 00:04:42,840
+of arbitrary code guard that memory
+
+128
+00:04:42,840 --> 00:04:44,880
+can't be both of those things at any one
+
+129
+00:04:44,880 --> 00:04:46,199
+time
+
+130
+00:04:46,199 --> 00:04:47,820
+um but that's a user mode mitigation
+
+131
+00:04:47,820 --> 00:04:49,500
+arbitrary code guard and the reason why
+
+132
+00:04:49,500 --> 00:04:51,660
+that's a user mode mitigation is because
+
+133
+00:04:51,660 --> 00:04:53,940
+the mitigation itself is implemented in
+
+134
+00:04:53,940 --> 00:04:56,460
+the kernel so we have a user mode kernel
+
+135
+00:04:56,460 --> 00:04:58,740
+mode security boundary so if we
+
+136
+00:04:58,740 --> 00:05:00,720
+implement the mitigation in kernel mode
+
+137
+00:05:00,720 --> 00:05:02,699
+well attackers in user mode they can't
+
+138
+00:05:02,699 --> 00:05:04,740
+corrupt the Integrity of that mitigation
+
+139
+00:05:04,740 --> 00:05:06,180
+because it's protected by the kernel
+
+140
+00:05:06,180 --> 00:05:07,020
+right
+
+141
+00:05:07,020 --> 00:05:09,000
+but in our example that we showed it was
+
+142
+00:05:09,000 --> 00:05:11,040
+a kernel mode exploit right
+
+143
+00:05:11,040 --> 00:05:12,300
+so
+
+144
+00:05:12,300 --> 00:05:14,759
+if you try to implement a mitigation in
+
+145
+00:05:14,759 --> 00:05:17,759
+the kernel but your mitigation Works off
+
+146
+00:05:17,759 --> 00:05:19,620
+of the fact you're trying to block
+
+147
+00:05:19,620 --> 00:05:21,419
+attackers that already have access to
+
+148
+00:05:21,419 --> 00:05:24,060
+the kernel that's basically a mid the
+
+149
+00:05:24,060 --> 00:05:25,919
+kernel trying to defend against itself
+
+150
+00:05:25,919 --> 00:05:28,380
+right if I'm an attacker and I access
+
+151
+00:05:28,380 --> 00:05:31,199
+internal you put a mitigation there well
+
+152
+00:05:31,199 --> 00:05:33,360
+I'll just disable the mitigation and
+
+153
+00:05:33,360 --> 00:05:37,139
+then go on my Merry way so we need to
+
+154
+00:05:37,139 --> 00:05:38,940
+address this problem of how do we
+
+155
+00:05:38,940 --> 00:05:40,860
+address this if the kernel is the
+
+156
+00:05:40,860 --> 00:05:42,780
+highest security boundary essentially on
+
+157
+00:05:42,780 --> 00:05:44,400
+the OS
+
+158
+00:05:44,400 --> 00:05:45,960
+and that's exactly what we'll talk about
+
+159
+00:05:45,960 --> 00:05:48,240
+here we'll talk about hyper-v we'll talk
+
+160
+00:05:48,240 --> 00:05:50,400
+about VBS which is virtualization-based
+
+161
+00:05:50,400 --> 00:05:52,699
+security and then hvci is a little later
+
+162
+00:05:52,699 --> 00:05:55,500
+we'll get to that
+
+163
+00:05:55,500 --> 00:05:57,479
+um VBS or virtualization-based security
+
+164
+00:05:57,479 --> 00:05:59,880
+it's as I mentioned a suite of features
+
+165
+00:05:59,880 --> 00:06:03,060
+uh enforce and provided by hyper-v
+
+166
+00:06:03,060 --> 00:06:04,979
+um this Suite of features as I mentioned
+
+167
+00:06:04,979 --> 00:06:06,600
+if you're familiar with it you're
+
+168
+00:06:06,600 --> 00:06:08,699
+probably familiar with credential guard
+
+169
+00:06:08,699 --> 00:06:11,400
+for instance which is one of the
+
+170
+00:06:11,400 --> 00:06:13,560
+security mitigations offered Under the
+
+171
+00:06:13,560 --> 00:06:16,139
+Umbrella of VBS
+
+172
+00:06:16,139 --> 00:06:18,479
+um and what VBS does is it works off of
+
+173
+00:06:18,479 --> 00:06:21,479
+hyper-v which is Microsoft's hypervisor
+
+174
+00:06:21,479 --> 00:06:24,240
+so since hyper-v is responsible for
+
+175
+00:06:24,240 --> 00:06:26,400
+enforcing VBS it's worthwhile
+
+176
+00:06:26,400 --> 00:06:28,380
+investigating the design
+
+177
+00:06:28,380 --> 00:06:31,199
+and hyper-v works off of the notion of
+
+178
+00:06:31,199 --> 00:06:34,259
+partitions so the root partition is
+
+179
+00:06:34,259 --> 00:06:35,639
+What's called the host OS so what
+
+180
+00:06:35,639 --> 00:06:37,319
+happens is with hyper-v when your
+
+181
+00:06:37,319 --> 00:06:40,139
+machine Boots the root partition fills
+
+182
+00:06:40,139 --> 00:06:42,720
+the entire physical address space that's
+
+183
+00:06:42,720 --> 00:06:45,300
+your host operating system right there
+
+184
+00:06:45,300 --> 00:06:46,860
+shouldn't be any VMS running at that
+
+185
+00:06:46,860 --> 00:06:49,759
+point so as VMS
+
+186
+00:06:49,759 --> 00:06:53,340
+what are known as child partitions and
+
+187
+00:06:53,340 --> 00:06:54,780
+those child partitions are basically
+
+188
+00:06:54,780 --> 00:06:57,000
+just a set of resources that host a
+
+189
+00:06:57,000 --> 00:06:58,500
+virtual machine
+
+190
+00:06:58,500 --> 00:07:00,060
+and as I mentioned the root partition
+
+191
+00:07:00,060 --> 00:07:01,919
+takes up the whole address space of the
+
+192
+00:07:01,919 --> 00:07:03,780
+computer and then anytime we create a
+
+193
+00:07:03,780 --> 00:07:05,639
+virtual machine we allocate from that
+
+194
+00:07:05,639 --> 00:07:08,460
+root partition
+
+195
+00:07:08,460 --> 00:07:10,979
+here is an example a diagram of this
+
+196
+00:07:10,979 --> 00:07:13,740
+taken from the msrc blog
+
+197
+00:07:13,740 --> 00:07:15,539
+as we can see we have the root partition
+
+198
+00:07:15,539 --> 00:07:17,280
+and the child partition they both run on
+
+199
+00:07:17,280 --> 00:07:19,380
+top of hyper-v um the child partition
+
+200
+00:07:19,380 --> 00:07:21,300
+doesn't run inside of the root partition
+
+201
+00:07:21,300 --> 00:07:23,280
+as I mentioned the root partition gets
+
+202
+00:07:23,280 --> 00:07:25,440
+allocated from as child partitions are
+
+203
+00:07:25,440 --> 00:07:26,160
+there
+
+204
+00:07:26,160 --> 00:07:27,900
+so basically we can just think of this
+
+205
+00:07:27,900 --> 00:07:29,819
+as root partition that's your host OS
+
+206
+00:07:29,819 --> 00:07:31,139
+right that's what we use on an everyday
+
+207
+00:07:31,139 --> 00:07:33,780
+basis child partition our instances of
+
+208
+00:07:33,780 --> 00:07:35,460
+virtual machines essentially and they
+
+209
+00:07:35,460 --> 00:07:37,139
+run on top of the hypervisor which is
+
+210
+00:07:37,139 --> 00:07:39,680
+hyper-v
+
+211
+00:07:40,620 --> 00:07:42,360
+um a child partition as I mentioned is
+
+212
+00:07:42,360 --> 00:07:43,860
+allocated from the root partition right
+
+213
+00:07:43,860 --> 00:07:45,900
+so that means it has its own address
+
+214
+00:07:45,900 --> 00:07:47,639
+space
+
+215
+00:07:47,639 --> 00:07:49,319
+um and it has its own address space
+
+216
+00:07:49,319 --> 00:07:51,300
+because we want to isolate it from other
+
+217
+00:07:51,300 --> 00:07:53,280
+child partitions and the root partition
+
+218
+00:07:53,280 --> 00:07:55,139
+right like if you've ever ran malware
+
+219
+00:07:55,139 --> 00:07:56,759
+before you want to run it in a VM
+
+220
+00:07:56,759 --> 00:07:58,440
+generally speaking barring any
+
+221
+00:07:58,440 --> 00:08:00,080
+vulnerabilities in the hypervisor
+
+222
+00:08:00,080 --> 00:08:03,240
+because it's isolated right
+
+223
+00:08:03,240 --> 00:08:04,800
+um but how does that isolation actually
+
+224
+00:08:04,800 --> 00:08:07,620
+work there's a technology on Modern CPUs
+
+225
+00:08:07,620 --> 00:08:09,419
+called slat second layer address
+
+226
+00:08:09,419 --> 00:08:12,479
+translation and Intel's implementation
+
+227
+00:08:12,479 --> 00:08:15,539
+of slat is known as extended page tables
+
+228
+00:08:15,539 --> 00:08:19,020
+and what slat does is it allows the CPU
+
+229
+00:08:19,020 --> 00:08:21,300
+to intercept VM memory access
+
+230
+00:08:21,300 --> 00:08:24,000
+essentially and the reason for this is
+
+231
+00:08:24,000 --> 00:08:26,220
+is because VMS just act on memory as
+
+232
+00:08:26,220 --> 00:08:27,539
+we'll see in the diagram in the next
+
+233
+00:08:27,539 --> 00:08:29,940
+slide as if they're the only OS running
+
+234
+00:08:29,940 --> 00:08:32,099
+right you don't know about other VMS at
+
+235
+00:08:32,099 --> 00:08:34,159
+a high conceptual level
+
+236
+00:08:34,159 --> 00:08:36,839
+so something needs to compensate for
+
+237
+00:08:36,839 --> 00:08:38,399
+that because what if we have multiple
+
+238
+00:08:38,399 --> 00:08:41,520
+VMS running for instance
+
+239
+00:08:41,520 --> 00:08:43,919
+so if we look at this example on the
+
+240
+00:08:43,919 --> 00:08:46,080
+right hand side outline in the red we'll
+
+241
+00:08:46,080 --> 00:08:47,880
+call that our child partition which is a
+
+242
+00:08:47,880 --> 00:08:50,820
+VM running right it runs inside of the
+
+243
+00:08:50,820 --> 00:08:53,220
+in the computer essentially
+
+244
+00:08:53,220 --> 00:08:54,839
+um and then we have the root partition
+
+245
+00:08:54,839 --> 00:08:56,700
+there which is total address space and
+
+246
+00:08:56,700 --> 00:08:58,500
+the child partition is allocated from
+
+247
+00:08:58,500 --> 00:08:59,880
+there
+
+248
+00:08:59,880 --> 00:09:01,500
+the issue though right so if we look on
+
+249
+00:09:01,500 --> 00:09:03,779
+the right hand side you can see like any
+
+250
+00:09:03,779 --> 00:09:05,760
+of those memory addresses let's choose
+
+251
+00:09:05,760 --> 00:09:07,860
+Xerox 1000 for instance on the right
+
+252
+00:09:07,860 --> 00:09:08,940
+hand side
+
+253
+00:09:08,940 --> 00:09:11,040
+well on the host OS that's actually
+
+254
+00:09:11,040 --> 00:09:15,720
+located at 0x4000 right so the VM Maps
+
+255
+00:09:15,720 --> 00:09:18,660
+you know 0x 1000 as oh I'm just going to
+
+256
+00:09:18,660 --> 00:09:22,800
+access 0x1000 well Xerox 1000 on the
+
+257
+00:09:22,800 --> 00:09:25,860
+host OS is unmapped right up there and
+
+258
+00:09:25,860 --> 00:09:27,420
+that's where the vm's running so that's
+
+259
+00:09:27,420 --> 00:09:29,940
+where the memory technically lives so
+
+260
+00:09:29,940 --> 00:09:31,980
+what slat does basically it says hey I
+
+261
+00:09:31,980 --> 00:09:34,740
+see this VM going to access 0x1000
+
+262
+00:09:34,740 --> 00:09:38,580
+that's actually located at 0x 4000 so
+
+263
+00:09:38,580 --> 00:09:40,680
+let me perform translation so that the
+
+264
+00:09:40,680 --> 00:09:42,720
+VM knows hey even though it thinks it's
+
+265
+00:09:42,720 --> 00:09:45,420
+accessing 0x1000 that memory is actually
+
+266
+00:09:45,420 --> 00:09:48,860
+somewhere else on the host
+
+267
+00:09:49,080 --> 00:09:51,839
+and the way this is done is by managing
+
+268
+00:09:51,839 --> 00:09:55,580
+an additional set of page tables
+
+269
+00:09:58,980 --> 00:10:01,740
+um so paid tables basically contain all
+
+270
+00:10:01,740 --> 00:10:03,300
+the necessary information to perform
+
+271
+00:10:03,300 --> 00:10:05,880
+memory translation so what happens now
+
+272
+00:10:05,880 --> 00:10:08,640
+is every VM is associated with an
+
+273
+00:10:08,640 --> 00:10:10,440
+extended page table
+
+274
+00:10:10,440 --> 00:10:12,380
+um
+
+275
+00:10:12,380 --> 00:10:15,779
+and the CPU basically knows that and it
+
+276
+00:10:15,779 --> 00:10:17,459
+knows to associate each set of page
+
+277
+00:10:17,459 --> 00:10:19,800
+tables with a given VM so let's say vm1
+
+278
+00:10:19,800 --> 00:10:24,000
+goes to access ZRX 1000 the CPU knows
+
+279
+00:10:24,000 --> 00:10:26,220
+hey I need to access the page tables
+
+280
+00:10:26,220 --> 00:10:29,360
+from vm1 so that I know I can translate
+
+281
+00:10:29,360 --> 00:10:32,100
+0x1000 into the actual memory on the
+
+282
+00:10:32,100 --> 00:10:33,839
+host OS
+
+283
+00:10:33,839 --> 00:10:36,060
+and the way this is done is VMS emit
+
+284
+00:10:36,060 --> 00:10:37,920
+something called gpas or guests physical
+
+285
+00:10:37,920 --> 00:10:41,339
+addresses so the VMS just act on memory
+
+286
+00:10:41,339 --> 00:10:43,080
+as if they're the only OS running and
+
+287
+00:10:43,080 --> 00:10:44,459
+then the CPU behind the scenes
+
+288
+00:10:44,459 --> 00:10:46,680
+intercepts that and translates that into
+
+289
+00:10:46,680 --> 00:10:50,839
+actual uh memory on the computer
+
+290
+00:10:51,120 --> 00:10:53,459
+so as you can see in this example
+
+291
+00:10:53,459 --> 00:10:56,100
+um the VM in the bottom left it accesses
+
+292
+00:10:56,100 --> 00:10:58,019
+a memory address which gets translated
+
+293
+00:10:58,019 --> 00:11:01,079
+in context of that VM then that gets
+
+294
+00:11:01,079 --> 00:11:03,120
+emitted and the CPU intercepts that and
+
+295
+00:11:03,120 --> 00:11:04,440
+says hey I see you're going to access
+
+296
+00:11:04,440 --> 00:11:07,920
+Xerox 1000 let me look at the virtual
+
+297
+00:11:07,920 --> 00:11:10,440
+machine control structure or vmcs which
+
+298
+00:11:10,440 --> 00:11:13,980
+contains your vm's page tables and see
+
+299
+00:11:13,980 --> 00:11:15,720
+where that memory actually lives on the
+
+300
+00:11:15,720 --> 00:11:17,040
+host OS
+
+301
+00:11:17,040 --> 00:11:19,560
+so this is actually the technology that
+
+302
+00:11:19,560 --> 00:11:22,740
+allows VMS to remain isolated because
+
+303
+00:11:22,740 --> 00:11:25,440
+the CPU handles all of the translation
+
+304
+00:11:25,440 --> 00:11:27,480
+VMS can only access the partition
+
+305
+00:11:27,480 --> 00:11:30,380
+they've been allocated
+
+306
+00:11:30,480 --> 00:11:32,820
+and what VBS does it basically abuses
+
+307
+00:11:32,820 --> 00:11:36,720
+these principles for security purposes
+
+308
+00:11:36,720 --> 00:11:39,120
+so now we can isolate sensitive parts of
+
+309
+00:11:39,120 --> 00:11:41,760
+memory basically how VMS are isolated
+
+310
+00:11:41,760 --> 00:11:44,100
+but instead of using virtual machines
+
+311
+00:11:44,100 --> 00:11:45,899
+VBS implements something known as
+
+312
+00:11:45,899 --> 00:11:49,620
+virtual trust levels or vtls
+
+313
+00:11:49,620 --> 00:11:52,200
+foreign
+
+314
+00:11:52,200 --> 00:11:54,779
+so as we can see here vtl 0 is what we
+
+315
+00:11:54,779 --> 00:11:56,760
+refer to as normal mode
+
+316
+00:11:56,760 --> 00:11:59,399
+so you boot up your machine it's got VBS
+
+317
+00:11:59,399 --> 00:12:01,440
+running you don't really know it it's
+
+318
+00:12:01,440 --> 00:12:03,899
+not transparent to the end user and
+
+319
+00:12:03,899 --> 00:12:06,060
+they're operating in normal world so you
+
+320
+00:12:06,060 --> 00:12:07,740
+have your typical user and kernel mode
+
+321
+00:12:07,740 --> 00:12:11,220
+over there but now we have a vtl1 which
+
+322
+00:12:11,220 --> 00:12:13,440
+is known as secure mode which contains
+
+323
+00:12:13,440 --> 00:12:15,779
+the secure kernel that can basically
+
+324
+00:12:15,779 --> 00:12:18,120
+protect all of the secrets
+
+325
+00:12:18,120 --> 00:12:18,720
+um
+
+326
+00:12:18,720 --> 00:12:21,660
+of the OS itself
+
+327
+00:12:21,660 --> 00:12:23,640
+um so we can think of this as when you
+
+328
+00:12:23,640 --> 00:12:26,279
+run your machine with Windows uh excuse
+
+329
+00:12:26,279 --> 00:12:28,260
+me with a VBS enabled you're kind of
+
+330
+00:12:28,260 --> 00:12:30,420
+running in a VM of sorts so we don't
+
+331
+00:12:30,420 --> 00:12:33,480
+have virtual hard disks or networking or
+
+332
+00:12:33,480 --> 00:12:35,279
+anything like that
+
+333
+00:12:35,279 --> 00:12:37,800
+um vtls are just an isolated segment of
+
+334
+00:12:37,800 --> 00:12:41,120
+memory just like a VM is
+
+335
+00:12:41,279 --> 00:12:43,700
+so as I mentioned that's what a vtl is
+
+336
+00:12:43,700 --> 00:12:46,800
+so we can isolate one vtl from another
+
+337
+00:12:46,800 --> 00:12:49,260
+just like we can isolate VMS from one
+
+338
+00:12:49,260 --> 00:12:51,839
+another and this allows hypervisor
+
+339
+00:12:51,839 --> 00:12:54,360
+protected code Integrity or hvci which
+
+340
+00:12:54,360 --> 00:12:55,620
+is the mitigation we're going to talk
+
+341
+00:12:55,620 --> 00:12:59,160
+about to work actually
+
+342
+00:12:59,160 --> 00:13:02,220
+so hvci is another mitigation just like
+
+343
+00:13:02,220 --> 00:13:04,820
+credential guard that falls under VBS
+
+344
+00:13:04,820 --> 00:13:07,139
+and this is the answer to the question
+
+345
+00:13:07,139 --> 00:13:10,079
+earlier of how do we stop Shell Code in
+
+346
+00:13:10,079 --> 00:13:11,940
+the kernel because we know we have
+
+347
+00:13:11,940 --> 00:13:15,000
+arbitrary code guard in user mode but
+
+348
+00:13:15,000 --> 00:13:16,860
+that mitigation is implemented in the
+
+349
+00:13:16,860 --> 00:13:18,959
+kernel so if an attacker in user mode
+
+350
+00:13:18,959 --> 00:13:21,120
+wants to try to disable arbitrary code
+
+351
+00:13:21,120 --> 00:13:22,620
+guard well you already need access to
+
+352
+00:13:22,620 --> 00:13:24,779
+the kernel but if the kernel is a high
+
+353
+00:13:24,779 --> 00:13:27,120
+security boundary how do we stop kernel
+
+354
+00:13:27,120 --> 00:13:29,279
+mode code execution if we assume an
+
+355
+00:13:29,279 --> 00:13:31,940
+attacker already has access there
+
+356
+00:13:31,940 --> 00:13:35,519
+so what happens is vtl0 and vtl1 are
+
+357
+00:13:35,519 --> 00:13:37,440
+placed in the root partition so there's
+
+358
+00:13:37,440 --> 00:13:40,260
+no child partitions anymore we place
+
+359
+00:13:40,260 --> 00:13:42,120
+them in the root partition so they
+
+360
+00:13:42,120 --> 00:13:43,560
+technically have access to the same
+
+361
+00:13:43,560 --> 00:13:46,260
+physical address space
+
+362
+00:13:46,260 --> 00:13:48,360
+and since they have access to the same
+
+363
+00:13:48,360 --> 00:13:50,040
+physical address space we don't really
+
+364
+00:13:50,040 --> 00:13:52,260
+need to use the extended page tables for
+
+365
+00:13:52,260 --> 00:13:55,440
+translation anymore so hvci abuses them
+
+366
+00:13:55,440 --> 00:13:57,839
+for a different purpose and that's to
+
+367
+00:13:57,839 --> 00:13:59,760
+create an additional set of page tables
+
+368
+00:13:59,760 --> 00:14:02,579
+with an immutable set of permissions
+
+369
+00:14:02,579 --> 00:14:05,160
+so what that means is vtl1 which is
+
+370
+00:14:05,160 --> 00:14:07,680
+secure world when the system boots
+
+371
+00:14:07,680 --> 00:14:10,860
+vtl1 can ask the hypervisor hey I want
+
+372
+00:14:10,860 --> 00:14:13,019
+to configure the extended page tables
+
+373
+00:14:13,019 --> 00:14:15,839
+with these permissions
+
+374
+00:14:15,839 --> 00:14:18,959
+and the hypervisor manages those
+
+375
+00:14:18,959 --> 00:14:21,180
+um so now what happens is if a kernel
+
+376
+00:14:21,180 --> 00:14:25,079
+mode exploit in vtl 0 tries the page
+
+377
+00:14:25,079 --> 00:14:27,060
+which we talked about earlier that
+
+378
+00:14:27,060 --> 00:14:29,399
+metadata which describes a given memory
+
+379
+00:14:29,399 --> 00:14:31,620
+page well we have a source of Truth now
+
+380
+00:14:31,620 --> 00:14:33,480
+that's managed by the hypervisor and the
+
+381
+00:14:33,480 --> 00:14:35,339
+hypervisor is a higher security boundary
+
+382
+00:14:35,339 --> 00:14:37,860
+than the kernel so therefore you can't
+
+383
+00:14:37,860 --> 00:14:41,100
+create Dynamic executable memory here's
+
+384
+00:14:41,100 --> 00:14:42,779
+kind of what that looks like
+
+385
+00:14:42,779 --> 00:14:44,339
+um so in this example we have a memory
+
+386
+00:14:44,339 --> 00:14:46,980
+address and we have a pte which we saw
+
+387
+00:14:46,980 --> 00:14:48,839
+earlier so this describes this memory
+
+388
+00:14:48,839 --> 00:14:51,300
+page as writable and readable then we
+
+389
+00:14:51,300 --> 00:14:53,579
+have an Associated extended page table
+
+390
+00:14:53,579 --> 00:14:55,320
+entry which again is managed by the
+
+391
+00:14:55,320 --> 00:14:56,639
+hypervisor
+
+392
+00:14:56,639 --> 00:14:58,620
+so if we do the same thing as last time
+
+393
+00:14:58,620 --> 00:15:01,079
+we corrupt the pte which are stored in
+
+394
+00:15:01,079 --> 00:15:02,040
+the kernel
+
+395
+00:15:02,040 --> 00:15:04,800
+and we make it executable well the
+
+396
+00:15:04,800 --> 00:15:07,260
+hypervisor says no way actually this is
+
+397
+00:15:07,260 --> 00:15:09,420
+still readable and writable because it's
+
+398
+00:15:09,420 --> 00:15:11,459
+those extended page tables are actually
+
+399
+00:15:11,459 --> 00:15:13,139
+the source of Truth and they're managed
+
+400
+00:15:13,139 --> 00:15:15,360
+by the hypervisor and the kernel can't
+
+401
+00:15:15,360 --> 00:15:18,480
+directly access the hypervisor
+
+402
+00:15:18,480 --> 00:15:20,579
+and the way this works is we use the
+
+403
+00:15:20,579 --> 00:15:22,800
+exact same Concepts as we did with the
+
+404
+00:15:22,800 --> 00:15:25,019
+virtual machine so with a VM when it
+
+405
+00:15:25,019 --> 00:15:26,820
+goes to access some memory what can the
+
+406
+00:15:26,820 --> 00:15:29,040
+CPU do it can intercept that or gate
+
+407
+00:15:29,040 --> 00:15:31,380
+that access that's exactly what we do
+
+408
+00:15:31,380 --> 00:15:34,380
+here anytime vtl0 which is the normal
+
+409
+00:15:34,380 --> 00:15:36,959
+world or untrusted World anytime we
+
+410
+00:15:36,959 --> 00:15:39,959
+access memory we can VTO or excuse me
+
+411
+00:15:39,959 --> 00:15:42,240
+the hypervisor can gate that memory
+
+412
+00:15:42,240 --> 00:15:44,160
+access just like a VM we can intercept
+
+413
+00:15:44,160 --> 00:15:46,079
+that and we can say hey we see you're
+
+414
+00:15:46,079 --> 00:15:47,880
+trying to execute this memory but
+
+415
+00:15:47,880 --> 00:15:50,519
+actually our version of memory which is
+
+416
+00:15:50,519 --> 00:15:52,560
+immutable from the kernel it says it's
+
+417
+00:15:52,560 --> 00:15:54,480
+not executable and therefore we're not
+
+418
+00:15:54,480 --> 00:15:55,860
+going to let you execute this memory
+
+419
+00:15:55,860 --> 00:15:58,079
+anyway so we can dilly dally in the
+
+420
+00:15:58,079 --> 00:15:59,760
+kernel all we want corrupting all the
+
+421
+00:15:59,760 --> 00:16:01,560
+page table entries to say this memory is
+
+422
+00:16:01,560 --> 00:16:03,660
+executable but the hypervisor has a
+
+423
+00:16:03,660 --> 00:16:08,060
+source of Truth and um it's immutable
+
+424
+00:16:08,220 --> 00:16:11,699
+so to summarize this vtl1 sets up the
+
+425
+00:16:11,699 --> 00:16:13,920
+proper permissions of memory so what
+
+426
+00:16:13,920 --> 00:16:16,199
+vtl1 is responsible for here is setting
+
+427
+00:16:16,199 --> 00:16:18,300
+up just like arbitrary code guard right
+
+428
+00:16:18,300 --> 00:16:21,060
+to xor execute no memory is ever both
+
+429
+00:16:21,060 --> 00:16:23,160
+writable and executable which is a
+
+430
+00:16:23,160 --> 00:16:26,339
+prerequisite for Shell Code
+
+431
+00:16:26,339 --> 00:16:28,560
+all of those extended page table entries
+
+432
+00:16:28,560 --> 00:16:30,660
+that contain the ground truth are
+
+433
+00:16:30,660 --> 00:16:32,940
+protected by the hypervisor so even an
+
+434
+00:16:32,940 --> 00:16:34,440
+attacker in kernel mode can't
+
+435
+00:16:34,440 --> 00:16:37,500
+arbitrarily access the hypervisor
+
+436
+00:16:37,500 --> 00:16:41,300
+um to corrupt that metadata essentially
+
+437
+00:16:45,120 --> 00:16:47,820
+so now that we know this information
+
+438
+00:16:47,820 --> 00:16:50,759
+let's see how this affects exploitation
+
+439
+00:16:50,759 --> 00:16:53,160
+so we've talked about using hvci for
+
+440
+00:16:53,160 --> 00:16:55,380
+enforcing executable permissions correct
+
+441
+00:16:55,380 --> 00:16:58,259
+so thus far we've said hey with hvci
+
+442
+00:16:58,259 --> 00:17:00,180
+enabled we can't just make our own
+
+443
+00:17:00,180 --> 00:17:02,040
+executable memory to start executing
+
+444
+00:17:02,040 --> 00:17:03,060
+Shell Code
+
+445
+00:17:03,060 --> 00:17:05,520
+but another interesting thing about hvci
+
+446
+00:17:05,520 --> 00:17:08,760
+is we can use those same principles to
+
+447
+00:17:08,760 --> 00:17:10,980
+protect other sensitive parts of memory
+
+448
+00:17:10,980 --> 00:17:12,660
+such as the kernel control flowguard
+
+449
+00:17:12,660 --> 00:17:14,160
+bitmap
+
+450
+00:17:14,160 --> 00:17:16,500
+so a white kernel control flowguard is
+
+451
+00:17:16,500 --> 00:17:18,299
+is it's the kernel mode implementation
+
+452
+00:17:18,299 --> 00:17:20,880
+of CFG or control flowguard which is a
+
+453
+00:17:20,880 --> 00:17:23,459
+mitigation that's been in Windows since
+
+454
+00:17:23,459 --> 00:17:25,859
+Windows 8.1 it was an optional update
+
+455
+00:17:25,859 --> 00:17:26,939
+then
+
+456
+00:17:26,939 --> 00:17:29,100
+um and what CFG is it's mitigation that
+
+457
+00:17:29,100 --> 00:17:31,380
+checks all indirect function calls to
+
+458
+00:17:31,380 --> 00:17:33,059
+ensure function pointer hasn't been
+
+459
+00:17:33,059 --> 00:17:34,200
+overwritten
+
+460
+00:17:34,200 --> 00:17:36,840
+and the way this is done is a bitmap is
+
+461
+00:17:36,840 --> 00:17:39,059
+created of all of the known valid
+
+462
+00:17:39,059 --> 00:17:41,340
+functions that are used in indirect
+
+463
+00:17:41,340 --> 00:17:44,520
+function calls in a given application so
+
+464
+00:17:44,520 --> 00:17:46,559
+you develop your application you may
+
+465
+00:17:46,559 --> 00:17:49,380
+call into five different functions at
+
+466
+00:17:49,380 --> 00:17:51,720
+compile time a bitmap is created with
+
+467
+00:17:51,720 --> 00:17:53,880
+that information and anytime an indirect
+
+468
+00:17:53,880 --> 00:17:55,919
+function call happens we check that
+
+469
+00:17:55,919 --> 00:17:58,440
+bitmap to say hey is this a valid call
+
+470
+00:17:58,440 --> 00:18:01,020
+Target is this a legitimate function we
+
+471
+00:18:01,020 --> 00:18:02,640
+know about if it's not we crash a
+
+472
+00:18:02,640 --> 00:18:03,720
+process
+
+473
+00:18:03,720 --> 00:18:05,520
+and that may sound a bit confusing but
+
+474
+00:18:05,520 --> 00:18:07,080
+if we go back to our original example
+
+475
+00:18:07,080 --> 00:18:09,840
+what allowed our Shell Code to execute
+
+476
+00:18:09,840 --> 00:18:11,760
+we had to overwrite a function pointer
+
+477
+00:18:11,760 --> 00:18:13,799
+right and when that function pointer was
+
+478
+00:18:13,799 --> 00:18:16,020
+executed in the future it redirected
+
+479
+00:18:16,020 --> 00:18:19,980
+execution into our malicious Shell Code
+
+480
+00:18:19,980 --> 00:18:22,260
+well now that that's called an indirect
+
+481
+00:18:22,260 --> 00:18:23,820
+function call when that happens and
+
+482
+00:18:23,820 --> 00:18:25,500
+that's now checked by kernel control
+
+483
+00:18:25,500 --> 00:18:28,080
+flowguard and that will crash the
+
+484
+00:18:28,080 --> 00:18:29,340
+process essentially at that point
+
+485
+00:18:29,340 --> 00:18:32,959
+because we've done a malicious action
+
+486
+00:18:34,020 --> 00:18:37,320
+um so kcfg runs into the same issue as
+
+487
+00:18:37,320 --> 00:18:38,520
+our as
+
+488
+00:18:38,520 --> 00:18:40,140
+um trying to implement arbitrary code
+
+489
+00:18:40,140 --> 00:18:41,880
+guard in the kernel right
+
+490
+00:18:41,880 --> 00:18:44,160
+normal control flow guard is protected
+
+491
+00:18:44,160 --> 00:18:46,919
+by the kernel the bitmap but when you
+
+492
+00:18:46,919 --> 00:18:48,600
+try to implement a mitigation in the
+
+493
+00:18:48,600 --> 00:18:50,580
+kernel as we talked about earlier and
+
+494
+00:18:50,580 --> 00:18:53,220
+you assume an attacker has access to the
+
+495
+00:18:53,220 --> 00:18:55,200
+kernel well that's again the kernel
+
+496
+00:18:55,200 --> 00:18:57,059
+defending against itself we can't do
+
+497
+00:18:57,059 --> 00:18:58,919
+that right because an attacker could
+
+498
+00:18:58,919 --> 00:19:01,220
+just disable the mitigation before they
+
+499
+00:19:01,220 --> 00:19:03,539
+deploy their attack in the kernel for
+
+500
+00:19:03,539 --> 00:19:04,380
+instance
+
+501
+00:19:04,380 --> 00:19:07,380
+so we've got to do something about that
+
+502
+00:19:07,380 --> 00:19:11,280
+we do the exact same thing as hvci
+
+503
+00:19:11,280 --> 00:19:13,740
+except we do it on read-only permissions
+
+504
+00:19:13,740 --> 00:19:16,799
+at this point so what hvci does is it
+
+505
+00:19:16,799 --> 00:19:19,440
+protects the kcfg bitmap and it says hey
+
+506
+00:19:19,440 --> 00:19:21,960
+this bitmap is read only because if an
+
+507
+00:19:21,960 --> 00:19:23,700
+attacker can make it writable they can
+
+508
+00:19:23,700 --> 00:19:26,580
+mark all of memory as valid call targets
+
+509
+00:19:26,580 --> 00:19:28,140
+and call into whatever memory they want
+
+510
+00:19:28,140 --> 00:19:30,960
+right the point of kcfg is to prevent
+
+511
+00:19:30,960 --> 00:19:33,360
+function pointers from being overwritten
+
+512
+00:19:33,360 --> 00:19:35,640
+so we do the same thing here in this
+
+513
+00:19:35,640 --> 00:19:38,220
+example it's a debugger in the bottom
+
+514
+00:19:38,220 --> 00:19:40,260
+right where it says pte that's the page
+
+515
+00:19:40,260 --> 00:19:42,120
+table entry that corresponds to the
+
+516
+00:19:42,120 --> 00:19:44,580
+kernel control flowguard bitmap and I've
+
+517
+00:19:44,580 --> 00:19:47,400
+marked it explicitly as K kernel which
+
+518
+00:19:47,400 --> 00:19:50,340
+it already is and W as writable right
+
+519
+00:19:50,340 --> 00:19:53,220
+but then I use the EP command to try to
+
+520
+00:19:53,220 --> 00:19:54,960
+override it with some junk data and look
+
+521
+00:19:54,960 --> 00:19:57,120
+at the error I get memory access error
+
+522
+00:19:57,120 --> 00:20:00,960
+that is hvci saying hey the extended
+
+523
+00:20:00,960 --> 00:20:02,940
+page table that maps to the bitmap is
+
+524
+00:20:02,940 --> 00:20:05,220
+read only even though in the kernel
+
+525
+00:20:05,220 --> 00:20:06,900
+you've said it's writable the hypervisor
+
+526
+00:20:06,900 --> 00:20:09,059
+views it as read only so we block the
+
+527
+00:20:09,059 --> 00:20:11,220
+right operation essentially and that's
+
+528
+00:20:11,220 --> 00:20:13,140
+how we protect kernel control flowguard
+
+529
+00:20:13,140 --> 00:20:14,940
+in the kernel
+
+530
+00:20:14,940 --> 00:20:17,460
+so with hvci enabled in totality here's
+
+531
+00:20:17,460 --> 00:20:19,940
+where we stand
+
+532
+00:20:21,960 --> 00:20:23,880
+can write our Shell Code all day long to
+
+533
+00:20:23,880 --> 00:20:25,080
+Kernel mode memory that's already
+
+534
+00:20:25,080 --> 00:20:26,100
+writable
+
+535
+00:20:26,100 --> 00:20:28,620
+but we can't make it executable
+
+536
+00:20:28,620 --> 00:20:30,600
+and even if we could make it executable
+
+537
+00:20:30,600 --> 00:20:32,340
+anytime we try to override a function
+
+538
+00:20:32,340 --> 00:20:34,260
+pointer to go to execute that Shell Code
+
+539
+00:20:34,260 --> 00:20:37,440
+kernel control flowguard will prevent it
+
+540
+00:20:37,440 --> 00:20:39,419
+so this puts us in an interesting
+
+541
+00:20:39,419 --> 00:20:41,100
+predicament
+
+542
+00:20:41,100 --> 00:20:43,080
+so what do we do about this
+
+543
+00:20:43,080 --> 00:20:45,240
+so as I mentioned earlier what is Shell
+
+544
+00:20:45,240 --> 00:20:47,460
+Code used for Shell Code as I mentioned
+
+545
+00:20:47,460 --> 00:20:49,679
+like a C2 framework well it's a blob of
+
+546
+00:20:49,679 --> 00:20:51,240
+Shell Code that calls into various
+
+547
+00:20:51,240 --> 00:20:55,080
+Windows apis right so you may have a
+
+548
+00:20:55,080 --> 00:20:56,760
+function a Windows API called open
+
+549
+00:20:56,760 --> 00:20:58,559
+process maybe you're familiar with that
+
+550
+00:20:58,559 --> 00:21:00,900
+that's to obtain a handle to an object
+
+551
+00:21:00,900 --> 00:21:05,100
+basically that's the that's what um C2
+
+552
+00:21:05,100 --> 00:21:06,299
+Frameworks will do they'll call into
+
+553
+00:21:06,299 --> 00:21:08,220
+these apis in ways they weren't intended
+
+554
+00:21:08,220 --> 00:21:10,140
+to to open up network connections read
+
+555
+00:21:10,140 --> 00:21:12,900
+files or write files read memory from
+
+556
+00:21:12,900 --> 00:21:16,440
+other processes like lsas for instance
+
+557
+00:21:16,440 --> 00:21:18,539
+um so we know that's what we want to do
+
+558
+00:21:18,539 --> 00:21:19,860
+with shell code but we can't actually
+
+559
+00:21:19,860 --> 00:21:22,260
+execute shell codes so what if we could
+
+560
+00:21:22,260 --> 00:21:25,440
+do something that was hvci compliant but
+
+561
+00:21:25,440 --> 00:21:27,240
+accomplishes the same thing of calling
+
+562
+00:21:27,240 --> 00:21:30,020
+into windows apis
+
+563
+00:21:30,020 --> 00:21:32,940
+well the main issue that's facing us is
+
+564
+00:21:32,940 --> 00:21:35,640
+how do we gain execution
+
+565
+00:21:35,640 --> 00:21:36,600
+um
+
+566
+00:21:36,600 --> 00:21:38,520
+kernel control flowguard is going to
+
+567
+00:21:38,520 --> 00:21:39,840
+prevent us from overriding a function
+
+568
+00:21:39,840 --> 00:21:41,760
+pointer for instance but that's not the
+
+569
+00:21:41,760 --> 00:21:44,280
+only type of control flow transfer
+
+570
+00:21:44,280 --> 00:21:46,740
+that's available what about returns for
+
+571
+00:21:46,740 --> 00:21:49,320
+instances right an assembly when a call
+
+572
+00:21:49,320 --> 00:21:51,900
+instruction happens what happens at that
+
+573
+00:21:51,900 --> 00:21:53,820
+point a return address is pushed onto
+
+574
+00:21:53,820 --> 00:21:57,120
+the stack and that's just if you in C
+
+575
+00:21:57,120 --> 00:21:58,679
+for instance if you have a function body
+
+576
+00:21:58,679 --> 00:22:00,240
+what does it normally end with a return
+
+577
+00:22:00,240 --> 00:22:02,220
+it returns a value to the function which
+
+578
+00:22:02,220 --> 00:22:04,860
+called it an assembly what happens is a
+
+579
+00:22:04,860 --> 00:22:06,600
+return address is pushed onto the stack
+
+580
+00:22:06,600 --> 00:22:08,640
+and when the function is done executing
+
+581
+00:22:08,640 --> 00:22:10,380
+it uses that address to know where we
+
+582
+00:22:10,380 --> 00:22:13,140
+need to return execution back to well as
+
+583
+00:22:13,140 --> 00:22:14,460
+I mentioned it's used to return
+
+584
+00:22:14,460 --> 00:22:16,919
+execution somewhere so it's also used in
+
+585
+00:22:16,919 --> 00:22:19,260
+a control flow transfer one of the known
+
+586
+00:22:19,260 --> 00:22:22,919
+limitations of CFG in general is return
+
+587
+00:22:22,919 --> 00:22:25,880
+or backwards edge control flow transfers
+
+588
+00:22:25,880 --> 00:22:27,780
+kernel control flowguard only
+
+589
+00:22:27,780 --> 00:22:30,539
+investigates forward Edge or calls or
+
+590
+00:22:30,539 --> 00:22:33,720
+jumps it doesn't investigate returns
+
+591
+00:22:33,720 --> 00:22:35,159
+so what if we could override a return
+
+592
+00:22:35,159 --> 00:22:36,900
+address on the stack right if you're
+
+593
+00:22:36,900 --> 00:22:39,539
+familiar with your typical 32-bit no
+
+594
+00:22:39,539 --> 00:22:42,419
+aslr depth buffer overflow that most
+
+595
+00:22:42,419 --> 00:22:45,179
+people do as their first exploit
+
+596
+00:22:45,179 --> 00:22:46,919
+um that's what you do you don't people
+
+597
+00:22:46,919 --> 00:22:49,380
+use the term like oh I overwrote EIP for
+
+598
+00:22:49,380 --> 00:22:51,840
+instance you didn't overwrite EIP you
+
+599
+00:22:51,840 --> 00:22:53,880
+smashed the stack and you found a return
+
+600
+00:22:53,880 --> 00:22:55,919
+address on the stack you overwrote that
+
+601
+00:22:55,919 --> 00:22:57,780
+return address and eventually that
+
+602
+00:22:57,780 --> 00:22:59,580
+return address was loaded into the
+
+603
+00:22:59,580 --> 00:23:01,740
+instruction pointer so we kind of need
+
+604
+00:23:01,740 --> 00:23:03,299
+to go back to the basics if that makes
+
+605
+00:23:03,299 --> 00:23:05,039
+sense but we can't assume we have a
+
+606
+00:23:05,039 --> 00:23:07,620
+stack overflow
+
+607
+00:23:07,620 --> 00:23:10,320
+and we need to leak the stack of a
+
+608
+00:23:10,320 --> 00:23:12,600
+kernel mode thread luckily enough
+
+609
+00:23:12,600 --> 00:23:15,840
+Windows blessed us with this gift a
+
+610
+00:23:15,840 --> 00:23:18,600
+function exported by ntdll called NT
+
+611
+00:23:18,600 --> 00:23:20,100
+query system information that will
+
+612
+00:23:20,100 --> 00:23:22,799
+gladly give us kernel mode addresses
+
+613
+00:23:22,799 --> 00:23:25,020
+from user mode from a medium Integrity
+
+614
+00:23:25,020 --> 00:23:27,840
+process so medium Integrity process
+
+615
+00:23:27,840 --> 00:23:29,760
+that's basically any application you
+
+616
+00:23:29,760 --> 00:23:32,159
+open up on Windows
+
+617
+00:23:32,159 --> 00:23:34,620
+so what we can do here is we can create
+
+618
+00:23:34,620 --> 00:23:35,880
+a thread
+
+619
+00:23:35,880 --> 00:23:38,880
+in user mode and we could put that
+
+620
+00:23:38,880 --> 00:23:41,460
+thread in a suspended State then we
+
+621
+00:23:41,460 --> 00:23:43,380
+could call NT query system information
+
+622
+00:23:43,380 --> 00:23:46,080
+which is accessible from user mode and
+
+623
+00:23:46,080 --> 00:23:48,000
+that would give us the K thread object
+
+624
+00:23:48,000 --> 00:23:50,580
+associated with that thread and a
+
+625
+00:23:50,580 --> 00:23:52,919
+k-thread object as it infers by the
+
+626
+00:23:52,919 --> 00:23:56,820
+first letter in the name k kernel it's
+
+627
+00:23:56,820 --> 00:23:58,679
+the kernel mode representation of a
+
+628
+00:23:58,679 --> 00:24:00,600
+thread thread is an object that's
+
+629
+00:24:00,600 --> 00:24:02,580
+managed in the kernel
+
+630
+00:24:02,580 --> 00:24:05,100
+so basically we can leak the threat we
+
+631
+00:24:05,100 --> 00:24:08,520
+can leak a k-thread object from the
+
+632
+00:24:08,520 --> 00:24:11,340
+kernel of any thread we create in user
+
+633
+00:24:11,340 --> 00:24:14,539
+mode basically by Design
+
+634
+00:24:15,360 --> 00:24:17,820
+and each user mode thread has a user
+
+635
+00:24:17,820 --> 00:24:20,640
+mode stack and a kernel mode one now you
+
+636
+00:24:20,640 --> 00:24:22,080
+may be thinking Connor this doesn't make
+
+637
+00:24:22,080 --> 00:24:23,880
+sense you created the thread and user
+
+638
+00:24:23,880 --> 00:24:25,260
+mode but you're telling me you've leaked
+
+639
+00:24:25,260 --> 00:24:27,299
+a kernel mode thread well that's because
+
+640
+00:24:27,299 --> 00:24:30,480
+every thread on Windows has both a user
+
+641
+00:24:30,480 --> 00:24:32,280
+mode stack and a kernel mode stack
+
+642
+00:24:32,280 --> 00:24:34,679
+regardless if you create it in user mode
+
+643
+00:24:34,679 --> 00:24:36,059
+or kernel mode
+
+644
+00:24:36,059 --> 00:24:37,799
+so what we can do is we can basically
+
+645
+00:24:37,799 --> 00:24:40,200
+use native functionality in Windows to
+
+646
+00:24:40,200 --> 00:24:44,340
+leak a k-thread object associated with a
+
+647
+00:24:44,340 --> 00:24:47,100
+thread we control and if we look in K
+
+648
+00:24:47,100 --> 00:24:49,440
+thread there are two members of that
+
+649
+00:24:49,440 --> 00:24:51,360
+object called stack limit and stack base
+
+650
+00:24:51,360 --> 00:24:54,120
+as it infers that's the stack and what's
+
+651
+00:24:54,120 --> 00:24:57,979
+on the stack return addresses
+
+652
+00:24:58,140 --> 00:25:00,000
+so since we know we can leak the K
+
+653
+00:25:00,000 --> 00:25:02,159
+thread object associated with the thread
+
+654
+00:25:02,159 --> 00:25:03,419
+we control
+
+655
+00:25:03,419 --> 00:25:05,159
+which return address do we want to
+
+656
+00:25:05,159 --> 00:25:06,360
+Target
+
+657
+00:25:06,360 --> 00:25:08,220
+so we see a bunch of these return
+
+658
+00:25:08,220 --> 00:25:10,200
+addresses on the stack this is what a
+
+659
+00:25:10,200 --> 00:25:11,940
+call stack looks like for a newly
+
+660
+00:25:11,940 --> 00:25:14,340
+created suspended thread and we're going
+
+661
+00:25:14,340 --> 00:25:16,860
+to choose Ki APC interrupt as our Target
+
+662
+00:25:16,860 --> 00:25:18,539
+address we're going to overwrite this is
+
+663
+00:25:18,539 --> 00:25:21,679
+all going to make sense in a little bit
+
+664
+00:25:21,720 --> 00:25:22,679
+um and the reason why we're going to
+
+665
+00:25:22,679 --> 00:25:25,320
+choose this one is because a suspended
+
+666
+00:25:25,320 --> 00:25:27,659
+thread on Windows is actually just a
+
+667
+00:25:27,659 --> 00:25:29,880
+thread that has what's called an APC or
+
+668
+00:25:29,880 --> 00:25:32,159
+an asynchronous procedure call cued to
+
+669
+00:25:32,159 --> 00:25:34,620
+it and that APC tells the thread don't
+
+670
+00:25:34,620 --> 00:25:37,140
+do anything and what an APC is it's
+
+671
+00:25:37,140 --> 00:25:39,240
+basically a code root it's basically
+
+672
+00:25:39,240 --> 00:25:40,799
+code just like a thread a thread
+
+673
+00:25:40,799 --> 00:25:43,080
+executes code but instead of executing
+
+674
+00:25:43,080 --> 00:25:45,419
+code in a thread that code is executed
+
+675
+00:25:45,419 --> 00:25:47,880
+in context of a given thread
+
+676
+00:25:47,880 --> 00:25:50,580
+so what happens is with an APC a sort of
+
+677
+00:25:50,580 --> 00:25:53,400
+software interrupt gets issued that
+
+678
+00:25:53,400 --> 00:25:55,620
+calls an APC which tells the thread hey
+
+679
+00:25:55,620 --> 00:25:57,900
+don't do anything which sounds like a
+
+680
+00:25:57,900 --> 00:25:59,159
+suspended thread that's not doing
+
+681
+00:25:59,159 --> 00:26:01,080
+anything
+
+682
+00:26:01,080 --> 00:26:02,880
+and the way you resume this thread or
+
+683
+00:26:02,880 --> 00:26:04,620
+the way the thread can start executing
+
+684
+00:26:04,620 --> 00:26:08,100
+again is it's it's um basically waiting
+
+685
+00:26:08,100 --> 00:26:10,679
+on an object and that is the suspend
+
+686
+00:26:10,679 --> 00:26:12,120
+count
+
+687
+00:26:12,120 --> 00:26:15,120
+so until the suspend count of a k thread
+
+688
+00:26:15,120 --> 00:26:16,860
+is zero your thread is going to be
+
+689
+00:26:16,860 --> 00:26:21,360
+suspended so when we call uh suspend
+
+690
+00:26:21,360 --> 00:26:23,039
+thread or when we create a suspended
+
+691
+00:26:23,039 --> 00:26:25,320
+thread suspend count is set to one
+
+692
+00:26:25,320 --> 00:26:28,020
+and we decrement that by calling resume
+
+693
+00:26:28,020 --> 00:26:30,360
+thread so if you think about it without
+
+694
+00:26:30,360 --> 00:26:32,580
+knowing any of this lower level
+
+695
+00:26:32,580 --> 00:26:35,220
+knowledge quote unquote if you created
+
+696
+00:26:35,220 --> 00:26:36,539
+the suspended thread and you call resume
+
+697
+00:26:36,539 --> 00:26:38,159
+thread that should theoretically resume
+
+698
+00:26:38,159 --> 00:26:40,200
+your thread right what that's actually
+
+699
+00:26:40,200 --> 00:26:41,820
+doing is it's incrementing and
+
+700
+00:26:41,820 --> 00:26:44,460
+decrementing suspend count
+
+701
+00:26:44,460 --> 00:26:45,960
+and the reason why this is even
+
+702
+00:26:45,960 --> 00:26:47,640
+important at all is because we know that
+
+703
+00:26:47,640 --> 00:26:49,679
+when we create a suspended thread we
+
+704
+00:26:49,679 --> 00:26:52,200
+know an APC should always be queued and
+
+705
+00:26:52,200 --> 00:26:53,700
+therefore that return address should
+
+706
+00:26:53,700 --> 00:26:56,480
+always be on the stack
+
+707
+00:26:59,580 --> 00:27:01,679
+Now using a kernel mode vulnerability we
+
+708
+00:27:01,679 --> 00:27:03,059
+have the stack right we can locate
+
+709
+00:27:03,059 --> 00:27:04,919
+return addresses we can corrupt those
+
+710
+00:27:04,919 --> 00:27:07,020
+then when the return address is executed
+
+711
+00:27:07,020 --> 00:27:08,940
+it will call into our fake return
+
+712
+00:27:08,940 --> 00:27:11,700
+address basically
+
+713
+00:27:11,700 --> 00:27:14,520
+so if we look at this in this example in
+
+714
+00:27:14,520 --> 00:27:16,740
+the top screenshot of our exploit we've
+
+715
+00:27:16,740 --> 00:27:18,480
+leaked the stack which we've done no
+
+716
+00:27:18,480 --> 00:27:20,159
+exploitation up at this point this is
+
+717
+00:27:20,159 --> 00:27:22,860
+perfectly legitimate Windows exported
+
+718
+00:27:22,860 --> 00:27:24,539
+functionality that I encourage you to
+
+719
+00:27:24,539 --> 00:27:27,179
+try out on your own so we've leaked the
+
+720
+00:27:27,179 --> 00:27:29,220
+stack but then we use our kernel mode
+
+721
+00:27:29,220 --> 00:27:30,840
+vulnerability which again now we're
+
+722
+00:27:30,840 --> 00:27:32,159
+getting to the vulnerability part where
+
+723
+00:27:32,159 --> 00:27:34,620
+we corrupt that return address with 4141
+
+724
+00:27:34,620 --> 00:27:37,080
+4141 and look what happens we get an
+
+725
+00:27:37,080 --> 00:27:38,820
+access violation even with kernel
+
+726
+00:27:38,820 --> 00:27:40,440
+control flowguard implemented because
+
+727
+00:27:40,440 --> 00:27:42,299
+what happens when that return address
+
+728
+00:27:42,299 --> 00:27:44,779
+gets executed it's now trying to execute
+
+729
+00:27:44,779 --> 00:27:48,240
+4141 4141 so basically we've we've proof
+
+730
+00:27:48,240 --> 00:27:50,520
+of concept that we can control the stack
+
+731
+00:27:50,520 --> 00:27:54,379
+we can control execution at this point
+
+732
+00:27:54,419 --> 00:27:56,940
+so with the control of this we can
+
+733
+00:27:56,940 --> 00:28:00,120
+basically do a code reuse attack
+
+734
+00:28:00,120 --> 00:28:01,080
+um if you're familiar with the term
+
+735
+00:28:01,080 --> 00:28:02,940
+return oriented programming or raw
+
+736
+00:28:02,940 --> 00:28:04,799
+that's probably the most
+
+737
+00:28:04,799 --> 00:28:07,320
+um mainstream of them
+
+738
+00:28:07,320 --> 00:28:09,419
+um we can't execute Shell Code directly
+
+739
+00:28:09,419 --> 00:28:11,640
+but what a Shell Code dude it calls into
+
+740
+00:28:11,640 --> 00:28:13,620
+windows apis
+
+741
+00:28:13,620 --> 00:28:16,380
+we can do this in peer return addresses
+
+742
+00:28:16,380 --> 00:28:18,120
+that's what a return oriented
+
+743
+00:28:18,120 --> 00:28:20,039
+programming infers
+
+744
+00:28:20,039 --> 00:28:21,900
+and that's basically mimicking our Shell
+
+745
+00:28:21,900 --> 00:28:23,940
+Code so we can't just set up a Shell
+
+746
+00:28:23,940 --> 00:28:25,860
+Code blob anymore but we can kind of do
+
+747
+00:28:25,860 --> 00:28:29,279
+the same thing shellcode intends to do
+
+748
+00:28:29,279 --> 00:28:31,080
+so what is Rob
+
+749
+00:28:31,080 --> 00:28:32,880
+um just a high level ROP is basically
+
+750
+00:28:32,880 --> 00:28:35,220
+flooding the the stack with a bunch of
+
+751
+00:28:35,220 --> 00:28:37,740
+fake return addresses essentially and
+
+752
+00:28:37,740 --> 00:28:40,140
+each fake return address does some sort
+
+753
+00:28:40,140 --> 00:28:42,900
+of interesting code sequence and it ends
+
+754
+00:28:42,900 --> 00:28:44,520
+in a return
+
+755
+00:28:44,520 --> 00:28:46,559
+and the reason for this being is because
+
+756
+00:28:46,559 --> 00:28:48,480
+what a rat actually does a return
+
+757
+00:28:48,480 --> 00:28:50,340
+instruction it takes whatever is located
+
+758
+00:28:50,340 --> 00:28:52,740
+on the stack pointer and it will load
+
+759
+00:28:52,740 --> 00:28:54,299
+that into the instruction pointer for
+
+760
+00:28:54,299 --> 00:28:57,000
+execution so by Nature every time what's
+
+761
+00:28:57,000 --> 00:28:58,980
+called a Rob Gadget which is a series of
+
+762
+00:28:58,980 --> 00:29:00,539
+instructions it's executed when the
+
+763
+00:29:00,539 --> 00:29:02,640
+return happens what does it do it looks
+
+764
+00:29:02,640 --> 00:29:04,380
+at the stack picks up what's ever there
+
+765
+00:29:04,380 --> 00:29:06,480
+and executes it well if we flooded the
+
+766
+00:29:06,480 --> 00:29:08,159
+stack with fake return address every
+
+767
+00:29:08,159 --> 00:29:09,779
+time we execute a rap Gadget it's going
+
+768
+00:29:09,779 --> 00:29:11,580
+to go pick up the next one and the next
+
+769
+00:29:11,580 --> 00:29:13,799
+one and the next one
+
+770
+00:29:13,799 --> 00:29:16,440
+and here's an example of this so we
+
+771
+00:29:16,440 --> 00:29:18,360
+pretend that we control this stack which
+
+772
+00:29:18,360 --> 00:29:19,919
+we do in our exploit and what do we do
+
+773
+00:29:19,919 --> 00:29:22,679
+we flood it with fake return addresses
+
+774
+00:29:22,679 --> 00:29:24,779
+and what we do is we set up a function
+
+775
+00:29:24,779 --> 00:29:27,120
+call by par by setting all of the
+
+776
+00:29:27,120 --> 00:29:29,159
+functions in the proper registers so
+
+777
+00:29:29,159 --> 00:29:31,380
+each architecture has a calling
+
+778
+00:29:31,380 --> 00:29:33,659
+convention right on Windows 64-bit
+
+779
+00:29:33,659 --> 00:29:35,880
+systems by default it's the fast call
+
+780
+00:29:35,880 --> 00:29:37,860
+calling convention and what that means
+
+781
+00:29:37,860 --> 00:29:40,080
+at the assembly level whenever you call
+
+782
+00:29:40,080 --> 00:29:41,820
+into a function if you actually looked
+
+783
+00:29:41,820 --> 00:29:43,919
+at the disassembly each one of your
+
+784
+00:29:43,919 --> 00:29:46,919
+arguments that you passed is loaded into
+
+785
+00:29:46,919 --> 00:29:49,620
+various registers namely rcx first for
+
+786
+00:29:49,620 --> 00:29:52,260
+the first argument RDX R8 R9 so that's
+
+787
+00:29:52,260 --> 00:29:54,840
+what we do here we load up our arguments
+
+788
+00:29:54,840 --> 00:29:57,240
+and then we return into the function so
+
+789
+00:29:57,240 --> 00:29:58,679
+basically this is a way to call the
+
+790
+00:29:58,679 --> 00:30:01,620
+function virtual protect in peer return
+
+791
+00:30:01,620 --> 00:30:04,080
+addresses
+
+792
+00:30:04,080 --> 00:30:06,240
+and the reason why we do that again is
+
+793
+00:30:06,240 --> 00:30:08,640
+because that's a code reuse Technique we
+
+794
+00:30:08,640 --> 00:30:10,080
+are reusing code that's already
+
+795
+00:30:10,080 --> 00:30:12,960
+executable we can't just Supply our own
+
+796
+00:30:12,960 --> 00:30:14,460
+we have to find code because again
+
+797
+00:30:14,460 --> 00:30:17,279
+applications are made up of code so we
+
+798
+00:30:17,279 --> 00:30:18,779
+know we can basically do the Shell Code
+
+799
+00:30:18,779 --> 00:30:21,419
+via Rob so what is this useful for
+
+800
+00:30:21,419 --> 00:30:23,580
+so let's do an example right we have a
+
+801
+00:30:23,580 --> 00:30:25,440
+kernel exploit let's try to do something
+
+802
+00:30:25,440 --> 00:30:28,260
+interesting like terminate the msmpng
+
+803
+00:30:28,260 --> 00:30:30,179
+process which is the Windows Defender
+
+804
+00:30:30,179 --> 00:30:32,640
+anti-malware service process
+
+805
+00:30:32,640 --> 00:30:34,740
+so if you've ever heard of the term PPL
+
+806
+00:30:34,740 --> 00:30:38,100
+before protected process light this is
+
+807
+00:30:38,100 --> 00:30:41,580
+basically a type of process that is
+
+808
+00:30:41,580 --> 00:30:44,460
+special in a way so in this case this
+
+809
+00:30:44,460 --> 00:30:46,500
+msmp engine it's what it's an
+
+810
+00:30:46,500 --> 00:30:49,980
+anti-malware process so AV vendors are
+
+811
+00:30:49,980 --> 00:30:51,539
+afforded the ability to make their
+
+812
+00:30:51,539 --> 00:30:54,240
+process a PPL and in this case it is an
+
+813
+00:30:54,240 --> 00:30:56,640
+anti-malware PPL and what that means is
+
+814
+00:30:56,640 --> 00:30:58,980
+it prevents other processes even
+
+815
+00:30:58,980 --> 00:31:00,840
+administrators from tampering with it
+
+816
+00:31:00,840 --> 00:31:03,120
+right so it's a special kind of process
+
+817
+00:31:03,120 --> 00:31:04,919
+that only the kernel could do something
+
+818
+00:31:04,919 --> 00:31:07,200
+with as we see in this example even with
+
+819
+00:31:07,200 --> 00:31:08,520
+a command prompt running as an
+
+820
+00:31:08,520 --> 00:31:09,899
+administrator when we try to kill the
+
+821
+00:31:09,899 --> 00:31:11,700
+process what does it say access denied
+
+822
+00:31:11,700 --> 00:31:15,360
+because it's afforded special protection
+
+823
+00:31:15,360 --> 00:31:17,460
+so we know we have a kernel exploit even
+
+824
+00:31:17,460 --> 00:31:19,320
+with hvci enabled we know we can call
+
+825
+00:31:19,320 --> 00:31:21,000
+into Windows API so let's see if we
+
+826
+00:31:21,000 --> 00:31:24,059
+can't do anything interesting
+
+827
+00:31:24,059 --> 00:31:26,100
+so as I mentioned earlier a handle I'll
+
+828
+00:31:26,100 --> 00:31:27,960
+give a just a brief overview it's not in
+
+829
+00:31:27,960 --> 00:31:31,320
+the slides a handle is a an intermediary
+
+830
+00:31:31,320 --> 00:31:33,480
+way to interact with an object right so
+
+831
+00:31:33,480 --> 00:31:36,600
+a process is actually a object managed
+
+832
+00:31:36,600 --> 00:31:38,940
+by the kernel so we can't just access
+
+833
+00:31:38,940 --> 00:31:41,100
+that directly right but we can open
+
+834
+00:31:41,100 --> 00:31:43,020
+What's called a handle to it which
+
+835
+00:31:43,020 --> 00:31:45,120
+basically is a proxy almost like an API
+
+836
+00:31:45,120 --> 00:31:48,120
+of sorts that allows us to request a
+
+837
+00:31:48,120 --> 00:31:50,159
+given access or action be done so we
+
+838
+00:31:50,159 --> 00:31:52,200
+could open up a handle to lsas which is
+
+839
+00:31:52,200 --> 00:31:54,779
+what attackers do and they might call a
+
+840
+00:31:54,779 --> 00:31:57,600
+mini dump right dump which is a Windows
+
+841
+00:31:57,600 --> 00:31:59,279
+API function that dumps the process
+
+842
+00:31:59,279 --> 00:32:02,760
+memory you need a handle to do that so
+
+843
+00:32:02,760 --> 00:32:04,559
+in order to terminate a process we need
+
+844
+00:32:04,559 --> 00:32:05,940
+a handle
+
+845
+00:32:05,940 --> 00:32:08,460
+but we know it's a PPL so even as an
+
+846
+00:32:08,460 --> 00:32:10,320
+admin we can't terminate it right so we
+
+847
+00:32:10,320 --> 00:32:12,240
+need some sort of Kernel exploit to do
+
+848
+00:32:12,240 --> 00:32:14,460
+this which we already have
+
+849
+00:32:14,460 --> 00:32:17,100
+um so we we need more than just admin
+
+850
+00:32:17,100 --> 00:32:19,320
+access essentially
+
+851
+00:32:19,320 --> 00:32:21,179
+we need to actually get our handle from
+
+852
+00:32:21,179 --> 00:32:23,100
+to this process from the kernel right
+
+853
+00:32:23,100 --> 00:32:24,659
+even an administrator cannot just
+
+854
+00:32:24,659 --> 00:32:27,240
+arbitrarily open a handle we need to do
+
+855
+00:32:27,240 --> 00:32:28,440
+it from the kernel well we have an
+
+856
+00:32:28,440 --> 00:32:29,940
+exploit primitive to start calling
+
+857
+00:32:29,940 --> 00:32:31,940
+functions in the kernel so good for us
+
+858
+00:32:31,940 --> 00:32:35,039
+we can call into the function ZW open
+
+859
+00:32:35,039 --> 00:32:37,500
+process which is a kernel only API call
+
+860
+00:32:37,500 --> 00:32:41,480
+that as it infers opens a process handle
+
+861
+00:32:41,480 --> 00:32:44,640
+so using Rob uh basically here's an
+
+862
+00:32:44,640 --> 00:32:47,220
+example once we control the stack using
+
+863
+00:32:47,220 --> 00:32:48,779
+all the aforementioned steps we talked
+
+864
+00:32:48,779 --> 00:32:50,460
+about we can flood the stack with fake
+
+865
+00:32:50,460 --> 00:32:52,620
+return addresses and in this case we
+
+866
+00:32:52,620 --> 00:32:54,539
+populate arguments in registers that
+
+867
+00:32:54,539 --> 00:32:58,380
+eventually call into ZW open process and
+
+868
+00:32:58,380 --> 00:33:00,000
+this is what it would look like we
+
+869
+00:33:00,000 --> 00:33:03,059
+leaked the stack we corrupt the all the
+
+870
+00:33:03,059 --> 00:33:05,820
+return addresses and we're able to call
+
+871
+00:33:05,820 --> 00:33:08,940
+into ZW open process so that alone would
+
+872
+00:33:08,940 --> 00:33:11,760
+give us a handle to the defender
+
+873
+00:33:11,760 --> 00:33:13,799
+anti-malware process even though it's a
+
+874
+00:33:13,799 --> 00:33:15,679
+PPL
+
+875
+00:33:15,679 --> 00:33:18,779
+but there's a bit of an issue and that's
+
+876
+00:33:18,779 --> 00:33:20,820
+because we're in the kernel now so what
+
+877
+00:33:20,820 --> 00:33:22,440
+happens anytime there's any kind of
+
+878
+00:33:22,440 --> 00:33:24,360
+fault or issue in the kernel you get a
+
+879
+00:33:24,360 --> 00:33:26,640
+bsod a blue screen of death right so
+
+880
+00:33:26,640 --> 00:33:28,860
+we've just totally smashed and just
+
+881
+00:33:28,860 --> 00:33:30,779
+mashed the stack with garbage
+
+882
+00:33:30,779 --> 00:33:33,419
+essentially that we control and there
+
+883
+00:33:33,419 --> 00:33:35,279
+are legitimate return addresses that
+
+884
+00:33:35,279 --> 00:33:37,019
+need to be returned into critical
+
+885
+00:33:37,019 --> 00:33:39,179
+functions right so if we just let
+
+886
+00:33:39,179 --> 00:33:41,340
+bygones be bygones there we're going to
+
+887
+00:33:41,340 --> 00:33:42,240
+just
+
+888
+00:33:42,240 --> 00:33:44,580
+um cause a Visa a blue screen of death
+
+889
+00:33:44,580 --> 00:33:45,539
+essentially
+
+890
+00:33:45,539 --> 00:33:47,940
+so we need some way to avoid that
+
+891
+00:33:47,940 --> 00:33:50,460
+so what we actually want to do is we
+
+892
+00:33:50,460 --> 00:33:51,960
+want to find a way to actually terminate
+
+893
+00:33:51,960 --> 00:33:54,120
+the thread that that X our exploits
+
+894
+00:33:54,120 --> 00:33:55,380
+running in because as we talked about
+
+895
+00:33:55,380 --> 00:33:57,419
+earlier we've created a dummy thread to
+
+896
+00:33:57,419 --> 00:33:58,919
+do all this exploitation work and right
+
+897
+00:33:58,919 --> 00:34:01,140
+we don't care about it necessarily but
+
+898
+00:34:01,140 --> 00:34:03,000
+we needed to gracefully terminate we
+
+899
+00:34:03,000 --> 00:34:04,679
+can't just let the kernel
+
+900
+00:34:04,679 --> 00:34:07,320
+um you know handle a fault because it
+
+901
+00:34:07,320 --> 00:34:09,599
+may be devastating
+
+902
+00:34:09,599 --> 00:34:11,339
+so basically we just append our first
+
+903
+00:34:11,339 --> 00:34:13,379
+rock chain with a second drop chain that
+
+904
+00:34:13,379 --> 00:34:15,418
+invokes terminate thread
+
+905
+00:34:15,418 --> 00:34:17,699
+so we have a handle to our dummy thread
+
+906
+00:34:17,699 --> 00:34:19,739
+we just pass that handle in to terminate
+
+907
+00:34:19,739 --> 00:34:22,260
+thread and after we open the handle
+
+908
+00:34:22,260 --> 00:34:25,560
+defending process terminate thread lets
+
+909
+00:34:25,560 --> 00:34:27,599
+the kernel handle all of the termination
+
+910
+00:34:27,599 --> 00:34:29,699
+of our thread so we don't need to worry
+
+911
+00:34:29,699 --> 00:34:31,139
+about cleanup because the kernel is
+
+912
+00:34:31,139 --> 00:34:33,000
+going to handle it for us
+
+913
+00:34:33,000 --> 00:34:34,800
+so basically after our exploit work is
+
+914
+00:34:34,800 --> 00:34:37,739
+done we call ZW terminate thread and
+
+915
+00:34:37,739 --> 00:34:39,239
+that's going to terminate the dummy
+
+916
+00:34:39,239 --> 00:34:40,739
+thread gracefully and we're not going to
+
+917
+00:34:40,739 --> 00:34:43,759
+get a blue screen of death
+
+918
+00:34:45,119 --> 00:34:46,918
+so here is
+
+919
+00:34:46,918 --> 00:34:49,080
+um the the last set of issues that we're
+
+920
+00:34:49,080 --> 00:34:51,359
+facing here and these are more just
+
+921
+00:34:51,359 --> 00:34:53,580
+about the creativity of exploitation not
+
+922
+00:34:53,580 --> 00:34:55,500
+really hvci
+
+923
+00:34:55,500 --> 00:34:58,020
+so we want to pass the defender process
+
+924
+00:34:58,020 --> 00:35:00,180
+handle to the function terminate process
+
+925
+00:35:00,180 --> 00:35:01,859
+right because we want to terminate the
+
+926
+00:35:01,859 --> 00:35:03,660
+process
+
+927
+00:35:03,660 --> 00:35:06,020
+although we have a handle to the process
+
+928
+00:35:06,020 --> 00:35:08,640
+there is an issue that we're facing it's
+
+929
+00:35:08,640 --> 00:35:10,500
+actually two issues
+
+930
+00:35:10,500 --> 00:35:13,380
+the first being handles are stored in a
+
+931
+00:35:13,380 --> 00:35:15,540
+per process handle table
+
+932
+00:35:15,540 --> 00:35:17,820
+so what that means is every time a
+
+933
+00:35:17,820 --> 00:35:19,800
+handle is open that's managed by a table
+
+934
+00:35:19,800 --> 00:35:22,920
+in your process so our exploit process
+
+935
+00:35:22,920 --> 00:35:25,320
+let's say it's called exploit.exe right
+
+936
+00:35:25,320 --> 00:35:27,660
+well that's got a handle table of all of
+
+937
+00:35:27,660 --> 00:35:30,240
+the handles that are opened stemming
+
+938
+00:35:30,240 --> 00:35:33,419
+from exploit.exe
+
+939
+00:35:33,780 --> 00:35:36,960
+um yeah so let's talk about that a
+
+940
+00:35:36,960 --> 00:35:38,400
+little bit so they're in a handle table
+
+941
+00:35:38,400 --> 00:35:40,020
+so we're gonna have to resolve that in a
+
+942
+00:35:40,020 --> 00:35:40,859
+second
+
+943
+00:35:40,859 --> 00:35:43,020
+um being able to locate that handle but
+
+944
+00:35:43,020 --> 00:35:45,599
+the main issue is that anytime a handle
+
+945
+00:35:45,599 --> 00:35:48,300
+is open to most anti-malware
+
+946
+00:35:48,300 --> 00:35:51,900
+um processes something happens and
+
+947
+00:35:51,900 --> 00:35:53,099
+um
+
+948
+00:35:53,099 --> 00:35:56,640
+let's sorry I'm losing myself here
+
+949
+00:35:56,640 --> 00:35:57,960
+um let's talk about this as I just
+
+950
+00:35:57,960 --> 00:36:00,119
+mentioned so anytime in a um
+
+951
+00:36:00,119 --> 00:36:01,440
+anti-malware
+
+952
+00:36:01,440 --> 00:36:04,140
+um process you can register since you're
+
+953
+00:36:04,140 --> 00:36:06,060
+a special type of process these um
+
+954
+00:36:06,060 --> 00:36:07,680
+kernel mode callbacks you may have heard
+
+955
+00:36:07,680 --> 00:36:09,660
+of these before and basically what a
+
+956
+00:36:09,660 --> 00:36:11,460
+kernel mode callback is it's a function
+
+957
+00:36:11,460 --> 00:36:13,200
+you register in the kernel that anytime
+
+958
+00:36:13,200 --> 00:36:15,599
+a given action happens any function that
+
+959
+00:36:15,599 --> 00:36:17,460
+was registered is notified so for
+
+960
+00:36:17,460 --> 00:36:19,820
+instance you can register a callback
+
+961
+00:36:19,820 --> 00:36:23,640
+function for process creation so let's
+
+962
+00:36:23,640 --> 00:36:25,859
+say Defender registers a kernel callback
+
+963
+00:36:25,859 --> 00:36:28,020
+for process creation anytime a process
+
+964
+00:36:28,020 --> 00:36:30,480
+is created on the whole OS that Defender
+
+965
+00:36:30,480 --> 00:36:31,940
+uh process
+
+966
+00:36:31,940 --> 00:36:35,220
+callback is called so that's how your
+
+967
+00:36:35,220 --> 00:36:36,980
+anti-malware
+
+968
+00:36:36,980 --> 00:36:39,480
+utilities know a process was created
+
+969
+00:36:39,480 --> 00:36:40,380
+right
+
+970
+00:36:40,380 --> 00:36:42,660
+while there is also a callback you can
+
+971
+00:36:42,660 --> 00:36:44,820
+register for object creation so anytime
+
+972
+00:36:44,820 --> 00:36:46,740
+you open up a handle
+
+973
+00:36:46,740 --> 00:36:49,380
+um any uh security product that
+
+974
+00:36:49,380 --> 00:36:51,300
+registered a callback will get notified
+
+975
+00:36:51,300 --> 00:36:52,980
+that you've created a handle and what
+
+976
+00:36:52,980 --> 00:36:55,260
+Defender does is anytime you try to open
+
+977
+00:36:55,260 --> 00:36:57,660
+up a handle to Defender that callback
+
+978
+00:36:57,660 --> 00:37:00,359
+will strip the access rights from it so
+
+979
+00:37:00,359 --> 00:37:02,040
+you can never open up a handle to
+
+980
+00:37:02,040 --> 00:37:04,020
+Defender with the needed permissions to
+
+981
+00:37:04,020 --> 00:37:07,020
+terminate it from user mode
+
+982
+00:37:07,020 --> 00:37:10,859
+and the second issue is that even if we
+
+983
+00:37:10,859 --> 00:37:13,260
+were able to open up a kernel handle to
+
+984
+00:37:13,260 --> 00:37:16,980
+this process anytime you open up a so
+
+985
+00:37:16,980 --> 00:37:19,500
+let me explain this uh we opened a user
+
+986
+00:37:19,500 --> 00:37:21,300
+mode handle so even though we called a
+
+987
+00:37:21,300 --> 00:37:23,880
+kernel mode function as I said
+
+988
+00:37:23,880 --> 00:37:26,040
+um it's in our per process handle table
+
+989
+00:37:26,040 --> 00:37:28,440
+so exploit.exe is responsible for
+
+990
+00:37:28,440 --> 00:37:30,119
+opening up that handle right to the
+
+991
+00:37:30,119 --> 00:37:32,460
+defender process well that means that
+
+992
+00:37:32,460 --> 00:37:34,740
+handle will be stored in exploit.exe's
+
+993
+00:37:34,740 --> 00:37:37,220
+handle table
+
+994
+00:37:37,260 --> 00:37:39,119
+um but we want to open up a kernel
+
+995
+00:37:39,119 --> 00:37:41,220
+handle to it because anytime you do a
+
+996
+00:37:41,220 --> 00:37:43,920
+user mode uh handle to the defender
+
+997
+00:37:43,920 --> 00:37:45,060
+process you're going to get your access
+
+998
+00:37:45,060 --> 00:37:48,420
+rights stripped but the issue is if you
+
+999
+00:37:48,420 --> 00:37:50,160
+open up a true kernel handle which we'll
+
+1000
+00:37:50,160 --> 00:37:51,960
+talk about in the next slide a true
+
+1001
+00:37:51,960 --> 00:37:54,660
+kernel handle that will get stored in
+
+1002
+00:37:54,660 --> 00:37:57,300
+the system processes handle table so now
+
+1003
+00:37:57,300 --> 00:37:58,920
+we run into an issue where even if we
+
+1004
+00:37:58,920 --> 00:38:01,140
+get the necessary handle it's stored in
+
+1005
+00:38:01,140 --> 00:38:03,000
+another process as handle table so when
+
+1006
+00:38:03,000 --> 00:38:05,040
+we call terminate process it will try to
+
+1007
+00:38:05,040 --> 00:38:07,560
+look up in our handle table all of the
+
+1008
+00:38:07,560 --> 00:38:08,820
+handles and it won't find it because
+
+1009
+00:38:08,820 --> 00:38:11,700
+it's located in another process
+
+1010
+00:38:11,700 --> 00:38:13,380
+so the first issue is we need a true
+
+1011
+00:38:13,380 --> 00:38:15,960
+candle we need a true kernel handle so
+
+1012
+00:38:15,960 --> 00:38:17,700
+the way we do this is when we call ZW
+
+1013
+00:38:17,700 --> 00:38:19,920
+open process we got to supply a
+
+1014
+00:38:19,920 --> 00:38:23,460
+structure here called object attributes
+
+1015
+00:38:23,460 --> 00:38:25,079
+and there are a few uh there are a few
+
+1016
+00:38:25,079 --> 00:38:26,760
+options you can set here in attributes
+
+1017
+00:38:26,760 --> 00:38:29,160
+one of them being OB kernel handle as
+
+1018
+00:38:29,160 --> 00:38:30,540
+the name infers this is going to make
+
+1019
+00:38:30,540 --> 00:38:33,420
+this handle what a kernel handle so
+
+1020
+00:38:33,420 --> 00:38:34,920
+basically now when we call into this
+
+1021
+00:38:34,920 --> 00:38:37,079
+function we Supply this and the the
+
+1022
+00:38:37,079 --> 00:38:39,000
+handle will be opened up as a kernel
+
+1023
+00:38:39,000 --> 00:38:41,339
+handle which means Defender won't strip
+
+1024
+00:38:41,339 --> 00:38:43,619
+the access rights
+
+1025
+00:38:43,619 --> 00:38:45,480
+and this is how this is done so
+
+1026
+00:38:45,480 --> 00:38:49,200
+basically we can just set 0x 200 which
+
+1027
+00:38:49,200 --> 00:38:52,500
+is the notation of object kernel handle
+
+1028
+00:38:52,500 --> 00:38:55,160
+the actual value
+
+1029
+00:38:55,200 --> 00:38:57,359
+so great now we have a kernel handle so
+
+1030
+00:38:57,359 --> 00:38:59,220
+we know we can terminate the process now
+
+1031
+00:38:59,220 --> 00:39:01,740
+but the issue is when we call terminate
+
+1032
+00:39:01,740 --> 00:39:03,720
+process to actually kill it where is
+
+1033
+00:39:03,720 --> 00:39:06,180
+that handle located in the system
+
+1034
+00:39:06,180 --> 00:39:08,280
+processes handle table which we cannot
+
+1035
+00:39:08,280 --> 00:39:10,619
+just arbitrarily access
+
+1036
+00:39:10,619 --> 00:39:12,180
+so we need to think a bit outside the
+
+1037
+00:39:12,180 --> 00:39:14,339
+box here so what if we could actually
+
+1038
+00:39:14,339 --> 00:39:17,040
+Force our process to think it needs to
+
+1039
+00:39:17,040 --> 00:39:19,079
+locate all of its Handles in the system
+
+1040
+00:39:19,079 --> 00:39:21,480
+process table
+
+1041
+00:39:21,480 --> 00:39:23,940
+there's actually a way to do this you
+
+1042
+00:39:23,940 --> 00:39:25,859
+need a kernel mode vulnerability but
+
+1043
+00:39:25,859 --> 00:39:27,960
+basically we know we can leak k-thread
+
+1044
+00:39:27,960 --> 00:39:31,140
+objects right of all threads there is a
+
+1045
+00:39:31,140 --> 00:39:34,320
+member known as a previous mode in what
+
+1046
+00:39:34,320 --> 00:39:37,320
+previous mode is is it's a way to denote
+
+1047
+00:39:37,320 --> 00:39:40,140
+um your execution came from when a
+
+1048
+00:39:40,140 --> 00:39:42,180
+system routine reaches the kernel right
+
+1049
+00:39:42,180 --> 00:39:44,460
+so if you're familiar with system calls
+
+1050
+00:39:44,460 --> 00:39:46,680
+on Linux right like you load a system
+
+1051
+00:39:46,680 --> 00:39:48,660
+call number and you invoke Cisco that's
+
+1052
+00:39:48,660 --> 00:39:50,820
+actually true on Windows but it's
+
+1053
+00:39:50,820 --> 00:39:52,560
+abstracted from you so what happens is
+
+1054
+00:39:52,560 --> 00:39:54,359
+for instance when you call virtual alloc
+
+1055
+00:39:54,359 --> 00:39:56,400
+to allocate some memory that's actually
+
+1056
+00:39:56,400 --> 00:39:57,720
+just a wrapper which calls another
+
+1057
+00:39:57,720 --> 00:39:59,520
+wrapper which eventually goes down to
+
+1058
+00:39:59,520 --> 00:40:02,339
+the ntdll layer which invokes NT
+
+1059
+00:40:02,339 --> 00:40:04,260
+allocate virtual memory which does the
+
+1060
+00:40:04,260 --> 00:40:06,060
+same thing loads a syscall number and
+
+1061
+00:40:06,060 --> 00:40:08,760
+does syscall and what syscall does is it
+
+1062
+00:40:08,760 --> 00:40:10,680
+transfers execution into the kernel to
+
+1063
+00:40:10,680 --> 00:40:12,180
+allocate some resources for us like
+
+1064
+00:40:12,180 --> 00:40:13,260
+memory
+
+1065
+00:40:13,260 --> 00:40:15,000
+so when that system call happens
+
+1066
+00:40:15,000 --> 00:40:18,060
+previous mode is always one when it
+
+1067
+00:40:18,060 --> 00:40:19,619
+comes from user mode so the kernel knows
+
+1068
+00:40:19,619 --> 00:40:22,020
+hey this is untrusted input from user
+
+1069
+00:40:22,020 --> 00:40:24,420
+mode let me do some Security checks but
+
+1070
+00:40:24,420 --> 00:40:27,180
+when previous mode is zero this means
+
+1071
+00:40:27,180 --> 00:40:29,700
+that the system call originated from the
+
+1072
+00:40:29,700 --> 00:40:31,619
+kernel itself
+
+1073
+00:40:31,619 --> 00:40:32,760
+so what if we used our current
+
+1074
+00:40:32,760 --> 00:40:34,619
+vulnerability to make the kernel think
+
+1075
+00:40:34,619 --> 00:40:38,280
+the handle it needs to resolve is from
+
+1076
+00:40:38,280 --> 00:40:41,720
+the system process handle table
+
+1077
+00:40:41,820 --> 00:40:44,339
+well if we look at the actual system
+
+1078
+00:40:44,339 --> 00:40:46,020
+call that's responsible for terminating
+
+1079
+00:40:46,020 --> 00:40:47,700
+a process which in this example at the
+
+1080
+00:40:47,700 --> 00:40:49,740
+top it may be hard to see in the
+
+1081
+00:40:49,740 --> 00:40:52,619
+outlined red box is NT terminate process
+
+1082
+00:40:52,619 --> 00:40:54,599
+which again terminate process is a
+
+1083
+00:40:54,599 --> 00:40:56,339
+wrapper which eventually invokes this
+
+1084
+00:40:56,339 --> 00:40:58,500
+system called routine and one of the
+
+1085
+00:40:58,500 --> 00:41:00,060
+first things it does is it looks at the
+
+1086
+00:41:00,060 --> 00:41:01,740
+thread that's responsible for invoking
+
+1087
+00:41:01,740 --> 00:41:04,200
+this routine and it captures previous
+
+1088
+00:41:04,200 --> 00:41:06,420
+mode and it passes that off to another
+
+1089
+00:41:06,420 --> 00:41:08,339
+function
+
+1090
+00:41:08,339 --> 00:41:10,140
+and that function is called OBP
+
+1091
+00:41:10,140 --> 00:41:11,880
+reference object by handle with tag
+
+1092
+00:41:11,880 --> 00:41:13,740
+mouthful
+
+1093
+00:41:13,740 --> 00:41:15,240
+um so what this function actually does
+
+1094
+00:41:15,240 --> 00:41:18,599
+is it looks and it says hey is this a
+
+1095
+00:41:18,599 --> 00:41:20,579
+kernel handle and the way a kernel
+
+1096
+00:41:20,579 --> 00:41:22,619
+handle is denoted is its sign extended
+
+1097
+00:41:22,619 --> 00:41:24,599
+with ffff8
+
+1098
+00:41:24,599 --> 00:41:27,420
+and after that check is done it looks at
+
+1099
+00:41:27,420 --> 00:41:29,099
+previous mode and it says is previous
+
+1100
+00:41:29,099 --> 00:41:31,980
+mode zero well if it's one that means it
+
+1101
+00:41:31,980 --> 00:41:33,480
+comes from user mode right and we should
+
+1102
+00:41:33,480 --> 00:41:35,160
+not trust it and we don't want to look
+
+1103
+00:41:35,160 --> 00:41:37,320
+up the handle table in the kernel
+
+1104
+00:41:37,320 --> 00:41:38,700
+because it's originating from some
+
+1105
+00:41:38,700 --> 00:41:42,060
+process in user mode but if it's zero we
+
+1106
+00:41:42,060 --> 00:41:44,339
+infer oh this this execution is coming
+
+1107
+00:41:44,339 --> 00:41:46,500
+from the kernel itself and where is the
+
+1108
+00:41:46,500 --> 00:41:48,660
+Kernel's handle table located at the
+
+1109
+00:41:48,660 --> 00:41:50,040
+system process
+
+1110
+00:41:50,040 --> 00:41:53,160
+so if we corrupt previous mode to zero
+
+1111
+00:41:53,160 --> 00:41:55,140
+and then we invoke terminate process
+
+1112
+00:41:55,140 --> 00:41:57,420
+this kind of tricks the kernel into
+
+1113
+00:41:57,420 --> 00:41:59,160
+looking up handles from the kernel
+
+1114
+00:41:59,160 --> 00:42:01,619
+handle table
+
+1115
+00:42:01,619 --> 00:42:03,180
+so we can actually do this in our
+
+1116
+00:42:03,180 --> 00:42:05,280
+exploit um so in this example it may be
+
+1117
+00:42:05,280 --> 00:42:08,160
+hard to read we open up a handle to the
+
+1118
+00:42:08,160 --> 00:42:10,260
+thread that's performing all of this in
+
+1119
+00:42:10,260 --> 00:42:12,000
+our exploit which is the current thread
+
+1120
+00:42:12,000 --> 00:42:14,820
+so we open up a handle to our own thread
+
+1121
+00:42:14,820 --> 00:42:17,280
+we leak the K thread object associated
+
+1122
+00:42:17,280 --> 00:42:19,440
+with that thread again perfectly valid
+
+1123
+00:42:19,440 --> 00:42:21,660
+Windows exported functionality you can
+
+1124
+00:42:21,660 --> 00:42:23,520
+do not a vulnerability
+
+1125
+00:42:23,520 --> 00:42:25,619
+and we leak the K thread object which is
+
+1126
+00:42:25,619 --> 00:42:28,560
+a kernel mode address we then can um
+
+1127
+00:42:28,560 --> 00:42:31,619
+corrupt the previous mode member of K
+
+1128
+00:42:31,619 --> 00:42:33,540
+thread to zero so now what happens
+
+1129
+00:42:33,540 --> 00:42:35,520
+anytime this thread makes a system call
+
+1130
+00:42:35,520 --> 00:42:37,800
+the kernel thinks oh this is originating
+
+1131
+00:42:37,800 --> 00:42:40,140
+from the kernel
+
+1132
+00:42:40,140 --> 00:42:42,119
+so now what we basically can do is we
+
+1133
+00:42:42,119 --> 00:42:44,640
+can use Rob to call ZW open process and
+
+1134
+00:42:44,640 --> 00:42:47,220
+obtain a kernel handle then we can clean
+
+1135
+00:42:47,220 --> 00:42:48,839
+up our execution which we talked about
+
+1136
+00:42:48,839 --> 00:42:50,760
+with terminate thread and then we can
+
+1137
+00:42:50,760 --> 00:42:52,680
+use our vulnerability to corrupt
+
+1138
+00:42:52,680 --> 00:42:55,140
+previous mode and set it to zero and
+
+1139
+00:42:55,140 --> 00:42:56,820
+then using that same thread called
+
+1140
+00:42:56,820 --> 00:42:58,980
+terminate process again this would have
+
+1141
+00:42:58,980 --> 00:43:00,660
+been a lot easier to just have a shell
+
+1142
+00:43:00,660 --> 00:43:02,700
+code blob in the kernel mark it as
+
+1143
+00:43:02,700 --> 00:43:04,260
+executable and run it but that's kind of
+
+1144
+00:43:04,260 --> 00:43:05,880
+the point of this talk is we can't do
+
+1145
+00:43:05,880 --> 00:43:07,619
+that anymore we have to get very
+
+1146
+00:43:07,619 --> 00:43:10,140
+convoluted with these sort of things
+
+1147
+00:43:10,140 --> 00:43:12,180
+so I won't press play yet but on the
+
+1148
+00:43:12,180 --> 00:43:13,859
+right hand side this is um process
+
+1149
+00:43:13,859 --> 00:43:16,440
+hacker and that you can't see really but
+
+1150
+00:43:16,440 --> 00:43:19,020
+it's msmpng and that's showing our
+
+1151
+00:43:19,020 --> 00:43:23,040
+process is running the defender process
+
+1152
+00:43:23,040 --> 00:43:25,319
+let's see if this plays
+
+1153
+00:43:25,319 --> 00:43:28,440
+so now we run our exploit and if we keep
+
+1154
+00:43:28,440 --> 00:43:31,440
+a look on the right hand side
+
+1155
+00:43:31,440 --> 00:43:33,599
+give it a second
+
+1156
+00:43:33,599 --> 00:43:35,400
+no I was not brave enough for a live
+
+1157
+00:43:35,400 --> 00:43:37,819
+demo
+
+1158
+00:43:38,339 --> 00:43:40,920
+oh did I oh it's not it's it paused
+
+1159
+00:43:40,920 --> 00:43:43,680
+halfway through my video
+
+1160
+00:43:43,680 --> 00:43:45,839
+can't even get the pre-recorded demo
+
+1161
+00:43:45,839 --> 00:43:47,819
+right
+
+1162
+00:43:47,819 --> 00:43:49,440
+and if we look on the right hand side
+
+1163
+00:43:49,440 --> 00:43:50,940
+now
+
+1164
+00:43:50,940 --> 00:43:52,619
+um in about there it goes uh the
+
+1165
+00:43:52,619 --> 00:43:54,359
+defender process is terminated so that
+
+1166
+00:43:54,359 --> 00:43:55,740
+would have been a lot easier to do in
+
+1167
+00:43:55,740 --> 00:43:57,660
+Shell Code but again we can't do that
+
+1168
+00:43:57,660 --> 00:43:59,880
+anymore
+
+1169
+00:43:59,880 --> 00:44:01,380
+so last part
+
+1170
+00:44:01,380 --> 00:44:04,319
+um we've kind of said oh hpci is really
+
+1171
+00:44:04,319 --> 00:44:05,940
+cool right but we it doesn't really
+
+1172
+00:44:05,940 --> 00:44:07,440
+matter because we can get more
+
+1173
+00:44:07,440 --> 00:44:09,780
+convoluted and take care of it
+
+1174
+00:44:09,780 --> 00:44:11,460
+um that's actually not the case let's uh
+
+1175
+00:44:11,460 --> 00:44:14,700
+we'll talk about how we augment hvci
+
+1176
+00:44:14,700 --> 00:44:17,160
+so what did our exploitation rely on WE
+
+1177
+00:44:17,160 --> 00:44:19,500
+flooded the stack with a bunch of fake
+
+1178
+00:44:19,500 --> 00:44:21,780
+return addresses correct
+
+1179
+00:44:21,780 --> 00:44:24,540
+well with the Advent of Intel CET which
+
+1180
+00:44:24,540 --> 00:44:26,400
+is a hardware mitigation that's actually
+
+1181
+00:44:26,400 --> 00:44:28,380
+no longer possible
+
+1182
+00:44:28,380 --> 00:44:31,440
+so what CET is it's uh control flow
+
+1183
+00:44:31,440 --> 00:44:33,119
+enforcement technology and it's a
+
+1184
+00:44:33,119 --> 00:44:34,500
+hardware mitigation that protects the
+
+1185
+00:44:34,500 --> 00:44:37,260
+Integrity of the stack
+
+1186
+00:44:37,260 --> 00:44:39,060
+so earlier we talked about when a call
+
+1187
+00:44:39,060 --> 00:44:41,220
+happens at the assembly level what will
+
+1188
+00:44:41,220 --> 00:44:43,460
+happen a return
+
+1189
+00:44:43,460 --> 00:44:45,480
+so in this case we're calling the
+
+1190
+00:44:45,480 --> 00:44:48,480
+function Foo and its return address is
+
+1191
+00:44:48,480 --> 00:44:50,819
+pushed onto the stack but now we have
+
+1192
+00:44:50,819 --> 00:44:54,300
+something called a shadow stack which is
+
+1193
+00:44:54,300 --> 00:44:56,599
+Hardware protected that software
+
+1194
+00:44:56,599 --> 00:44:59,520
+technically can access for checking
+
+1195
+00:44:59,520 --> 00:45:03,180
+purposes but not anything that could be
+
+1196
+00:45:03,180 --> 00:45:05,640
+corruptable because if you're in user
+
+1197
+00:45:05,640 --> 00:45:06,839
+mode the checks are done in the kernel
+
+1198
+00:45:06,839 --> 00:45:09,119
+so you need access to the kernel and
+
+1199
+00:45:09,119 --> 00:45:10,980
+same thing here if you're the checks are
+
+1200
+00:45:10,980 --> 00:45:13,200
+done and if you have CET running in the
+
+1201
+00:45:13,200 --> 00:45:16,020
+kernel it's protected by hvci so that's
+
+1202
+00:45:16,020 --> 00:45:18,240
+kind of why I'm bringing this up here so
+
+1203
+00:45:18,240 --> 00:45:20,099
+in this case we have a stack we push
+
+1204
+00:45:20,099 --> 00:45:22,560
+them onto the stock the return addresses
+
+1205
+00:45:22,560 --> 00:45:24,780
+so now we kind of do what we did with
+
+1206
+00:45:24,780 --> 00:45:27,300
+Rob right we corrupt the return address
+
+1207
+00:45:27,300 --> 00:45:29,160
+but we actually have the shadow stack
+
+1208
+00:45:29,160 --> 00:45:31,380
+which is an immutable copy of the stack
+
+1209
+00:45:31,380 --> 00:45:34,020
+and then anytime a return happens into
+
+1210
+00:45:34,020 --> 00:45:37,020
+this corrupt into the uh stack we check
+
+1211
+00:45:37,020 --> 00:45:39,000
+that which with the shadow stack to
+
+1212
+00:45:39,000 --> 00:45:41,280
+insert a little overwritten
+
+1213
+00:45:41,280 --> 00:45:43,140
+so if you override a return address you
+
+1214
+00:45:43,140 --> 00:45:44,400
+crash
+
+1215
+00:45:44,400 --> 00:45:48,300
+um so that's the end of Rob with um CET
+
+1216
+00:45:48,300 --> 00:45:50,280
+and what did our whole thing rely on WE
+
+1217
+00:45:50,280 --> 00:45:52,800
+flooded the return address with Rob or
+
+1218
+00:45:52,800 --> 00:45:54,180
+excuse me we flooded the return address
+
+1219
+00:45:54,180 --> 00:45:57,000
+the stack with return addresses and we
+
+1220
+00:45:57,000 --> 00:45:59,940
+can't do that with CET anymore
+
+1221
+00:45:59,940 --> 00:46:01,980
+so with the way this goes with
+
+1222
+00:46:01,980 --> 00:46:04,319
+mitigations is your mitigations are only
+
+1223
+00:46:04,319 --> 00:46:07,079
+as res they're only as good as their
+
+1224
+00:46:07,079 --> 00:46:08,579
+resiliency
+
+1225
+00:46:08,579 --> 00:46:10,140
+and I know that sounds kind of redundant
+
+1226
+00:46:10,140 --> 00:46:12,720
+but hvci does what it's intended to do
+
+1227
+00:46:12,720 --> 00:46:15,079
+you cannot execute unsigned code anymore
+
+1228
+00:46:15,079 --> 00:46:18,060
+but it's not resilient until you
+
+1229
+00:46:18,060 --> 00:46:20,280
+implement something like CET coupled
+
+1230
+00:46:20,280 --> 00:46:22,680
+with it that totally prevents even other
+
+1231
+00:46:22,680 --> 00:46:25,319
+things like code reuse
+
+1232
+00:46:25,319 --> 00:46:28,200
+um so the conclusion here is these
+
+1233
+00:46:28,200 --> 00:46:30,960
+mitigations are great but the the they
+
+1234
+00:46:30,960 --> 00:46:32,520
+complement each other
+
+1235
+00:46:32,520 --> 00:46:34,980
+um so just depending on one
+
+1236
+00:46:34,980 --> 00:46:37,260
+um won't it'll help you with out of the
+
+1237
+00:46:37,260 --> 00:46:39,660
+box exploits but the more determined
+
+1238
+00:46:39,660 --> 00:46:41,880
+attacker not so much
+
+1239
+00:46:41,880 --> 00:46:43,500
+um but what's interesting too is Windows
+
+1240
+00:46:43,500 --> 00:46:45,660
+only uses the shadow stack portion of
+
+1241
+00:46:45,660 --> 00:46:49,140
+CET so CET actually is twofold it checks
+
+1242
+00:46:49,140 --> 00:46:50,700
+return addresses with the shadow stack
+
+1243
+00:46:50,700 --> 00:46:51,720
+but there's also something called
+
+1244
+00:46:51,720 --> 00:46:55,020
+indirect Branch tracking or IBT and that
+
+1245
+00:46:55,020 --> 00:46:58,380
+is checking jumps and calls well Windows
+
+1246
+00:46:58,380 --> 00:47:00,720
+already has CFG and they have a better
+
+1247
+00:47:00,720 --> 00:47:04,200
+version of CFG called extended flowguard
+
+1248
+00:47:04,200 --> 00:47:07,380
+or xfg so Windows actually only uses the
+
+1249
+00:47:07,380 --> 00:47:09,839
+shadow stack portion of CET it doesn't
+
+1250
+00:47:09,839 --> 00:47:11,880
+use all of it so to keep a technique
+
+1251
+00:47:11,880 --> 00:47:13,800
+like this alive basically you would need
+
+1252
+00:47:13,800 --> 00:47:18,260
+to find a bypass in CFG or xfg because
+
+1253
+00:47:18,260 --> 00:47:21,180
+control flow enforcement technology is a
+
+1254
+00:47:21,180 --> 00:47:23,280
+hardware mitigation right you can't
+
+1255
+00:47:23,280 --> 00:47:26,280
+access it in user mode and the shadow
+
+1256
+00:47:26,280 --> 00:47:29,220
+stack excuse me or in the kernel
+
+1257
+00:47:29,220 --> 00:47:31,260
+um so believe it or not these are all
+
+1258
+00:47:31,260 --> 00:47:33,180
+free mitigations not well technically
+
+1259
+00:47:33,180 --> 00:47:34,920
+not free because um
+
+1260
+00:47:34,920 --> 00:47:36,720
+you know you need supported Hardware to
+
+1261
+00:47:36,720 --> 00:47:38,579
+do it and that's my last little 30
+
+1262
+00:47:38,579 --> 00:47:40,260
+second tangent I'll give it actually
+
+1263
+00:47:40,260 --> 00:47:42,300
+wasn't the TPM that was responsible
+
+1264
+00:47:42,300 --> 00:47:44,160
+these mitigations are enabled by default
+
+1265
+00:47:44,160 --> 00:47:46,800
+on Windows 11. TPMS have been around for
+
+1266
+00:47:46,800 --> 00:47:48,780
+a very long time actually there's
+
+1267
+00:47:48,780 --> 00:47:50,700
+another Hardware mitigation called mbeck
+
+1268
+00:47:50,700 --> 00:47:52,440
+it stands for mode based execution
+
+1269
+00:47:52,440 --> 00:47:53,520
+control
+
+1270
+00:47:53,520 --> 00:47:56,579
+and windows has a software
+
+1271
+00:47:56,579 --> 00:47:59,280
+implementation of mbec for CPUs that
+
+1272
+00:47:59,280 --> 00:48:01,200
+don't support it well that software
+
+1273
+00:48:01,200 --> 00:48:03,180
+implementation is much slower than the
+
+1274
+00:48:03,180 --> 00:48:05,640
+hardware mitigation mbac but in order
+
+1275
+00:48:05,640 --> 00:48:07,740
+for hvci to also be resilient you need
+
+1276
+00:48:07,740 --> 00:48:09,540
+mbac which is outside the scope of this
+
+1277
+00:48:09,540 --> 00:48:12,540
+talk and Microsoft didn't want their OS
+
+1278
+00:48:12,540 --> 00:48:14,280
+to be slow obviously you don't want to
+
+1279
+00:48:14,280 --> 00:48:15,780
+use the software implementation if you
+
+1280
+00:48:15,780 --> 00:48:16,800
+don't have to you want to use the
+
+1281
+00:48:16,800 --> 00:48:18,839
+hardware and that's where the CPU
+
+1282
+00:48:18,839 --> 00:48:20,700
+requirement really comes in but it was I
+
+1283
+00:48:20,700 --> 00:48:21,839
+don't know why it went under the guise
+
+1284
+00:48:21,839 --> 00:48:23,819
+of TPM because those have actually been
+
+1285
+00:48:23,819 --> 00:48:25,619
+around for a really long time
+
+1286
+00:48:25,619 --> 00:48:28,079
+so these are all available for free you
+
+1287
+00:48:28,079 --> 00:48:29,880
+can enable them on supported hardware
+
+1288
+00:48:29,880 --> 00:48:32,040
+and yeah that's the end of my talk so if
+
+1289
+00:48:32,040 --> 00:48:34,380
+you have any questions I'm happy to take
+
+1290
+00:48:34,380 --> 00:48:35,880
+them now or later
+
+1291
+00:48:35,880 --> 00:48:38,480
+yes
+
+1292
+00:48:40,099 --> 00:48:44,000
+at the same time Kenny
+
+1293
+00:48:48,599 --> 00:48:51,119
+development debugging okay so um believe
+
+1294
+00:48:51,119 --> 00:48:52,619
+it or not
+
+1295
+00:48:52,619 --> 00:48:54,359
+um most of us are probably familiar with
+
+1296
+00:48:54,359 --> 00:48:56,520
+like if you've ever done basic buffer
+
+1297
+00:48:56,520 --> 00:48:57,960
+overflow's immunity debugger or some
+
+1298
+00:48:57,960 --> 00:48:59,819
+debugger like that Windows has their own
+
+1299
+00:48:59,819 --> 00:49:01,500
+fully supported debugger called wind
+
+1300
+00:49:01,500 --> 00:49:02,599
+debug
+
+1301
+00:49:02,599 --> 00:49:06,300
+when dbgs some people that's not you
+
+1302
+00:49:06,300 --> 00:49:07,500
+know you'll get a lot of flack for
+
+1303
+00:49:07,500 --> 00:49:08,700
+saying it that way but that's how it's
+
+1304
+00:49:08,700 --> 00:49:11,640
+spelled and it's a fully supported
+
+1305
+00:49:11,640 --> 00:49:14,460
+debugger by Microsoft and it's can do
+
+1306
+00:49:14,460 --> 00:49:16,200
+kernel debugging so all of these other
+
+1307
+00:49:16,200 --> 00:49:17,640
+debuggers can't really do kernel
+
+1308
+00:49:17,640 --> 00:49:19,920
+debugging and it's all supported by
+
+1309
+00:49:19,920 --> 00:49:22,740
+Microsoft so what's cool is
+
+1310
+00:49:22,740 --> 00:49:24,859
+um you can parse
+
+1311
+00:49:24,859 --> 00:49:28,020
+memory as objects that are supported by
+
+1312
+00:49:28,020 --> 00:49:30,060
+Microsoft for instance so they publish
+
+1313
+00:49:30,060 --> 00:49:32,400
+what they're public symbols which
+
+1314
+00:49:32,400 --> 00:49:35,640
+contain all of the um like notations for
+
+1315
+00:49:35,640 --> 00:49:37,819
+all the function names object names Etc
+
+1316
+00:49:37,819 --> 00:49:40,020
+and then I also like to use a
+
+1317
+00:49:40,020 --> 00:49:42,720
+disassembler um Ida I'm sure you've
+
+1318
+00:49:42,720 --> 00:49:45,540
+probably heard of it before and I kind
+
+1319
+00:49:45,540 --> 00:49:47,400
+of augment them together so I'll use I
+
+1320
+00:49:47,400 --> 00:49:49,440
+for like static analysis for instance
+
+1321
+00:49:49,440 --> 00:49:51,119
+what is what is this kind of doing at a
+
+1322
+00:49:51,119 --> 00:49:53,339
+high level but Ida can only get you so
+
+1323
+00:49:53,339 --> 00:49:55,079
+far because there's a dynamic component
+
+1324
+00:49:55,079 --> 00:49:56,339
+to it what is the code actually doing
+
+1325
+00:49:56,339 --> 00:49:57,660
+while it's running so I'll kind of
+
+1326
+00:49:57,660 --> 00:49:59,040
+couple those
+
+1327
+00:49:59,040 --> 00:50:01,560
+um together and another one is strings
+
+1328
+00:50:01,560 --> 00:50:02,940
+utility
+
+1329
+00:50:02,940 --> 00:50:04,859
+um so parsing a binary where's the mem
+
+1330
+00:50:04,859 --> 00:50:07,800
+copy happening at things like that so
+
+1331
+00:50:07,800 --> 00:50:11,000
+and there was another one yeah
+
+1332
+00:50:15,300 --> 00:50:18,300
+okay
+
+1333
+00:50:18,720 --> 00:50:21,300
+foreign
+
+1334
+00:50:21,300 --> 00:50:25,140
+yeah so um that has to do with
+
+1335
+00:50:25,140 --> 00:50:28,319
+um just the um like we saw for instance
+
+1336
+00:50:28,319 --> 00:50:30,839
+with a suspended thread right the APC is
+
+1337
+00:50:30,839 --> 00:50:33,540
+handed at the kernel level so each um
+
+1338
+00:50:33,540 --> 00:50:35,640
+thread for instances like that where
+
+1339
+00:50:35,640 --> 00:50:37,920
+that's done the kernel interrupt and
+
+1340
+00:50:37,920 --> 00:50:39,599
+it's got to be in context of a given
+
+1341
+00:50:39,599 --> 00:50:41,460
+thread that's why there'll be an
+
+1342
+00:50:41,460 --> 00:50:43,920
+Associated kernel mode stack with the
+
+1343
+00:50:43,920 --> 00:50:46,680
+user mode um thread itself so no matter
+
+1344
+00:50:46,680 --> 00:50:49,140
+what you're doing there's always a
+
+1345
+00:50:49,140 --> 00:50:51,240
+portion of the stack kernel mode memory
+
+1346
+00:50:51,240 --> 00:50:55,380
+reserve the stack for any given thread
+
+1347
+00:50:55,380 --> 00:50:57,740
+foreign
+
+1348
+00:50:57,740 --> 00:51:00,660
+it depends on where the execution is
+
+1349
+00:51:00,660 --> 00:51:02,640
+um so execution depending on if it's in
+
+1350
+00:51:02,640 --> 00:51:05,400
+the kernel or in user mode
+
+1351
+00:51:05,400 --> 00:51:07,559
+um but it's not like a one-for-one copy
+
+1352
+00:51:07,559 --> 00:51:09,720
+right so the the user mode data isn't
+
+1353
+00:51:09,720 --> 00:51:11,700
+located on the Kernel mode stack for
+
+1354
+00:51:11,700 --> 00:51:14,000
+instance
+
+1355
+00:51:27,900 --> 00:51:30,900
+yeah um good question so um Windows
+
+1356
+00:51:30,900 --> 00:51:33,000
+doesn't fully support it but there is a
+
+1357
+00:51:33,000 --> 00:51:34,440
+mitigation as well it's called
+
+1358
+00:51:34,440 --> 00:51:37,619
+supervisor mode access prevention and
+
+1359
+00:51:37,619 --> 00:51:39,420
+what that does is it also prevents
+
+1360
+00:51:39,420 --> 00:51:40,740
+accessing
+
+1361
+00:51:40,740 --> 00:51:43,260
+um data in certain instances
+
+1362
+00:51:43,260 --> 00:51:45,780
+um in user mode and um it's just not
+
+1363
+00:51:45,780 --> 00:51:47,640
+good practice really
+
+1364
+00:51:47,640 --> 00:51:49,920
+um the the best practice really is like
+
+1365
+00:51:49,920 --> 00:51:51,660
+in a system call for instance you safely
+
+1366
+00:51:51,660 --> 00:51:54,119
+copy the parameters down into the kernel
+
+1367
+00:51:54,119 --> 00:51:57,240
+and then um deal with it that way a lot
+
+1368
+00:51:57,240 --> 00:51:58,920
+of drivers they'll just arbitrarily copy
+
+1369
+00:51:58,920 --> 00:52:00,420
+stuff into the kernel and do things like
+
+1370
+00:52:00,420 --> 00:52:01,800
+that you don't want to do it that's why
+
+1371
+00:52:01,800 --> 00:52:03,300
+we have that previous mode for instance
+
+1372
+00:52:03,300 --> 00:52:05,460
+because it says hey I need I know I need
+
+1373
+00:52:05,460 --> 00:52:08,160
+to run these checks now in the kernel to
+
+1374
+00:52:08,160 --> 00:52:10,140
+handle this untrusted input essentially
+
+1375
+00:52:10,140 --> 00:52:12,059
+it's a tough
+
+1376
+00:52:12,059 --> 00:52:15,059
+design flaw regardless right handling
+
+1377
+00:52:15,059 --> 00:52:17,400
+user mode data in the kernel or vice
+
+1378
+00:52:17,400 --> 00:52:19,200
+versa I'm easy to also don't want to
+
+1379
+00:52:19,200 --> 00:52:21,660
+leak kernel mode addresses you know if
+
+1380
+00:52:21,660 --> 00:52:23,099
+you access things in the user mode
+
+1381
+00:52:23,099 --> 00:52:25,260
+portion if you do a bad copy or
+
+1382
+00:52:25,260 --> 00:52:26,760
+something you may leak a kernel mode
+
+1383
+00:52:26,760 --> 00:52:31,640
+address up there as well so that's that
+
+1384
+00:52:39,980 --> 00:52:41,940
+yeah yeah
+
+1385
+00:52:41,940 --> 00:52:44,460
+um so these this was actually this
+
+1386
+00:52:44,460 --> 00:52:46,140
+demonstration was in a third party
+
+1387
+00:52:46,140 --> 00:52:48,480
+driver which
+
+1388
+00:52:48,480 --> 00:52:50,180
+um we actually blogged about on
+
+1389
+00:52:50,180 --> 00:52:52,800
+crowdstrike about like detecting all the
+
+1390
+00:52:52,800 --> 00:52:55,920
+typical Market fodder type stuff but
+
+1391
+00:52:55,920 --> 00:52:57,359
+these types of things I think the
+
+1392
+00:52:57,359 --> 00:53:00,059
+Malaysian government actually was hit in
+
+1393
+00:53:00,059 --> 00:53:03,839
+2021 I think with the win32k bug which
+
+1394
+00:53:03,839 --> 00:53:05,460
+obviously people are probably familiar
+
+1395
+00:53:05,460 --> 00:53:08,400
+with 32k not very um
+
+1396
+00:53:08,400 --> 00:53:09,839
+um great because of this wonderful gift
+
+1397
+00:53:09,839 --> 00:53:11,339
+Microsoft gives us of user mode
+
+1398
+00:53:11,339 --> 00:53:13,319
+callbacks where the kernel will go
+
+1399
+00:53:13,319 --> 00:53:15,240
+directly into user mode and call things
+
+1400
+00:53:15,240 --> 00:53:17,280
+of because it needs to be passed back
+
+1401
+00:53:17,280 --> 00:53:18,720
+down
+
+1402
+00:53:18,720 --> 00:53:21,300
+um so in in Native drivers we do see
+
+1403
+00:53:21,300 --> 00:53:22,260
+this
+
+1404
+00:53:22,260 --> 00:53:25,559
+um but it it's more targeted attack type
+
+1405
+00:53:25,559 --> 00:53:28,980
+thing right so if I can compromise a
+
+1406
+00:53:28,980 --> 00:53:30,720
+domain with domain admin I'm not going
+
+1407
+00:53:30,720 --> 00:53:32,640
+to do something like this right but if I
+
+1408
+00:53:32,640 --> 00:53:35,400
+need something quick and that's well put
+
+1409
+00:53:35,400 --> 00:53:37,079
+together like nation state level in
+
+1410
+00:53:37,079 --> 00:53:38,760
+terms of I have a browser exploit that's
+
+1411
+00:53:38,760 --> 00:53:40,260
+paired with a Sandbox Escape that's
+
+1412
+00:53:40,260 --> 00:53:41,880
+paired with a kernel exploit all
+
+1413
+00:53:41,880 --> 00:53:44,400
+packaged in JavaScript user just views
+
+1414
+00:53:44,400 --> 00:53:46,020
+the browser I've instantly got kernel
+
+1415
+00:53:46,020 --> 00:53:48,119
+mode access to their machine that's
+
+1416
+00:53:48,119 --> 00:53:49,980
+really targeted operations because you
+
+1417
+00:53:49,980 --> 00:53:53,520
+have things like patch level right
+
+1418
+00:53:53,520 --> 00:53:55,800
+um at every patch level these offsets
+
+1419
+00:53:55,800 --> 00:53:58,619
+that you use will change where the code
+
+1420
+00:53:58,619 --> 00:54:00,900
+is actually located so making the
+
+1421
+00:54:00,900 --> 00:54:02,040
+exploits
+
+1422
+00:54:02,040 --> 00:54:04,380
+you know 40 of it sixty percent of it
+
+1423
+00:54:04,380 --> 00:54:06,660
+I'd say is making it portable
+
+1424
+00:54:06,660 --> 00:54:08,099
+um so making sure it works in every
+
+1425
+00:54:08,099 --> 00:54:10,859
+single um instance so it definitely is
+
+1426
+00:54:10,859 --> 00:54:13,859
+for it's further and few between these
+
+1427
+00:54:13,859 --> 00:54:15,839
+sort of things but they definitely do
+
+1428
+00:54:15,839 --> 00:54:18,180
+happen and obviously
+
+1429
+00:54:18,180 --> 00:54:20,339
+um fishing is bad but I don't think
+
+1430
+00:54:20,339 --> 00:54:21,900
+there's anything worse than like a
+
+1431
+00:54:21,900 --> 00:54:24,000
+remote code execution vulnerability no
+
+1432
+00:54:24,000 --> 00:54:26,579
+user interaction kernel mode access for
+
+1433
+00:54:26,579 --> 00:54:28,980
+instance so it's definitely something to
+
+1434
+00:54:28,980 --> 00:54:30,599
+pay attention to but it's not as
+
+1435
+00:54:30,599 --> 00:54:33,619
+prevalent I would say
+
+1436
+00:54:34,500 --> 00:54:37,640
+cool well thank you
+
+1437
+00:54:45,180 --> 00:54:47,720
+thank you
+
+1438
+00:54:52,559 --> 00:54:54,960
+eighty percent of that was way over my
+
+1439
+00:54:54,960 --> 00:54:57,619
+head but
+

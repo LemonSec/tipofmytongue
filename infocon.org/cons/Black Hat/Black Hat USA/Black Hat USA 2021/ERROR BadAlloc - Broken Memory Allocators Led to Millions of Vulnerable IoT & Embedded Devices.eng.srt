@@ -1,0 +1,4112 @@
+﻿1
+00:00:01,130 --> 00:00:10,939
+[Music]
+
+2
+00:00:11,440 --> 00:00:13,920
+oh hi everyone i'm ruben bassard i'm a
+
+3
+00:00:13,920 --> 00:00:16,000
+security researcher for microsoft
+
+4
+00:00:16,000 --> 00:00:19,119
+section 52 and i'm tamia viehl also from
+
+5
+00:00:19,119 --> 00:00:21,119
+microsoft section 52
+
+6
+00:00:21,119 --> 00:00:23,039
+and today we're here to talk with you
+
+7
+00:00:23,039 --> 00:00:25,119
+about bedaloc
+
+8
+00:00:25,119 --> 00:00:27,680
+betalog is our code name for a pretty
+
+9
+00:00:27,680 --> 00:00:29,920
+long list of vulnerabilities affecting
+
+10
+00:00:29,920 --> 00:00:31,840
+memory allocators
+
+11
+00:00:31,840 --> 00:00:34,000
+mostly in real-time oss
+
+12
+00:00:34,000 --> 00:00:35,040
+and other
+
+13
+00:00:35,040 --> 00:00:38,800
+ellipses used in embedded devices
+
+14
+00:00:38,800 --> 00:00:40,239
+so
+
+15
+00:00:40,239 --> 00:00:42,719
+just to make make things clearer what do
+
+16
+00:00:42,719 --> 00:00:45,120
+i mean by vulnerabilities in memory
+
+17
+00:00:45,120 --> 00:00:47,840
+allocators think about it like that
+
+18
+00:00:47,840 --> 00:00:49,600
+let's say that you have a small iot
+
+19
+00:00:49,600 --> 00:00:52,399
+device with not a lot of ram
+
+20
+00:00:52,399 --> 00:00:54,320
+and on that device you call the malloc
+
+21
+00:00:54,320 --> 00:00:56,800
+function for example which is one of the
+
+22
+00:00:56,800 --> 00:00:58,879
+functions to allocate memory
+
+23
+00:00:58,879 --> 00:01:02,160
+and you ask it for a very very loud size
+
+24
+00:01:02,160 --> 00:01:04,239
+of memory so let's say
+
+25
+00:01:04,239 --> 00:01:06,799
+four gigabytes
+
+26
+00:01:06,799 --> 00:01:08,080
+and then
+
+27
+00:01:08,080 --> 00:01:10,240
+what would you expect to get back null
+
+28
+00:01:10,240 --> 00:01:11,600
+pointer right
+
+29
+00:01:11,600 --> 00:01:13,920
+because it would probably fail
+
+30
+00:01:13,920 --> 00:01:16,240
+but the thing is that in our research we
+
+31
+00:01:16,240 --> 00:01:18,720
+actually found out that in most cases in
+
+32
+00:01:18,720 --> 00:01:22,560
+most of those real-time voices it won't
+
+33
+00:01:22,560 --> 00:01:24,159
+it would actually return you a valid
+
+34
+00:01:24,159 --> 00:01:27,119
+pointer to a valid buffer but for a very
+
+35
+00:01:27,119 --> 00:01:29,200
+very small size
+
+36
+00:01:29,200 --> 00:01:31,040
+which leads us to
+
+37
+00:01:31,040 --> 00:01:33,439
+security issues such as hip overflows
+
+38
+00:01:33,439 --> 00:01:34,720
+obviously
+
+39
+00:01:34,720 --> 00:01:36,320
+and in this talk
+
+40
+00:01:36,320 --> 00:01:38,720
+we're going to explain everything
+
+41
+00:01:38,720 --> 00:01:40,799
+we're going to talk about how it happens
+
+42
+00:01:40,799 --> 00:01:43,840
+why well what's the scope of the problem
+
+43
+00:01:43,840 --> 00:01:45,920
+and we'll see some examples
+
+44
+00:01:45,920 --> 00:01:47,119
+we start off
+
+45
+00:01:47,119 --> 00:01:49,759
+with some two quick reminders
+
+46
+00:01:49,759 --> 00:01:51,200
+one regarding
+
+47
+00:01:51,200 --> 00:01:53,280
+integer integer overflows which is super
+
+48
+00:01:53,280 --> 00:01:55,280
+important to this topic and the other
+
+49
+00:01:55,280 --> 00:01:59,439
+one is about how memory allocators work
+
+50
+00:01:59,439 --> 00:02:02,320
+in a high level so don't worry about it
+
+51
+00:02:02,320 --> 00:02:04,000
+afterwards we're gonna see some affected
+
+52
+00:02:04,000 --> 00:02:06,399
+products to really understand
+
+53
+00:02:06,399 --> 00:02:09,598
+the scale and the scope of this problem
+
+54
+00:02:09,598 --> 00:02:11,440
+and and then we will go and do a
+
+55
+00:02:11,440 --> 00:02:13,760
+technical dive in and see a working poc
+
+56
+00:02:13,760 --> 00:02:15,760
+and explain everything and how these
+
+57
+00:02:15,760 --> 00:02:17,440
+kind of vulnerabilities could be
+
+58
+00:02:17,440 --> 00:02:18,560
+exploited
+
+59
+00:02:18,560 --> 00:02:20,319
+to achieve remote code execution on
+
+60
+00:02:20,319 --> 00:02:22,480
+those devices
+
+61
+00:02:22,480 --> 00:02:25,040
+we'll we'll see a quick demo and end up
+
+62
+00:02:25,040 --> 00:02:27,280
+with some mitigation techniques
+
+63
+00:02:27,280 --> 00:02:31,280
+uh and few minutes of their q a
+
+64
+00:02:32,239 --> 00:02:33,440
+okay
+
+65
+00:02:33,440 --> 00:02:37,200
+hey everyone as so as only said
+
+66
+00:02:37,200 --> 00:02:39,599
+i will do a quick reminder about integer
+
+67
+00:02:39,599 --> 00:02:40,720
+overflow
+
+68
+00:02:40,720 --> 00:02:42,800
+and so let's start with
+
+69
+00:02:42,800 --> 00:02:44,640
+simple question
+
+70
+00:02:44,640 --> 00:02:47,840
+and so eight plus eight
+
+71
+00:02:47,840 --> 00:02:50,640
+everyone knows it they can calculate it
+
+72
+00:02:50,640 --> 00:02:53,120
+in the red it's
+
+73
+00:02:53,120 --> 00:02:54,239
+88
+
+74
+00:02:54,239 --> 00:02:58,400
+oh sorry not the right format
+
+75
+00:02:58,400 --> 00:03:00,480
+let's check this out
+
+76
+00:03:00,480 --> 00:03:01,840
+and
+
+77
+00:03:01,840 --> 00:03:05,760
+here she fixed it and
+
+78
+00:03:05,760 --> 00:03:07,200
+so
+
+79
+00:03:07,200 --> 00:03:09,840
+8 plus 8 it's 16 but let's take a little
+
+80
+00:03:09,840 --> 00:03:12,959
+more complex device
+
+81
+00:03:12,959 --> 00:03:14,879
+example so
+
+82
+00:03:14,879 --> 00:03:20,239
+2 to the power of 32 minus 1 this is the
+
+83
+00:03:20,239 --> 00:03:22,879
+very important number this is the max
+
+84
+00:03:22,879 --> 00:03:25,200
+end for 32 bits
+
+85
+00:03:25,200 --> 00:03:27,280
+why it's important because if you will
+
+86
+00:03:27,280 --> 00:03:29,840
+take this number and you will edit the
+
+87
+00:03:29,840 --> 00:03:31,760
+number 8
+
+88
+00:03:31,760 --> 00:03:33,040
+the actual
+
+89
+00:03:33,040 --> 00:03:34,799
+the computer will think
+
+90
+00:03:34,799 --> 00:03:36,000
+it's seven
+
+91
+00:03:36,000 --> 00:03:38,640
+most important thing it's on 32-bit
+
+92
+00:03:38,640 --> 00:03:39,840
+systems
+
+93
+00:03:39,840 --> 00:03:42,480
+and you would think it will be
+
+94
+00:03:42,480 --> 00:03:44,840
+another big number but
+
+95
+00:03:44,840 --> 00:03:48,239
+no the conclusion it's a really small
+
+96
+00:03:48,239 --> 00:03:49,920
+number
+
+97
+00:03:49,920 --> 00:03:52,640
+and again with multiplication two times
+
+98
+00:03:52,640 --> 00:03:54,159
+two it's four
+
+99
+00:03:54,159 --> 00:03:55,360
+but
+
+100
+00:03:55,360 --> 00:03:56,640
+if we will take
+
+101
+00:03:56,640 --> 00:03:58,560
+again the
+
+102
+00:03:58,560 --> 00:04:02,560
+max end divide by 2 plus 1
+
+103
+00:04:02,560 --> 00:04:04,480
+and times 2
+
+104
+00:04:04,480 --> 00:04:08,239
+it will be 2 and not another big number
+
+105
+00:04:08,239 --> 00:04:09,360
+and
+
+106
+00:04:09,360 --> 00:04:10,720
+and that's
+
+107
+00:04:10,720 --> 00:04:12,879
+really important thing to remember
+
+108
+00:04:12,879 --> 00:04:14,879
+in this presentation
+
+109
+00:04:14,879 --> 00:04:18,478
+and so keep this in mind
+
+110
+00:04:18,478 --> 00:04:21,839
+again on 32-bit systems
+
+111
+00:04:21,839 --> 00:04:24,159
+thank you
+
+112
+00:04:24,400 --> 00:04:25,759
+so
+
+113
+00:04:25,759 --> 00:04:29,160
+memory allocators
+
+114
+00:04:29,840 --> 00:04:32,160
+essentially on every device that we have
+
+115
+00:04:32,160 --> 00:04:34,000
+any kind of memory or linear memory
+
+116
+00:04:34,000 --> 00:04:35,919
+would want we would want some kind of an
+
+117
+00:04:35,919 --> 00:04:37,680
+allocator to manage it
+
+118
+00:04:37,680 --> 00:04:39,759
+so on that device we would have three
+
+119
+00:04:39,759 --> 00:04:41,520
+blocks and allocated blocks
+
+120
+00:04:41,520 --> 00:04:44,000
+in red and green in this
+
+121
+00:04:44,000 --> 00:04:45,759
+generic scenario
+
+122
+00:04:45,759 --> 00:04:47,360
+and essentially it could be implemented
+
+123
+00:04:47,360 --> 00:04:49,680
+in really really high level uh in two
+
+124
+00:04:49,680 --> 00:04:50,639
+ways
+
+125
+00:04:50,639 --> 00:04:53,360
+as either a single or a doubling list of
+
+126
+00:04:53,360 --> 00:04:55,680
+three blocks and once we're allocating a
+
+127
+00:04:55,680 --> 00:04:56,560
+block
+
+128
+00:04:56,560 --> 00:04:58,320
+we get it we're
+
+129
+00:04:58,320 --> 00:05:01,120
+getting it out of the free list
+
+130
+00:05:01,120 --> 00:05:03,280
+and it becomes red
+
+131
+00:05:03,280 --> 00:05:04,639
+in the slide
+
+132
+00:05:04,639 --> 00:05:06,720
+and only holds
+
+133
+00:05:06,720 --> 00:05:11,199
+a certain size property in most cases
+
+134
+00:05:11,199 --> 00:05:13,759
+and the the thing is
+
+135
+00:05:13,759 --> 00:05:15,440
+the thing that is important to this
+
+136
+00:05:15,440 --> 00:05:16,320
+topic
+
+137
+00:05:16,320 --> 00:05:18,320
+is just to understand that there is a
+
+138
+00:05:18,320 --> 00:05:21,039
+certain calculation that happens so when
+
+139
+00:05:21,039 --> 00:05:23,440
+when we're allocating block will not
+
+140
+00:05:23,440 --> 00:05:26,560
+allocating the exact amount of a
+
+141
+00:05:26,560 --> 00:05:29,440
+memory area that was required requested
+
+142
+00:05:29,440 --> 00:05:31,440
+but some extra space
+
+143
+00:05:31,440 --> 00:05:33,759
+for the size property for example and
+
+144
+00:05:33,759 --> 00:05:35,840
+might be other properties
+
+145
+00:05:35,840 --> 00:05:37,520
+so in that example you can see that if
+
+146
+00:05:37,520 --> 00:05:38,880
+we'll ask malloc
+
+147
+00:05:38,880 --> 00:05:40,960
+for 1k bytes
+
+148
+00:05:40,960 --> 00:05:42,639
+it would need to do a certain
+
+149
+00:05:42,639 --> 00:05:45,280
+calculation behind the scenes adding
+
+150
+00:05:45,280 --> 00:05:47,120
+the extra size of the header of the size
+
+151
+00:05:47,120 --> 00:05:48,240
+property
+
+152
+00:05:48,240 --> 00:05:50,680
+and we will end up allocating let's say
+
+153
+00:05:50,680 --> 00:05:52,720
+1032 bytes
+
+154
+00:05:52,720 --> 00:05:54,880
+eight bytes small then was originally
+
+155
+00:05:54,880 --> 00:05:56,639
+requested
+
+156
+00:05:56,639 --> 00:05:58,400
+why is that important
+
+157
+00:05:58,400 --> 00:06:00,000
+because if we're understanding the idea
+
+158
+00:06:00,000 --> 00:06:02,240
+that the integer might wrap around
+
+159
+00:06:02,240 --> 00:06:03,440
+on those
+
+160
+00:06:03,440 --> 00:06:06,560
+mostly 32-bit systems
+
+161
+00:06:06,560 --> 00:06:08,639
+then there is a potential integer
+
+162
+00:06:08,639 --> 00:06:10,800
+wrapping around in here when requesting
+
+163
+00:06:10,800 --> 00:06:12,479
+really really loud sizes
+
+164
+00:06:12,479 --> 00:06:15,600
+almost integer maximum or near it
+
+165
+00:06:15,600 --> 00:06:17,520
+there is a chance that malloc there is
+
+166
+00:06:17,520 --> 00:06:19,520
+not a chance malloc would actually the
+
+167
+00:06:19,520 --> 00:06:21,520
+calculation would actually wrap around
+
+168
+00:06:21,520 --> 00:06:23,840
+the only question is either this
+
+169
+00:06:23,840 --> 00:06:25,199
+malloc is
+
+170
+00:06:25,199 --> 00:06:28,160
+safe did he check for it
+
+171
+00:06:28,160 --> 00:06:30,800
+oh it's a bad implementation dead malloc
+
+172
+00:06:30,800 --> 00:06:33,039
+they didn't check for it and now it
+
+173
+00:06:33,039 --> 00:06:35,280
+would uh look at the the number of bytes
+
+174
+00:06:35,280 --> 00:06:37,759
+requested and would say ah okay seven
+
+175
+00:06:37,759 --> 00:06:39,039
+no problem
+
+176
+00:06:39,039 --> 00:06:41,600
+let's continue
+
+177
+00:06:41,600 --> 00:06:44,400
+the other example is uh with calc which
+
+178
+00:06:44,400 --> 00:06:46,240
+is essentially
+
+179
+00:06:46,240 --> 00:06:48,319
+a wrapper around malloc in most
+
+180
+00:06:48,319 --> 00:06:50,319
+implementations again
+
+181
+00:06:50,319 --> 00:06:52,560
+and it works by multiplying the number
+
+182
+00:06:52,560 --> 00:06:54,800
+of items requested and the size of each
+
+183
+00:06:54,800 --> 00:06:56,720
+item
+
+184
+00:06:56,720 --> 00:06:59,199
+so in that example we would ask
+
+185
+00:06:59,199 --> 00:07:02,319
+two items each one approximately half of
+
+186
+00:07:02,319 --> 00:07:04,000
+the maximum size
+
+187
+00:07:04,000 --> 00:07:06,319
+and we would end up again trying to
+
+188
+00:07:06,319 --> 00:07:08,400
+allocate four gigabytes
+
+189
+00:07:08,400 --> 00:07:10,000
+and would successfully allocate only two
+
+190
+00:07:10,000 --> 00:07:11,039
+bytes
+
+191
+00:07:11,039 --> 00:07:14,000
+which is a pretty unexpected expected
+
+192
+00:07:14,000 --> 00:07:15,280
+behavior
+
+193
+00:07:15,280 --> 00:07:17,440
+that the developer afterwards that use
+
+194
+00:07:17,440 --> 00:07:19,199
+kalo can use malloc
+
+195
+00:07:19,199 --> 00:07:22,000
+he's not aware of
+
+196
+00:07:22,960 --> 00:07:26,000
+okay so
+
+197
+00:07:26,240 --> 00:07:27,759
+we talked a little about integer
+
+198
+00:07:27,759 --> 00:07:30,560
+overflow we talked about memory
+
+199
+00:07:30,560 --> 00:07:31,680
+allocation
+
+200
+00:07:31,680 --> 00:07:34,960
+so we will do a little example
+
+201
+00:07:34,960 --> 00:07:38,000
+so we have the server the server is safe
+
+202
+00:07:38,000 --> 00:07:40,479
+i write it i wrote it safe i'm good
+
+203
+00:07:40,479 --> 00:07:41,680
+programmer
+
+204
+00:07:41,680 --> 00:07:42,960
+and
+
+205
+00:07:42,960 --> 00:07:46,639
+so we look at this specific function
+
+206
+00:07:46,639 --> 00:07:49,039
+it's called the reducer data it's get
+
+207
+00:07:49,039 --> 00:07:52,240
+the user data and the size from the user
+
+208
+00:07:52,240 --> 00:07:54,160
+and the function as you can see we'll
+
+209
+00:07:54,160 --> 00:07:56,160
+try to allocate the size
+
+210
+00:07:56,160 --> 00:07:58,960
+to a buffer and if
+
+211
+00:07:58,960 --> 00:08:01,360
+the allocation will succeed
+
+212
+00:08:01,360 --> 00:08:02,879
+uh
+
+213
+00:08:02,879 --> 00:08:05,199
+the function will try to copy and then
+
+214
+00:08:05,199 --> 00:08:07,440
+return the okay thank you message if
+
+215
+00:08:07,440 --> 00:08:10,960
+it's not succeed it will return sorry
+
+216
+00:08:10,960 --> 00:08:13,440
+um and we have alice alice is a good
+
+217
+00:08:13,440 --> 00:08:16,240
+user i just want to talk to the server
+
+218
+00:08:16,240 --> 00:08:18,000
+so i'll send
+
+219
+00:08:18,000 --> 00:08:20,639
+the imessage height to chunk two
+
+220
+00:08:20,639 --> 00:08:23,039
+characters size two
+
+221
+00:08:23,039 --> 00:08:25,440
+and so what will happen inside the
+
+222
+00:08:25,440 --> 00:08:27,199
+server
+
+223
+00:08:27,199 --> 00:08:29,599
+it will try to allocate
+
+224
+00:08:29,599 --> 00:08:30,879
+if
+
+225
+00:08:30,879 --> 00:08:32,719
+it will succeed because
+
+226
+00:08:32,719 --> 00:08:34,880
+she asked only for two bytes
+
+227
+00:08:34,880 --> 00:08:35,919
+and
+
+228
+00:08:35,919 --> 00:08:38,000
+and then the main copy will try to copy
+
+229
+00:08:38,000 --> 00:08:40,880
+the user data to the buffer
+
+230
+00:08:40,880 --> 00:08:44,080
+and return the okay thank you message
+
+231
+00:08:44,080 --> 00:08:46,560
+now we also have
+
+232
+00:08:46,560 --> 00:08:48,560
+if is a bad user
+
+233
+00:08:48,560 --> 00:08:50,959
+and if we'll try to send
+
+234
+00:08:50,959 --> 00:08:53,040
+a lot of eye really big message to the
+
+235
+00:08:53,040 --> 00:08:56,080
+server and we'll check she wants to
+
+236
+00:08:56,080 --> 00:08:57,760
+check what happened
+
+237
+00:08:57,760 --> 00:09:00,320
+and so the server will try to allocate
+
+238
+00:09:00,320 --> 00:09:01,120
+it
+
+239
+00:09:01,120 --> 00:09:03,519
+it will fail and return and return the
+
+240
+00:09:03,519 --> 00:09:04,560
+sorry
+
+241
+00:09:04,560 --> 00:09:07,600
+too much data message to
+
+242
+00:09:07,600 --> 00:09:09,040
+if we said
+
+243
+00:09:09,040 --> 00:09:11,839
+right because the server is secure
+
+244
+00:09:11,839 --> 00:09:13,440
+and
+
+245
+00:09:13,440 --> 00:09:16,080
+and we have another example
+
+246
+00:09:16,080 --> 00:09:18,399
+we will change the allocation function
+
+247
+00:09:18,399 --> 00:09:20,480
+to a bed malloc function
+
+248
+00:09:20,480 --> 00:09:22,560
+and with all this
+
+249
+00:09:22,560 --> 00:09:24,399
+everything will be the same
+
+250
+00:09:24,399 --> 00:09:27,200
+and she will send the hey message
+
+251
+00:09:27,200 --> 00:09:30,800
+the server will return okay thank you
+
+252
+00:09:30,800 --> 00:09:31,920
+but
+
+253
+00:09:31,920 --> 00:09:35,120
+if is the one that important to us
+
+254
+00:09:35,120 --> 00:09:38,880
+if we send the really big big message
+
+255
+00:09:38,880 --> 00:09:40,880
+and the server
+
+256
+00:09:40,880 --> 00:09:43,440
+will try to allocate the
+
+257
+00:09:43,440 --> 00:09:46,080
+this size that you send
+
+258
+00:09:46,080 --> 00:09:48,480
+we can see inside the malloc function we
+
+259
+00:09:48,480 --> 00:09:51,040
+took a random malloc function from
+
+260
+00:09:51,040 --> 00:09:52,080
+github
+
+261
+00:09:52,080 --> 00:09:53,120
+it's
+
+262
+00:09:53,120 --> 00:09:55,680
+from free autos if you know this system
+
+263
+00:09:55,680 --> 00:09:58,480
+if not uh ben bassat will talk about it
+
+264
+00:09:58,480 --> 00:10:00,160
+in a few minutes
+
+265
+00:10:00,160 --> 00:10:02,720
+and and as you can see
+
+266
+00:10:02,720 --> 00:10:04,880
+there is some calculation there and
+
+267
+00:10:04,880 --> 00:10:06,959
+without even checking the result without
+
+268
+00:10:06,959 --> 00:10:08,880
+even checking anything
+
+269
+00:10:08,880 --> 00:10:10,079
+and
+
+270
+00:10:10,079 --> 00:10:11,920
+so
+
+271
+00:10:11,920 --> 00:10:12,720
+the
+
+272
+00:10:12,720 --> 00:10:13,920
+allocation
+
+273
+00:10:13,920 --> 00:10:16,160
+will succeed
+
+274
+00:10:16,160 --> 00:10:18,480
+the main copy will copy the data from
+
+275
+00:10:18,480 --> 00:10:22,480
+alice from eve sorry from eve to to the
+
+276
+00:10:22,480 --> 00:10:23,839
+buffer
+
+277
+00:10:23,839 --> 00:10:25,920
+and by the size from eve that we
+
+278
+00:10:25,920 --> 00:10:28,560
+remember it was very big size
+
+279
+00:10:28,560 --> 00:10:30,959
+and will return okay thank you
+
+280
+00:10:30,959 --> 00:10:34,000
+that's not good scenario because
+
+281
+00:10:34,000 --> 00:10:37,040
+it causes hip overflow
+
+282
+00:10:37,040 --> 00:10:40,319
+and we don't want that
+
+283
+00:10:42,160 --> 00:10:44,880
+okay so
+
+284
+00:10:45,519 --> 00:10:46,959
+we understand
+
+285
+00:10:46,959 --> 00:10:47,839
+that
+
+286
+00:10:47,839 --> 00:10:49,680
+once malloc is called there is a certain
+
+287
+00:10:49,680 --> 00:10:52,399
+calculation that might wrap around and
+
+288
+00:10:52,399 --> 00:10:54,800
+in some certain scenarios like in the
+
+289
+00:10:54,800 --> 00:10:56,959
+fictional server that we saw
+
+290
+00:10:56,959 --> 00:10:59,200
+that might lead to an
+
+291
+00:10:59,200 --> 00:11:01,360
+unexpected hip overflow which
+
+292
+00:11:01,360 --> 00:11:03,440
+is obviously a vulnerability
+
+293
+00:11:03,440 --> 00:11:04,959
+uh but
+
+294
+00:11:04,959 --> 00:11:07,839
+at this point you must be wondering okay
+
+295
+00:11:07,839 --> 00:11:10,399
+how many affected devices there are that
+
+296
+00:11:10,399 --> 00:11:13,040
+are actually affected by this
+
+297
+00:11:13,040 --> 00:11:14,800
+kind of vulnerability that we explained
+
+298
+00:11:14,800 --> 00:11:16,480
+to you about
+
+299
+00:11:16,480 --> 00:11:17,600
+so
+
+300
+00:11:17,600 --> 00:11:18,959
+let's see
+
+301
+00:11:18,959 --> 00:11:20,320
+a short list
+
+302
+00:11:20,320 --> 00:11:21,920
+of device of
+
+303
+00:11:21,920 --> 00:11:23,600
+operating system real-time operating
+
+304
+00:11:23,600 --> 00:11:25,760
+system devices and ellipses that we
+
+305
+00:11:25,760 --> 00:11:27,600
+actually found affected by this specific
+
+306
+00:11:27,600 --> 00:11:28,800
+issue
+
+307
+00:11:28,800 --> 00:11:31,120
+and you might notice some some big big
+
+308
+00:11:31,120 --> 00:11:33,200
+names in here like vxbox which is
+
+309
+00:11:33,200 --> 00:11:35,360
+probably the most popular real-time os
+
+310
+00:11:35,360 --> 00:11:37,200
+in ot industry
+
+311
+00:11:37,200 --> 00:11:39,120
+and is
+
+312
+00:11:39,120 --> 00:11:41,519
+estimated to run on something like two
+
+313
+00:11:41,519 --> 00:11:43,040
+billion devices
+
+314
+00:11:43,040 --> 00:11:45,839
+then we got nxp's mqx which is the
+
+315
+00:11:45,839 --> 00:11:47,680
+second most popular real-time os in the
+
+316
+00:11:47,680 --> 00:11:50,399
+same industry and it also runs on tons
+
+317
+00:11:50,399 --> 00:11:53,600
+of devices we have three autos
+
+318
+00:11:53,600 --> 00:11:54,560
+which is
+
+319
+00:11:54,560 --> 00:11:58,480
+extremely popular with iot devices
+
+320
+00:11:58,480 --> 00:12:00,480
+it's actually backed by amazon
+
+321
+00:12:00,480 --> 00:12:02,079
+and it's the official real-time os for
+
+322
+00:12:02,079 --> 00:12:05,120
+the aws services for iot
+
+323
+00:12:05,120 --> 00:12:06,720
+there's google device
+
+324
+00:12:06,720 --> 00:12:10,720
+sdk the device iot device sdk in here
+
+325
+00:12:10,720 --> 00:12:12,079
+sorry
+
+326
+00:12:12,079 --> 00:12:13,760
+there's mediatek chips in here there's
+
+327
+00:12:13,760 --> 00:12:15,360
+arm chips in you
+
+328
+00:12:15,360 --> 00:12:17,680
+there's reddit new libsy which is an
+
+329
+00:12:17,680 --> 00:12:19,519
+extremely popular ellipse for embedded
+
+330
+00:12:19,519 --> 00:12:22,320
+devices there's micro cos in here and
+
+331
+00:12:22,320 --> 00:12:25,120
+there's texas instruments uh sdks and
+
+332
+00:12:25,120 --> 00:12:27,120
+devices nil
+
+333
+00:12:27,120 --> 00:12:27,920
+and
+
+334
+00:12:27,920 --> 00:12:29,839
+and and some more and that's
+
+335
+00:12:29,839 --> 00:12:32,240
+really a partial list
+
+336
+00:12:32,240 --> 00:12:35,760
+and in every one of those there is some
+
+337
+00:12:35,760 --> 00:12:37,200
+function some memorable memory
+
+338
+00:12:37,200 --> 00:12:38,399
+allocation function
+
+339
+00:12:38,399 --> 00:12:40,639
+that was actually found vulnerable to
+
+340
+00:12:40,639 --> 00:12:45,040
+this specific data log vulnerability
+
+341
+00:12:45,839 --> 00:12:48,079
+and it's not only the scope
+
+342
+00:12:48,079 --> 00:12:50,079
+like how many
+
+343
+00:12:50,079 --> 00:12:52,480
+os's are affected by this vulnerability
+
+344
+00:12:52,480 --> 00:12:55,200
+but what i also want you to understand
+
+345
+00:12:55,200 --> 00:12:56,320
+that
+
+346
+00:12:56,320 --> 00:12:59,279
+there is a specific nature to this kind
+
+347
+00:12:59,279 --> 00:13:02,000
+of vulnerabilities well
+
+348
+00:13:02,000 --> 00:13:04,240
+the effect the most basic the most bare
+
+349
+00:13:04,240 --> 00:13:05,279
+metal
+
+350
+00:13:05,279 --> 00:13:06,639
+functions
+
+351
+00:13:06,639 --> 00:13:07,839
+in those
+
+352
+00:13:07,839 --> 00:13:09,360
+products
+
+353
+00:13:09,360 --> 00:13:11,519
+and those functions malloc
+
+354
+00:13:11,519 --> 00:13:13,440
+and carlock and similar allocation
+
+355
+00:13:13,440 --> 00:13:15,600
+functions
+
+356
+00:13:15,600 --> 00:13:17,760
+in most cases were there for the
+
+357
+00:13:17,760 --> 00:13:20,399
+earliest days of the project and no one
+
+358
+00:13:20,399 --> 00:13:22,800
+ever gets back and takes a look at the
+
+359
+00:13:22,800 --> 00:13:24,560
+malloc and says oh wait a minute i wrote
+
+360
+00:13:24,560 --> 00:13:27,200
+this thing 20 years ago and maybe i
+
+361
+00:13:27,200 --> 00:13:29,040
+should check it for this new kind of
+
+362
+00:13:29,040 --> 00:13:31,279
+abilities that i just learned about no
+
+363
+00:13:31,279 --> 00:13:32,839
+it doesn't happen
+
+364
+00:13:32,839 --> 00:13:35,680
+and and in the far end of the scale you
+
+365
+00:13:35,680 --> 00:13:37,200
+can see that vxworks actually started
+
+366
+00:13:37,200 --> 00:13:38,639
+from 85
+
+367
+00:13:38,639 --> 00:13:42,639
+mqx early 90s caleb sinatex three out of
+
+368
+00:13:42,639 --> 00:13:45,199
+all of these are from early 2000s and no
+
+369
+00:13:45,199 --> 00:13:47,440
+one ever got back
+
+370
+00:13:47,440 --> 00:13:48,399
+and checked
+
+371
+00:13:48,399 --> 00:13:50,800
+for issues in those functions up until
+
+372
+00:13:50,800 --> 00:13:53,600
+this research and and up up until the
+
+373
+00:13:53,600 --> 00:13:57,600
+disclosure that we did last year
+
+374
+00:13:58,000 --> 00:13:59,760
+okay so
+
+375
+00:13:59,760 --> 00:14:01,120
+remember
+
+376
+00:14:01,120 --> 00:14:03,120
+show you some of the
+
+377
+00:14:03,120 --> 00:14:06,639
+most big names that we found and i will
+
+378
+00:14:06,639 --> 00:14:09,440
+show you some example that we think that
+
+379
+00:14:09,440 --> 00:14:10,880
+are important to
+
+380
+00:14:10,880 --> 00:14:13,199
+really understand what are you talking
+
+381
+00:14:13,199 --> 00:14:14,240
+about
+
+382
+00:14:14,240 --> 00:14:15,680
+and
+
+383
+00:14:15,680 --> 00:14:18,240
+so we will start with vxworks
+
+384
+00:14:18,240 --> 00:14:19,440
+um
+
+385
+00:14:19,440 --> 00:14:22,000
+well this is from version 5.1
+
+386
+00:14:22,000 --> 00:14:25,199
+uh from 93. this is the earliest version
+
+387
+00:14:25,199 --> 00:14:27,279
+that we could found online
+
+388
+00:14:27,279 --> 00:14:28,320
+um
+
+389
+00:14:28,320 --> 00:14:31,600
+and as you can see in this line
+
+390
+00:14:31,600 --> 00:14:32,880
+um
+
+391
+00:14:32,880 --> 00:14:35,440
+we have some calculation
+
+392
+00:14:35,440 --> 00:14:37,680
+that is trying to understand what is the
+
+393
+00:14:37,680 --> 00:14:40,320
+size that the catalog the catalog
+
+394
+00:14:40,320 --> 00:14:42,240
+function need to allocate
+
+395
+00:14:42,240 --> 00:14:44,000
+and
+
+396
+00:14:44,000 --> 00:14:45,600
+right after it
+
+397
+00:14:45,600 --> 00:14:47,920
+it use it for the amount for the malloc
+
+398
+00:14:47,920 --> 00:14:49,040
+function
+
+399
+00:14:49,040 --> 00:14:50,240
+so
+
+400
+00:14:50,240 --> 00:14:52,480
+this is the calculation right after it
+
+401
+00:14:52,480 --> 00:14:54,560
+uses it what's the problem it doesn't
+
+402
+00:14:54,560 --> 00:14:57,839
+check the result and as we said before
+
+403
+00:14:57,839 --> 00:15:00,720
+there is a scenario of integer overflow
+
+404
+00:15:00,720 --> 00:15:02,800
+so
+
+405
+00:15:02,800 --> 00:15:05,519
+there might be some attack here that can
+
+406
+00:15:05,519 --> 00:15:06,639
+just
+
+407
+00:15:06,639 --> 00:15:09,120
+allocate a really small size because
+
+408
+00:15:09,120 --> 00:15:10,720
+because they ask for a really big size
+
+409
+00:15:10,720 --> 00:15:13,199
+and everything will be fine
+
+410
+00:15:13,199 --> 00:15:15,040
+okay so
+
+411
+00:15:15,040 --> 00:15:18,720
+let's continue to calipsey calebc is
+
+412
+00:15:18,720 --> 00:15:21,279
+some kind of lipsy it's a library
+
+413
+00:15:21,279 --> 00:15:24,079
+from the linux foundation it's used
+
+414
+00:15:24,079 --> 00:15:26,480
+mainly in the early use in the early
+
+415
+00:15:26,480 --> 00:15:28,399
+stage user space
+
+416
+00:15:28,399 --> 00:15:29,440
+and
+
+417
+00:15:29,440 --> 00:15:30,720
+and
+
+418
+00:15:30,720 --> 00:15:32,560
+again this line this is the hollow
+
+419
+00:15:32,560 --> 00:15:33,519
+function
+
+420
+00:15:33,519 --> 00:15:35,600
+this line is the problematic airline
+
+421
+00:15:35,600 --> 00:15:38,160
+after it it just used the size that it
+
+422
+00:15:38,160 --> 00:15:39,519
+calculate
+
+423
+00:15:39,519 --> 00:15:40,560
+but
+
+424
+00:15:40,560 --> 00:15:42,240
+the important
+
+425
+00:15:42,240 --> 00:15:45,040
+the interesting thing is it's
+
+426
+00:15:45,040 --> 00:15:47,600
+this date this date is
+
+427
+00:15:47,600 --> 00:15:50,320
+day or two after the
+
+428
+00:15:50,320 --> 00:15:52,240
+the project started
+
+429
+00:15:52,240 --> 00:15:54,800
+and it's really important to understand
+
+430
+00:15:54,800 --> 00:15:57,440
+that the auto write a lot of function a
+
+431
+00:15:57,440 --> 00:15:59,600
+lot of code in a really short time
+
+432
+00:15:59,600 --> 00:16:00,639
+and
+
+433
+00:16:00,639 --> 00:16:04,079
+he probably didn't check it right
+
+434
+00:16:04,079 --> 00:16:04,800
+but
+
+435
+00:16:04,800 --> 00:16:08,160
+you remember one important thing this
+
+436
+00:16:08,160 --> 00:16:09,839
+line
+
+437
+00:16:09,839 --> 00:16:11,680
+fix me this you looked for a
+
+438
+00:16:11,680 --> 00:16:13,600
+multiplication overflow
+
+439
+00:16:13,600 --> 00:16:16,399
+so he knew about the problem
+
+440
+00:16:16,399 --> 00:16:17,120
+in
+
+441
+00:16:17,120 --> 00:16:19,360
+you know that there is an integer
+
+442
+00:16:19,360 --> 00:16:23,600
+overflow problem it was in his head but
+
+443
+00:16:23,600 --> 00:16:25,519
+because he wrote a lot of line because
+
+444
+00:16:25,519 --> 00:16:27,360
+he write a lot of code
+
+445
+00:16:27,360 --> 00:16:28,480
+he
+
+446
+00:16:28,480 --> 00:16:29,759
+didn't
+
+447
+00:16:29,759 --> 00:16:32,000
+ask himself how he can preserve it
+
+448
+00:16:32,000 --> 00:16:34,240
+everything prevent it
+
+449
+00:16:34,240 --> 00:16:36,639
+and just forgot about about it just
+
+450
+00:16:36,639 --> 00:16:38,720
+forgot about 19 years ago
+
+451
+00:16:38,720 --> 00:16:40,880
+he fought for a minute oh wait maybe i
+
+452
+00:16:40,880 --> 00:16:43,279
+should fix it after lunch and just
+
+453
+00:16:43,279 --> 00:16:45,680
+forgot about it just forgot
+
+454
+00:16:45,680 --> 00:16:46,959
+um
+
+455
+00:16:46,959 --> 00:16:49,040
+you remember it when we asked
+
+456
+00:16:49,040 --> 00:16:51,440
+about this
+
+457
+00:16:51,440 --> 00:16:52,480
+function
+
+458
+00:16:52,480 --> 00:16:54,240
+until
+
+459
+00:16:54,240 --> 00:16:56,320
+2020
+
+460
+00:16:56,320 --> 00:16:58,399
+2020
+
+461
+00:16:58,399 --> 00:17:00,959
+and so this problem was there for
+
+462
+00:17:00,959 --> 00:17:02,160
+18 years
+
+463
+00:17:02,160 --> 00:17:05,039
+give or take and
+
+464
+00:17:05,039 --> 00:17:06,799
+that's what you need to remember about
+
+465
+00:17:06,799 --> 00:17:09,439
+it okay so let's talk about uh some
+
+466
+00:17:09,439 --> 00:17:11,039
+technicalities
+
+467
+00:17:11,039 --> 00:17:13,679
+uh we prepared the poc
+
+468
+00:17:13,679 --> 00:17:15,039
+around
+
+469
+00:17:15,039 --> 00:17:15,919
+this
+
+470
+00:17:15,919 --> 00:17:17,919
+little chip in here it's a it's called
+
+471
+00:17:17,919 --> 00:17:19,919
+simple link it's a it's actually a line
+
+472
+00:17:19,919 --> 00:17:21,280
+of chips
+
+473
+00:17:21,280 --> 00:17:24,480
+from texas instruments the targeting
+
+474
+00:17:24,480 --> 00:17:27,359
+uh the low-cost iot devices devices
+
+475
+00:17:27,359 --> 00:17:28,799
+market
+
+476
+00:17:28,799 --> 00:17:30,880
+it's a really nice chip it comes
+
+477
+00:17:30,880 --> 00:17:33,520
+with a really
+
+478
+00:17:33,520 --> 00:17:35,120
+big software stack
+
+479
+00:17:35,120 --> 00:17:37,200
+so on the bottom layer you can see that
+
+480
+00:17:37,200 --> 00:17:39,679
+the developer can choose either to use
+
+481
+00:17:39,679 --> 00:17:40,799
+ti's
+
+482
+00:17:40,799 --> 00:17:43,120
+home developed autos or friatos which is
+
+483
+00:17:43,120 --> 00:17:44,880
+again the most popular by far in this
+
+484
+00:17:44,880 --> 00:17:47,600
+market then it gets the driver's layers
+
+485
+00:17:47,600 --> 00:17:50,400
+and posix layer for combat compatibility
+
+486
+00:17:50,400 --> 00:17:53,679
+and ease of use afterwards we get
+
+487
+00:17:53,679 --> 00:17:56,240
+the communication stacks so bluetooth
+
+488
+00:17:56,240 --> 00:17:58,080
+zigbee wi-fi everything every
+
+489
+00:17:58,080 --> 00:18:00,240
+communication protocol is supported
+
+490
+00:18:00,240 --> 00:18:02,000
+directly on the chip
+
+491
+00:18:02,000 --> 00:18:03,919
+um and then we have the different
+
+492
+00:18:03,919 --> 00:18:06,640
+plugins so for example cloud connectors
+
+493
+00:18:06,640 --> 00:18:09,919
+uh to pretty much every vendor aws azure
+
+494
+00:18:09,919 --> 00:18:12,080
+google's a cloud
+
+495
+00:18:12,080 --> 00:18:14,480
+really everything really nice chip and
+
+496
+00:18:14,480 --> 00:18:16,880
+pretty low cost
+
+497
+00:18:16,880 --> 00:18:19,600
+and for the sake for the of this poc uh
+
+498
+00:18:19,600 --> 00:18:21,360
+we'll be focusing obviously on the posix
+
+499
+00:18:21,360 --> 00:18:23,120
+layer uh where actually all of the
+
+500
+00:18:23,120 --> 00:18:24,799
+memory allocation functions are
+
+501
+00:18:24,799 --> 00:18:27,760
+implemented the lapel is imp the lapels
+
+502
+00:18:27,760 --> 00:18:30,559
+are implemented for malloc and kaloc
+
+503
+00:18:30,559 --> 00:18:33,679
+and will be running on top of riatos
+
+504
+00:18:33,679 --> 00:18:36,080
+for compatibility
+
+505
+00:18:36,080 --> 00:18:38,960
+so that's how the sdk's
+
+506
+00:18:38,960 --> 00:18:41,679
+code files looks like
+
+507
+00:18:41,679 --> 00:18:44,400
+on top we get the hip dash 4 which is
+
+508
+00:18:44,400 --> 00:18:45,919
+one of the memory allocator
+
+509
+00:18:45,919 --> 00:18:47,840
+implementations
+
+510
+00:18:47,840 --> 00:18:50,799
+offered by friatos the one that
+
+511
+00:18:50,799 --> 00:18:53,440
+ti's people actually chose
+
+512
+00:18:53,440 --> 00:18:54,880
+for their system
+
+513
+00:18:54,880 --> 00:18:56,480
+and then we have at the bottom the
+
+514
+00:18:56,480 --> 00:18:59,679
+memory.c file which is well
+
+515
+00:18:59,679 --> 00:19:01,360
+the memory allocation functions are
+
+516
+00:19:01,360 --> 00:19:02,720
+implemented
+
+517
+00:19:02,720 --> 00:19:05,120
+and that's a callout from the same
+
+518
+00:19:05,120 --> 00:19:07,760
+memory.c file
+
+519
+00:19:07,760 --> 00:19:10,720
+and if you notice there's the n bytes
+
+520
+00:19:10,720 --> 00:19:13,360
+calculation there's some multiplication
+
+521
+00:19:13,360 --> 00:19:15,919
+but the real stuff is uh
+
+522
+00:19:15,919 --> 00:19:18,559
+that line which actually implements
+
+523
+00:19:18,559 --> 00:19:21,200
+a good check a check for uh integer
+
+524
+00:19:21,200 --> 00:19:23,600
+overflow so ti's people actually figured
+
+525
+00:19:23,600 --> 00:19:26,320
+out that if they'll multiply pretty big
+
+526
+00:19:26,320 --> 00:19:28,559
+numbers it might overflow so they need
+
+527
+00:19:28,559 --> 00:19:29,760
+to check that
+
+528
+00:19:29,760 --> 00:19:32,480
+uh they didn't get any null so they want
+
+529
+00:19:32,480 --> 00:19:34,880
+a any zero sorry so they won't divide by
+
+530
+00:19:34,880 --> 00:19:36,960
+it and then there's the
+
+531
+00:19:36,960 --> 00:19:39,840
+opposite function they use
+
+532
+00:19:39,840 --> 00:19:42,559
+division to verify the multiplication so
+
+533
+00:19:42,559 --> 00:19:45,200
+that's that's pretty good job from ti's
+
+534
+00:19:45,200 --> 00:19:46,720
+side
+
+535
+00:19:46,720 --> 00:19:47,760
+but
+
+536
+00:19:47,760 --> 00:19:49,919
+on the other hand that's malloc
+
+537
+00:19:49,919 --> 00:19:52,400
+same file same memory.c file on a few
+
+538
+00:19:52,400 --> 00:19:54,240
+lines below
+
+539
+00:19:54,240 --> 00:19:55,120
+and
+
+540
+00:19:55,120 --> 00:19:56,880
+if you notice
+
+541
+00:19:56,880 --> 00:19:58,799
+here is the vulnerability that that's
+
+542
+00:19:58,799 --> 00:20:01,039
+beta that's what we're talking about
+
+543
+00:20:01,039 --> 00:20:04,320
+simple calculation just one plus sign
+
+544
+00:20:04,320 --> 00:20:07,200
+but no check uh the the value that was
+
+545
+00:20:07,200 --> 00:20:10,000
+calculated is just directly passed on to
+
+546
+00:20:10,000 --> 00:20:12,159
+pv port malloc which is the a memory
+
+547
+00:20:12,159 --> 00:20:15,280
+allocator form three altos
+
+548
+00:20:15,280 --> 00:20:17,440
+uh and and that's not a good
+
+549
+00:20:17,440 --> 00:20:19,039
+implementation there's obviously a
+
+550
+00:20:19,039 --> 00:20:20,720
+vulnerability in here
+
+551
+00:20:20,720 --> 00:20:23,840
+and if we'll give it
+
+552
+00:20:23,840 --> 00:20:26,320
+if we'll ask for large enough size
+
+553
+00:20:26,320 --> 00:20:29,120
+uh the calculation would overflow and
+
+554
+00:20:29,120 --> 00:20:30,080
+then
+
+555
+00:20:30,080 --> 00:20:31,840
+this malloc implementation would call
+
+556
+00:20:31,840 --> 00:20:35,120
+the internal one with a very very small
+
+557
+00:20:35,120 --> 00:20:37,439
+size
+
+558
+00:20:37,600 --> 00:20:40,400
+so let's talk about exploitation
+
+559
+00:20:40,400 --> 00:20:42,240
+we know we understand that to trigger
+
+560
+00:20:42,240 --> 00:20:44,559
+the vulnerability we need to give it
+
+561
+00:20:44,559 --> 00:20:46,880
+to to pass on to malloc some very very
+
+562
+00:20:46,880 --> 00:20:49,600
+large size and then we'll get
+
+563
+00:20:49,600 --> 00:20:52,080
+some very very small memory allocation
+
+564
+00:20:52,080 --> 00:20:53,600
+but
+
+565
+00:20:53,600 --> 00:20:55,919
+we really wanted to demonstrate how this
+
+566
+00:20:55,919 --> 00:20:57,919
+could be leveraging to a full-blown
+
+567
+00:20:57,919 --> 00:21:00,000
+remote code execution
+
+568
+00:21:00,000 --> 00:21:02,240
+so in this scenario we picked up the
+
+569
+00:21:02,240 --> 00:21:05,120
+over over the update mechanism also
+
+570
+00:21:05,120 --> 00:21:07,520
+built in in ti's
+
+571
+00:21:07,520 --> 00:21:08,720
+sdk
+
+572
+00:21:08,720 --> 00:21:11,679
+they give the developers uh
+
+573
+00:21:11,679 --> 00:21:14,480
+their clients essentially the capability
+
+574
+00:21:14,480 --> 00:21:16,559
+to update those chip to update the
+
+575
+00:21:16,559 --> 00:21:17,679
+firmware
+
+576
+00:21:17,679 --> 00:21:19,200
+of the internal chip and the firmware of
+
+577
+00:21:19,200 --> 00:21:22,000
+the application remotely
+
+578
+00:21:22,000 --> 00:21:24,159
+directly from some cdn server that the
+
+579
+00:21:24,159 --> 00:21:26,080
+client needs to have
+
+580
+00:21:26,080 --> 00:21:29,360
+and then it deploys on the chip
+
+581
+00:21:29,360 --> 00:21:31,919
+uh and everything is packed nicely with
+
+582
+00:21:31,919 --> 00:21:33,840
+uh inside the single tar file with that
+
+583
+00:21:33,840 --> 00:21:36,159
+file system structure uh you can see
+
+584
+00:21:36,159 --> 00:21:38,240
+there's like web pages in there and
+
+585
+00:21:38,240 --> 00:21:40,320
+there's the service pack and there's the
+
+586
+00:21:40,320 --> 00:21:41,919
+mcu flash image which which is the
+
+587
+00:21:41,919 --> 00:21:43,679
+actual application
+
+588
+00:21:43,679 --> 00:21:46,080
+femwell but for the sake of this poc the
+
+589
+00:21:46,080 --> 00:21:49,440
+important stuff is ill ota.cmd
+
+590
+00:21:49,440 --> 00:21:51,679
+and that's how this file looks like
+
+591
+00:21:51,679 --> 00:21:53,679
+you can figure out from taking a look at
+
+592
+00:21:53,679 --> 00:21:56,000
+it that it's a pretty simple file that
+
+593
+00:21:56,000 --> 00:21:58,799
+holds the digital signatures for the
+
+594
+00:21:58,799 --> 00:22:00,559
+other internal files
+
+595
+00:22:00,559 --> 00:22:01,679
+so that
+
+596
+00:22:01,679 --> 00:22:03,760
+they could verify the other internal
+
+597
+00:22:03,760 --> 00:22:06,640
+files in the same
+
+598
+00:22:06,640 --> 00:22:09,919
+update tar file
+
+599
+00:22:10,320 --> 00:22:12,640
+and why is that important to us because
+
+600
+00:22:12,640 --> 00:22:15,280
+of the fact that this is the only file
+
+601
+00:22:15,280 --> 00:22:17,760
+in the process that is actually required
+
+602
+00:22:17,760 --> 00:22:20,080
+to be read fully into memory from the
+
+603
+00:22:20,080 --> 00:22:21,440
+network
+
+604
+00:22:21,440 --> 00:22:23,840
+so you can see in this function
+
+605
+00:22:23,840 --> 00:22:26,799
+that the file is actually read using
+
+606
+00:22:26,799 --> 00:22:29,120
+some other get entire file function
+
+607
+00:22:29,120 --> 00:22:30,880
+so later on they could verify the
+
+608
+00:22:30,880 --> 00:22:32,640
+digital signatures
+
+609
+00:22:32,640 --> 00:22:34,400
+of the other files taken from the
+
+610
+00:22:34,400 --> 00:22:36,799
+ota.cmd file
+
+611
+00:22:36,799 --> 00:22:38,720
+so let's take a look at the internal
+
+612
+00:22:38,720 --> 00:22:41,679
+getting entitle find file function
+
+613
+00:22:41,679 --> 00:22:44,320
+uh it's not how to figure out that
+
+614
+00:22:44,320 --> 00:22:46,080
+it's a pretty simple function there's
+
+615
+00:22:46,080 --> 00:22:48,320
+essentially malloc in here there's a
+
+616
+00:22:48,320 --> 00:22:50,960
+check that malloc actually succeeded and
+
+617
+00:22:50,960 --> 00:22:52,799
+returned the valid pointer
+
+618
+00:22:52,799 --> 00:22:55,360
+and then there is an m copy
+
+619
+00:22:55,360 --> 00:22:58,240
+appleton until this point if i wouldn't
+
+620
+00:22:58,240 --> 00:23:00,880
+know that malok is vulnerable
+
+621
+00:23:00,880 --> 00:23:02,720
+there's no issue at all with that
+
+622
+00:23:02,720 --> 00:23:04,960
+function if we allocated enough memory
+
+623
+00:23:04,960 --> 00:23:07,840
+we can copy the buffer to that memo it's
+
+624
+00:23:07,840 --> 00:23:08,960
+it's simple
+
+625
+00:23:08,960 --> 00:23:12,080
+but this malloc specifically from ti is
+
+626
+00:23:12,080 --> 00:23:13,600
+vulnerable
+
+627
+00:23:13,600 --> 00:23:15,520
+and the the thing is
+
+628
+00:23:15,520 --> 00:23:16,400
+that
+
+629
+00:23:16,400 --> 00:23:18,559
+in the context of this plc if you took
+
+630
+00:23:18,559 --> 00:23:20,159
+if you take a look
+
+631
+00:23:20,159 --> 00:23:21,760
+uh there's the file size in there that
+
+632
+00:23:21,760 --> 00:23:24,400
+property is taken directly
+
+633
+00:23:24,400 --> 00:23:27,520
+off the tao file so we as the attacker
+
+634
+00:23:27,520 --> 00:23:30,240
+in this scenario have full control
+
+635
+00:23:30,240 --> 00:23:32,799
+of the size that would be requested from
+
+636
+00:23:32,799 --> 00:23:35,440
+malloc and we can specify
+
+637
+00:23:35,440 --> 00:23:38,080
+uh the integer maximum in such a way or
+
+638
+00:23:38,080 --> 00:23:38,880
+nil
+
+639
+00:23:38,880 --> 00:23:40,400
+in such a way that would trigger the
+
+640
+00:23:40,400 --> 00:23:42,720
+beta log vulnerability in here and would
+
+641
+00:23:42,720 --> 00:23:43,600
+lead
+
+642
+00:23:43,600 --> 00:23:46,240
+sorry and would lead to a overflow
+
+643
+00:23:46,240 --> 00:23:48,080
+afterwards a control one with the mm
+
+644
+00:23:48,080 --> 00:23:51,080
+copy
+
+645
+00:23:52,480 --> 00:23:55,120
+so how we can leverage this control deep
+
+646
+00:23:55,120 --> 00:23:56,880
+overflow into a full remote code
+
+647
+00:23:56,880 --> 00:23:59,200
+execution essentially the idea is to
+
+648
+00:23:59,200 --> 00:24:01,039
+find some kind of a function pointer
+
+649
+00:24:01,039 --> 00:24:04,320
+that we can trigger a call to in memory
+
+650
+00:24:04,320 --> 00:24:06,400
+and then we'll mess with the heap
+
+651
+00:24:06,400 --> 00:24:08,480
+from the free autoseek we'll mess with
+
+652
+00:24:08,480 --> 00:24:12,080
+it in such a way so the next allocation
+
+653
+00:24:12,080 --> 00:24:14,799
+would be outside of the hip would be on
+
+654
+00:24:14,799 --> 00:24:16,799
+in the area where that function pointer
+
+655
+00:24:16,799 --> 00:24:17,679
+lays
+
+656
+00:24:17,679 --> 00:24:19,679
+we'll overlight it to point to our shell
+
+657
+00:24:19,679 --> 00:24:21,840
+code and then we would trigger a call to
+
+658
+00:24:21,840 --> 00:24:24,000
+it
+
+659
+00:24:24,080 --> 00:24:26,080
+that's how the hip
+
+660
+00:24:26,080 --> 00:24:27,760
+specifically in free autos looks like
+
+661
+00:24:27,760 --> 00:24:30,799
+it's if you know hip hip exploitation
+
+662
+00:24:30,799 --> 00:24:33,600
+techniques uh from gilead
+
+663
+00:24:33,600 --> 00:24:36,000
+see for example they use the double link
+
+664
+00:24:36,000 --> 00:24:38,400
+list but in free alto specifically
+
+665
+00:24:38,400 --> 00:24:41,520
+there's a single linked list which is
+
+666
+00:24:41,520 --> 00:24:44,320
+kind of a problem for us but
+
+667
+00:24:44,320 --> 00:24:47,360
+the idea in here is that we can create
+
+668
+00:24:47,360 --> 00:24:49,440
+this redirection of the hip
+
+669
+00:24:49,440 --> 00:24:52,080
+by overflowing
+
+670
+00:24:52,080 --> 00:24:54,240
+and overriding
+
+671
+00:24:54,240 --> 00:24:57,600
+the next free cell pointer in the next
+
+672
+00:24:57,600 --> 00:24:59,440
+free block
+
+673
+00:24:59,440 --> 00:25:00,559
+so
+
+674
+00:25:00,559 --> 00:25:03,200
+in this slide we will override and
+
+675
+00:25:03,200 --> 00:25:04,240
+change it
+
+676
+00:25:04,240 --> 00:25:06,240
+to that address so in the next
+
+677
+00:25:06,240 --> 00:25:08,480
+allocation the allocator would figure
+
+678
+00:25:08,480 --> 00:25:11,120
+out okay that's where i need to go
+
+679
+00:25:11,120 --> 00:25:12,799
+that's where the free block the next
+
+680
+00:25:12,799 --> 00:25:15,679
+three block is so once we'll
+
+681
+00:25:15,679 --> 00:25:17,360
+allocate something it would be allocated
+
+682
+00:25:17,360 --> 00:25:18,880
+on that
+
+683
+00:25:18,880 --> 00:25:21,200
+memory area
+
+684
+00:25:21,200 --> 00:25:23,600
+and what is this
+
+685
+00:25:23,600 --> 00:25:27,039
+function pointer that i'm talking about
+
+686
+00:25:27,039 --> 00:25:30,240
+so in ti's sdk there's another component
+
+687
+00:25:30,240 --> 00:25:32,480
+of a web server uh
+
+688
+00:25:32,480 --> 00:25:35,360
+which could handle uh serving web pages
+
+689
+00:25:35,360 --> 00:25:36,480
+in two ways
+
+690
+00:25:36,480 --> 00:25:38,720
+the first one would be static pages and
+
+691
+00:25:38,720 --> 00:25:41,679
+the other one would be dynamic function
+
+692
+00:25:41,679 --> 00:25:42,880
+handler
+
+693
+00:25:42,880 --> 00:25:45,440
+so it's pretty similar to cgi
+
+694
+00:25:45,440 --> 00:25:46,720
+in a way
+
+695
+00:25:46,720 --> 00:25:49,120
+you just
+
+696
+00:25:49,440 --> 00:25:51,919
+write a function in c that would handle
+
+697
+00:25:51,919 --> 00:25:54,440
+some page so for example it could handle
+
+698
+00:25:54,440 --> 00:25:56,799
+ota.html for example so
+
+699
+00:25:56,799 --> 00:25:59,120
+one once i'll go to the web server and
+
+700
+00:25:59,120 --> 00:26:02,559
+ask for ota.html it would go and search
+
+701
+00:26:02,559 --> 00:26:04,480
+for the proper function pointer to
+
+702
+00:26:04,480 --> 00:26:06,240
+handle it and that's the function
+
+703
+00:26:06,240 --> 00:26:09,360
+pointer that we want to override
+
+704
+00:26:09,360 --> 00:26:10,480
+um
+
+705
+00:26:10,480 --> 00:26:12,159
+because obviously we can trigger a call
+
+706
+00:26:12,159 --> 00:26:13,200
+to it
+
+707
+00:26:13,200 --> 00:26:16,720
+by asking a certain a specific web page
+
+708
+00:26:16,720 --> 00:26:19,760
+that how it looks like in memory
+
+709
+00:26:19,760 --> 00:26:22,559
+so we get the http request
+
+710
+00:26:22,559 --> 00:26:25,039
+array of structures in here
+
+711
+00:26:25,039 --> 00:26:27,120
+and the marked ones are the pointers
+
+712
+00:26:27,120 --> 00:26:29,200
+there's a bunch of them and we just
+
+713
+00:26:29,200 --> 00:26:31,520
+chose the specific one
+
+714
+00:26:31,520 --> 00:26:34,240
+for the poc
+
+715
+00:26:35,440 --> 00:26:36,480
+um
+
+716
+00:26:36,480 --> 00:26:39,200
+so first
+
+717
+00:26:39,200 --> 00:26:41,600
+sorry
+
+718
+00:26:42,400 --> 00:26:46,480
+let's take a look at the exploit code
+
+719
+00:26:49,039 --> 00:26:50,640
+that's how it looks like it's just a
+
+720
+00:26:50,640 --> 00:26:51,600
+simple
+
+721
+00:26:51,600 --> 00:26:54,320
+python file
+
+722
+00:26:55,279 --> 00:26:58,400
+it's not even that big
+
+723
+00:26:58,400 --> 00:27:01,200
+and it starts off by creating
+
+724
+00:27:01,200 --> 00:27:03,279
+the malformed
+
+725
+00:27:03,279 --> 00:27:04,960
+tile update file
+
+726
+00:27:04,960 --> 00:27:06,880
+so in here you can see that we're
+
+727
+00:27:06,880 --> 00:27:08,559
+actually hooking
+
+728
+00:27:08,559 --> 00:27:11,760
+the built-in tau library from python
+
+729
+00:27:11,760 --> 00:27:13,039
+so
+
+730
+00:27:13,039 --> 00:27:14,320
+we could
+
+731
+00:27:14,320 --> 00:27:17,039
+mess with the internal file size
+
+732
+00:27:17,039 --> 00:27:18,640
+of the internal files
+
+733
+00:27:18,640 --> 00:27:19,760
+so
+
+734
+00:27:19,760 --> 00:27:21,039
+in this code
+
+735
+00:27:21,039 --> 00:27:23,200
+actually every file that we would create
+
+736
+00:27:23,200 --> 00:27:25,440
+will create in only one but every one
+
+737
+00:27:25,440 --> 00:27:27,840
+of those files would be created
+
+738
+00:27:27,840 --> 00:27:30,720
+with a fake file size of almost
+
+739
+00:27:30,720 --> 00:27:34,559
+the maximum for 32 bits
+
+740
+00:27:34,559 --> 00:27:37,520
+then we're gonna upload this file so the
+
+741
+00:27:37,520 --> 00:27:40,640
+heap would be corrupted
+
+742
+00:27:40,640 --> 00:27:42,159
+and then we're gonna create another
+
+743
+00:27:42,159 --> 00:27:43,919
+request
+
+744
+00:27:43,919 --> 00:27:46,480
+with the new pointer that would be
+
+745
+00:27:46,480 --> 00:27:48,000
+allocated on the old pointer and the
+
+746
+00:27:48,000 --> 00:27:49,760
+shell code itself that we
+
+747
+00:27:49,760 --> 00:27:52,000
+uh that we are using and that request
+
+748
+00:27:52,000 --> 00:27:54,480
+would be a simple cheap request with um
+
+749
+00:27:54,480 --> 00:27:56,880
+everything in the user agent field
+
+750
+00:27:56,880 --> 00:27:58,720
+because the system actually allocates a
+
+751
+00:27:58,720 --> 00:28:02,159
+specific buffer for the user user agent
+
+752
+00:28:02,159 --> 00:28:03,919
+and that's the shell code
+
+753
+00:28:03,919 --> 00:28:06,000
+that would be compiled
+
+754
+00:28:06,000 --> 00:28:08,320
+because everything goes on http http
+
+755
+00:28:08,320 --> 00:28:10,080
+request we need to have it in all free
+
+756
+00:28:10,080 --> 00:28:11,360
+and space free
+
+757
+00:28:11,360 --> 00:28:12,480
+so
+
+758
+00:28:12,480 --> 00:28:14,480
+the shell code is xod
+
+759
+00:28:14,480 --> 00:28:17,919
+encoded simple excel cipher just
+
+760
+00:28:17,919 --> 00:28:19,440
+you know simple key
+
+761
+00:28:19,440 --> 00:28:20,799
+uh it
+
+762
+00:28:20,799 --> 00:28:23,520
+doesn't mean to hide anything just to
+
+763
+00:28:23,520 --> 00:28:25,520
+avoid any nulls and spaces
+
+764
+00:28:25,520 --> 00:28:27,919
+uh so we got the xo decoding stub in
+
+765
+00:28:27,919 --> 00:28:30,799
+here that would execute on the device
+
+766
+00:28:30,799 --> 00:28:33,360
+and then we have our payload
+
+767
+00:28:33,360 --> 00:28:36,159
+so the idea in the plc is uh just to
+
+768
+00:28:36,159 --> 00:28:38,679
+override the default
+
+769
+00:28:38,679 --> 00:28:41,120
+html.index.html file
+
+770
+00:28:41,120 --> 00:28:42,799
+so
+
+771
+00:28:42,799 --> 00:28:44,640
+it would refer the user to our own
+
+772
+00:28:44,640 --> 00:28:48,080
+control domain so we start off uh by
+
+773
+00:28:48,080 --> 00:28:51,440
+stopping those the the sl dash
+
+774
+00:28:51,440 --> 00:28:55,039
+just a ti's api so we'll stop in then
+
+775
+00:28:55,039 --> 00:28:57,120
+iphone stack starting it
+
+776
+00:28:57,120 --> 00:28:59,440
+again essentially restarting it to avoid
+
+777
+00:28:59,440 --> 00:29:01,440
+any problems from the previous
+
+778
+00:29:01,440 --> 00:29:03,760
+exploitation effort
+
+779
+00:29:03,760 --> 00:29:06,000
+uh and then we're just opening a file
+
+780
+00:29:06,000 --> 00:29:07,559
+the html
+
+781
+00:29:07,559 --> 00:29:09,679
+index.html file
+
+782
+00:29:09,679 --> 00:29:10,640
+in here
+
+783
+00:29:10,640 --> 00:29:14,240
+we're opening it with write permissions
+
+784
+00:29:14,240 --> 00:29:17,360
+uh and overwrite in it with our own html
+
+785
+00:29:17,360 --> 00:29:18,559
+payload
+
+786
+00:29:18,559 --> 00:29:21,679
+uh which is pretty straightforward
+
+787
+00:29:21,679 --> 00:29:24,159
+uh it would send just
+
+788
+00:29:24,159 --> 00:29:27,840
+for every user uh to our own controlled
+
+789
+00:29:27,840 --> 00:29:30,640
+bed.com domain
+
+790
+00:29:30,640 --> 00:29:33,200
+uh and that's pretty much it we're
+
+791
+00:29:33,200 --> 00:29:34,640
+closing the file and rebooting the
+
+792
+00:29:34,640 --> 00:29:35,840
+system
+
+793
+00:29:35,840 --> 00:29:37,039
+um
+
+794
+00:29:37,039 --> 00:29:38,320
+and that's the
+
+795
+00:29:38,320 --> 00:29:41,760
+the poc script itself so
+
+796
+00:29:41,760 --> 00:29:42,960
+let's take
+
+797
+00:29:42,960 --> 00:29:47,080
+a look at the execution
+
+798
+00:30:02,559 --> 00:30:05,559
+well
+
+799
+00:30:12,960 --> 00:30:15,600
+come on mac
+
+800
+00:30:21,440 --> 00:30:23,840
+okay
+
+801
+00:30:23,840 --> 00:30:27,840
+okay great technical effort
+
+802
+00:30:27,919 --> 00:30:29,679
+okay so
+
+803
+00:30:29,679 --> 00:30:32,000
+in that side you can see our fake
+
+804
+00:30:32,000 --> 00:30:33,760
+poc system
+
+805
+00:30:33,760 --> 00:30:38,000
+it's just a web server that we modified
+
+806
+00:30:38,000 --> 00:30:40,320
+on the device on the device that you saw
+
+807
+00:30:40,320 --> 00:30:42,080
+the actual evaluation board with the
+
+808
+00:30:42,080 --> 00:30:43,760
+sampling chip
+
+809
+00:30:43,760 --> 00:30:45,760
+so that's
+
+810
+00:30:45,760 --> 00:30:48,320
+the web server on the local network and
+
+811
+00:30:48,320 --> 00:30:52,158
+that's the script that we saw earlier
+
+812
+00:30:52,240 --> 00:30:55,440
+targeted to
+
+813
+00:30:56,559 --> 00:30:57,360
+a
+
+814
+00:30:57,360 --> 00:31:00,158
+to the device
+
+815
+00:31:03,279 --> 00:31:06,880
+so let's execute it
+
+816
+00:31:07,519 --> 00:31:08,880
+and let's take a look at what we're
+
+817
+00:31:08,880 --> 00:31:10,880
+seeing in here so first there is the
+
+818
+00:31:10,880 --> 00:31:13,919
+crafting of the ota file with the
+
+819
+00:31:13,919 --> 00:31:16,399
+hooked a tower library
+
+820
+00:31:16,399 --> 00:31:19,919
+it was created uh so that the next chunk
+
+821
+00:31:19,919 --> 00:31:21,200
+in the memory
+
+822
+00:31:21,200 --> 00:31:22,960
+in the heap would be created at that
+
+823
+00:31:22,960 --> 00:31:25,200
+address of the http request
+
+824
+00:31:25,200 --> 00:31:27,039
+a structure that we talked about earlier
+
+825
+00:31:27,039 --> 00:31:30,158
+with the function pointers
+
+826
+00:31:30,880 --> 00:31:33,039
+afterwards
+
+827
+00:31:33,039 --> 00:31:35,919
+um after it was created
+
+828
+00:31:35,919 --> 00:31:37,919
+uh we're going on to compiling the shell
+
+829
+00:31:37,919 --> 00:31:39,760
+code so every every time the script
+
+830
+00:31:39,760 --> 00:31:41,519
+would
+
+831
+00:31:41,519 --> 00:31:43,519
+compile the shellcode from scratch so
+
+832
+00:31:43,519 --> 00:31:46,480
+it's easily modified you can see the
+
+833
+00:31:46,480 --> 00:31:49,440
+actual shellcode email you might notice
+
+834
+00:31:49,440 --> 00:31:52,000
+the string is in there it's before the
+
+835
+00:31:52,000 --> 00:31:53,039
+excel
+
+836
+00:31:53,039 --> 00:31:55,519
+encoding
+
+837
+00:31:57,120 --> 00:31:58,799
+and that's actually a molecule so we
+
+838
+00:31:58,799 --> 00:32:01,760
+know where to start to encode form to
+
+839
+00:32:01,760 --> 00:32:04,000
+encrypt form
+
+840
+00:32:04,000 --> 00:32:08,000
+then we're packing everything tightly
+
+841
+00:32:08,640 --> 00:32:10,720
+into a user-agent string and uploading
+
+842
+00:32:10,720 --> 00:32:14,240
+the tao file which messes with the heap
+
+843
+00:32:14,240 --> 00:32:16,480
+and that's the shell code and everything
+
+844
+00:32:16,480 --> 00:32:18,880
+after uh encryption and decoding and
+
+845
+00:32:18,880 --> 00:32:21,760
+preparing the fake addresses and stuff
+
+846
+00:32:21,760 --> 00:32:23,919
+um that's where the payload starts and
+
+847
+00:32:23,919 --> 00:32:25,679
+before that we get the address and some
+
+848
+00:32:25,679 --> 00:32:26,720
+other
+
+849
+00:32:26,720 --> 00:32:29,519
+things that we have to to have
+
+850
+00:32:29,519 --> 00:32:32,720
+uh so let's refresh our web page
+
+851
+00:32:32,720 --> 00:32:34,720
+uh and here you can see that we are
+
+852
+00:32:34,720 --> 00:32:36,960
+actually we've already failed directly
+
+853
+00:32:36,960 --> 00:32:39,679
+to bed.com domain which is again our own
+
+854
+00:32:39,679 --> 00:32:42,399
+maliciously controlled domain
+
+855
+00:32:42,399 --> 00:32:44,559
+it says that someone that you have been
+
+856
+00:32:44,559 --> 00:32:46,640
+hacked but you don't need to worry about
+
+857
+00:32:46,640 --> 00:32:49,200
+it there's no money required or anything
+
+858
+00:32:49,200 --> 00:32:51,919
+uh and you can you probably can't see
+
+859
+00:32:51,919 --> 00:32:53,200
+the
+
+860
+00:32:53,200 --> 00:32:55,840
+the writing in the blue but there is the
+
+861
+00:32:55,840 --> 00:32:58,640
+blog post in there don't worry about it
+
+862
+00:32:58,640 --> 00:33:00,640
+it will be back in the the link would be
+
+863
+00:33:00,640 --> 00:33:03,519
+back in a second
+
+864
+00:33:04,960 --> 00:33:07,200
+okay so let's go back
+
+865
+00:33:07,200 --> 00:33:10,519
+to the slides
+
+866
+00:33:10,880 --> 00:33:12,159
+and talk about some mitigation
+
+867
+00:33:12,159 --> 00:33:13,840
+techniques success
+
+868
+00:33:13,840 --> 00:33:16,639
+great success
+
+869
+00:33:18,720 --> 00:33:20,320
+thank you
+
+870
+00:33:20,320 --> 00:33:23,760
+um okay so when was that
+
+871
+00:33:23,760 --> 00:33:26,320
+showed you that he broke the device
+
+872
+00:33:26,320 --> 00:33:27,440
+and
+
+873
+00:33:27,440 --> 00:33:29,440
+but it's not finished here because we
+
+874
+00:33:29,440 --> 00:33:32,080
+want to show you how you can fix the
+
+875
+00:33:32,080 --> 00:33:33,919
+your systems
+
+876
+00:33:33,919 --> 00:33:34,799
+and
+
+877
+00:33:34,799 --> 00:33:37,600
+so oh fine some other oh fine some
+
+878
+00:33:37,600 --> 00:33:38,640
+others
+
+879
+00:33:38,640 --> 00:33:40,159
+one of our systems
+
+880
+00:33:40,159 --> 00:33:41,440
+and
+
+881
+00:33:41,440 --> 00:33:44,640
+so the first thing is to understand your
+
+882
+00:33:44,640 --> 00:33:48,720
+functions and this just a small list
+
+883
+00:33:48,720 --> 00:33:50,880
+of the most common name for the
+
+884
+00:33:50,880 --> 00:33:53,120
+allocation function that we found
+
+885
+00:33:53,120 --> 00:33:56,159
+there are a lot of names and every
+
+886
+00:33:56,159 --> 00:33:58,000
+vendor uses own
+
+887
+00:33:58,000 --> 00:33:58,880
+maybe
+
+888
+00:33:58,880 --> 00:34:01,279
+they do maybe they just use them alloca
+
+889
+00:34:01,279 --> 00:34:02,240
+and
+
+890
+00:34:02,240 --> 00:34:05,519
+dialogue and this list
+
+891
+00:34:05,519 --> 00:34:07,039
+but
+
+892
+00:34:07,039 --> 00:34:08,879
+you need to check
+
+893
+00:34:08,879 --> 00:34:10,399
+the application that you need to
+
+894
+00:34:10,399 --> 00:34:12,560
+understand what's the name of the
+
+895
+00:34:12,560 --> 00:34:14,159
+functions
+
+896
+00:34:14,159 --> 00:34:16,320
+in your applications
+
+897
+00:34:16,320 --> 00:34:18,560
+so how to start
+
+898
+00:34:18,560 --> 00:34:20,639
+start by checking out the advisory that
+
+899
+00:34:20,639 --> 00:34:22,719
+you will get the link
+
+900
+00:34:22,719 --> 00:34:25,199
+in the next few slides
+
+901
+00:34:25,199 --> 00:34:27,839
+and second just reverse engineer the
+
+902
+00:34:27,839 --> 00:34:30,239
+binaries it's always the best approach
+
+903
+00:34:30,239 --> 00:34:33,918
+in life not only in this scenario always
+
+904
+00:34:33,918 --> 00:34:37,199
+we get a project we reversed it
+
+905
+00:34:37,199 --> 00:34:39,520
+and
+
+906
+00:34:39,520 --> 00:34:40,879
+if you don't want to reverse and you
+
+907
+00:34:40,879 --> 00:34:43,119
+have the source code check it if it's
+
+908
+00:34:43,119 --> 00:34:45,440
+public if you have it
+
+909
+00:34:45,440 --> 00:34:49,359
+for the weak ones for the weak ones
+
+910
+00:34:49,359 --> 00:34:50,320
+you can
+
+911
+00:34:50,320 --> 00:34:52,800
+review the code most of the research
+
+912
+00:34:52,800 --> 00:34:56,079
+that we done was from code from github
+
+913
+00:34:56,079 --> 00:34:57,040
+and
+
+914
+00:34:57,040 --> 00:34:58,079
+so
+
+915
+00:34:58,079 --> 00:35:00,480
+if you have the code fantastic
+
+916
+00:35:00,480 --> 00:35:03,440
+and and to do some kind of little unit
+
+917
+00:35:03,440 --> 00:35:05,920
+test try to allocate the big chunks of
+
+918
+00:35:05,920 --> 00:35:08,320
+data try to allocate a small size of
+
+919
+00:35:08,320 --> 00:35:09,520
+data
+
+920
+00:35:09,520 --> 00:35:11,440
+see what happened if there is a hip
+
+921
+00:35:11,440 --> 00:35:14,400
+overflow if not if you got an error if
+
+922
+00:35:14,400 --> 00:35:16,640
+not i don't know what
+
+923
+00:35:16,640 --> 00:35:17,760
+you can get
+
+924
+00:35:17,760 --> 00:35:18,480
+but
+
+925
+00:35:18,480 --> 00:35:20,720
+if it's good it's good
+
+926
+00:35:20,720 --> 00:35:22,800
+and if you check the source code it's
+
+927
+00:35:22,800 --> 00:35:26,000
+also really recommend to check also the
+
+928
+00:35:26,000 --> 00:35:28,000
+macros if you reverse you don't have the
+
+929
+00:35:28,000 --> 00:35:31,119
+macros problem a problem but if you
+
+930
+00:35:31,119 --> 00:35:33,200
+check the source code check the macros
+
+931
+00:35:33,200 --> 00:35:35,280
+we found a lot of macros that had a
+
+932
+00:35:35,280 --> 00:35:38,400
+problem with alignment mostly
+
+933
+00:35:38,400 --> 00:35:39,599
+and
+
+934
+00:35:39,599 --> 00:35:42,839
+inside the macros there was the integer
+
+935
+00:35:42,839 --> 00:35:45,350
+overflow problem
+
+936
+00:35:45,350 --> 00:35:46,960
+[Music]
+
+937
+00:35:46,960 --> 00:35:47,760
+so
+
+938
+00:35:47,760 --> 00:35:49,680
+this is couple of
+
+939
+00:35:49,680 --> 00:35:51,920
+ellipses that we found that are good
+
+940
+00:35:51,920 --> 00:35:53,359
+ellipses that
+
+941
+00:35:53,359 --> 00:35:55,200
+mitigate
+
+942
+00:35:55,200 --> 00:35:57,520
+this technique in a good way
+
+943
+00:35:57,520 --> 00:36:00,720
+so gellipsi i believe that most of you
+
+944
+00:36:00,720 --> 00:36:02,000
+know it
+
+945
+00:36:02,000 --> 00:36:05,520
+and check the size the bytes
+
+946
+00:36:05,520 --> 00:36:08,240
+and check if the size is
+
+947
+00:36:08,240 --> 00:36:10,960
+it's logical correct they just divide it
+
+948
+00:36:10,960 --> 00:36:13,040
+after it to check if
+
+949
+00:36:13,040 --> 00:36:15,440
+you get the n from previous if you got
+
+950
+00:36:15,440 --> 00:36:18,400
+it great if not not so good
+
+951
+00:36:18,400 --> 00:36:19,680
+and
+
+952
+00:36:19,680 --> 00:36:22,160
+the next example is the embedded art
+
+953
+00:36:22,160 --> 00:36:23,440
+history
+
+954
+00:36:23,440 --> 00:36:25,359
+and they do
+
+955
+00:36:25,359 --> 00:36:26,480
+some kind
+
+956
+00:36:26,480 --> 00:36:27,520
+of
+
+957
+00:36:27,520 --> 00:36:28,560
+check
+
+958
+00:36:28,560 --> 00:36:31,280
+they decided that the amount of overflow
+
+959
+00:36:31,280 --> 00:36:33,680
+is the biggest size that will someone
+
+960
+00:36:33,680 --> 00:36:34,960
+will need
+
+961
+00:36:34,960 --> 00:36:38,320
+embedded or this three use you
+
+962
+00:36:38,320 --> 00:36:42,880
+do ellipsis for iot mostly so in iot you
+
+963
+00:36:42,880 --> 00:36:45,119
+have little ram so you probably won't
+
+964
+00:36:45,119 --> 00:36:46,320
+need
+
+965
+00:36:46,320 --> 00:36:48,960
+malloc two of big sizes
+
+966
+00:36:48,960 --> 00:36:49,839
+and
+
+967
+00:36:49,839 --> 00:36:52,000
+you do another checks there
+
+968
+00:36:52,000 --> 00:36:54,400
+another good
+
+969
+00:36:54,400 --> 00:36:56,000
+thing to do
+
+970
+00:36:56,000 --> 00:36:58,079
+and the last one is muscle
+
+971
+00:36:58,079 --> 00:37:00,560
+there's another catalog function
+
+972
+00:37:00,560 --> 00:37:03,040
+and they check that the end size is not
+
+973
+00:37:03,040 --> 00:37:04,079
+zero
+
+974
+00:37:04,079 --> 00:37:06,240
+and
+
+975
+00:37:06,240 --> 00:37:09,760
+they check if it's logical correct again
+
+976
+00:37:09,760 --> 00:37:11,680
+if you can get
+
+977
+00:37:11,680 --> 00:37:13,920
+if it's in the right
+
+978
+00:37:13,920 --> 00:37:16,240
+size
+
+979
+00:37:17,200 --> 00:37:21,119
+okay so um some final words
+
+980
+00:37:21,119 --> 00:37:23,119
+if you want to learn more about it
+
+981
+00:37:23,119 --> 00:37:25,200
+please go out and check out that the
+
+982
+00:37:25,200 --> 00:37:28,000
+advisory on ics earth's website sisa's
+
+983
+00:37:28,000 --> 00:37:30,400
+website uh all of the technical details
+
+984
+00:37:30,400 --> 00:37:31,599
+are in there
+
+985
+00:37:31,599 --> 00:37:33,119
+uh there's the full list of affected
+
+986
+00:37:33,119 --> 00:37:36,640
+devices or affected products sorry
+
+987
+00:37:36,640 --> 00:37:38,720
+there's approximately 30 affected
+
+988
+00:37:38,720 --> 00:37:40,880
+products in there so that's
+
+989
+00:37:40,880 --> 00:37:42,240
+a lot
+
+990
+00:37:42,240 --> 00:37:44,880
+and almost twice as much as cves
+
+991
+00:37:44,880 --> 00:37:48,000
+for each of the functions
+
+992
+00:37:48,720 --> 00:37:50,480
+you can find it in this qr code you can
+
+993
+00:37:50,480 --> 00:37:53,599
+also go and check out the our blog post
+
+994
+00:37:53,599 --> 00:37:55,440
+in mslc's blog
+
+995
+00:37:55,440 --> 00:37:57,040
+um
+
+996
+00:37:57,040 --> 00:37:59,599
+just search for all just out for the id
+
+997
+00:37:59,599 --> 00:38:02,320
+in your favorite search engine you can't
+
+998
+00:38:02,320 --> 00:38:06,560
+the qr code is not a virus we swear
+
+999
+00:38:07,040 --> 00:38:09,359
+and also i want to thank
+
+1000
+00:38:09,359 --> 00:38:12,880
+cesar and mslc which did amazing job
+
+1001
+00:38:12,880 --> 00:38:15,680
+with the disclosure so 30 vendors is not
+
+1002
+00:38:15,680 --> 00:38:17,920
+easy and they really put effort on it
+
+1003
+00:38:17,920 --> 00:38:20,400
+and for months they went after each and
+
+1004
+00:38:20,400 --> 00:38:21,440
+every one
+
+1005
+00:38:21,440 --> 00:38:23,520
+of the vendors and made sure
+
+1006
+00:38:23,520 --> 00:38:25,839
+that everyone's everyone is aware and
+
+1007
+00:38:25,839 --> 00:38:27,520
+that they know about it
+
+1008
+00:38:27,520 --> 00:38:29,440
+that they will fix it
+
+1009
+00:38:29,440 --> 00:38:32,960
+uh and really amazing job lots of work
+
+1010
+00:38:32,960 --> 00:38:35,359
+and i really want to thank them
+
+1011
+00:38:35,359 --> 00:38:36,880
+and i also want to thank you for
+
+1012
+00:38:36,880 --> 00:38:38,000
+listening
+
+1013
+00:38:38,000 --> 00:38:40,960
+and i hope that you enjoyed it
+
+1014
+00:38:40,960 --> 00:38:43,920
+and you find it useful
+
+1015
+00:38:45,280 --> 00:38:47,119
+and that's it so
+
+1016
+00:38:47,119 --> 00:38:48,240
+thank you
+
+1017
+00:38:48,240 --> 00:38:49,359
+and
+
+1018
+00:38:49,359 --> 00:38:52,800
+now we have a very very short window
+
+1019
+00:38:52,800 --> 00:38:54,240
+for q a
+
+1020
+00:38:54,240 --> 00:38:56,320
+but we'll be in the rap room on the
+
+1021
+00:38:56,320 --> 00:38:58,640
+other side of the hall so
+
+1022
+00:38:58,640 --> 00:39:00,960
+please if you have any questions
+
+1023
+00:39:00,960 --> 00:39:03,280
+you're more more than welcome to come
+
+1024
+00:39:03,280 --> 00:39:05,680
+visit and ask them
+
+1025
+00:39:05,680 --> 00:39:07,220
+thank you
+
+1026
+00:39:07,220 --> 00:39:12,500
+[Applause]
+
+1027
+00:39:12,500 --> 00:39:21,409
+[Music]
+
+1028
+00:39:21,760 --> 00:39:23,839
+you
+

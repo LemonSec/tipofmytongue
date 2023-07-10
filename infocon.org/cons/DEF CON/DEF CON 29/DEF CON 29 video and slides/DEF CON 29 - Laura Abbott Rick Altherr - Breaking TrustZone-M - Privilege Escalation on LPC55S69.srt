@@ -1,0 +1,4899 @@
+﻿1
+00:00:06,210 --> 00:00:07,900
+- Hi, I'm Laura Abbott,
+
+2
+00:00:07,900 --> 00:00:09,810
+and I'm here with my
+colleague Rick Altherr
+
+3
+00:00:09,810 --> 00:00:12,130
+to talk about breaking TrustZone-M using
+
+4
+00:00:12,130 --> 00:00:16,273
+a privilege escalation on the LPC55S69.
+
+5
+00:00:17,550 --> 00:00:19,910
+We are engineers at Oxide Computer working
+
+6
+00:00:19,910 --> 00:00:21,440
+on building a new server.
+
+7
+00:00:21,440 --> 00:00:23,690
+Computers haven't changed
+much in many years,
+
+8
+00:00:23,690 --> 00:00:25,420
+and we are looking to fix that.
+
+9
+00:00:25,420 --> 00:00:27,630
+No, I promise this isn't a sales pitch.
+
+10
+00:00:27,630 --> 00:00:30,510
+I'm giving background to
+explain what we were building
+
+11
+00:00:30,510 --> 00:00:34,030
+when we stumbled across this
+issue mostly by accident.
+
+12
+00:00:34,030 --> 00:00:37,100
+One of the reasons we are
+looking to build a new server is
+
+13
+00:00:37,100 --> 00:00:38,940
+to have some level of security assurance
+
+14
+00:00:38,940 --> 00:00:40,430
+at the hardware level.
+
+15
+00:00:40,430 --> 00:00:41,540
+As part of the server,
+
+16
+00:00:41,540 --> 00:00:43,500
+we are building a hardware
+Root of Trust using
+
+17
+00:00:43,500 --> 00:00:46,240
+a security-focused microcontroller.
+
+18
+00:00:46,240 --> 00:00:48,050
+All of our software is written in Rust,
+
+19
+00:00:48,050 --> 00:00:50,050
+and the goal is to have
+everything open-source
+
+20
+00:00:50,050 --> 00:00:51,550
+by the time the product ships
+
+21
+00:00:51,550 --> 00:00:54,670
+as we are big believers in
+transparency in software.
+
+22
+00:00:54,670 --> 00:00:57,220
+This will be a theme
+throughout the presentation.
+
+23
+00:00:57,220 --> 00:00:59,040
+We had some pretty specific requirements
+
+24
+00:00:59,040 --> 00:01:01,320
+for what we were looking for in hardware.
+
+25
+00:01:01,320 --> 00:01:03,740
+We need a strong assertion
+regarding the integrity
+
+26
+00:01:03,740 --> 00:01:06,770
+and authenticity of
+Root of Trust firmware.
+
+27
+00:01:06,770 --> 00:01:08,340
+We want to be able to
+use the Root of Trust
+
+28
+00:01:08,340 --> 00:01:10,890
+to extend trust to other
+parts of the system.
+
+29
+00:01:10,890 --> 00:01:12,060
+And if we're not confident
+
+30
+00:01:12,060 --> 00:01:15,110
+in what's running on the Root
+of Trust, we can't do that.
+
+31
+00:01:15,110 --> 00:01:16,760
+Part of building up that
+trust involves having
+
+32
+00:01:16,760 --> 00:01:20,050
+a tamper- and
+impersonation-resistant unique ID.
+
+33
+00:01:20,050 --> 00:01:21,883
+If the device does get compromised,
+
+34
+00:01:22,719 --> 00:01:25,040
+we need a way to reestablish that trust.
+
+35
+00:01:25,040 --> 00:01:26,220
+Other features you might think of,
+
+36
+00:01:26,220 --> 00:01:29,910
+such as cryptographic
+accelerators or key storage,
+
+37
+00:01:29,910 --> 00:01:33,343
+were considered pluses, but
+not strict requirements.
+
+38
+00:01:34,290 --> 00:01:36,670
+We did a pretty wide survey of hardware,
+
+39
+00:01:36,670 --> 00:01:39,270
+including programmable logic devices.
+
+40
+00:01:39,270 --> 00:01:41,620
+One requirement we
+didn't explicitly state,
+
+41
+00:01:41,620 --> 00:01:43,580
+but turned out to be pretty key,
+
+42
+00:01:43,580 --> 00:01:46,590
+is that the hardware must be
+available for us to purchase.
+
+43
+00:01:46,590 --> 00:01:49,000
+This ruled out more than one device.
+
+44
+00:01:49,000 --> 00:01:51,510
+We were also biased towards
+devices that can be programmed
+
+45
+00:01:51,510 --> 00:01:54,473
+with open-source tools,
+because again, transparency.
+
+46
+00:01:56,050 --> 00:01:59,490
+There was no one standout
+winner among all the candidates.
+
+47
+00:01:59,490 --> 00:02:01,620
+And based on our trade-offs we made,
+
+48
+00:02:01,620 --> 00:02:03,190
+we decided the hardware that best met
+
+49
+00:02:03,190 --> 00:02:07,333
+our needs was the LPC55S69 from NXP.
+
+50
+00:02:08,920 --> 00:02:09,910
+The LPC55S69 is
+
+51
+00:02:11,490 --> 00:02:14,823
+a dual-core ARMv8-M Cortex-M33.
+
+52
+00:02:16,230 --> 00:02:18,840
+Core zero has TrustZone-M
+
+53
+00:02:18,840 --> 00:02:22,280
+and Memory Protection Unit
+support for isolation.
+
+54
+00:02:22,280 --> 00:02:24,150
+Core zero does not have TrustZone,
+
+55
+00:02:24,150 --> 00:02:26,080
+but it can be restricted at the bus level,
+
+56
+00:02:26,080 --> 00:02:27,940
+similar to other DMA engines.
+
+57
+00:02:27,940 --> 00:02:30,400
+Rick will talk more about this in a bit.
+
+58
+00:02:30,400 --> 00:02:31,840
+There's cryptographic accelerators
+
+59
+00:02:31,840 --> 00:02:35,897
+for AES, SHA, and doing
+field math with ECC.
+
+60
+00:02:35,897 --> 00:02:39,010
+The chip supports secure
+boot using RSA signatures,
+
+61
+00:02:39,010 --> 00:02:41,030
+as well as Authenticated Debug
+
+62
+00:02:41,030 --> 00:02:43,660
+There's a PUF, physically
+unclonable function,
+
+63
+00:02:43,660 --> 00:02:45,530
+for use with keys.
+
+64
+00:02:45,530 --> 00:02:46,830
+Part of the flash can be locked down
+
+65
+00:02:46,830 --> 00:02:49,570
+after programming to prevent modification.
+
+66
+00:02:49,570 --> 00:02:51,390
+Other variants of the chip support CAN,
+
+67
+00:02:51,390 --> 00:02:53,850
+which is common in automotive use cases.
+
+68
+00:02:53,850 --> 00:02:55,750
+There are a lot of appealing
+things about this chip,
+
+69
+00:02:55,750 --> 00:02:58,713
+and it seems like it can
+be used in a lot of places.
+
+70
+00:02:59,800 --> 00:03:01,830
+But, of course, we have to ask ourselves,
+
+71
+00:03:01,830 --> 00:03:04,420
+why should we believe this is secure?
+
+72
+00:03:04,420 --> 00:03:05,790
+NXP presents this as a great chip
+
+73
+00:03:05,790 --> 00:03:08,670
+to use in your IOT and other edge cases.
+
+74
+00:03:08,670 --> 00:03:11,500
+And a lot of the written
+material sounds great,
+
+75
+00:03:11,500 --> 00:03:13,390
+but it's marketing material.
+
+76
+00:03:13,390 --> 00:03:15,640
+How does this actually work in practice?
+
+77
+00:03:15,640 --> 00:03:17,250
+Trust, but verifying all that.
+
+78
+00:03:17,250 --> 00:03:19,110
+What we found when we started working
+
+79
+00:03:19,110 --> 00:03:22,000
+with the chip was that the
+documentation was not great.
+
+80
+00:03:22,000 --> 00:03:24,590
+It was frequently pretty confusing.
+
+81
+00:03:24,590 --> 00:03:28,743
+And this was especially true
+when it came to secure boot.
+
+82
+00:03:30,450 --> 00:03:32,190
+This is the diagram for the user manual
+
+83
+00:03:32,190 --> 00:03:35,920
+for the LPC55 showing the
+boot flow from power on.
+
+84
+00:03:35,920 --> 00:03:37,350
+There's a number of steps here
+
+85
+00:03:37,350 --> 00:03:39,910
+and also ways things can go wrong.
+
+86
+00:03:39,910 --> 00:03:41,630
+When trying to make secure boot work,
+
+87
+00:03:41,630 --> 00:03:43,073
+we ran into some issues.
+
+88
+00:03:44,000 --> 00:03:48,060
+So naturally when the manual
+doesn't provide information,
+
+89
+00:03:48,060 --> 00:03:50,150
+you turn to the application notes.
+
+90
+00:03:50,150 --> 00:03:51,700
+And the application notes give
+
+91
+00:03:51,700 --> 00:03:53,800
+a slightly different boot flow chart
+
+92
+00:03:53,800 --> 00:03:55,260
+with a few more steps.
+
+93
+00:03:55,260 --> 00:03:57,860
+This updated flow chart mentions the NMPA,
+
+94
+00:03:57,860 --> 00:04:00,140
+which I'll talk about more in a bit.
+
+95
+00:04:00,140 --> 00:04:02,310
+It also mentions the Debug Mailbox,
+
+96
+00:04:02,310 --> 00:04:04,230
+as well as the recovery boot path.
+
+97
+00:04:04,230 --> 00:04:06,150
+These are two entirely new code paths
+
+98
+00:04:06,150 --> 00:04:07,070
+that the manual apparently
+
+99
+00:04:07,070 --> 00:04:09,810
+just didn't feel the need to mention.
+
+100
+00:04:09,810 --> 00:04:11,560
+This pattern of making a passing reference
+
+101
+00:04:11,560 --> 00:04:14,400
+to something significant or
+omitting something completely
+
+102
+00:04:14,400 --> 00:04:17,253
+was a recurring experience
+with the NXP documentation.
+
+103
+00:04:19,010 --> 00:04:20,980
+We continued to run into surprises
+
+104
+00:04:20,980 --> 00:04:22,900
+while reading the documentation.
+
+105
+00:04:22,900 --> 00:04:25,270
+As part of our due diligence,
+
+106
+00:04:25,270 --> 00:04:28,200
+we were reviewing all
+the application notes.
+
+107
+00:04:28,200 --> 00:04:32,450
+I found one labeled
+camera interface in LPC55,
+
+108
+00:04:32,450 --> 00:04:34,130
+which was very surprising,
+
+109
+00:04:34,130 --> 00:04:35,480
+given the manual does not mention
+
+110
+00:04:35,480 --> 00:04:38,000
+a camera hardware block anywhere.
+
+111
+00:04:38,000 --> 00:04:39,927
+The application note contained the line,
+
+112
+00:04:39,927 --> 00:04:42,070
+"There is a hidden coprocessor in LPC55S69
+
+113
+00:04:44,074 --> 00:04:46,230
+which can handle the signals of camera."
+
+114
+00:04:46,230 --> 00:04:48,450
+When I mentioned this to my colleagues,
+
+115
+00:04:48,450 --> 00:04:52,840
+they thought I was joking
+because a hidden coprocessor
+
+116
+00:04:52,840 --> 00:04:54,950
+or even a camera sounds like a bad idea
+
+117
+00:04:54,950 --> 00:04:57,260
+in a chip that's supposed to be secure.
+
+118
+00:04:57,260 --> 00:04:59,530
+We had to ask NXP for details about this,
+
+119
+00:04:59,530 --> 00:05:01,180
+what this thing even was,
+
+120
+00:05:01,180 --> 00:05:03,240
+because they usually don't
+give out this information
+
+121
+00:05:03,240 --> 00:05:05,750
+unless you're a high-volume customer.
+
+122
+00:05:05,750 --> 00:05:06,870
+We did eventually find out
+
+123
+00:05:06,870 --> 00:05:09,140
+that this core is named EZH.
+
+124
+00:05:09,140 --> 00:05:10,100
+It's a custom core
+
+125
+00:05:10,100 --> 00:05:14,460
+with a custom instruction set
+architecture really designed
+
+126
+00:05:14,460 --> 00:05:17,130
+to offload wire protocol conversions
+
+127
+00:05:17,130 --> 00:05:20,213
+and that don't need to run
+on the main ARM processor.
+
+128
+00:05:22,160 --> 00:05:24,450
+The documentation also
+contained a passing reference
+
+129
+00:05:24,450 --> 00:05:26,320
+to DICE CDI.
+
+130
+00:05:26,320 --> 00:05:29,530
+DICE stands for Device
+Identifier Composition Engine
+
+131
+00:05:29,530 --> 00:05:32,070
+and Compound Device Identifier.
+
+132
+00:05:32,070 --> 00:05:33,400
+This was a feature that comes out
+
+133
+00:05:33,400 --> 00:05:34,750
+of the Trusted Computing Group,
+
+134
+00:05:34,750 --> 00:05:37,780
+and is designed to give it
+cryptographically strong identity
+
+135
+00:05:37,780 --> 00:05:40,780
+to the chip based off of
+the first mutable code.
+
+136
+00:05:40,780 --> 00:05:42,410
+The idea is that if you
+change the first code
+
+137
+00:05:42,410 --> 00:05:45,040
+that's running, you get a new identity.
+
+138
+00:05:45,040 --> 00:05:46,410
+This is a really nice feature
+
+139
+00:05:46,410 --> 00:05:47,870
+for what we're building in Root of Trust
+
+140
+00:05:47,870 --> 00:05:49,920
+and being able to extend trust,
+
+141
+00:05:49,920 --> 00:05:53,240
+but unfortunately, NXP
+decided to defeaturize this
+
+142
+00:05:53,240 --> 00:05:55,610
+by removing detailed documentation.
+
+143
+00:05:55,610 --> 00:05:57,490
+The feature is still
+actually there in hardware,
+
+144
+00:05:57,490 --> 00:05:59,390
+you just can't know anything about it.
+
+145
+00:06:00,600 --> 00:06:02,770
+And then there's the ROM patcher.
+
+146
+00:06:02,770 --> 00:06:04,740
+But before we go into
+this part of the story,
+
+147
+00:06:04,740 --> 00:06:07,650
+it helps to have an
+understanding of TrustZone-M.
+
+148
+00:06:07,650 --> 00:06:09,160
+And I'll pass this off to Rick
+
+149
+00:06:09,160 --> 00:06:13,030
+to talk more about TrustZone-M.
+
+150
+00:06:13,030 --> 00:06:14,170
+- Thank you, Laura.
+
+151
+00:06:14,170 --> 00:06:16,930
+So what exactly is TrustZone-M?
+
+152
+00:06:16,930 --> 00:06:20,190
+According to ARM, the
+ARMv8-M architecture extends
+
+153
+00:06:20,190 --> 00:06:21,710
+TrustZone-M technology to...
+
+154
+00:06:21,710 --> 00:06:23,780
+I can't do this to you.
+
+155
+00:06:23,780 --> 00:06:25,770
+I got bored the first time I read this,
+
+156
+00:06:25,770 --> 00:06:28,620
+and I've practically fallen
+asleep every time I've tried
+
+157
+00:06:28,620 --> 00:06:29,583
+to read it since.
+
+158
+00:06:30,709 --> 00:06:33,670
+TrustZone-M is very
+similar to TrustZone-A,
+
+159
+00:06:33,670 --> 00:06:36,450
+which you probably know as just TrustZone.
+
+160
+00:06:36,450 --> 00:06:38,260
+This is the system we've
+had for a long time
+
+161
+00:06:38,260 --> 00:06:40,210
+on A-profile devices used in cell phones
+
+162
+00:06:40,210 --> 00:06:42,350
+and other embedded systems.
+
+163
+00:06:42,350 --> 00:06:44,320
+In TrustZone-A, the hardware is divided
+
+164
+00:06:44,320 --> 00:06:46,510
+into a secure world
+and a non-secure world,
+
+165
+00:06:46,510 --> 00:06:48,570
+and then you have multiple execution modes
+
+166
+00:06:48,570 --> 00:06:50,890
+within each of those worlds.
+
+167
+00:06:50,890 --> 00:06:51,723
+Now, in an M-profile device,
+
+168
+00:06:51,723 --> 00:06:53,900
+there's a couple of key differences.
+
+169
+00:06:53,900 --> 00:06:56,780
+The first is that you only
+have two execution modes
+
+170
+00:06:56,780 --> 00:06:58,520
+instead of the four that
+you would normally have
+
+171
+00:06:58,520 --> 00:07:00,490
+on A-profile device.
+
+172
+00:07:00,490 --> 00:07:01,460
+On an M-profile device,
+
+173
+00:07:01,460 --> 00:07:02,850
+you're gonna have handler mode,
+
+174
+00:07:02,850 --> 00:07:05,680
+which is similar to what you
+might have as an OS kernel,
+
+175
+00:07:05,680 --> 00:07:06,890
+and thread mode,
+
+176
+00:07:06,890 --> 00:07:09,833
+which is roughly what a
+user space thread would be.
+
+177
+00:07:10,800 --> 00:07:14,380
+The second key thing is that
+M-profile devices have no MMUs.
+
+178
+00:07:15,260 --> 00:07:17,600
+And there's no concept of
+virtual addressing at all.
+
+179
+00:07:17,600 --> 00:07:20,150
+In fact, everything is
+physically addressed.
+
+180
+00:07:20,150 --> 00:07:22,900
+And while you do have the
+option to include an MPU
+
+181
+00:07:22,900 --> 00:07:24,530
+in a given chip,
+
+182
+00:07:24,530 --> 00:07:25,940
+it depends on the chip,
+
+183
+00:07:25,940 --> 00:07:28,260
+and so you can't rely on memory protection
+
+184
+00:07:28,260 --> 00:07:29,983
+in any form in the chip.
+
+185
+00:07:31,100 --> 00:07:34,734
+So given all of this, how
+does TrustZone-M work?
+
+186
+00:07:34,734 --> 00:07:37,633
+TrustZone-A relies pretty
+heavily on the MMU,
+
+187
+00:07:38,540 --> 00:07:40,860
+so how does M-profile actually deal
+
+188
+00:07:40,860 --> 00:07:43,883
+with distinguishing between
+S world and NS world?
+
+189
+00:07:44,920 --> 00:07:47,390
+Well, if all you have is
+physical memory addresses,
+
+190
+00:07:47,390 --> 00:07:49,520
+you use physical memory addresses.
+
+191
+00:07:49,520 --> 00:07:52,570
+You divide up the memory
+space into secure,
+
+192
+00:07:52,570 --> 00:07:55,570
+non-secure, and non-secure
+callable ranges.
+
+193
+00:07:55,570 --> 00:07:58,280
+If you're executing from
+within a secure range,
+
+194
+00:07:58,280 --> 00:08:02,920
+you can do data accesses to
+any address in the system,
+
+195
+00:08:02,920 --> 00:08:05,570
+but your next instruction fetch must be
+
+196
+00:08:05,570 --> 00:08:07,363
+from another secure range.
+
+197
+00:08:08,300 --> 00:08:10,010
+Now, if you wanna leave the secure mode
+
+198
+00:08:10,010 --> 00:08:11,500
+and go into non-secure,
+
+199
+00:08:11,500 --> 00:08:15,440
+you have to use the special
+instructions BXNS or BLXNS
+
+200
+00:08:15,440 --> 00:08:17,820
+in order to indicate I am
+switching to non-secure mode
+
+201
+00:08:17,820 --> 00:08:19,750
+and therefore the next
+instruction fetch will come
+
+202
+00:08:19,750 --> 00:08:21,923
+from a non-secure range.
+
+203
+00:08:22,830 --> 00:08:24,850
+Once I'm in the non-secure range,
+
+204
+00:08:24,850 --> 00:08:28,790
+data accesses can only
+go to non-secure ranges.
+
+205
+00:08:28,790 --> 00:08:30,670
+Also, my next instruction either needs
+
+206
+00:08:30,670 --> 00:08:33,760
+to come from a non-secure range,
+
+207
+00:08:33,760 --> 00:08:36,800
+or it needs to come from a
+non-secure callable range,
+
+208
+00:08:36,800 --> 00:08:39,270
+and specifically be a SG,
+
+209
+00:08:39,270 --> 00:08:43,350
+or secure gateway, instruction
+within an NSC range.
+
+210
+00:08:43,350 --> 00:08:44,910
+And why does this exist?
+
+211
+00:08:44,910 --> 00:08:48,530
+Well, conceptually it's
+okay for a secure world
+
+212
+00:08:48,530 --> 00:08:52,280
+to arbitrarily call into any
+part of the non-secure world.
+
+213
+00:08:52,280 --> 00:08:54,750
+We trust the secure world more,
+
+214
+00:08:54,750 --> 00:08:57,340
+but a non-secure application
+shouldn't be able
+
+215
+00:08:57,340 --> 00:09:01,070
+to arbitrarily jump into any
+code path in the secure world.
+
+216
+00:09:01,070 --> 00:09:03,970
+So instead, you create
+this special NSC range
+
+217
+00:09:04,830 --> 00:09:08,200
+that you place these SG instructions in,
+
+218
+00:09:08,200 --> 00:09:11,810
+and that creates an explicit entry point
+
+219
+00:09:11,810 --> 00:09:15,030
+for the non-secure world to
+call into the secure world.
+
+220
+00:09:15,030 --> 00:09:17,590
+And in practice, an NSC
+range typically gets used
+
+221
+00:09:17,590 --> 00:09:18,800
+like a big jump table.
+
+222
+00:09:18,800 --> 00:09:21,240
+You have an SG instruction
+immediately followed
+
+223
+00:09:21,240 --> 00:09:25,370
+by a branch that goes back
+into the secure range.
+
+224
+00:09:25,370 --> 00:09:27,640
+Now, when you have an NSC region,
+
+225
+00:09:27,640 --> 00:09:29,910
+it more or less acts like a secure region.
+
+226
+00:09:29,910 --> 00:09:31,730
+The only special detail is
+
+227
+00:09:31,730 --> 00:09:34,460
+that it can actually have
+these SG instructions,
+
+228
+00:09:34,460 --> 00:09:39,363
+and it's where NS code can
+actually call into S code.
+
+229
+00:09:41,940 --> 00:09:44,120
+Okay, so how do we
+actually set up these S,
+
+230
+00:09:44,120 --> 00:09:46,760
+NS, or NSC ranges?
+
+231
+00:09:46,760 --> 00:09:48,330
+Well, it depends on which part
+
+232
+00:09:48,330 --> 00:09:49,880
+of the chip we're talking about.
+
+233
+00:09:49,880 --> 00:09:52,300
+If we're talking about the CPU,
+
+234
+00:09:52,300 --> 00:09:56,353
+you start with the SAU, or
+Security Attribution Unit.
+
+235
+00:09:57,320 --> 00:09:59,700
+This is similar in concept to an MPU
+
+236
+00:09:59,700 --> 00:10:01,320
+where you're actually defining a range
+
+237
+00:10:01,320 --> 00:10:03,410
+with a base and limit address,
+
+238
+00:10:03,410 --> 00:10:06,960
+and then specifying what
+security attribute applies
+
+239
+00:10:06,960 --> 00:10:08,410
+to that range.
+
+240
+00:10:08,410 --> 00:10:10,750
+Now, this is actually
+defined architecturally
+
+241
+00:10:10,750 --> 00:10:13,420
+as part of the ARMv8-M security extension
+
+242
+00:10:13,420 --> 00:10:15,000
+that defines TrustZone-M.
+
+243
+00:10:15,000 --> 00:10:17,140
+So if you have a part with TrustZone-M,
+
+244
+00:10:17,140 --> 00:10:19,180
+you're gonna have a SAU;
+
+245
+00:10:19,180 --> 00:10:21,300
+however, the number of regions available
+
+246
+00:10:21,300 --> 00:10:23,680
+to you is implementation-defined.
+
+247
+00:10:23,680 --> 00:10:25,760
+In practice, you would define four,
+
+248
+00:10:25,760 --> 00:10:27,030
+maybe eight ranges,
+
+249
+00:10:27,030 --> 00:10:30,713
+which is kind of similar
+to how MPUs often provide.
+
+250
+00:10:32,180 --> 00:10:34,350
+Now, one key piece about this is
+
+251
+00:10:34,350 --> 00:10:38,160
+that the default state is
+that any region not covered
+
+252
+00:10:38,160 --> 00:10:43,040
+by a SAU region, any address
+not covered by a SAU region
+
+253
+00:10:43,040 --> 00:10:45,780
+is implicitly considered to be secure.
+
+254
+00:10:45,780 --> 00:10:46,613
+So in effect,
+
+255
+00:10:46,613 --> 00:10:49,030
+the SAU allows you to mark ranges
+
+256
+00:10:49,030 --> 00:10:51,860
+as lower security state
+
+257
+00:10:51,860 --> 00:10:53,363
+than what they start out as.
+
+258
+00:10:56,100 --> 00:10:57,200
+Now, there's another piece
+
+259
+00:10:57,200 --> 00:10:59,500
+where the chip vendor might have reasons
+
+260
+00:10:59,500 --> 00:11:01,140
+why they want certain areas of the chip
+
+261
+00:11:01,140 --> 00:11:03,630
+to be considered secure or non-secure.
+
+262
+00:11:03,630 --> 00:11:06,220
+So there's the Implementation-defined
+Attribution Unit,
+
+263
+00:11:06,220 --> 00:11:07,410
+or IDAU.
+
+264
+00:11:07,410 --> 00:11:09,780
+And this is a piece of
+fixed logic attached
+
+265
+00:11:09,780 --> 00:11:12,700
+to the CPU core that does an address
+
+266
+00:11:12,700 --> 00:11:15,020
+to security attribute computation,
+
+267
+00:11:15,020 --> 00:11:18,250
+it's just that this is
+fixed by the chip vendor.
+
+268
+00:11:18,250 --> 00:11:20,970
+Now, in one of ARM's documents,
+
+269
+00:11:20,970 --> 00:11:22,890
+they provide an example implementation
+
+270
+00:11:22,890 --> 00:11:25,320
+where you just take bit
+28 of the physical address
+
+271
+00:11:25,320 --> 00:11:27,813
+and use that to indicate
+secure or not secure.
+
+272
+00:11:28,700 --> 00:11:31,470
+Sadly, a lot of implementations
+actually just picked up
+
+273
+00:11:31,470 --> 00:11:35,363
+on this and ran with it,
+including the LPC55S69.
+
+274
+00:11:36,470 --> 00:11:37,303
+When you do that,
+
+275
+00:11:37,303 --> 00:11:39,050
+you end up with a memory address space
+
+276
+00:11:39,050 --> 00:11:40,740
+that looks like this.
+
+277
+00:11:40,740 --> 00:11:45,740
+You see that things like SRAM
+and code are a single device,
+
+278
+00:11:46,170 --> 00:11:48,460
+but they have double the address space,
+
+279
+00:11:48,460 --> 00:11:51,423
+and it becomes a secure
+and a non-secure region.
+
+280
+00:11:52,360 --> 00:11:55,530
+So this means that you actually
+have two different ways
+
+281
+00:11:55,530 --> 00:11:58,620
+of accessing the same physical device,
+
+282
+00:11:58,620 --> 00:12:01,803
+and we call those the
+non-secure and secure aliases.
+
+283
+00:12:05,150 --> 00:12:07,130
+Why is this important?
+
+284
+00:12:07,130 --> 00:12:10,640
+Well, when you do an
+access from the CPU core,
+
+285
+00:12:10,640 --> 00:12:14,170
+that address is fed to
+both the SAU and the IDAU.
+
+286
+00:12:14,170 --> 00:12:17,170
+Those independently compute
+what the security attribute is,
+
+287
+00:12:17,170 --> 00:12:20,500
+and then the most secure
+of the two is what's chosen
+
+288
+00:12:20,500 --> 00:12:22,770
+to actually do the restrictions.
+
+289
+00:12:22,770 --> 00:12:26,070
+So if you use the secure addresses...
+
+290
+00:12:27,400 --> 00:12:30,780
+If you use a secure range
+from the IDAU's perspective,
+
+291
+00:12:30,780 --> 00:12:33,230
+it can never be lower privilege.
+
+292
+00:12:33,230 --> 00:12:36,180
+The IDAU will always win as
+having it be a secure address.
+
+293
+00:12:36,180 --> 00:12:38,680
+And this means that you
+can write secure code,
+
+294
+00:12:38,680 --> 00:12:41,680
+a secure world code using secure aliases
+
+295
+00:12:41,680 --> 00:12:44,740
+and never have a chance
+of it being anything else.
+
+296
+00:12:44,740 --> 00:12:45,573
+On the other hand,
+
+297
+00:12:45,573 --> 00:12:48,500
+if you use a non-secure region
+from the IDAU's perspective,
+
+298
+00:12:48,500 --> 00:12:49,780
+you have to go look at the SAU
+
+299
+00:12:49,780 --> 00:12:53,920
+to decide what its security
+attributes actually gonna be.
+
+300
+00:12:53,920 --> 00:12:56,830
+It could be secure, non-secure,
+or non-secure callable.
+
+301
+00:12:56,830 --> 00:12:59,840
+And this all depends on what
+the chip vendor actually did
+
+302
+00:12:59,840 --> 00:13:02,130
+as far as what the IDAU layout is,
+
+303
+00:13:02,130 --> 00:13:03,620
+and then the application
+
+304
+00:13:03,620 --> 00:13:05,963
+as far as what the SAU configuration is.
+
+305
+00:13:07,740 --> 00:13:10,320
+Okay, so what happens
+once you have that request
+
+306
+00:13:10,320 --> 00:13:13,470
+and you've computed what
+the security attribute is?
+
+307
+00:13:13,470 --> 00:13:15,630
+Where does the policy get enforced?
+
+308
+00:13:15,630 --> 00:13:18,540
+Well, this is mostly
+implementation defined,
+
+309
+00:13:18,540 --> 00:13:21,180
+but they do have some
+common names for things.
+
+310
+00:13:21,180 --> 00:13:24,270
+So first, you're typically
+gonna have the CPU core sending
+
+311
+00:13:24,270 --> 00:13:27,310
+out a request over the AHB interface.
+
+312
+00:13:27,310 --> 00:13:29,700
+And in a TrustZone-M world,
+
+313
+00:13:29,700 --> 00:13:32,800
+you actually extend the typical AHB matrix
+
+314
+00:13:32,800 --> 00:13:34,550
+to include the security attributes.
+
+315
+00:13:34,550 --> 00:13:37,537
+And that's called "Secure AHB" or "S-AHB."
+
+316
+00:13:38,930 --> 00:13:41,460
+Some implementations actually
+take this a step further
+
+317
+00:13:41,460 --> 00:13:44,850
+and include the ability to
+do policy-based restrictions
+
+318
+00:13:44,850 --> 00:13:47,820
+on passing through the bus matrix based
+
+319
+00:13:47,820 --> 00:13:49,173
+upon the security policy.
+
+320
+00:13:50,240 --> 00:13:52,163
+It's not common, but it exists.
+
+321
+00:13:53,360 --> 00:13:56,860
+When you reach the peripheral
+side of the matrix,
+
+322
+00:13:56,860 --> 00:13:59,610
+then you encounter the MPCs and PPCs,
+
+323
+00:13:59,610 --> 00:14:03,400
+which are really the policy
+going into peripherals.
+
+324
+00:14:03,400 --> 00:14:05,730
+Now, why do we have two different ones?
+
+325
+00:14:05,730 --> 00:14:07,800
+Well, the PPC is more of a general,
+
+326
+00:14:07,800 --> 00:14:10,850
+here's a single security
+policy for a peripheral.
+
+327
+00:14:10,850 --> 00:14:14,140
+This is the, I wanna have
+this entire GPIO interface
+
+328
+00:14:14,140 --> 00:14:17,730
+be available to the secure
+world or the non-secure world.
+
+329
+00:14:17,730 --> 00:14:19,620
+But in the case of something like an SRAM,
+
+330
+00:14:19,620 --> 00:14:21,780
+you might wanna do more fine grain policy
+
+331
+00:14:21,780 --> 00:14:25,060
+of having it be something like every 2K,
+
+332
+00:14:25,060 --> 00:14:28,020
+I wanna alternate through
+secure and non-secure.
+
+333
+00:14:28,020 --> 00:14:30,610
+And so that gets a separate MPC
+
+334
+00:14:30,610 --> 00:14:34,050
+that allows that fine
+granularity enforcing
+
+335
+00:14:34,050 --> 00:14:35,283
+of security attributes.
+
+336
+00:14:37,810 --> 00:14:40,050
+Okay, so what about other AHB initiators?
+
+337
+00:14:40,050 --> 00:14:42,520
+We have more than just the CPU core.
+
+338
+00:14:42,520 --> 00:14:45,700
+Well, again, left mostly to
+the implementers to find out,
+
+339
+00:14:45,700 --> 00:14:47,550
+but common terminology,
+
+340
+00:14:47,550 --> 00:14:50,560
+you might have a Secure
+AHB-aware initiator.
+
+341
+00:14:50,560 --> 00:14:52,560
+This is really what's
+happening with the SAU
+
+342
+00:14:52,560 --> 00:14:56,020
+and IDAU in the Cortex-M33s,
+
+343
+00:14:56,020 --> 00:14:59,830
+is you essentially have
+all the built-in logic
+
+344
+00:14:59,830 --> 00:15:01,130
+to make the decision about what
+
+345
+00:15:01,130 --> 00:15:02,510
+the security attribute should be,
+
+346
+00:15:02,510 --> 00:15:05,740
+and so you're just asserting
+that as part of the request.
+
+347
+00:15:05,740 --> 00:15:08,210
+If you have a legacy AHB device
+
+348
+00:15:08,210 --> 00:15:11,420
+and you wanna just insert
+it onto a Secure AHB,
+
+349
+00:15:11,420 --> 00:15:13,150
+you do need a way to actually set
+
+350
+00:15:13,150 --> 00:15:15,170
+what the security attribute should be.
+
+351
+00:15:15,170 --> 00:15:16,840
+So this is typically called an "MSW"
+
+352
+00:15:16,840 --> 00:15:18,430
+or "Master Security Wrapper."
+
+353
+00:15:18,430 --> 00:15:19,840
+And the common implementation
+
+354
+00:15:19,840 --> 00:15:22,430
+is to have it be a single
+security attribute gets applied
+
+355
+00:15:22,430 --> 00:15:24,283
+to all requests from that initiator.
+
+356
+00:15:26,370 --> 00:15:27,390
+So when you put this all together,
+
+357
+00:15:27,390 --> 00:15:28,470
+you get something like this,
+
+358
+00:15:28,470 --> 00:15:31,210
+which happens to be the
+AHB bus matrix diagram
+
+359
+00:15:31,210 --> 00:15:34,660
+from the LPC55S69 user manual.
+
+360
+00:15:34,660 --> 00:15:36,420
+And so you can see that it starts
+
+361
+00:15:36,420 --> 00:15:38,940
+to look like a network
+flow diagram, roughly.
+
+362
+00:15:38,940 --> 00:15:41,200
+And you can think of it in
+kind of firewalling rules,
+
+363
+00:15:41,200 --> 00:15:44,760
+where the IDAU and SAU
+and the MSWs are sort
+
+364
+00:15:44,760 --> 00:15:47,070
+of setting your ingress
+policy and labeling,
+
+365
+00:15:47,070 --> 00:15:48,860
+and then you might have some enforcement
+
+366
+00:15:48,860 --> 00:15:50,870
+within the matrix itself,
+
+367
+00:15:50,870 --> 00:15:52,550
+but then when you hit the egress side,
+
+368
+00:15:52,550 --> 00:15:55,100
+you can enforce more
+strict policies about,
+
+369
+00:15:55,100 --> 00:15:56,980
+because it came from this source
+
+370
+00:15:56,980 --> 00:15:59,060
+or it has this security attribute,
+
+371
+00:15:59,060 --> 00:16:01,860
+it is allowed or not allowed
+to go into this peripheral.
+
+372
+00:16:03,740 --> 00:16:06,130
+So the implication about all of this is
+
+373
+00:16:06,130 --> 00:16:08,880
+that most peripherals are gonna show up
+
+374
+00:16:08,880 --> 00:16:11,670
+in both the secure and non-secure ranges.
+
+375
+00:16:11,670 --> 00:16:14,680
+This is because from
+the IDAU's perspective,
+
+376
+00:16:14,680 --> 00:16:16,830
+you need to have non-secure ranges
+
+377
+00:16:16,830 --> 00:16:18,660
+in order for you to have non-secure access
+
+378
+00:16:18,660 --> 00:16:20,820
+to a space at all.
+
+379
+00:16:20,820 --> 00:16:24,370
+If I only had a secure
+alias for a given device,
+
+380
+00:16:24,370 --> 00:16:26,600
+I could only ever access
+it from the secure world.
+
+381
+00:16:26,600 --> 00:16:27,913
+And that could be useful.
+
+382
+00:16:30,210 --> 00:16:31,800
+The rest of the system is designed
+
+383
+00:16:31,800 --> 00:16:34,830
+to be implemented by the
+application software.
+
+384
+00:16:34,830 --> 00:16:37,713
+You configure the SAU, the MSW, the MPC,
+
+385
+00:16:37,713 --> 00:16:40,230
+and the PPC to set up
+whatever policies you want.
+
+386
+00:16:40,230 --> 00:16:43,580
+This is where you say,
+"I want GPIO block A
+
+387
+00:16:43,580 --> 00:16:45,447
+to be in the secure world."
+
+388
+00:16:46,540 --> 00:16:48,790
+Now, given this level of configurability,
+
+389
+00:16:48,790 --> 00:16:53,250
+you run into a lot of
+potential for mistakes,
+
+390
+00:16:53,250 --> 00:16:55,963
+and those mistakes can have
+devastating consequences.
+
+391
+00:16:57,490 --> 00:16:59,610
+For example, you could accidentally leave
+
+392
+00:16:59,610 --> 00:17:04,030
+the non-secure alias
+active for a code section
+
+393
+00:17:04,030 --> 00:17:06,593
+that is supposed to be secure only.
+
+394
+00:17:09,040 --> 00:17:10,910
+So with all of that in mind,
+
+395
+00:17:10,910 --> 00:17:14,110
+we'll go back to Laura to talk about
+
+396
+00:17:15,370 --> 00:17:17,893
+how we actually found the ROM patcher.
+
+397
+00:17:21,300 --> 00:17:22,170
+- Thanks, Rick.
+
+398
+00:17:22,170 --> 00:17:24,290
+So back to the ROM patcher.
+
+399
+00:17:24,290 --> 00:17:27,540
+Actually, really back to the
+secure boot flow diagrams.
+
+400
+00:17:27,540 --> 00:17:31,300
+It turns out that just having
+a box labeled "Validate image"
+
+401
+00:17:31,300 --> 00:17:35,730
+and "Validate CMPA and NMPA"
+isn't really descriptive
+
+402
+00:17:35,730 --> 00:17:38,023
+for all the ways things can go wrong.
+
+403
+00:17:39,280 --> 00:17:41,210
+I managed to brick a stack of boards
+
+404
+00:17:41,210 --> 00:17:43,520
+by screwing up various settings.
+
+405
+00:17:43,520 --> 00:17:44,960
+Physically, the chips are fine,
+
+406
+00:17:44,960 --> 00:17:47,320
+but there's no way to change
+any of the persistent settings
+
+407
+00:17:47,320 --> 00:17:48,820
+or get new code on.
+
+408
+00:17:48,820 --> 00:17:51,130
+As part of NXP's security
+for the boot ROM,
+
+409
+00:17:51,130 --> 00:17:54,770
+standard SWD debugging
+isn't enabled at power on
+
+410
+00:17:54,770 --> 00:17:57,930
+until right before the
+jump to the user image.
+
+411
+00:17:57,930 --> 00:17:59,700
+This means that if you screw up a setting,
+
+412
+00:17:59,700 --> 00:18:01,120
+there's no good way to figure out
+
+413
+00:18:01,120 --> 00:18:02,620
+where it's looping at the ROM
+
+414
+00:18:02,620 --> 00:18:04,680
+because you can't attach a debugger.
+
+415
+00:18:04,680 --> 00:18:05,840
+The lockout for these settings
+
+416
+00:18:05,840 --> 00:18:09,160
+also happens before ISP or
+the Debug Mailbox Handler,
+
+417
+00:18:09,160 --> 00:18:12,530
+which are designed to be able
+to access parts of the code,
+
+418
+00:18:12,530 --> 00:18:15,850
+so there's really no way
+to be able to undo this.
+
+419
+00:18:15,850 --> 00:18:17,900
+In some respects this is a positive sign
+
+420
+00:18:17,900 --> 00:18:19,750
+because it means that lockout will happen
+
+421
+00:18:19,750 --> 00:18:22,360
+if something does get compromised,
+
+422
+00:18:22,360 --> 00:18:24,710
+but it's a pretty big
+problem for transparency
+
+423
+00:18:24,710 --> 00:18:27,650
+in that we don't know all the
+details of what's going on.
+
+424
+00:18:27,650 --> 00:18:30,170
+All I really wanted was a
+complete flow chart showing
+
+425
+00:18:30,170 --> 00:18:33,020
+all the possible ways
+I could brick my board
+
+426
+00:18:33,020 --> 00:18:35,120
+so I knew not to do that.
+
+427
+00:18:35,120 --> 00:18:38,410
+NXP, unfortunately, did not
+provide that flow chart,
+
+428
+00:18:38,410 --> 00:18:40,070
+but what they did provide was a ROM
+
+429
+00:18:40,070 --> 00:18:41,600
+that was not read out protected,
+
+430
+00:18:41,600 --> 00:18:43,410
+so it was possible to save the ROM,
+
+431
+00:18:43,410 --> 00:18:46,560
+load it up in Ghidra, and
+start reverse engineering.
+
+432
+00:18:46,560 --> 00:18:49,120
+I had never really done serious
+reverse engineering before,
+
+433
+00:18:49,120 --> 00:18:50,780
+so this was a really fun project for me
+
+434
+00:18:50,780 --> 00:18:53,080
+to figure out what exactly
+the chip was doing.
+
+435
+00:18:54,500 --> 00:18:57,230
+I spent a lot of time
+comparing the addresses
+
+436
+00:18:57,230 --> 00:19:00,320
+against the manual to see
+what was being accessed.
+
+437
+00:19:00,320 --> 00:19:02,210
+NXP divides the flash space of the chip
+
+438
+00:19:02,210 --> 00:19:03,930
+into two distinct parts:
+
+439
+00:19:03,930 --> 00:19:06,050
+the regular user flash for applications
+
+440
+00:19:06,050 --> 00:19:08,030
+and the protected flash region.
+
+441
+00:19:08,030 --> 00:19:11,070
+The protective part of the
+protected flash region refers
+
+442
+00:19:11,070 --> 00:19:12,120
+to the fact that pages
+
+443
+00:19:12,120 --> 00:19:15,570
+in this region can only be
+changed under some circumstances,
+
+444
+00:19:15,570 --> 00:19:17,490
+or maybe not at all.
+
+445
+00:19:17,490 --> 00:19:18,870
+The protected flash region holds
+
+446
+00:19:18,870 --> 00:19:20,630
+a bunch of different settings.
+
+447
+00:19:20,630 --> 00:19:21,840
+The region can be divided up
+
+448
+00:19:21,840 --> 00:19:24,260
+into a couple of different areas.
+
+449
+00:19:24,260 --> 00:19:27,710
+The CFPA and the CMPA are
+designed to be programmed
+
+450
+00:19:27,710 --> 00:19:29,880
+by the user of the chip in the field
+
+451
+00:19:29,880 --> 00:19:32,060
+and at manufacturing time, respectively.
+
+452
+00:19:32,060 --> 00:19:34,330
+That's what the F and M stand for.
+
+453
+00:19:34,330 --> 00:19:36,150
+They contain settings for secure boot,
+
+454
+00:19:36,150 --> 00:19:39,260
+and screwing them up can
+result in a bricked board.
+
+455
+00:19:39,260 --> 00:19:41,910
+The NMPA is controlled by NXP
+
+456
+00:19:41,910 --> 00:19:43,803
+and can't be modified.
+
+457
+00:19:45,620 --> 00:19:47,060
+The details of what each field
+
+458
+00:19:47,060 --> 00:19:49,730
+and protected flash reading
+does was not fully described
+
+459
+00:19:49,730 --> 00:19:51,100
+in the manual.
+
+460
+00:19:51,100 --> 00:19:55,520
+NXP's region in particular
+was really not documented.
+
+461
+00:19:55,520 --> 00:19:58,220
+But apparently everything
+was more fully described
+
+462
+00:19:58,220 --> 00:20:00,940
+in an attached Excel spreadsheet.
+
+463
+00:20:00,940 --> 00:20:04,390
+And by attached, they
+mean attached to the PDF.
+
+464
+00:20:04,390 --> 00:20:07,800
+I was not aware this was
+something you could do
+
+465
+00:20:07,800 --> 00:20:10,203
+in terms of attaching things to PDFs.
+
+466
+00:20:11,070 --> 00:20:13,760
+But you'd download the
+attached Excel spreadsheet
+
+467
+00:20:13,760 --> 00:20:16,123
+and some parts are missing.
+
+468
+00:20:17,750 --> 00:20:18,960
+But we can show the rows,
+
+469
+00:20:18,960 --> 00:20:21,070
+and we finally get to see
+the full address space
+
+470
+00:20:21,070 --> 00:20:22,980
+of the protected flash area,
+
+471
+00:20:22,980 --> 00:20:25,950
+including the NXP area
+
+472
+00:20:25,950 --> 00:20:28,477
+which showed this really
+interesting region labeled
+
+473
+00:20:28,477 --> 00:20:31,110
+"ROM_PATCH, and doubly interesting
+
+474
+00:20:31,110 --> 00:20:33,650
+because nowhere in the
+documentation was the ability
+
+475
+00:20:33,650 --> 00:20:36,370
+to change the ROM mentioned at all.
+
+476
+00:20:36,370 --> 00:20:37,930
+Going back to why we were interested
+
+477
+00:20:37,930 --> 00:20:39,610
+in this chip in the first place,
+
+478
+00:20:39,610 --> 00:20:41,740
+part of how we build up our
+Root of Trust is assuming
+
+479
+00:20:41,740 --> 00:20:44,740
+that the ROM always
+executes the same code.
+
+480
+00:20:44,740 --> 00:20:47,760
+The ability to change the
+ROM is potentially concerning
+
+481
+00:20:47,760 --> 00:20:49,780
+and breaks a lot of our assumptions.
+
+482
+00:20:49,780 --> 00:20:51,190
+How concerning, though?
+
+483
+00:20:51,190 --> 00:20:53,730
+The only way to figure to know is
+
+484
+00:20:53,730 --> 00:20:56,460
+to figure out exactly
+how this block works.
+
+485
+00:20:56,460 --> 00:20:58,270
+Fortunately, the part for the disassembly
+
+486
+00:20:58,270 --> 00:21:01,580
+that references flash region
+give a full program sequence
+
+487
+00:21:01,580 --> 00:21:02,830
+for the ROM patcher.
+
+488
+00:21:02,830 --> 00:21:03,763
+Pretty sweet.
+
+489
+00:21:05,160 --> 00:21:09,840
+NXP's ROM patch controller
+can support up to 16 patches.
+
+490
+00:21:09,840 --> 00:21:14,060
+A single patch slot can
+patch one 32-bit ROM address.
+
+491
+00:21:14,060 --> 00:21:16,020
+The block cannot be
+used to patch addresses
+
+492
+00:21:16,020 --> 00:21:18,150
+outside the ROM region.
+
+493
+00:21:18,150 --> 00:21:20,510
+Up to eight slots can
+replace the specified address
+
+494
+00:21:20,510 --> 00:21:22,720
+with any 32-bit value.
+
+495
+00:21:22,720 --> 00:21:23,890
+Other slots can be replaced
+
+496
+00:21:23,890 --> 00:21:27,550
+with an SVC instruction
+corresponding to the slot number.
+
+497
+00:21:27,550 --> 00:21:31,080
+SVC is the system call
+instruction on ARMv8-M.
+
+498
+00:21:31,080 --> 00:21:33,900
+What happens here is the ROM
+sets up the system call table
+
+499
+00:21:33,900 --> 00:21:37,740
+in RAM to allow for patching
+longer instruction sequences.
+
+500
+00:21:37,740 --> 00:21:40,980
+The ROM patch settings do
+not persist across reset,
+
+501
+00:21:40,980 --> 00:21:42,840
+which does lessen the impact here,
+
+502
+00:21:42,840 --> 00:21:45,420
+but changes made to a secure address are
+
+503
+00:21:45,420 --> 00:21:47,420
+also aliased in the non-secure region,
+
+504
+00:21:47,420 --> 00:21:48,953
+as Rick talked about earlier.
+
+505
+00:21:51,110 --> 00:21:53,050
+This is a diagram showing
+the registered layout
+
+506
+00:21:53,050 --> 00:21:54,510
+of the hardware block.
+
+507
+00:21:54,510 --> 00:21:55,510
+To set patch,
+
+508
+00:21:55,510 --> 00:21:58,360
+the entire path fulfiller
+must be turned off.
+
+509
+00:21:58,360 --> 00:22:01,530
+The target address is set in
+one of the address registers.
+
+510
+00:22:01,530 --> 00:22:03,420
+If we're just doing the value replacement,
+
+511
+00:22:03,420 --> 00:22:07,080
+you write the value to one of
+the corresponding registers.
+
+512
+00:22:07,080 --> 00:22:08,940
+The value registers are reverse-indexed
+
+513
+00:22:08,940 --> 00:22:11,410
+which is a bit of an interesting quirk.
+
+514
+00:22:11,410 --> 00:22:12,580
+The control bit determines
+
+515
+00:22:12,580 --> 00:22:16,400
+if you're doing a value
+replacement or an SVC replacement.
+
+516
+00:22:16,400 --> 00:22:19,620
+Individual patches can
+also be turned off and on.
+
+517
+00:22:19,620 --> 00:22:22,080
+Importantly, these
+settings are not sticky,
+
+518
+00:22:22,080 --> 00:22:24,530
+so you can change settings
+as much as you like.
+
+519
+00:22:24,530 --> 00:22:27,180
+This means it's possible to
+patch one set of addresses,
+
+520
+00:22:27,180 --> 00:22:28,270
+turn off the controller,
+
+521
+00:22:28,270 --> 00:22:30,663
+then patch another set of addresses.
+
+522
+00:22:32,300 --> 00:22:36,770
+It's worth noting that this is
+probably a custom NXP design.
+
+523
+00:22:36,770 --> 00:22:40,040
+Previous generations of ARM
+had a standardized flash patch
+
+524
+00:22:40,040 --> 00:22:42,210
+and breakpoint unit to a lot of remapping
+
+525
+00:22:42,210 --> 00:22:44,220
+of arbitrary flash regions.
+
+526
+00:22:44,220 --> 00:22:47,080
+This was associated with at
+least one persisting exploit
+
+527
+00:22:47,080 --> 00:22:49,103
+that was presented at a previous DEFCON.
+
+528
+00:22:51,280 --> 00:22:53,250
+ARMv8-M removed the patching feature
+
+529
+00:22:53,250 --> 00:22:56,430
+of the unit probably because
+the designers realized
+
+530
+00:22:56,430 --> 00:22:59,010
+that remapping could
+potentially break isolation
+
+531
+00:22:59,010 --> 00:23:00,380
+with TrustZone.
+
+532
+00:23:00,380 --> 00:23:02,820
+In fairness to NXP, there
+are legitimate reasons
+
+533
+00:23:02,820 --> 00:23:05,600
+to want to have a hardware patcher.
+
+534
+00:23:05,600 --> 00:23:06,760
+Running software is hard,
+
+535
+00:23:06,760 --> 00:23:09,260
+and you do need a way
+to fix bugs in your ROM.
+
+536
+00:23:09,260 --> 00:23:12,070
+There's a reasonable motivation
+to want to bring this back,
+
+537
+00:23:12,070 --> 00:23:14,250
+but they probably should have had a bit
+
+538
+00:23:14,250 --> 00:23:16,010
+to be able to prevent modification
+
+539
+00:23:16,010 --> 00:23:18,103
+from curious firmware engineers.
+
+540
+00:23:20,420 --> 00:23:23,690
+The ROM is the first code
+that's executed at startup.
+
+541
+00:23:23,690 --> 00:23:25,180
+And if that were the only use of the ROM,
+
+542
+00:23:25,180 --> 00:23:27,730
+this block would be
+significantly less interesting.
+
+543
+00:23:27,730 --> 00:23:29,870
+The ROM also exports a bunch of functions
+
+544
+00:23:29,870 --> 00:23:31,430
+which are designed to be called at runtime
+
+545
+00:23:31,430 --> 00:23:33,200
+by user applications.
+
+546
+00:23:33,200 --> 00:23:35,540
+These are all features that
+are either hard to sequence
+
+547
+00:23:35,540 --> 00:23:37,990
+or NXP wants to keep proprietary
+
+548
+00:23:37,990 --> 00:23:40,530
+and would also be served
+by providing source code
+
+549
+00:23:40,530 --> 00:23:43,240
+to see what exactly these are all doing.
+
+550
+00:23:43,240 --> 00:23:46,060
+All of these APIs expect to
+be called from secure mode
+
+551
+00:23:46,060 --> 00:23:48,880
+as all the addresses
+are for secure aliases.
+
+552
+00:23:48,880 --> 00:23:50,630
+The Image Authentication APIs
+
+553
+00:23:50,630 --> 00:23:52,950
+also required privileged mode.
+
+554
+00:23:52,950 --> 00:23:54,770
+The addresses for calling the functions
+
+555
+00:23:54,770 --> 00:23:58,720
+are accessible via tables
+inside the ROM itself.
+
+556
+00:23:58,720 --> 00:24:00,160
+Okay, this is DEFCON here,
+
+557
+00:24:00,160 --> 00:24:02,220
+so clearly it's time to
+do something interesting
+
+558
+00:24:02,220 --> 00:24:03,560
+with this hardware.
+
+559
+00:24:03,560 --> 00:24:06,700
+We can put this all
+together to do an exploit.
+
+560
+00:24:06,700 --> 00:24:11,370
+For step one, we find ROM
+API used by secure code.
+
+561
+00:24:11,370 --> 00:24:14,400
+Step two, we used the ROM
+patcher from non-secure mode
+
+562
+00:24:14,400 --> 00:24:16,530
+to change the code of the API
+
+563
+00:24:16,530 --> 00:24:18,890
+since that code exists in ROM space.
+
+564
+00:24:18,890 --> 00:24:22,160
+Step three, have a secure
+code invoke that API,
+
+565
+00:24:22,160 --> 00:24:23,593
+and now you've won.
+
+566
+00:24:25,130 --> 00:24:26,120
+I'll pass it back to Rick
+
+567
+00:24:26,120 --> 00:24:29,173
+to talk about writing an
+exploit in TrustedFirmware-M.
+
+568
+00:24:31,815 --> 00:24:33,490
+- So now that we have a plan of attack
+
+569
+00:24:33,490 --> 00:24:35,040
+for how to use the ROM patcher
+
+570
+00:24:35,040 --> 00:24:38,480
+to create a privilege escalation,
+
+571
+00:24:38,480 --> 00:24:41,740
+we had to go actually build
+a full proof of concept.
+
+572
+00:24:41,740 --> 00:24:43,920
+And initially we wanted
+to start very simple,
+
+573
+00:24:43,920 --> 00:24:45,460
+but it turned out that it was much easier
+
+574
+00:24:45,460 --> 00:24:47,750
+to illustrate the severity of the problem
+
+575
+00:24:47,750 --> 00:24:50,730
+by taking a unmodified secure world
+
+576
+00:24:50,730 --> 00:24:53,893
+and demonstrating it with
+a non-secure app only.
+
+577
+00:24:54,810 --> 00:24:57,140
+In this case, we chose TrustedFirmware-M.
+
+578
+00:24:57,140 --> 00:24:59,133
+So what is TrustedFirmware-M?
+
+579
+00:25:00,170 --> 00:25:01,720
+This is a reference implementation
+
+580
+00:25:01,720 --> 00:25:04,570
+of ARM's Platform Security Architecture
+
+581
+00:25:04,570 --> 00:25:06,600
+which is really a set of APIs
+
+582
+00:25:06,600 --> 00:25:08,960
+for common security services offered
+
+583
+00:25:08,960 --> 00:25:12,250
+from a secure world to a non-secure app.
+
+584
+00:25:12,250 --> 00:25:15,610
+This is designed to allow
+you to have different vendors
+
+585
+00:25:15,610 --> 00:25:18,633
+for your secure world and
+non-secure world code.
+
+586
+00:25:19,550 --> 00:25:23,500
+Think of it as I buy a
+secure TEE type environment
+
+587
+00:25:23,500 --> 00:25:26,410
+from one vendor, maybe
+it comes with the chip,
+
+588
+00:25:26,410 --> 00:25:28,150
+and then I write my own code
+
+589
+00:25:28,150 --> 00:25:30,500
+and I only have access
+to the non-secure world.
+
+590
+00:25:31,470 --> 00:25:35,420
+So this provides a lot of core
+services like cryptography,
+
+591
+00:25:35,420 --> 00:25:38,780
+attestation, and Internal Trusted Storage,
+
+592
+00:25:38,780 --> 00:25:41,000
+and even some lifecycle
+management for your device,
+
+593
+00:25:41,000 --> 00:25:44,570
+which makes a lot of sense,
+and it's actually quite useful.
+
+594
+00:25:44,570 --> 00:25:47,670
+Thankfully, TrustedFirmware-M
+has upstream support
+
+595
+00:25:47,670 --> 00:25:49,133
+for the LPC55S69.
+
+596
+00:25:49,970 --> 00:25:51,920
+So I could just grab this and build it.
+
+597
+00:25:53,540 --> 00:25:55,260
+Now, the piece that
+we're really interested
+
+598
+00:25:55,260 --> 00:25:57,390
+in is the Internal Trusted Storage.
+
+599
+00:25:57,390 --> 00:25:59,113
+And why are we interested in that?
+
+600
+00:26:00,520 --> 00:26:02,560
+Well, as you might expect
+
+601
+00:26:02,560 --> 00:26:05,220
+from something named "Trusted Storage,"
+
+602
+00:26:05,220 --> 00:26:07,250
+it deals with persistent data.
+
+603
+00:26:07,250 --> 00:26:10,230
+And specifically, it's
+something that is required
+
+604
+00:26:10,230 --> 00:26:12,370
+to be implemented in the secure world
+
+605
+00:26:12,370 --> 00:26:16,890
+in most implementations
+of TrustedFirmware-M.
+
+606
+00:26:16,890 --> 00:26:19,670
+So this gives us an API
+
+607
+00:26:19,670 --> 00:26:22,660
+that's callable from the
+non-secure service space,
+
+608
+00:26:22,660 --> 00:26:25,720
+it's required to be implemented
+in the secure world,
+
+609
+00:26:25,720 --> 00:26:28,710
+and it's going to interact
+with persistent data storage,
+
+610
+00:26:28,710 --> 00:26:31,120
+which means it will touch the flash.
+
+611
+00:26:31,120 --> 00:26:34,570
+Does this have a good
+chance of using a ROM API?
+
+612
+00:26:34,570 --> 00:26:37,623
+Well, yes it does. It
+uses the ROM Flash API.
+
+613
+00:26:39,430 --> 00:26:41,830
+So then we can get into
+building our actual PoC.
+
+614
+00:26:42,870 --> 00:26:45,670
+Now remember, we're just
+building the non-secure section
+
+615
+00:26:46,624 --> 00:26:49,390
+of a full PoC.
+
+616
+00:26:49,390 --> 00:26:51,590
+We're using an unmodified
+TrustedFirmware-M.
+
+617
+00:26:53,540 --> 00:26:56,050
+So we take that TrustedFirmware-M,
+
+618
+00:26:56,050 --> 00:27:00,020
+I used version 1.2, which was
+the most recent at the time,
+
+619
+00:27:00,020 --> 00:27:02,250
+and I build that as an unmodified image.
+
+620
+00:27:02,250 --> 00:27:05,580
+And then I build a completely
+independent non-secure app
+
+621
+00:27:05,580 --> 00:27:07,100
+that does the following:
+
+622
+00:27:07,100 --> 00:27:08,760
+we need to write a little payload
+
+623
+00:27:08,760 --> 00:27:11,630
+that fits within the
+capabilities of the ROM patcher.
+
+624
+00:27:11,630 --> 00:27:14,230
+Remember that we only have
+a limited number of words
+
+625
+00:27:14,230 --> 00:27:16,410
+that we can actually write into or patch
+
+626
+00:27:16,410 --> 00:27:17,960
+into the ROM address space.
+
+627
+00:27:17,960 --> 00:27:21,083
+And so I needed a payload
+that would fit in that space.
+
+628
+00:27:22,640 --> 00:27:24,940
+Then, the ROM Patch
+Controller will be used
+
+629
+00:27:24,940 --> 00:27:28,810
+from non-secure mode
+via its non-secure alias
+
+630
+00:27:28,810 --> 00:27:32,050
+to copy that payload into
+empty space in the ROM.
+
+631
+00:27:32,050 --> 00:27:35,540
+So we're essentially moving
+code from the non-secure world
+
+632
+00:27:35,540 --> 00:27:37,810
+into the secure world.
+
+633
+00:27:37,810 --> 00:27:42,230
+Once we've done that, we can
+patch the Flash_Write ROM API
+
+634
+00:27:42,230 --> 00:27:44,160
+to invoke that payload.
+
+635
+00:27:44,160 --> 00:27:47,950
+Once we do so, non-secure
+world can call into the ITS API
+
+636
+00:27:47,950 --> 00:27:51,090
+to do any sort of write,
+and our payload should run.
+
+637
+00:27:51,090 --> 00:27:52,390
+We just have to verify it.
+
+638
+00:27:54,600 --> 00:27:57,010
+So we're gonna talk a lot
+about addressing and layout,
+
+639
+00:27:57,010 --> 00:27:58,810
+and so it's important to understand,
+
+640
+00:27:59,800 --> 00:28:02,230
+in these devices, you have
+a single flash region.
+
+641
+00:28:02,230 --> 00:28:04,070
+And TrustedFirmware-M,
+
+642
+00:28:04,070 --> 00:28:06,510
+in a configuration with no bootloader,
+
+643
+00:28:06,510 --> 00:28:09,680
+simply puts the secure and
+non-secure images right next
+
+644
+00:28:09,680 --> 00:28:11,600
+to each other in address space.
+
+645
+00:28:11,600 --> 00:28:12,870
+And then you have, you know,
+
+646
+00:28:12,870 --> 00:28:14,793
+your other persistent data storage.
+
+647
+00:28:14,793 --> 00:28:17,620
+Now, this is important because
+it goes into how the SAU
+
+648
+00:28:17,620 --> 00:28:19,193
+and the MPC get configured.
+
+649
+00:28:20,200 --> 00:28:22,160
+The secure world actually sets this up.
+
+650
+00:28:22,160 --> 00:28:23,620
+And when we flip on debug mode
+
+651
+00:28:23,620 --> 00:28:26,593
+for the TF-M secure mode or secure world,
+
+652
+00:28:27,520 --> 00:28:30,190
+it gives us the spew
+about that configuration.
+
+653
+00:28:30,190 --> 00:28:31,550
+And I verified that it doesn't change
+
+654
+00:28:31,550 --> 00:28:32,610
+when you turn off debug mode,
+
+655
+00:28:32,610 --> 00:28:33,550
+but it was just handy to be able
+
+656
+00:28:33,550 --> 00:28:36,560
+to have it spit it out
+to me over a serial port.
+
+657
+00:28:36,560 --> 00:28:37,780
+But if we look carefully,
+
+658
+00:28:37,780 --> 00:28:40,040
+you'll notice that the
+SAU was being configured
+
+659
+00:28:40,040 --> 00:28:43,390
+to mark out that section
+of non-secure code.
+
+660
+00:28:43,390 --> 00:28:45,620
+Now, if we were to go back and look
+
+661
+00:28:45,620 --> 00:28:48,650
+at our IDAU implementation for the LPC55,
+
+662
+00:28:48,650 --> 00:28:53,170
+we would find that the zero range up
+
+663
+00:28:53,170 --> 00:28:56,930
+to 1000000 is actually marked
+
+664
+00:28:56,930 --> 00:28:59,750
+as a non-secure range,
+
+665
+00:28:59,750 --> 00:29:01,500
+and so this is really using the SAU
+
+666
+00:29:03,036 --> 00:29:06,010
+to also set it as non-secure
+so that both sides agree.
+
+667
+00:29:06,010 --> 00:29:08,163
+This is a non-secure range.
+
+668
+00:29:10,070 --> 00:29:12,520
+The remainder of that flash region
+
+669
+00:29:12,520 --> 00:29:14,010
+will automatically become secure
+
+670
+00:29:14,010 --> 00:29:16,150
+because there's no SAU region covering it.
+
+671
+00:29:16,150 --> 00:29:20,610
+And then there will be a
+additional secure alias
+
+672
+00:29:20,610 --> 00:29:22,060
+for the entire flash as well.
+
+673
+00:29:24,530 --> 00:29:26,500
+Now, we also have the NSC base,
+
+674
+00:29:26,500 --> 00:29:28,540
+which, if you note,
+actually starts with a one
+
+675
+00:29:28,540 --> 00:29:31,570
+in the address, and that's
+using the secure alias.
+
+676
+00:29:31,570 --> 00:29:35,490
+Remember that NSC can
+actually be in a secure range,
+
+677
+00:29:35,490 --> 00:29:38,790
+so it's perfectly fine and
+legit to use secure region
+
+678
+00:29:38,790 --> 00:29:40,590
+for that, the secure alias for that.
+
+679
+00:29:44,280 --> 00:29:46,300
+But because of this being configured,
+
+680
+00:29:46,300 --> 00:29:48,430
+when we're executing in non-secure,
+
+681
+00:29:48,430 --> 00:29:53,430
+we should not be able to
+access the secure mode flash.
+
+682
+00:29:54,380 --> 00:29:59,130
+It's there, but there should
+be no non-secure window
+
+683
+00:29:59,130 --> 00:30:04,130
+into that region from zero to 40,000 hex.
+
+684
+00:30:07,690 --> 00:30:09,960
+Okay, so the first thing we do is look
+
+685
+00:30:09,960 --> 00:30:12,240
+at the Flash ROM API
+
+686
+00:30:12,240 --> 00:30:14,010
+and look at specifically to find a method
+
+687
+00:30:14,010 --> 00:30:14,920
+that we can instrument
+
+688
+00:30:14,920 --> 00:30:17,560
+and provide a call-out to our payload.
+
+689
+00:30:17,560 --> 00:30:20,500
+Now, it turned out that
+the Flash_Write method
+
+690
+00:30:20,500 --> 00:30:21,900
+is actually pretty simple
+
+691
+00:30:21,900 --> 00:30:23,540
+and provides a really nice entry point
+
+692
+00:30:23,540 --> 00:30:26,310
+where I can replace two move instructions
+
+693
+00:30:26,310 --> 00:30:29,030
+with a single branch and link instruction.
+
+694
+00:30:29,030 --> 00:30:30,610
+And I have a lot of registers
+
+695
+00:30:30,610 --> 00:30:31,650
+to play with it at that moment,
+
+696
+00:30:31,650 --> 00:30:34,740
+and it's really easy to
+replay those two instructions
+
+697
+00:30:34,740 --> 00:30:36,350
+inside my payload.
+
+698
+00:30:36,350 --> 00:30:39,740
+And so constructing the
+payload is primarily just doing
+
+699
+00:30:39,740 --> 00:30:42,710
+a bunch of copies of constants
+
+700
+00:30:42,710 --> 00:30:46,030
+from a non-secure section of memory
+
+701
+00:30:46,030 --> 00:30:47,960
+and copying it over into secure.
+
+702
+00:30:47,960 --> 00:30:49,800
+Now, this is really kind of a neat trick
+
+703
+00:30:49,800 --> 00:30:52,990
+because remember, secure
+mode can do data accesses
+
+704
+00:30:52,990 --> 00:30:55,190
+from non-secure regions.
+
+705
+00:30:55,190 --> 00:30:57,880
+So I don't actually have to
+put the full constant pool
+
+706
+00:30:57,880 --> 00:30:59,400
+in the secure world;
+
+707
+00:30:59,400 --> 00:31:02,510
+I just have to have the
+code that reads it be
+
+708
+00:31:02,510 --> 00:31:04,310
+in the secure world so that it can write
+
+709
+00:31:04,310 --> 00:31:07,960
+to the secure aliases of the other devices
+
+710
+00:31:07,960 --> 00:31:09,310
+that I wanna interact with.
+
+711
+00:31:10,640 --> 00:31:13,350
+So in this case, the particular example,
+
+712
+00:31:13,350 --> 00:31:16,550
+we're using constants to load in
+
+713
+00:31:16,550 --> 00:31:20,010
+and overwrite the control
+registers for both the the SAU
+
+714
+00:31:20,905 --> 00:31:25,512
+and the Secure AHB to
+basically extend the ranges
+
+715
+00:31:25,512 --> 00:31:30,220
+and open up both the
+secure mode code region
+
+716
+00:31:31,270 --> 00:31:33,360
+as we saw in the flash layout,
+
+717
+00:31:33,360 --> 00:31:35,980
+as well as the secure memory region,
+
+718
+00:31:35,980 --> 00:31:39,160
+and extend those in the SAU regions
+
+719
+00:31:39,160 --> 00:31:42,460
+that thus turn them
+into a non-secure space.
+
+720
+00:31:42,460 --> 00:31:43,510
+Now, if we were trying to access them
+
+721
+00:31:43,510 --> 00:31:45,800
+via the secure aliases, this would fail,
+
+722
+00:31:45,800 --> 00:31:49,960
+but a non-secure execution
+via the non-secure alias
+
+723
+00:31:49,960 --> 00:31:51,990
+with the SAU in this configuration,
+
+724
+00:31:51,990 --> 00:31:54,330
+it should be marked as non-secure,
+
+725
+00:31:54,330 --> 00:31:57,180
+even though it's accessing the secure code
+
+726
+00:31:57,180 --> 00:32:00,423
+that's at the zero range of the flash.
+
+727
+00:32:02,980 --> 00:32:05,440
+So how do we verify this?
+Well, it's pretty simple.
+
+728
+00:32:05,440 --> 00:32:07,590
+You just need to dereference zero.
+
+729
+00:32:07,590 --> 00:32:09,120
+Remember, everything's
+physically addressed,
+
+730
+00:32:09,120 --> 00:32:11,800
+so zero is where the
+secure code actually lives.
+
+731
+00:32:11,800 --> 00:32:14,670
+And we just do that
+from a non-secure space.
+
+732
+00:32:14,670 --> 00:32:16,300
+Assuming that everything worked,
+
+733
+00:32:16,300 --> 00:32:19,443
+we'll just get a dump out
+of the actual contents.
+
+734
+00:32:21,640 --> 00:32:25,700
+So here you have an NXP LPCXpresso55S69.
+
+735
+00:32:25,700 --> 00:32:28,480
+This is just an off-the-shelf
+dev board for that part.
+
+736
+00:32:28,480 --> 00:32:30,130
+I have two USB connections at the top.
+
+737
+00:32:30,130 --> 00:32:32,780
+The orange one is directly connected
+
+738
+00:32:32,780 --> 00:32:36,260
+to the USB interface on the LPC55.
+
+739
+00:32:36,260 --> 00:32:37,380
+The black one goes to
+
+740
+00:32:37,380 --> 00:32:40,930
+an onboard SWD debugger
+called the "LPC-Link."
+
+741
+00:32:40,930 --> 00:32:43,233
+And the main reason I
+have that is that I can,
+
+742
+00:32:44,500 --> 00:32:46,930
+it has a serial console or is connected
+
+743
+00:32:49,130 --> 00:32:53,000
+on main LPC55, and it exposes
+it as a USB ACM device.
+
+744
+00:32:53,000 --> 00:32:55,150
+So just a convenient
+way to get the serial.
+
+745
+00:32:56,700 --> 00:32:59,710
+We're actually gonna
+use the ROM bootloader
+
+746
+00:32:59,710 --> 00:33:02,833
+on the LPC55 for most
+of what we need to do.
+
+747
+00:33:04,760 --> 00:33:06,250
+So the first thing is we need a copy
+
+748
+00:33:06,250 --> 00:33:09,720
+of both the TrustedFirmware-M,
+
+749
+00:33:09,720 --> 00:33:13,300
+I'm using the tag for the 1.2 version,
+
+750
+00:33:13,300 --> 00:33:15,700
+and then we're also gonna
+get a copy of our PoC.
+
+751
+00:33:19,150 --> 00:33:22,750
+Now, I've said that we
+use an unmodified version
+
+752
+00:33:22,750 --> 00:33:24,000
+of TrustedFirmware-M.
+
+753
+00:33:24,000 --> 00:33:25,830
+There's actually a bug
+in their build system,
+
+754
+00:33:25,830 --> 00:33:27,680
+so I grabbed an upstream patch
+
+755
+00:33:27,680 --> 00:33:31,633
+that fixes that bug for
+this particular version.
+
+756
+00:33:32,550 --> 00:33:37,550
+Then the build system for
+TrustedFirmware-M uses pip,
+
+757
+00:33:37,830 --> 00:33:40,580
+so use a virtual env for that,
+
+758
+00:33:40,580 --> 00:33:45,580
+and then go ahead and have it
+fetch all of its requirements.
+
+759
+00:33:47,090 --> 00:33:50,473
+Then I'm gonna go ahead
+and install cmake that way.
+
+760
+00:33:52,800 --> 00:33:57,230
+And then, they use cmake
+
+761
+00:33:57,230 --> 00:33:58,440
+as part of their build system,
+
+762
+00:33:58,440 --> 00:34:00,367
+so we're going to go ahead and say,
+
+763
+00:34:00,367 --> 00:34:02,610
+"Build for this development board,
+
+764
+00:34:02,610 --> 00:34:04,580
+using the GNUARM too chain
+
+765
+00:34:04,580 --> 00:34:08,460
+with the TrustedFirmware-M
+bootloader disabled."
+
+766
+00:34:08,460 --> 00:34:10,340
+We're not using that in this case.
+
+767
+00:34:10,340 --> 00:34:14,413
+And then also build our PoC
+as the non-secure application.
+
+768
+00:34:24,670 --> 00:34:26,820
+Okay. So now we're gonna
+go ahead and build that.
+
+769
+00:34:26,820 --> 00:34:29,650
+Now, I did grab our PoC
+during the recording of this
+
+770
+00:34:29,650 --> 00:34:31,830
+from a private GitHub repository.
+
+771
+00:34:31,830 --> 00:34:34,540
+By the time this is available,
+
+772
+00:34:34,540 --> 00:34:36,930
+we will have made that
+same repository public,
+
+773
+00:34:36,930 --> 00:34:40,800
+and set the default branch
+to be the appropriate code
+
+774
+00:34:40,800 --> 00:34:42,300
+so you can play along at home.
+
+775
+00:34:45,840 --> 00:34:46,673
+Okay.
+
+776
+00:34:46,673 --> 00:34:47,506
+So with that built,
+
+777
+00:34:48,860 --> 00:34:52,180
+we can look and here's
+the non-secure world
+
+778
+00:34:52,180 --> 00:34:54,360
+and the secure world binaries.
+
+779
+00:34:54,360 --> 00:34:59,340
+Now, what we wanna do is erase
+the flash and load these in.
+
+780
+00:34:59,340 --> 00:35:04,110
+So the first thing we're
+gonna do is use NXP's tool
+
+781
+00:35:04,110 --> 00:35:06,450
+for this for interacting
+with the bootloader,
+
+782
+00:35:06,450 --> 00:35:07,957
+which is called "blhost."
+
+783
+00:35:10,840 --> 00:35:13,430
+And it's not the most reliable tool,
+
+784
+00:35:13,430 --> 00:35:17,450
+so what we have to do is
+hold down the ISP button
+
+785
+00:35:17,450 --> 00:35:19,460
+and press the reset button,
+
+786
+00:35:19,460 --> 00:35:21,630
+and it's supposed to
+jump into the ISP mode.
+
+787
+00:35:21,630 --> 00:35:23,910
+And then we can talk to it over USB.
+
+788
+00:35:23,910 --> 00:35:26,440
+So in this case, we got
+it on the first try there.
+
+789
+00:35:26,440 --> 00:35:30,360
+Now, I'm going to actually reset it again
+
+790
+00:35:30,360 --> 00:35:32,900
+and do the same thing between each step,
+
+791
+00:35:32,900 --> 00:35:36,093
+just because I get slightly
+better success that way.
+
+792
+00:35:41,100 --> 00:35:41,933
+Oops.
+
+793
+00:35:47,830 --> 00:35:48,790
+'Kay, so what we're gonna do
+
+794
+00:35:48,790 --> 00:35:51,857
+is write just the secure application,
+
+795
+00:35:51,857 --> 00:35:54,093
+the secure world, into the flash.
+
+796
+00:35:58,400 --> 00:35:59,240
+Great.
+
+797
+00:35:59,240 --> 00:36:01,090
+Now, if I reset and let this run,
+
+798
+00:36:01,090 --> 00:36:04,000
+you'll see that we get the debug
+spew that I showed earlier,
+
+799
+00:36:04,000 --> 00:36:05,780
+showing us the SAU configuration.
+
+800
+00:36:05,780 --> 00:36:08,620
+And then it actually launches
+the secure application,
+
+801
+00:36:08,620 --> 00:36:11,520
+and then hangs because
+there is no non-secure world
+
+802
+00:36:11,520 --> 00:36:12,743
+to execute right now.
+
+803
+00:36:14,040 --> 00:36:18,033
+So now we're gonna go ahead
+and put it back into ISP mode.
+
+804
+00:36:19,710 --> 00:36:22,010
+And we're gonna write
+in the non-secure world.
+
+805
+00:36:23,890 --> 00:36:26,200
+And then if I reset,
+
+806
+00:36:26,200 --> 00:36:29,120
+you'll see that it actually
+does that same dump
+
+807
+00:36:29,120 --> 00:36:30,940
+of the SAU configuration.
+
+808
+00:36:30,940 --> 00:36:32,560
+Now, this time, it actually starts to boot
+
+809
+00:36:32,560 --> 00:36:34,200
+our non-secure world.
+
+810
+00:36:34,200 --> 00:36:38,070
+There's a bug that I
+couldn't figure out where
+
+811
+00:36:38,070 --> 00:36:41,420
+when I first tried to
+use the ITS it crashes,
+
+812
+00:36:41,420 --> 00:36:43,640
+but if I just hit reset again,
+
+813
+00:36:43,640 --> 00:36:45,100
+it's gonna scroll by pretty quickly.
+
+814
+00:36:45,100 --> 00:36:48,113
+And I'll go back here to show
+what actually is happening.
+
+815
+00:36:53,010 --> 00:36:57,240
+So we started up and we
+got into this normal thing,
+
+816
+00:36:57,240 --> 00:37:01,520
+and the LPC ROM PoC started
+as the non-secure application.
+
+817
+00:37:01,520 --> 00:37:04,550
+And within that, we start
+a couple of threads.
+
+818
+00:37:04,550 --> 00:37:06,427
+One is this TOUCH FLASH API.
+
+819
+00:37:06,427 --> 00:37:08,680
+And this thread is
+literally just incrementing
+
+820
+00:37:08,680 --> 00:37:10,400
+a counter using the ITS.
+
+821
+00:37:10,400 --> 00:37:12,680
+It reads from ITS, increments by one,
+
+822
+00:37:12,680 --> 00:37:14,220
+and then pushes it back.
+
+823
+00:37:14,220 --> 00:37:16,340
+Now, we actually wait for five seconds
+
+824
+00:37:16,340 --> 00:37:20,750
+and before we apply our ROM patch.
+
+825
+00:37:20,750 --> 00:37:23,070
+So this is just the operation normally,
+
+826
+00:37:23,070 --> 00:37:25,270
+and then the patch begins.
+
+827
+00:37:25,270 --> 00:37:29,050
+And this is just a separate thread
+
+828
+00:37:29,050 --> 00:37:32,320
+from non-secure space
+executing the payload
+
+829
+00:37:32,320 --> 00:37:33,200
+that we looked at earlier.
+
+830
+00:37:33,200 --> 00:37:34,350
+It's loading the payload,
+
+831
+00:37:34,350 --> 00:37:35,750
+patching the Flash_Write API
+
+832
+00:37:37,410 --> 00:37:38,370
+and doing all that work.
+
+833
+00:37:38,370 --> 00:37:39,460
+And in the meantime,
+
+834
+00:37:39,460 --> 00:37:43,130
+the counter thread then,
+you know, keeps on running,
+
+835
+00:37:43,130 --> 00:37:44,840
+except now it's actually running
+
+836
+00:37:44,840 --> 00:37:47,780
+our PoC every time this
+counter is invoked.
+
+837
+00:37:47,780 --> 00:37:49,310
+And so then a little bit later
+
+838
+00:37:49,310 --> 00:37:52,850
+after we've let that
+just sleep for a while,
+
+839
+00:37:52,850 --> 00:37:56,310
+the PoC thread then is also running
+
+840
+00:37:56,310 --> 00:37:57,710
+from non-secure code again,
+
+841
+00:37:57,710 --> 00:38:00,360
+actually goes in and dumps
+out the beginning addresses
+
+842
+00:38:00,360 --> 00:38:02,330
+of the secure space.
+
+843
+00:38:02,330 --> 00:38:03,560
+So that that happens,
+
+844
+00:38:03,560 --> 00:38:05,310
+and then the counter just continues on,
+
+845
+00:38:05,310 --> 00:38:07,090
+and we, you know, print
+out a tick every once
+
+846
+00:38:07,090 --> 00:38:09,343
+in a while to show that
+everything is still alive.
+
+847
+00:38:10,220 --> 00:38:12,720
+So now that we've gone
+through our proof of concept,
+
+848
+00:38:12,720 --> 00:38:14,630
+let's talk a little bit about how we went
+
+849
+00:38:14,630 --> 00:38:16,710
+about disclosing this to NXP
+
+850
+00:38:16,710 --> 00:38:18,383
+and doing a public disclosure.
+
+851
+00:38:20,380 --> 00:38:22,190
+Like most people and most companies,
+
+852
+00:38:22,190 --> 00:38:24,650
+we started with the
+responsible disclosure process
+
+853
+00:38:24,650 --> 00:38:27,030
+with a 90-day response window.
+
+854
+00:38:27,030 --> 00:38:31,210
+And we started off with coming
+up with our own template
+
+855
+00:38:31,210 --> 00:38:33,550
+because, frankly, we're
+a computer manufacturer,
+
+856
+00:38:33,550 --> 00:38:34,780
+not a security company.
+
+857
+00:38:34,780 --> 00:38:38,150
+We didn't to have to do a disclosure
+
+858
+00:38:38,150 --> 00:38:40,130
+and didn't have anything ready for this.
+
+859
+00:38:40,130 --> 00:38:41,150
+So I put something together
+
+860
+00:38:41,150 --> 00:38:42,500
+that wrote up a lot of the details
+
+861
+00:38:42,500 --> 00:38:46,003
+and tried to provide
+impact and CVSS scores.
+
+862
+00:38:46,850 --> 00:38:49,530
+And then the first question was,
+
+863
+00:38:49,530 --> 00:38:53,313
+well, how do I send this to the vendor?
+
+864
+00:38:54,430 --> 00:38:57,060
+Where do I even find the
+contact info for their page?
+
+865
+00:38:57,060 --> 00:39:01,240
+So this is what you have at
+the header of NXP's website.
+
+866
+00:39:01,240 --> 00:39:06,000
+And I wasn't really
+clear to me where to go.
+
+867
+00:39:06,000 --> 00:39:08,723
+Maybe the Support section?
+
+868
+00:39:09,950 --> 00:39:12,340
+Nothing particularly obvious there.
+
+869
+00:39:12,340 --> 00:39:14,473
+How about the Company section?
+
+870
+00:39:15,600 --> 00:39:17,110
+Hmm, no.
+
+871
+00:39:17,110 --> 00:39:19,120
+No, nothing there either.
+
+872
+00:39:19,120 --> 00:39:21,190
+Okay, well, maybe that's at the footer.
+
+873
+00:39:21,190 --> 00:39:23,320
+That that could be. No.
+
+874
+00:39:23,320 --> 00:39:24,363
+No, not the footer.
+
+875
+00:39:25,260 --> 00:39:26,540
+Okay, well, back to the Company.
+
+876
+00:39:26,540 --> 00:39:27,830
+There was a contact us.
+
+877
+00:39:27,830 --> 00:39:29,560
+Maybe I can go there.
+
+878
+00:39:29,560 --> 00:39:31,620
+Oh, no. No.
+
+879
+00:39:31,620 --> 00:39:34,823
+But wait, there's a section
+that says Contact Support.
+
+880
+00:39:35,960 --> 00:39:38,090
+Oh, there it is hidden at the bottom
+
+881
+00:39:38,090 --> 00:39:39,890
+of the Contact Support page.
+
+882
+00:39:39,890 --> 00:39:42,670
+Now, when I did go to this
+page finally after finding it,
+
+883
+00:39:42,670 --> 00:39:45,390
+it does tell me how to email NXP's PSIRT
+
+884
+00:39:45,390 --> 00:39:47,070
+and gives me their GPG key
+
+885
+00:39:47,070 --> 00:39:49,363
+along with some details
+about their process.
+
+886
+00:39:51,130 --> 00:39:53,120
+Okay. Sent that off.
+
+887
+00:39:53,120 --> 00:39:57,260
+We did that on December
+16th, 2020, and off it went.
+
+888
+00:39:57,260 --> 00:40:00,060
+And 30 minutes later, we got a response.
+
+889
+00:40:00,060 --> 00:40:03,610
+Now, this is not an automated response,
+
+890
+00:40:03,610 --> 00:40:07,460
+but it does actually
+mostly give the equivalent
+
+891
+00:40:07,460 --> 00:40:08,550
+of an automated response.
+
+892
+00:40:08,550 --> 00:40:09,730
+Like, yes, we got it,
+
+893
+00:40:09,730 --> 00:40:12,760
+but we'll get in touch at some point.
+
+894
+00:40:12,760 --> 00:40:14,680
+So I don't really count this
+
+895
+00:40:14,680 --> 00:40:17,450
+as part of the 90-day like timeline
+
+896
+00:40:17,450 --> 00:40:19,653
+for a response and coordination.
+
+897
+00:40:22,428 --> 00:40:25,750
+And in fact, I waited a very long time
+
+898
+00:40:25,750 --> 00:40:26,583
+for them to follow up.
+
+899
+00:40:26,583 --> 00:40:29,790
+If you noticed, this
+is December 16th, 2020.
+
+900
+00:40:29,790 --> 00:40:34,410
+Here on January 11th, 2021, I had to ask.
+
+901
+00:40:34,410 --> 00:40:37,820
+Like, it's been almost a month.
+Have you confirmed anything?
+
+902
+00:40:37,820 --> 00:40:40,070
+Is it look like a real issue?
+
+903
+00:40:40,070 --> 00:40:42,090
+And they came back a day
+later and said, "Oh yes.
+
+904
+00:40:42,090 --> 00:40:44,770
+In fact we did confirm
+it and it's an issue,
+
+905
+00:40:44,770 --> 00:40:46,920
+and thank you for reporting this.
+
+906
+00:40:46,920 --> 00:40:48,757
+Yada yada. We'll be following up."
+
+907
+00:40:50,540 --> 00:40:55,540
+And then the coordination
+kinda went a little wonky.
+
+908
+00:40:55,640 --> 00:40:57,220
+You'll notice from the dates and times,
+
+909
+00:40:57,220 --> 00:41:00,250
+like there was a lot of time
+between these interactions.
+
+910
+00:41:00,250 --> 00:41:01,747
+And it started with,
+
+911
+00:41:01,747 --> 00:41:04,760
+"Hey, we really looked at your
+PoC a little bit more closely
+
+912
+00:41:04,760 --> 00:41:08,490
+and, you know, we think we
+were doing some silly things."
+
+913
+00:41:08,490 --> 00:41:09,910
+Now, this was our first PoC
+
+914
+00:41:09,910 --> 00:41:12,330
+that did not use TrustedFirmware-M.
+
+915
+00:41:12,330 --> 00:41:13,810
+And so it's a little bit understandable,
+
+916
+00:41:13,810 --> 00:41:15,067
+but this is where we came back and said,
+
+917
+00:41:15,067 --> 00:41:17,710
+"Look, here's one with a very clean slate.
+
+918
+00:41:17,710 --> 00:41:20,020
+This does not use any modifications
+
+919
+00:41:20,020 --> 00:41:21,840
+to your example code for how
+
+920
+00:41:21,840 --> 00:41:23,550
+to write a secure world application,
+
+921
+00:41:23,550 --> 00:41:26,400
+and we can definitely do
+privilege escalation."
+
+922
+00:41:26,400 --> 00:41:29,120
+What was really annoying
+about this was an insistence
+
+923
+00:41:29,120 --> 00:41:34,120
+on trying to demote the severity
+of the issue in this case.
+
+924
+00:41:36,050 --> 00:41:39,467
+A long time after that, there was a,
+
+925
+00:41:39,467 --> 00:41:41,900
+"Hey. Yeah, this is a real problem.
+
+926
+00:41:41,900 --> 00:41:44,330
+And can we have 45 more days?"
+
+927
+00:41:44,330 --> 00:41:46,940
+Now, note this was almost 60 days
+
+928
+00:41:46,940 --> 00:41:49,680
+after we originally reported the issue
+
+929
+00:41:49,680 --> 00:41:52,360
+before they actually acknowledged
+that it was a real issue
+
+930
+00:41:52,360 --> 00:41:55,250
+of the severity that we told them it was.
+
+931
+00:41:55,250 --> 00:41:59,967
+So we had some internal
+deliberation and decided,
+
+932
+00:41:59,967 --> 00:42:02,880
+"Hey, you know what, tell
+us about what else is
+
+933
+00:42:02,880 --> 00:42:05,510
+in this chip because we
+are trying to use it.
+
+934
+00:42:05,510 --> 00:42:07,060
+We wanna be a customer.
+
+935
+00:42:07,060 --> 00:42:08,550
+And if you can tell us that,
+
+936
+00:42:08,550 --> 00:42:10,800
+we'll gladly give you 45 days."
+
+937
+00:42:10,800 --> 00:42:13,570
+Well, they just took the 45 days
+
+938
+00:42:13,570 --> 00:42:16,860
+and didn't really hold up
+their end of the bargain.
+
+939
+00:42:16,860 --> 00:42:18,640
+We did get some material
+
+940
+00:42:18,640 --> 00:42:21,600
+under NDA answering a
+few of our questions,
+
+941
+00:42:21,600 --> 00:42:24,020
+but not a whole lot.
+
+942
+00:42:24,020 --> 00:42:26,060
+One of the more interesting
+ones is we asked
+
+943
+00:42:26,060 --> 00:42:29,740
+to be able to access or audit
+their ROM API source code
+
+944
+00:42:29,740 --> 00:42:32,310
+because we already reverse
+engineered most of it.
+
+945
+00:42:32,310 --> 00:42:35,340
+We just wanted to see
+what else we were missing.
+
+946
+00:42:35,340 --> 00:42:36,750
+And this is the statement we got back.
+
+947
+00:42:36,750 --> 00:42:39,750
+And oddly enough, they gave us permission
+
+948
+00:42:39,750 --> 00:42:41,113
+to share this publicly.
+
+949
+00:42:41,950 --> 00:42:43,550
+This is not a statement that I would want
+
+950
+00:42:43,550 --> 00:42:46,593
+to see from a company
+making a security chip.
+
+951
+00:42:50,580 --> 00:42:54,310
+After we had had some further discussions
+
+952
+00:42:54,310 --> 00:42:58,197
+and were working out a
+timeline, I asked about,
+
+953
+00:42:58,197 --> 00:43:00,250
+"Hey, when are you gonna
+actually have a CVE?
+
+954
+00:43:00,250 --> 00:43:02,490
+Like, what are you gonna do about that?
+
+955
+00:43:02,490 --> 00:43:05,160
+We wanna have a public
+disclosure. This is a big issue."
+
+956
+00:43:05,160 --> 00:43:07,667
+And honest to God, the response was,
+
+957
+00:43:07,667 --> 00:43:09,017
+"What's a CVE?"
+
+958
+00:43:10,100 --> 00:43:11,740
+And we said, "Okay, you know what?
+
+959
+00:43:11,740 --> 00:43:12,870
+We'll just file ourselves.
+
+960
+00:43:12,870 --> 00:43:14,510
+I've done this before.
+
+961
+00:43:14,510 --> 00:43:15,567
+Not a big deal."
+
+962
+00:43:16,940 --> 00:43:19,700
+But then it comes out a month later,
+
+963
+00:43:19,700 --> 00:43:21,770
+they come back and say, "Oh.
+
+964
+00:43:21,770 --> 00:43:23,320
+Hey, we're gonna file a CVE on this.
+
+965
+00:43:23,320 --> 00:43:25,610
+Who should we put it as the reporter?"
+
+966
+00:43:25,610 --> 00:43:28,620
+And I'm like, "No, we already
+have the CVE number assigned.
+
+967
+00:43:28,620 --> 00:43:30,820
+Here's all the details."
+
+968
+00:43:30,820 --> 00:43:33,830
+Like we kind of took the
+wind out of their sails,
+
+969
+00:43:33,830 --> 00:43:35,403
+but it was very delayed.
+
+970
+00:43:37,500 --> 00:43:38,420
+So in the end,
+
+971
+00:43:38,420 --> 00:43:43,380
+we spent almost 4.5 months working
+
+972
+00:43:43,380 --> 00:43:45,680
+on this disclosure from start to finish.
+
+973
+00:43:45,680 --> 00:43:48,680
+And a lot of it was waiting for
+them to even acknowledge it.
+
+974
+00:43:50,380 --> 00:43:52,690
+In the end, from the Oxide side,
+
+975
+00:43:52,690 --> 00:43:54,490
+we did push out the CVE,
+
+976
+00:43:54,490 --> 00:43:57,450
+we did a blog post going into
+some of the technical details,
+
+977
+00:43:57,450 --> 00:43:58,850
+we did some tweets.
+
+978
+00:43:58,850 --> 00:44:03,490
+And actually, given how poorly
+the response went with NXP,
+
+979
+00:44:03,490 --> 00:44:07,670
+that was enough to fuel
+a spite CFP for DEFCON.
+
+980
+00:44:07,670 --> 00:44:09,570
+So here we are.
+
+981
+00:44:09,570 --> 00:44:11,980
+From NXP's side, their disclosure,
+
+982
+00:44:11,980 --> 00:44:14,030
+I call this public,
+
+983
+00:44:14,030 --> 00:44:16,680
+but in practice, they
+wrote a security bulletin
+
+984
+00:44:16,680 --> 00:44:18,780
+that we received under NDA
+
+985
+00:44:18,780 --> 00:44:20,420
+and we're told that, in fact,
+
+986
+00:44:20,420 --> 00:44:24,490
+they're only going to email
+that out to select customers.
+
+987
+00:44:24,490 --> 00:44:26,150
+I have searched and not been able
+
+988
+00:44:26,150 --> 00:44:29,410
+to find this anywhere publicly.
+
+989
+00:44:29,410 --> 00:44:31,320
+I also did not receive it outside
+
+990
+00:44:31,320 --> 00:44:33,880
+of our discussions with the PSIRT channel.
+
+991
+00:44:33,880 --> 00:44:36,050
+I have no idea how you get
+these security bulletins.
+
+992
+00:44:36,050 --> 00:44:38,810
+Somebody gets them, but good luck.
+
+993
+00:44:38,810 --> 00:44:41,423
+As far as off-the-shelf customers,
+
+994
+00:44:42,550 --> 00:44:44,230
+they did update the user manuals.
+
+995
+00:44:44,230 --> 00:44:46,103
+If you know what you're looking for,
+
+996
+00:44:46,103 --> 00:44:48,270
+the two most recent revisions
+
+997
+00:44:48,270 --> 00:44:51,970
+to the LPC55S69 user manual do talk
+
+998
+00:44:51,970 --> 00:44:53,840
+about the security regions,
+
+999
+00:44:53,840 --> 00:44:57,110
+but they are very light on
+what the underlying cause was
+
+1000
+00:44:57,110 --> 00:44:58,570
+and are more prescriptive in terms
+
+1001
+00:44:58,570 --> 00:45:01,450
+of you must write these
+registers to these values
+
+1002
+00:45:01,450 --> 00:45:02,733
+without explaining why.
+
+1003
+00:45:03,890 --> 00:45:07,170
+So Laura, what should we
+take away from all of this?
+
+1004
+00:45:07,170 --> 00:45:08,133
+- Thanks, Rick.
+
+1005
+00:45:09,330 --> 00:45:12,230
+Wrapping this up, this is
+the full scope of devices
+
+1006
+00:45:12,230 --> 00:45:13,730
+with this ROM patcher.
+
+1007
+00:45:13,730 --> 00:45:17,950
+The title of this talk
+mentions the LPC55S69,
+
+1008
+00:45:17,950 --> 00:45:21,520
+but it affects multiple
+shifts in the LPC5500 family.
+
+1009
+00:45:21,520 --> 00:45:23,470
+All those numbers in there
+actually mean something,
+
+1010
+00:45:23,470 --> 00:45:27,400
+but I'm not a chip marketing expert.
+
+1011
+00:45:27,400 --> 00:45:32,000
+Anything in the LPC55S6x is affected.
+
+1012
+00:45:32,000 --> 00:45:34,710
+The S in the part name
+stands for "secure,"
+
+1013
+00:45:34,710 --> 00:45:36,600
+which means it has TrustZone.
+
+1014
+00:45:36,600 --> 00:45:38,033
+There is a variant, LPC552x,
+
+1015
+00:45:38,930 --> 00:45:40,750
+which does not have TrustZone.
+
+1016
+00:45:40,750 --> 00:45:43,230
+This means it isn't vulnerable
+to a TrustZone breakout
+
+1017
+00:45:43,230 --> 00:45:45,130
+because it isn't there.
+
+1018
+00:45:45,130 --> 00:45:46,550
+This vulnerability can still be used
+
+1019
+00:45:46,550 --> 00:45:48,500
+for privileged escalation however.
+
+1020
+00:45:48,500 --> 00:45:51,530
+Slightly worrying, the
+LPC552X does not have
+
+1021
+00:45:51,530 --> 00:45:54,110
+the extra level-setting
+bits without TrustZone,
+
+1022
+00:45:54,110 --> 00:45:56,560
+so the only prevention
+against it is the NPU.
+
+1023
+00:45:58,130 --> 00:45:59,860
+One of the questions we asked NXP
+
+1024
+00:45:59,860 --> 00:46:01,830
+when we were discussing
+was if there was an ability
+
+1025
+00:46:01,830 --> 00:46:05,040
+to lock the patch configuration
+to prevent changes.
+
+1026
+00:46:05,040 --> 00:46:06,920
+The answer there was no.
+
+1027
+00:46:06,920 --> 00:46:09,470
+And it sounded like this was
+a deliberate product choice
+
+1028
+00:46:09,470 --> 00:46:11,410
+with the idea that maybe they would need
+
+1029
+00:46:11,410 --> 00:46:13,700
+to give a patch to customers later.
+
+1030
+00:46:13,700 --> 00:46:15,260
+This seemed like a bad choice,
+
+1031
+00:46:15,260 --> 00:46:17,960
+but I don't work for NXP product strategy.
+
+1032
+00:46:17,960 --> 00:46:19,870
+I mean, maybe they could've
+put the lock bit in there
+
+1033
+00:46:19,870 --> 00:46:20,770
+and let these risk guide,
+
+1034
+00:46:20,770 --> 00:46:23,620
+but again, out of my hands.
+
+1035
+00:46:23,620 --> 00:46:28,020
+NXP did mention that the upcoming LPC55S3x
+
+1036
+00:46:28,020 --> 00:46:30,290
+would include the ability
+to lock the ROM patch,
+
+1037
+00:46:30,290 --> 00:46:32,690
+which was really good to hear.
+
+1038
+00:46:32,690 --> 00:46:36,700
+We're not sure if this
+is all effective devices.
+
+1039
+00:46:36,700 --> 00:46:39,630
+NXP was willing to acknowledge
+the TrustZone vulnerability,
+
+1040
+00:46:39,630 --> 00:46:42,960
+but wasn't willing to admit
+this was a privilege escalation.
+
+1041
+00:46:42,960 --> 00:46:44,020
+There may be other chips
+
+1042
+00:46:44,020 --> 00:46:46,380
+which have the same controller
+we don't know about,
+
+1043
+00:46:46,380 --> 00:46:49,130
+which is really concerning
+from a security perspective.
+
+1044
+00:46:50,960 --> 00:46:52,763
+Finally, some important takeaways.
+
+1045
+00:46:53,630 --> 00:46:54,690
+Code is hard.
+
+1046
+00:46:54,690 --> 00:46:56,410
+Configuring hardware is hard.
+
+1047
+00:46:56,410 --> 00:46:58,780
+Configuring hardware
+security is really hard.
+
+1048
+00:46:58,780 --> 00:47:01,820
+TrustZone-M is hard to
+configure correctly.
+
+1049
+00:47:01,820 --> 00:47:03,190
+There's a lot of knobs.
+
+1050
+00:47:03,190 --> 00:47:05,530
+Requiring code to drop
+permissions is a great way
+
+1051
+00:47:05,530 --> 00:47:08,060
+to accidentally end up with
+something still exposed.
+
+1052
+00:47:08,060 --> 00:47:10,223
+We've seen this in Linux plenty.
+
+1053
+00:47:11,150 --> 00:47:13,960
+Reference implementations
+are frequently incomplete.
+
+1054
+00:47:13,960 --> 00:47:16,650
+The trusted firmware PoC we
+gave could've been prevented
+
+1055
+00:47:16,650 --> 00:47:19,830
+by setting a few lock bits
+to prevent changing the SAU,
+
+1056
+00:47:19,830 --> 00:47:21,860
+but they just weren't set.
+
+1057
+00:47:21,860 --> 00:47:23,660
+Just taking a reference implementation
+
+1058
+00:47:23,660 --> 00:47:25,780
+is no guarantee you'll be secure
+
+1059
+00:47:25,780 --> 00:47:28,630
+or you won't hit odd edge cases.
+
+1060
+00:47:28,630 --> 00:47:30,130
+You need to be doing audits more view
+
+1061
+00:47:30,130 --> 00:47:31,430
+of all the reference code.
+
+1062
+00:47:32,430 --> 00:47:35,890
+Transparency is so
+important in your hardware.
+
+1063
+00:47:35,890 --> 00:47:37,080
+In order to drop privileges,
+
+1064
+00:47:37,080 --> 00:47:39,790
+you need to know that you need to do so.
+
+1065
+00:47:39,790 --> 00:47:42,060
+The ROM patcher block
+was labeled as reserved
+
+1066
+00:47:42,060 --> 00:47:43,450
+in various parts of the memory map
+
+1067
+00:47:43,450 --> 00:47:46,320
+because NXP did not want
+to acknowledge it existed.
+
+1068
+00:47:46,320 --> 00:47:48,680
+The old manual before their
+update would tell you not
+
+1069
+00:47:48,680 --> 00:47:50,390
+to write anything for the reserved area
+
+1070
+00:47:50,390 --> 00:47:53,050
+for various security protections.
+
+1071
+00:47:53,050 --> 00:47:55,130
+This means that even if you
+were following the manual
+
+1072
+00:47:55,130 --> 00:47:58,220
+to the letter, you would not be protected.
+
+1073
+00:47:58,220 --> 00:47:59,760
+Oxide and NXP really seemed
+
+1074
+00:47:59,760 --> 00:48:01,420
+to have a fundamental disagreement about
+
+1075
+00:48:01,420 --> 00:48:03,750
+how big of an issue this is.
+
+1076
+00:48:03,750 --> 00:48:05,880
+Our stance is that unless
+you have full knowledge
+
+1077
+00:48:05,880 --> 00:48:07,230
+about what your hardware is doing,
+
+1078
+00:48:07,230 --> 00:48:11,240
+it is not possible to write a
+truly secure implementation.
+
+1079
+00:48:11,240 --> 00:48:12,240
+Turning that reference code
+
+1080
+00:48:12,240 --> 00:48:14,090
+into something correct
+is incredibly difficult
+
+1081
+00:48:14,090 --> 00:48:15,980
+without full documentation.
+
+1082
+00:48:15,980 --> 00:48:17,380
+Hardware makers should really want
+
+1083
+00:48:17,380 --> 00:48:19,470
+to make it easy to write secure code
+
+1084
+00:48:19,470 --> 00:48:20,453
+and to treat undocumented hardware
+
+1085
+00:48:20,453 --> 00:48:22,700
+with the antithesis of security.
+
+1086
+00:48:22,700 --> 00:48:26,920
+And really, please just give
+us source code for the ROM.
+
+1087
+00:48:26,920 --> 00:48:28,130
+The conclusion here should not be
+
+1088
+00:48:28,130 --> 00:48:30,250
+that NXP should have re-protected the ROM
+
+1089
+00:48:30,250 --> 00:48:32,240
+so that we couldn't find the bug.
+
+1090
+00:48:32,240 --> 00:48:35,340
+That is not driven to be
+an effective solution.
+
+1091
+00:48:35,340 --> 00:48:37,930
+Rick and I are not
+professional reverse engineers.
+
+1092
+00:48:37,930 --> 00:48:40,340
+We're developers who
+think this kind of problem
+
+1093
+00:48:40,340 --> 00:48:41,840
+is really neat.
+
+1094
+00:48:41,840 --> 00:48:44,270
+I'd like to say there were no
+more bugs lurking in that ROM,
+
+1095
+00:48:44,270 --> 00:48:46,560
+but I really don't know.
+
+1096
+00:48:46,560 --> 00:48:47,910
+People who are much more experienced
+
+1097
+00:48:47,910 --> 00:48:50,400
+in this area could
+probably find more bugs.
+
+1098
+00:48:50,400 --> 00:48:52,990
+There's certainly been a
+history of bugs in the ISP mode,
+
+1099
+00:48:52,990 --> 00:48:55,640
+some of which have been
+presented at DEFCON.
+
+1100
+00:48:55,640 --> 00:48:57,580
+NXP could really increase
+the confidence here
+
+1101
+00:48:57,580 --> 00:48:59,750
+by letting us all review their code.
+
+1102
+00:48:59,750 --> 00:49:02,200
+Just saying that the third
+party reviewed the code
+
+1103
+00:49:02,200 --> 00:49:03,410
+doesn't really tell us anything
+
+1104
+00:49:03,410 --> 00:49:05,780
+if we don't know what was found or fixed,
+
+1105
+00:49:05,780 --> 00:49:07,900
+especially if the audit
+didn't actually manage
+
+1106
+00:49:07,900 --> 00:49:09,303
+to find this hardware block.
+
+1107
+00:49:10,200 --> 00:49:12,420
+Hiding things doesn't
+actually make it more secure;
+
+1108
+00:49:12,420 --> 00:49:14,950
+it only delays the time
+till bugs are found.
+
+1109
+00:49:14,950 --> 00:49:16,240
+I really look forward to the future
+
+1110
+00:49:16,240 --> 00:49:17,260
+when hardware manufacturers
+
+1111
+00:49:17,260 --> 00:49:20,090
+have complete correct hardware
+documentation available
+
+1112
+00:49:20,090 --> 00:49:22,930
+so we can all have more
+secure and open software.
+
+1113
+00:49:22,930 --> 00:49:23,763
+Thank you.
+

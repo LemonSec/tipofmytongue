@@ -1,0 +1,1588 @@
+﻿1
+00:00:10,690 --> 00:00:16,720
+hello everyone thank you for coming to
+
+2
+00:00:13,299 --> 00:00:19,480
+my talk I am one of Alma and today I'll
+
+3
+00:00:16,720 --> 00:00:21,790
+be talking to you about silk a system
+
+4
+00:00:19,480 --> 00:00:24,369
+for preventing latency spikes in log
+
+5
+00:00:21,790 --> 00:00:26,320
+structure merge key value stores this is
+
+6
+00:00:24,369 --> 00:00:28,960
+joint work with Florian Dino Willi Spano
+
+7
+00:00:26,320 --> 00:00:32,019
+paul karen gupta ravi chandra mu T and
+
+8
+00:00:28,960 --> 00:00:33,670
+the ago did owner and part of the work
+
+9
+00:00:32,019 --> 00:00:38,680
+was done while I was an intern and
+
+10
+00:00:33,670 --> 00:00:40,690
+Nutanix so today's topic is log
+
+11
+00:00:38,680 --> 00:00:43,390
+structure merge key value stores or in
+
+12
+00:00:40,690 --> 00:00:45,129
+short a lessons these are systems that
+
+13
+00:00:43,390 --> 00:00:47,379
+are designed for high throughput in
+
+14
+00:00:45,129 --> 00:00:49,510
+right heavy workloads they're meant to
+
+15
+00:00:47,379 --> 00:00:50,949
+handle large scale data typically when
+
+16
+00:00:49,510 --> 00:00:53,410
+the working stud doesn't fit in main
+
+17
+00:00:50,950 --> 00:00:55,809
+memory and some popular examples of
+
+18
+00:00:53,410 --> 00:01:00,398
+Ellison's are Cassandra Google's leveldb
+
+19
+00:00:55,809 --> 00:01:02,410
+or Facebook's rocks dB so elephants
+
+20
+00:01:00,399 --> 00:01:05,700
+claim to be efficient for write heavy
+
+21
+00:01:02,410 --> 00:01:08,500
+workloads but is this really the case
+
+22
+00:01:05,700 --> 00:01:10,119
+this is what we noticed when we run a
+
+23
+00:01:08,500 --> 00:01:13,119
+Newton X right intensive production
+
+24
+00:01:10,119 --> 00:01:15,190
+workload in rocks DB this plot shows the
+
+25
+00:01:13,119 --> 00:01:18,819
+99th percentile latency on the y-axis
+
+26
+00:01:15,190 --> 00:01:22,750
+and the time on the x axis so lower is
+
+27
+00:01:18,819 --> 00:01:25,390
+better we can see that latency spikes up
+
+28
+00:01:22,750 --> 00:01:30,280
+to one second in this right dominated
+
+29
+00:01:25,390 --> 00:01:32,289
+workload now the latency spikes are are
+
+30
+00:01:30,280 --> 00:01:34,990
+making it difficult to provide SLA
+
+31
+00:01:32,289 --> 00:01:36,849
+guarantees to clients and also this
+
+32
+00:01:34,990 --> 00:01:38,440
+unpredictable performance makes it
+
+33
+00:01:36,849 --> 00:01:42,429
+difficult to connect the lessons in
+
+34
+00:01:38,440 --> 00:01:44,500
+larger system pipelines this is where
+
+35
+00:01:42,429 --> 00:01:47,259
+our contribution comes in the SIL
+
+36
+00:01:44,500 --> 00:01:48,940
+callosum key value store silk soles the
+
+37
+00:01:47,259 --> 00:01:51,369
+latency spike problem for right heavy
+
+38
+00:01:48,940 --> 00:01:53,920
+workloads with no negative side effects
+
+39
+00:01:51,369 --> 00:01:55,630
+for other workloads and silk ties so by
+
+40
+00:01:53,920 --> 00:01:59,770
+introducing the notion of an i/o
+
+41
+00:01:55,630 --> 00:02:01,270
+scheduler for LSM key value stores my
+
+42
+00:01:59,770 --> 00:02:03,819
+top will be structured in two parts
+
+43
+00:02:01,270 --> 00:02:05,800
+first I'll present an experimental study
+
+44
+00:02:03,819 --> 00:02:08,020
+that tries to uncover the reason behind
+
+45
+00:02:05,800 --> 00:02:09,550
+these latency spikes and in the second
+
+46
+00:02:08,020 --> 00:02:13,150
+part of the talk I will present our
+
+47
+00:02:09,550 --> 00:02:16,540
+system silk so what causes these LSM
+
+48
+00:02:13,150 --> 00:02:18,820
+latency spikes in short they are caused
+
+49
+00:02:16,540 --> 00:02:21,459
+by severe competition for i/o bandwidth
+
+50
+00:02:18,820 --> 00:02:23,560
+between client operations and LSM
+
+51
+00:02:21,460 --> 00:02:24,340
+internal operations which we can think
+
+52
+00:02:23,560 --> 00:02:26,560
+of as
+
+53
+00:02:24,340 --> 00:02:29,230
+bitch collection and to better
+
+54
+00:02:26,560 --> 00:02:33,129
+understand this let's take a brief look
+
+55
+00:02:29,230 --> 00:02:36,250
+at how our lessons work elephants have
+
+56
+00:02:33,129 --> 00:02:38,440
+two big components the memory component
+
+57
+00:02:36,250 --> 00:02:40,330
+which is the right buffer and the disk
+
+58
+00:02:38,440 --> 00:02:43,599
+component which is structured in several
+
+59
+00:02:40,330 --> 00:02:46,870
+levels with several sorted files called
+
+60
+00:02:43,599 --> 00:02:50,230
+SS table in each level for the client
+
+61
+00:02:46,870 --> 00:02:52,420
+operations the updates are absorbed by
+
+62
+00:02:50,230 --> 00:02:55,480
+the right buffer and the reads need to
+
+63
+00:02:52,420 --> 00:02:58,179
+go one by one through the LS m three
+
+64
+00:02:55,480 --> 00:03:02,440
+levels until the desired key value top
+
+65
+00:02:58,180 --> 00:03:05,140
+hole is retrieved now in addition to
+
+66
+00:03:02,440 --> 00:03:07,900
+client operations there are also LF m
+
+67
+00:03:05,140 --> 00:03:10,390
+internal operations and this might seem
+
+68
+00:03:07,900 --> 00:03:12,340
+like an involved or explanation but bear
+
+69
+00:03:10,390 --> 00:03:13,929
+with me it's important to understand
+
+70
+00:03:12,340 --> 00:03:17,290
+this in order to be able to understand
+
+71
+00:03:13,930 --> 00:03:19,150
+the solution I classified the types of
+
+72
+00:03:17,290 --> 00:03:21,609
+internal operations in other sense into
+
+73
+00:03:19,150 --> 00:03:23,620
+three there splashing level zero to
+
+74
+00:03:21,610 --> 00:03:26,110
+level one compaction and higher-level
+
+75
+00:03:23,620 --> 00:03:27,640
+compaction it's also important to note
+
+76
+00:03:26,110 --> 00:03:31,120
+that there is no coordination between
+
+77
+00:03:27,640 --> 00:03:33,130
+internal operations in a lessons so
+
+78
+00:03:31,120 --> 00:03:36,760
+flushing happens when the right buffer
+
+79
+00:03:33,130 --> 00:03:39,340
+is full we install a new right buffer in
+
+80
+00:03:36,760 --> 00:03:42,160
+order to absorb the incoming updates
+
+81
+00:03:39,340 --> 00:03:46,030
+while the flush buffer is written to
+
+82
+00:03:42,160 --> 00:03:49,180
+level zero level zero to level one
+
+83
+00:03:46,030 --> 00:03:52,299
+compactions march 1 level 0 SS payable
+
+84
+00:03:49,180 --> 00:03:56,500
+with level 1 the goal is to make room on
+
+85
+00:03:52,299 --> 00:03:58,750
+level 0 for incoming flushes finally we
+
+86
+00:03:56,500 --> 00:04:01,840
+have higher level compactions which can
+
+87
+00:03:58,750 --> 00:04:04,299
+be seen as the garbage collection in the
+
+88
+00:04:01,840 --> 00:04:07,329
+LSM tree they discard duplicates and
+
+89
+00:04:04,299 --> 00:04:09,700
+delete values by merging SS tables these
+
+90
+00:04:07,329 --> 00:04:12,040
+are less urgent than the level 0 to
+
+91
+00:04:09,700 --> 00:04:13,899
+level 1 compactions but they still need
+
+92
+00:04:12,040 --> 00:04:16,478
+to complete in order to achieve low
+
+93
+00:04:13,900 --> 00:04:19,209
+latency they're also higher bandwidth
+
+94
+00:04:16,478 --> 00:04:20,889
+intensive and we can also have many
+
+95
+00:04:19,209 --> 00:04:24,430
+higher level compactions running at the
+
+96
+00:04:20,889 --> 00:04:26,620
+same time so to review there are three
+
+97
+00:04:24,430 --> 00:04:28,990
+types of internal operations flashing
+
+98
+00:04:26,620 --> 00:04:31,750
+level 0 to level 1 compaction and
+
+99
+00:04:28,990 --> 00:04:34,030
+higher-level compactions and there is no
+
+100
+00:04:31,750 --> 00:04:36,070
+coordination between internal operations
+
+101
+00:04:34,030 --> 00:04:37,929
+and client operations and between
+
+102
+00:04:36,070 --> 00:04:42,750
+internal operations among the
+
+103
+00:04:37,930 --> 00:04:46,210
+self now what causes the latency spikes
+
+104
+00:04:42,750 --> 00:04:48,669
+I'd like to mention that we noticed both
+
+105
+00:04:46,210 --> 00:04:50,710
+the read and write latency spikes but
+
+106
+00:04:48,669 --> 00:04:52,210
+for this talk I'm going to focus on
+
+107
+00:04:50,710 --> 00:04:55,448
+writes because I think that it's less
+
+108
+00:04:52,210 --> 00:04:57,909
+intuitive writes finish in memory right
+
+109
+00:04:55,449 --> 00:05:01,600
+so why do we have these one-second
+
+110
+00:04:57,910 --> 00:05:02,460
+latency spikes this can happen for two
+
+111
+00:05:01,600 --> 00:05:05,800
+reasons
+
+112
+00:05:02,460 --> 00:05:08,289
+first of all if level zero is full
+
+113
+00:05:05,800 --> 00:05:11,889
+we cannot flash let's look at a simple
+
+114
+00:05:08,289 --> 00:05:13,870
+example illustrating this assume that
+
+115
+00:05:11,889 --> 00:05:17,669
+there is no room to write on level zero
+
+116
+00:05:13,870 --> 00:05:20,560
+so the flash buffer cannot be written
+
+117
+00:05:17,669 --> 00:05:23,740
+eventually the write buffer fills up it
+
+118
+00:05:20,560 --> 00:05:27,430
+keeps absorbing updates and eventually
+
+119
+00:05:23,740 --> 00:05:29,620
+the updates will also be blocked more
+
+120
+00:05:27,430 --> 00:05:31,509
+precisely because there is no
+
+121
+00:05:29,620 --> 00:05:33,820
+coordination between internal operations
+
+122
+00:05:31,509 --> 00:05:37,060
+the higher-level compactions will take
+
+123
+00:05:33,820 --> 00:05:39,699
+over i/o making level 0 to level 1
+
+124
+00:05:37,060 --> 00:05:42,580
+compactions to slow creating not enough
+
+125
+00:05:39,699 --> 00:05:45,330
+space on l0 finally leading to not being
+
+126
+00:05:42,580 --> 00:05:47,320
+able to flash the memory component
+
+127
+00:05:45,330 --> 00:05:49,690
+looking at the same thing from a
+
+128
+00:05:47,320 --> 00:05:53,440
+slightly different perspective this is a
+
+129
+00:05:49,690 --> 00:05:56,229
+timeline of lslam internal operations we
+
+130
+00:05:53,440 --> 00:05:58,930
+have flashing in blue higher-level
+
+131
+00:05:56,229 --> 00:06:01,570
+compactions in green and a slow level 0
+
+132
+00:05:58,930 --> 00:06:05,740
+to level 1 compaction in red by the way
+
+133
+00:06:01,570 --> 00:06:09,000
+this is a true example of a run that we
+
+134
+00:06:05,740 --> 00:06:11,830
+observed in Rox DB so it's not made up
+
+135
+00:06:09,000 --> 00:06:16,479
+let's say that at some point there's
+
+136
+00:06:11,830 --> 00:06:18,210
+another flash level 0 is full and since
+
+137
+00:06:16,479 --> 00:06:21,250
+it's full we cannot flash anymore
+
+138
+00:06:18,210 --> 00:06:25,930
+eventually we are going to see a latency
+
+139
+00:06:21,250 --> 00:06:27,220
+spike the second reason which is kind of
+
+140
+00:06:25,930 --> 00:06:30,789
+like the first but with a different
+
+141
+00:06:27,220 --> 00:06:33,340
+flavor is that flashing is slow this
+
+142
+00:06:30,789 --> 00:06:35,949
+time there is enough space to flash on
+
+143
+00:06:33,340 --> 00:06:38,109
+your level zero however we can be
+
+144
+00:06:35,949 --> 00:06:40,419
+unlucky and we can have many
+
+145
+00:06:38,110 --> 00:06:43,030
+higher-level compactions running in
+
+146
+00:06:40,419 --> 00:06:45,070
+parallel this restricts the amount of
+
+147
+00:06:43,030 --> 00:06:48,130
+i/o bandwidth that is allocated to
+
+148
+00:06:45,070 --> 00:06:50,380
+flashing and the right buffer fills up
+
+149
+00:06:48,130 --> 00:06:50,909
+before the flash buffer has a chance to
+
+150
+00:06:50,380 --> 00:06:56,580
+be written
+
+151
+00:06:50,910 --> 00:06:58,650
+disk thus stopping the updates so again
+
+152
+00:06:56,580 --> 00:07:00,390
+because of no coordination between
+
+153
+00:06:58,650 --> 00:07:02,370
+internal operations the higher-level
+
+154
+00:07:00,390 --> 00:07:05,070
+compaction take over i/o bandwidth
+
+155
+00:07:02,370 --> 00:07:07,620
+flashing doesn't have enough IO thus
+
+156
+00:07:05,070 --> 00:07:09,599
+flashing is very slow thus the memory
+
+157
+00:07:07,620 --> 00:07:13,590
+component becomes full and the latency
+
+158
+00:07:09,600 --> 00:07:16,200
+spikes again looking at this timeline of
+
+159
+00:07:13,590 --> 00:07:18,810
+internal operations in Ellison's we can
+
+160
+00:07:16,200 --> 00:07:20,550
+have a situation where many higher-level
+
+161
+00:07:18,810 --> 00:07:21,870
+compactions are taking over i/o
+
+162
+00:07:20,550 --> 00:07:24,960
+bandwidth because they're running in
+
+163
+00:07:21,870 --> 00:07:27,120
+parallel making the flash really slow
+
+164
+00:07:24,960 --> 00:07:31,530
+because of lack of i/o bandwidth so
+
+165
+00:07:27,120 --> 00:07:34,140
+eventually the latency spikes what can
+
+166
+00:07:31,530 --> 00:07:37,200
+we do about this a first approach would
+
+167
+00:07:34,140 --> 00:07:39,870
+be to use a compaction rate limiter this
+
+168
+00:07:37,200 --> 00:07:43,020
+is standard and comes with systems such
+
+169
+00:07:39,870 --> 00:07:44,880
+as rocks DB this is a simple attempt to
+
+170
+00:07:43,020 --> 00:07:48,599
+coordinate between internal and external
+
+171
+00:07:44,880 --> 00:07:50,969
+operations however this plot shows a
+
+172
+00:07:48,600 --> 00:07:52,980
+timeline of the 99th percentile latency
+
+173
+00:07:50,970 --> 00:07:55,350
+in rocks TV where we limit the maximum
+
+174
+00:07:52,980 --> 00:07:58,200
+compaction bandwidth to a 90 megabytes
+
+175
+00:07:55,350 --> 00:08:00,390
+per second and we see that static
+
+176
+00:07:58,200 --> 00:08:02,070
+compaction rate limiting doesn't work in
+
+177
+00:08:00,390 --> 00:08:04,320
+the long term even if it appears to
+
+178
+00:08:02,070 --> 00:08:07,140
+solve the problem if the experiment is
+
+179
+00:08:04,320 --> 00:08:09,630
+short this happens because the chance to
+
+180
+00:08:07,140 --> 00:08:11,340
+run many parallel compactions increases
+
+181
+00:08:09,630 --> 00:08:14,730
+with time as the bandwidth gets
+
+182
+00:08:11,340 --> 00:08:17,130
+restricted the second solution would be
+
+183
+00:08:14,730 --> 00:08:19,080
+to somehow delay or be selective
+
+184
+00:08:17,130 --> 00:08:21,000
+selective about the type of compaction
+
+185
+00:08:19,080 --> 00:08:22,590
+work that you want to do and this has
+
+186
+00:08:21,000 --> 00:08:26,460
+been employed in many systems for
+
+187
+00:08:22,590 --> 00:08:29,400
+example in trial or in tables dB however
+
+188
+00:08:26,460 --> 00:08:32,460
+this timeline shows that also a system
+
+189
+00:08:29,400 --> 00:08:36,240
+that's selective like trial eventually
+
+190
+00:08:32,460 --> 00:08:38,099
+comes to latency spikes being selective
+
+191
+00:08:36,240 --> 00:08:40,650
+about compaction doesn't avoid
+
+192
+00:08:38,099 --> 00:08:42,630
+interference because eventually the
+
+193
+00:08:40,650 --> 00:08:46,110
+system will need to catch up and do the
+
+194
+00:08:42,630 --> 00:08:48,600
+delayed compaction work so what have we
+
+195
+00:08:46,110 --> 00:08:52,020
+learned first of all we should make sure
+
+196
+00:08:48,600 --> 00:08:54,270
+that level 0 isn't full second we need
+
+197
+00:08:52,020 --> 00:08:57,569
+to ensure sufficient IO for flash and
+
+198
+00:08:54,270 --> 00:08:59,220
+compactions on low levels and third we
+
+199
+00:08:57,570 --> 00:09:01,790
+need to ensure that higher-level
+
+200
+00:08:59,220 --> 00:09:04,300
+compactions don't fall behind too much
+
+201
+00:09:01,790 --> 00:09:07,959
+this leads us to our solution
+
+202
+00:09:04,300 --> 00:09:10,540
+the silk is scheduler the main idea
+
+203
+00:09:07,960 --> 00:09:13,600
+behind silk and if you want to remember
+
+204
+00:09:10,540 --> 00:09:16,150
+something from this talk this is it is
+
+205
+00:09:13,600 --> 00:09:18,160
+to coordinate IO bandwidth sharing in
+
+206
+00:09:16,150 --> 00:09:20,079
+order to minimize interference between
+
+207
+00:09:18,160 --> 00:09:22,180
+internal operations and client
+
+208
+00:09:20,080 --> 00:09:25,540
+operations and we do this through an i/o
+
+209
+00:09:22,180 --> 00:09:27,609
+scheduler for LSM key value stores each
+
+210
+00:09:25,540 --> 00:09:29,620
+of the lessons that we learned from the
+
+211
+00:09:27,610 --> 00:09:33,610
+study leaders to one silk design
+
+212
+00:09:29,620 --> 00:09:35,620
+principle so to ensure level zero is
+
+213
+00:09:33,610 --> 00:09:37,270
+never full we prioritize internal
+
+214
+00:09:35,620 --> 00:09:40,030
+operations at the lower levels of the
+
+215
+00:09:37,270 --> 00:09:41,740
+tree to ensure sufficient IO for
+
+216
+00:09:40,030 --> 00:09:44,020
+flashing and compactions on low levels
+
+217
+00:09:41,740 --> 00:09:47,110
+of the tree we preempt the higher level
+
+218
+00:09:44,020 --> 00:09:49,840
+compactions if necessary in order to
+
+219
+00:09:47,110 --> 00:09:51,190
+ensure that the other compactions don't
+
+220
+00:09:49,840 --> 00:09:53,410
+fall behind too much
+
+221
+00:09:51,190 --> 00:09:57,370
+we opportunistically allocate io for
+
+222
+00:09:53,410 --> 00:09:59,620
+higher higher level compactions let me
+
+223
+00:09:57,370 --> 00:10:02,500
+detail the first two principles
+
+224
+00:09:59,620 --> 00:10:04,480
+prioritize and preamp so we prioritize
+
+225
+00:10:02,500 --> 00:10:06,760
+the internal operations at lower three
+
+226
+00:10:04,480 --> 00:10:09,100
+levels in silk the first priority goes
+
+227
+00:10:06,760 --> 00:10:11,560
+to flashing the second priority goes to
+
+228
+00:10:09,100 --> 00:10:13,270
+level 0 to level 1 compaction and the
+
+229
+00:10:11,560 --> 00:10:16,150
+final priority goes to higher level
+
+230
+00:10:13,270 --> 00:10:18,850
+compaction we do so by allocating a
+
+231
+00:10:16,150 --> 00:10:21,579
+dedicated flash operation queue and by
+
+232
+00:10:18,850 --> 00:10:25,180
+allowing level 0 to level 1 compactions
+
+233
+00:10:21,580 --> 00:10:28,960
+to preempt higher level compactions our
+
+234
+00:10:25,180 --> 00:10:30,579
+third silk design principle is to
+
+235
+00:10:28,960 --> 00:10:34,240
+opportunistically allocate i/o for
+
+236
+00:10:30,580 --> 00:10:37,330
+compactions and this this is rooted in a
+
+237
+00:10:34,240 --> 00:10:40,420
+real Nutanix client client load example
+
+238
+00:10:37,330 --> 00:10:43,380
+that we noticed so we can see from this
+
+239
+00:10:40,420 --> 00:10:46,839
+plot that client workload isn't constant
+
+240
+00:10:43,380 --> 00:10:48,970
+so this this led us to the idea to
+
+241
+00:10:46,840 --> 00:10:51,640
+continuously monitor the clio
+
+242
+00:10:48,970 --> 00:10:54,100
+client i/o bandwidth use and to allocate
+
+243
+00:10:51,640 --> 00:10:57,220
+less i/o bandwidth to compaction during
+
+244
+00:10:54,100 --> 00:11:00,610
+client load Peaks and more i/o bandwidth
+
+245
+00:10:57,220 --> 00:11:04,240
+to compaction during low client load as
+
+246
+00:11:00,610 --> 00:11:08,800
+we can see in this graph on the red
+
+247
+00:11:04,240 --> 00:11:10,600
+dashed line if we allocate more i/o to
+
+248
+00:11:08,800 --> 00:11:14,260
+high-level compactions during low load
+
+249
+00:11:10,600 --> 00:11:17,680
+we ensure that the compactions even on
+
+250
+00:11:14,260 --> 00:11:18,670
+the higher levels don't fall behind so
+
+251
+00:11:17,680 --> 00:11:20,920
+how we feel
+
+252
+00:11:18,670 --> 00:11:24,550
+for me let's have a look at the
+
+253
+00:11:20,920 --> 00:11:27,550
+evaluation results first I'd like to
+
+254
+00:11:24,550 --> 00:11:29,650
+mention that silk is implemented as an
+
+255
+00:11:27,550 --> 00:11:33,910
+extension of rocks TV and it's open
+
+256
+00:11:29,650 --> 00:11:36,730
+source if you'd like to have a look we
+
+257
+00:11:33,910 --> 00:11:38,319
+first run the wise ESB benchmark because
+
+258
+00:11:36,730 --> 00:11:40,120
+it's a varied benchmark with different
+
+259
+00:11:38,320 --> 00:11:43,240
+kinds of workloads right intensive rate
+
+260
+00:11:40,120 --> 00:11:45,100
+intensive scan intensive our goal here
+
+261
+00:11:43,240 --> 00:11:47,350
+is to show that in right heavy workload
+
+262
+00:11:45,100 --> 00:11:49,180
+silk is much better for tail latency and
+
+263
+00:11:47,350 --> 00:11:51,730
+in the other workloads
+
+264
+00:11:49,180 --> 00:11:57,160
+silkies and detrimental so let's have a
+
+265
+00:11:51,730 --> 00:12:01,300
+look this plot shows the core white CSB
+
+266
+00:11:57,160 --> 00:12:04,990
+workloads on the x-axis and the 99th
+
+267
+00:12:01,300 --> 00:12:09,760
+percentile latency on the y-axis we have
+
+268
+00:12:04,990 --> 00:12:14,290
+silk in blue and rocks DB in red so when
+
+269
+00:12:09,760 --> 00:12:16,420
+this plot lower is better we can see
+
+270
+00:12:14,290 --> 00:12:19,089
+that in the two right dominated
+
+271
+00:12:16,420 --> 00:12:24,849
+workloads still decreasing stay latency
+
+272
+00:12:19,090 --> 00:12:26,920
+by four orders of magnitude also fit
+
+273
+00:12:24,850 --> 00:12:28,510
+doesn't affect read and scan dominated
+
+274
+00:12:26,920 --> 00:12:31,930
+workloads so we can see that the
+
+275
+00:12:28,510 --> 00:12:33,880
+latencies are pretty much the same let
+
+276
+00:12:31,930 --> 00:12:36,880
+us move on to the Nutanix production
+
+277
+00:12:33,880 --> 00:12:40,300
+workload this is a write dominated
+
+278
+00:12:36,880 --> 00:12:43,180
+workload with 57% writes
+
+279
+00:12:40,300 --> 00:12:45,370
+it is also bursty with peaks and valleys
+
+280
+00:12:43,180 --> 00:12:48,219
+in the client load in the same style
+
+281
+00:12:45,370 --> 00:12:51,820
+that I showed you earlier in the plot
+
+282
+00:12:48,220 --> 00:12:54,190
+the dataset size of 500 gigabytes and on
+
+283
+00:12:51,820 --> 00:12:59,590
+average a key value topple sizes of 400
+
+284
+00:12:54,190 --> 00:13:01,900
+bytes so this plot shows silt vs. rocks
+
+285
+00:12:59,590 --> 00:13:04,630
+to be at the 99th percentile latency
+
+286
+00:13:01,900 --> 00:13:05,680
+this is the same workload that I showed
+
+287
+00:13:04,630 --> 00:13:08,170
+in the very beginning of the
+
+288
+00:13:05,680 --> 00:13:10,270
+presentation for rocks Libby again we
+
+289
+00:13:08,170 --> 00:13:13,630
+have rocks deep in red and silk in blue
+
+290
+00:13:10,270 --> 00:13:16,300
+and lower is better and we can see that
+
+291
+00:13:13,630 --> 00:13:19,570
+field maintains the latency low and
+
+292
+00:13:16,300 --> 00:13:22,870
+predictable avoiding these large latency
+
+293
+00:13:19,570 --> 00:13:25,270
+spikes it achieves up to three orders of
+
+294
+00:13:22,870 --> 00:13:30,010
+magnitude improvement over rocks DB in
+
+295
+00:13:25,270 --> 00:13:31,740
+production workloads finally let's have
+
+296
+00:13:30,010 --> 00:13:34,950
+a look at a detail that's
+
+297
+00:13:31,740 --> 00:13:37,260
+that's interesting regarding stalling so
+
+298
+00:13:34,950 --> 00:13:39,450
+this plot shows on the y-axis the
+
+299
+00:13:37,260 --> 00:13:41,040
+percentage of time in the experiment
+
+300
+00:13:39,450 --> 00:13:42,570
+that the two systems spent stalling
+
+301
+00:13:41,040 --> 00:13:46,110
+again rocks to be in red and silk in
+
+302
+00:13:42,570 --> 00:13:48,510
+blue lower is better we can see that
+
+303
+00:13:46,110 --> 00:13:53,790
+silk never stalls because it can always
+
+304
+00:13:48,510 --> 00:13:56,160
+do timely flashing if you'd like to know
+
+305
+00:13:53,790 --> 00:13:59,310
+more about silk about how it works about
+
+306
+00:13:56,160 --> 00:14:01,170
+more experiments and workloads seeing
+
+307
+00:13:59,310 --> 00:14:03,180
+that throughput is steady and close to
+
+308
+00:14:01,170 --> 00:14:06,270
+the client load and seeing comparisons
+
+309
+00:14:03,180 --> 00:14:10,410
+with more state-of-the-art systems you
+
+310
+00:14:06,270 --> 00:14:14,160
+are welcome to read the paper to
+
+311
+00:14:10,410 --> 00:14:16,350
+conclude we introduced a new concept of
+
+312
+00:14:14,160 --> 00:14:19,650
+an i/o scheduler for LSM key value
+
+313
+00:14:16,350 --> 00:14:21,600
+stores in silk we coordinate our sharing
+
+314
+00:14:19,650 --> 00:14:23,910
+in order to avoid latency spikes and
+
+315
+00:14:21,600 --> 00:14:25,890
+with this we achieve three orders of
+
+316
+00:14:23,910 --> 00:14:28,439
+magnitude improvement on tail latency in
+
+317
+00:14:25,890 --> 00:14:31,199
+production workloads thank you very much
+
+318
+00:14:28,440 --> 00:14:38,729
+and I will gladly take your questions
+
+319
+00:14:31,200 --> 00:14:38,729
+[Applause]
+
+320
+00:14:39,260 --> 00:14:44,370
+I've been up to good death so I'm just
+
+321
+00:14:42,660 --> 00:14:46,709
+curious you said that you
+
+322
+00:14:44,370 --> 00:14:50,130
+opportunistically figure out that the
+
+323
+00:14:46,710 --> 00:14:53,190
+client is not this is not client work so
+
+324
+00:14:50,130 --> 00:14:55,530
+I can I can spike up the background work
+
+325
+00:14:53,190 --> 00:14:58,950
+but then suddenly client lean come up
+
+326
+00:14:55,530 --> 00:15:01,290
+and if you're taking the iOS then the
+
+327
+00:14:58,950 --> 00:15:03,630
+client will get impacted how do you deal
+
+328
+00:15:01,290 --> 00:15:05,670
+with that situation and do you give up
+
+329
+00:15:03,630 --> 00:15:08,370
+the iOS at that point what do you do so
+
+330
+00:15:05,670 --> 00:15:12,290
+yes thank you for the question
+
+331
+00:15:08,370 --> 00:15:15,480
+silk the granularity at which silk can
+
+332
+00:15:12,290 --> 00:15:17,760
+monitor the clients node can be adapted
+
+333
+00:15:15,480 --> 00:15:20,880
+it's a parameter so you can choose to
+
+334
+00:15:17,760 --> 00:15:24,150
+check as often as you want this might
+
+335
+00:15:20,880 --> 00:15:26,400
+have some impact on on performance but
+
+336
+00:15:24,150 --> 00:15:30,930
+then after you realize that the client
+
+337
+00:15:26,400 --> 00:15:32,850
+spikes in load it's it's almost
+
+338
+00:15:30,930 --> 00:15:35,609
+immediate that you can throttle the
+
+339
+00:15:32,850 --> 00:15:38,370
+compaction so so there is the delay
+
+340
+00:15:35,610 --> 00:15:40,830
+between throttling the compaction and
+
+341
+00:15:38,370 --> 00:15:43,240
+the thing that it has been throttled is
+
+342
+00:15:40,830 --> 00:15:46,100
+really small okay thank you
+
+343
+00:15:43,240 --> 00:15:49,480
+hello Asha from purdue university
+
+344
+00:15:46,100 --> 00:15:53,030
+related to the same question
+
+345
+00:15:49,480 --> 00:15:55,940
+due to the opportunistic location of the
+
+346
+00:15:53,030 --> 00:15:59,660
+throttling a new evaluation issue that
+
+347
+00:15:55,940 --> 00:16:02,360
+you used why CSB and I think why CSB has
+
+348
+00:15:59,660 --> 00:16:05,480
+this constant number of operations per
+
+349
+00:16:02,360 --> 00:16:07,730
+second over time so how did you evaluate
+
+350
+00:16:05,480 --> 00:16:09,230
+the effectiveness of this opportunistic
+
+351
+00:16:07,730 --> 00:16:12,140
+threat Ringo to ICSP
+
+352
+00:16:09,230 --> 00:16:13,490
+so thank you yes that's that's a good
+
+353
+00:16:12,140 --> 00:16:17,900
+question
+
+354
+00:16:13,490 --> 00:16:21,170
+we ran both so we run both why CSB where
+
+355
+00:16:17,900 --> 00:16:24,439
+the load is constant and why CSB that's
+
+356
+00:16:21,170 --> 00:16:26,689
+that has these peaks and valleys which
+
+357
+00:16:24,440 --> 00:16:30,410
+are similar to what we saw in the
+
+358
+00:16:26,690 --> 00:16:32,780
+production workload of course if you run
+
+359
+00:16:30,410 --> 00:16:34,579
+a peak throughput for a very long time
+
+360
+00:16:32,780 --> 00:16:39,319
+as we also show in the paper
+
+361
+00:16:34,580 --> 00:16:42,140
+eventually silk won't be able to do
+
+362
+00:16:39,320 --> 00:16:45,620
+anything about it because there is too
+
+363
+00:16:42,140 --> 00:16:47,840
+much backlog for compactions so yes
+
+364
+00:16:45,620 --> 00:16:50,330
+indeed if you have a big peak throughput
+
+365
+00:16:47,840 --> 00:16:56,000
+the opportunistic compaction will just
+
+366
+00:16:50,330 --> 00:16:59,210
+throttle the compaction Thank You Joan
+
+367
+00:16:56,000 --> 00:17:01,670
+some from ebay Thank You procurator and
+
+368
+00:16:59,210 --> 00:17:05,209
+I think if you delay the higher-level
+
+369
+00:17:01,670 --> 00:17:07,040
+compaction then maybe then make us with
+
+370
+00:17:05,209 --> 00:17:12,410
+performance degradation so have you ever
+
+371
+00:17:07,040 --> 00:17:16,339
+major latencies yes thank you yes we
+
+372
+00:17:12,410 --> 00:17:19,189
+have so as I said here I I focused on
+
+373
+00:17:16,339 --> 00:17:22,310
+rights because I thought it was the less
+
+374
+00:17:19,189 --> 00:17:24,380
+intuitive case but we we have seen the
+
+375
+00:17:22,310 --> 00:17:27,458
+same kinds of latency spikes in both
+
+376
+00:17:24,380 --> 00:17:29,870
+reads and writes and with our solution
+
+377
+00:17:27,459 --> 00:17:33,140
+both the read and the write latency
+
+378
+00:17:29,870 --> 00:17:35,449
+becomes low so there is there is very
+
+379
+00:17:33,140 --> 00:17:42,650
+little I mean there is no performance
+
+380
+00:17:35,450 --> 00:17:45,200
+degradation for which the reduced sure
+
+381
+00:17:42,650 --> 00:17:47,050
+so think if we think about these higher
+
+382
+00:17:45,200 --> 00:17:50,690
+level compactions that are getting
+
+383
+00:17:47,050 --> 00:17:53,480
+they're getting delayed right but even
+
+384
+00:17:50,690 --> 00:17:55,910
+like that on each level of the LSM tree
+
+385
+00:17:53,480 --> 00:17:56,750
+if we get to that point where we want to
+
+386
+00:17:55,910 --> 00:17:59,270
+read from
+
+387
+00:17:56,750 --> 00:18:02,870
+from lower levels there is at most one
+
+388
+00:17:59,270 --> 00:18:05,210
+file that we check because the files on
+
+389
+00:18:02,870 --> 00:18:10,280
+lower levels have non overlapping key
+
+390
+00:18:05,210 --> 00:18:13,580
+ranges and we have we basically have one
+
+391
+00:18:10,280 --> 00:18:17,210
+possible place in addition if we use the
+
+392
+00:18:13,580 --> 00:18:19,580
+bloom filters we can we can even discard
+
+393
+00:18:17,210 --> 00:18:21,640
+levels altogether if we know for sure
+
+394
+00:18:19,580 --> 00:18:24,500
+that the key won't be in that range
+
+395
+00:18:21,640 --> 00:18:26,110
+right thank you thank you all right
+
+396
+00:18:24,500 --> 00:18:31,500
+let's thank the speaker
+
+397
+00:18:26,110 --> 00:18:31,500
+[Applause]
+

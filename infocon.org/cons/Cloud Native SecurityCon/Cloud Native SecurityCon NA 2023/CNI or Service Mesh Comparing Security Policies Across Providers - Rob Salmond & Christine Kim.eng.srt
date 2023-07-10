@@ -1,0 +1,3356 @@
+﻿1
+00:00:00,000 --> 00:00:03,959
+welcome uh my our talk is called cni or
+
+2
+00:00:03,959 --> 00:00:06,779
+service mesh comparing security policies
+
+3
+00:00:06,779 --> 00:00:08,099
+across providers so there are a couple
+
+4
+00:00:08,099 --> 00:00:10,440
+different ways you can enforce policy in
+
+5
+00:00:10,440 --> 00:00:11,700
+your clusters and we're going to talk
+
+6
+00:00:11,700 --> 00:00:13,500
+about how they fit together so some of
+
+7
+00:00:13,500 --> 00:00:15,839
+the ways they go sideways
+
+8
+00:00:15,839 --> 00:00:18,779
+uh this is my colleague Christine who is
+
+9
+00:00:18,779 --> 00:00:21,539
+in developer relations at Google
+
+10
+00:00:21,539 --> 00:00:24,180
+and this is Rob he's an instructor at
+
+11
+00:00:24,180 --> 00:00:27,119
+Super orbital so many of the talks that
+
+12
+00:00:27,119 --> 00:00:29,699
+we're gonna talk about today they're
+
+13
+00:00:29,699 --> 00:00:31,560
+okay our slides there are a lot of them
+
+14
+00:00:31,560 --> 00:00:33,120
+and we're going to be going fast so you
+
+15
+00:00:33,120 --> 00:00:34,920
+know just go to the PDF afterwards so
+
+16
+00:00:34,920 --> 00:00:36,719
+don't try to take pictures really it
+
+17
+00:00:36,719 --> 00:00:38,160
+will be a nightmare
+
+18
+00:00:38,160 --> 00:00:40,320
+all right so a little bit about what
+
+19
+00:00:40,320 --> 00:00:41,460
+we're going to cover today so we're
+
+20
+00:00:41,460 --> 00:00:43,200
+going to talk about what's a cni what's
+
+21
+00:00:43,200 --> 00:00:45,420
+a service mesh go back to the basics
+
+22
+00:00:45,420 --> 00:00:47,820
+um what and where and how policy is
+
+23
+00:00:47,820 --> 00:00:50,039
+enforced some security gotchas that you
+
+24
+00:00:50,039 --> 00:00:52,079
+should probably be aware of mitigations
+
+25
+00:00:52,079 --> 00:00:53,700
+and how the field is evolving in the
+
+26
+00:00:53,700 --> 00:00:55,500
+future and lastly what you can do about
+
+27
+00:00:55,500 --> 00:00:56,460
+it
+
+28
+00:00:56,460 --> 00:00:58,320
+all right so the concepts that we are
+
+29
+00:00:58,320 --> 00:01:00,539
+discussing today they broadly apply to a
+
+30
+00:01:00,539 --> 00:01:03,239
+lot of service meshes and cnis in the
+
+31
+00:01:03,239 --> 00:01:05,040
+cncf ecosystem but today we're going to
+
+32
+00:01:05,040 --> 00:01:06,299
+be talking about psyllium and istio
+
+33
+00:01:06,299 --> 00:01:08,640
+because they're the big fish in the cncf
+
+34
+00:01:08,640 --> 00:01:11,520
+pond they are in the top 10 cncf
+
+35
+00:01:11,520 --> 00:01:14,040
+projects by commits
+
+36
+00:01:14,040 --> 00:01:17,400
+contributors comments issues
+
+37
+00:01:17,400 --> 00:01:19,680
+and both of them have announced large
+
+38
+00:01:19,680 --> 00:01:21,900
+under changes that are going to
+
+39
+00:01:21,900 --> 00:01:24,840
+drastically change the fundamental ways
+
+40
+00:01:24,840 --> 00:01:27,780
+that policy is enforced so before I tell
+
+41
+00:01:27,780 --> 00:01:29,159
+you about these changes Rob's going to
+
+42
+00:01:29,159 --> 00:01:32,100
+take you through some of the basics
+
+43
+00:01:32,100 --> 00:01:35,759
+all right a quick review apologies if
+
+44
+00:01:35,759 --> 00:01:37,740
+this is very remedial for you but don't
+
+45
+00:01:37,740 --> 00:01:39,600
+worry like Christine said we're going to
+
+46
+00:01:39,600 --> 00:01:41,220
+go fast so the kubernetes networking
+
+47
+00:01:41,220 --> 00:01:43,200
+model requires that every pod can talk
+
+48
+00:01:43,200 --> 00:01:45,600
+to every other pod directly without Nat
+
+49
+00:01:45,600 --> 00:01:47,460
+but pods cannot just talk to each other
+
+50
+00:01:47,460 --> 00:01:50,820
+this needs to be handled by the cni cni
+
+51
+00:01:50,820 --> 00:01:52,979
+is the container network interface which
+
+52
+00:01:52,979 --> 00:01:54,299
+is basically a thing that lets your
+
+53
+00:01:54,299 --> 00:01:56,100
+container runtime delegate network
+
+54
+00:01:56,100 --> 00:01:58,740
+configuration to some other component
+
+55
+00:01:58,740 --> 00:02:02,340
+what kind of changes could a cni perform
+
+56
+00:02:02,340 --> 00:02:04,920
+well in the context of a pod talking to
+
+57
+00:02:04,920 --> 00:02:07,320
+another pod the most commonly requested
+
+58
+00:02:07,320 --> 00:02:09,300
+changes are those that do the initial
+
+59
+00:02:09,300 --> 00:02:11,819
+sub setup of networking so we're not
+
+60
+00:02:11,819 --> 00:02:14,160
+talking about implementing networking on
+
+61
+00:02:14,160 --> 00:02:15,959
+their own CSI plugins don't do this they
+
+62
+00:02:15,959 --> 00:02:17,160
+stand on the shoulders of giants and
+
+63
+00:02:17,160 --> 00:02:18,959
+just configure your kernel to do the
+
+64
+00:02:18,959 --> 00:02:20,280
+networking for you
+
+65
+00:02:20,280 --> 00:02:22,860
+now cni is just an interface you need a
+
+66
+00:02:22,860 --> 00:02:26,580
+plug-in to actually do the change uh a
+
+67
+00:02:26,580 --> 00:02:27,540
+plug-in is just something that
+
+68
+00:02:27,540 --> 00:02:29,099
+implements the interface
+
+69
+00:02:29,099 --> 00:02:31,500
+and it is what answers the request when
+
+70
+00:02:31,500 --> 00:02:33,239
+the call comes in to make changes to the
+
+71
+00:02:33,239 --> 00:02:34,920
+network configuration
+
+72
+00:02:34,920 --> 00:02:36,840
+so some examples one of the first ones
+
+73
+00:02:36,840 --> 00:02:38,280
+was the bridge plug-in this was a
+
+74
+00:02:38,280 --> 00:02:39,540
+reference implementation from the
+
+75
+00:02:39,540 --> 00:02:41,340
+container networking GitHub work you can
+
+76
+00:02:41,340 --> 00:02:43,200
+go have a look at it just gets you a
+
+77
+00:02:43,200 --> 00:02:45,239
+basic connectivity between pods using
+
+78
+00:02:45,239 --> 00:02:47,400
+virtual and ethernet devices and a Linux
+
+79
+00:02:47,400 --> 00:02:48,900
+Bridge there's no support for Network
+
+80
+00:02:48,900 --> 00:02:50,220
+policy whatsoever
+
+81
+00:02:50,220 --> 00:02:51,840
+there's another popular plugin called
+
+82
+00:02:51,840 --> 00:02:53,940
+Calico also does the virtual interface
+
+83
+00:02:53,940 --> 00:02:55,379
+thing it doesn't bother with the bridges
+
+84
+00:02:55,379 --> 00:02:57,720
+but it does add support for Network
+
+85
+00:02:57,720 --> 00:03:01,200
+policy and it does so with IP tables
+
+86
+00:03:01,200 --> 00:03:02,760
+we're going to use a lot of wizards in
+
+87
+00:03:02,760 --> 00:03:03,780
+this so keep your eyes out for the
+
+88
+00:03:03,780 --> 00:03:05,580
+Wizards
+
+89
+00:03:05,580 --> 00:03:08,459
+uh another big plugin out there is weave
+
+90
+00:03:08,459 --> 00:03:11,519
+um it relies on the internal openv
+
+91
+00:03:11,519 --> 00:03:14,159
+switch implementation for its data plane
+
+92
+00:03:14,159 --> 00:03:16,319
+and it also has Network policy support
+
+93
+00:03:16,319 --> 00:03:19,140
+does this with IP tables
+
+94
+00:03:19,140 --> 00:03:22,220
+and the big one psyllium as we know uses
+
+95
+00:03:22,220 --> 00:03:25,739
+evpf for uh its connectivity uses a
+
+96
+00:03:25,739 --> 00:03:27,420
+technology called Express data path that
+
+97
+00:03:27,420 --> 00:03:29,040
+lets it short-circuit much of the
+
+98
+00:03:29,040 --> 00:03:31,019
+network stat for a huge speed
+
+99
+00:03:31,019 --> 00:03:33,659
+Improvement and that is also where it
+
+100
+00:03:33,659 --> 00:03:35,220
+does its Network policy implementation
+
+101
+00:03:35,220 --> 00:03:37,440
+so Network policy is implemented by eppf
+
+102
+00:03:37,440 --> 00:03:40,500
+programs in silly
+
+103
+00:03:40,500 --> 00:03:43,019
+so most of the popular cni plugins out
+
+104
+00:03:43,019 --> 00:03:45,060
+there are going to set up connectivity
+
+105
+00:03:45,060 --> 00:03:47,340
+between pods they are going to have some
+
+106
+00:03:47,340 --> 00:03:48,900
+kind of support for some kind of network
+
+107
+00:03:48,900 --> 00:03:50,220
+policy
+
+108
+00:03:50,220 --> 00:03:52,080
+and you can basically think of them as
+
+109
+00:03:52,080 --> 00:03:55,379
+like a cloud native sdn
+
+110
+00:03:55,379 --> 00:03:57,540
+okay so that's cni side the stock
+
+111
+00:03:57,540 --> 00:04:00,659
+service mesh uh you have Micro Services
+
+112
+00:04:00,659 --> 00:04:03,840
+good job uh you want to have some
+
+113
+00:04:03,840 --> 00:04:05,519
+standard features across all of your
+
+114
+00:04:05,519 --> 00:04:07,860
+microservices so let's say you want some
+
+115
+00:04:07,860 --> 00:04:10,080
+observability you go out you write some
+
+116
+00:04:10,080 --> 00:04:12,299
+code and you want to export Prometheus
+
+117
+00:04:12,299 --> 00:04:13,560
+metrics for example
+
+118
+00:04:13,560 --> 00:04:15,659
+now you want to add security so you go
+
+119
+00:04:15,659 --> 00:04:16,858
+write some more code you have
+
+120
+00:04:16,858 --> 00:04:18,660
+authorization you have authentication
+
+121
+00:04:18,660 --> 00:04:20,579
+you bake them into your client libraries
+
+122
+00:04:20,579 --> 00:04:21,660
+you bake them into your service
+
+123
+00:04:21,660 --> 00:04:23,220
+Frameworks
+
+124
+00:04:23,220 --> 00:04:25,199
+you want reliability so now you go write
+
+125
+00:04:25,199 --> 00:04:26,639
+some more code you add Active Health
+
+126
+00:04:26,639 --> 00:04:28,919
+checking you add automatic retries for
+
+127
+00:04:28,919 --> 00:04:31,380
+failures you add backoffs to protect
+
+128
+00:04:31,380 --> 00:04:33,720
+yourself from the Thundering Hertz
+
+129
+00:04:33,720 --> 00:04:35,820
+and then one day at stand up when nobody
+
+130
+00:04:35,820 --> 00:04:38,340
+even asked somebody starts talking about
+
+131
+00:04:38,340 --> 00:04:40,620
+code duplication
+
+132
+00:04:40,620 --> 00:04:43,080
+something something let's refactor
+
+133
+00:04:43,080 --> 00:04:45,300
+everything out into a nice Standalone
+
+134
+00:04:45,300 --> 00:04:47,160
+client Library
+
+135
+00:04:47,160 --> 00:04:49,259
+well everything is going well with this
+
+136
+00:04:49,259 --> 00:04:51,960
+approach right up until the moment some
+
+137
+00:04:51,960 --> 00:04:54,240
+idiot wants to add a cool new language
+
+138
+00:04:54,240 --> 00:04:57,000
+to your stack
+
+139
+00:04:57,000 --> 00:05:00,360
+or a weird one whatever I don't judge
+
+140
+00:05:00,360 --> 00:05:02,639
+so then somebody has a bright idea let's
+
+141
+00:05:02,639 --> 00:05:04,500
+move the whole Library out of the
+
+142
+00:05:04,500 --> 00:05:06,960
+process entirely
+
+143
+00:05:06,960 --> 00:05:09,419
+and bake it into the infrastructure
+
+144
+00:05:09,419 --> 00:05:10,919
+that way you get all the features you
+
+145
+00:05:10,919 --> 00:05:12,900
+want no matter what is in your
+
+146
+00:05:12,900 --> 00:05:16,979
+disgusting Tech Sac you sicko
+
+147
+00:05:16,979 --> 00:05:19,080
+the most popular service meshes offer
+
+148
+00:05:19,080 --> 00:05:21,600
+observability they'll set up identity
+
+149
+00:05:21,600 --> 00:05:23,699
+encryption Access Control load balancing
+
+150
+00:05:23,699 --> 00:05:27,000
+a bunch of other cool features
+
+151
+00:05:27,000 --> 00:05:28,979
+so for a concrete example of how this
+
+152
+00:05:28,979 --> 00:05:30,720
+works we'll use our same two pods who
+
+153
+00:05:30,720 --> 00:05:32,520
+want to communicate with each other
+
+154
+00:05:32,520 --> 00:05:34,440
+and all that common logic that we just
+
+155
+00:05:34,440 --> 00:05:36,960
+talked about lives inside a container in
+
+156
+00:05:36,960 --> 00:05:39,360
+the Pod it's the sidecar proxy
+
+157
+00:05:39,360 --> 00:05:41,100
+so when this POG wants to talk to this
+
+158
+00:05:41,100 --> 00:05:43,380
+other pod the mesh will have already
+
+159
+00:05:43,380 --> 00:05:46,800
+used iptables to redirect transparently
+
+160
+00:05:46,800 --> 00:05:48,419
+all the traffic through the sidecar
+
+161
+00:05:48,419 --> 00:05:50,039
+proxy so it can do all the things that
+
+162
+00:05:50,039 --> 00:05:52,380
+we just talked about
+
+163
+00:05:52,380 --> 00:05:54,960
+now because service mesh is not a cni
+
+164
+00:05:54,960 --> 00:05:56,699
+plug-in it has nothing to do with giving
+
+165
+00:05:56,699 --> 00:05:59,039
+pods interfaces or configuring
+
+166
+00:05:59,039 --> 00:06:01,199
+connectivity it assumes you have already
+
+167
+00:06:01,199 --> 00:06:03,240
+done that and it just uses whatever
+
+168
+00:06:03,240 --> 00:06:06,180
+connectivity is already available
+
+169
+00:06:06,180 --> 00:06:08,220
+so if we recall the bridge plug-in
+
+170
+00:06:08,220 --> 00:06:10,380
+example we try to mix that in a
+
+171
+00:06:10,380 --> 00:06:12,240
+visualization with a service mesh it
+
+172
+00:06:12,240 --> 00:06:14,100
+would look a little more like this but
+
+173
+00:06:14,100 --> 00:06:16,160
+this is a very busy diagram
+
+174
+00:06:16,160 --> 00:06:19,199
+so for Simplicity from here on out the
+
+175
+00:06:19,199 --> 00:06:20,820
+rest of our diagrams are going to just
+
+176
+00:06:20,820 --> 00:06:22,680
+assume that container networking and
+
+177
+00:06:22,680 --> 00:06:24,240
+iptibles redirection are already
+
+178
+00:06:24,240 --> 00:06:25,620
+configured so we're going to show you a
+
+179
+00:06:25,620 --> 00:06:28,160
+whole bunch more stuff
+
+180
+00:06:28,440 --> 00:06:31,620
+so in this setup rcni could be using
+
+181
+00:06:31,620 --> 00:06:34,380
+ebpf to enforce Network policy or it
+
+182
+00:06:34,380 --> 00:06:35,940
+could be using item tables to enforce
+
+183
+00:06:35,940 --> 00:06:38,880
+Network policy but whatever it's using
+
+184
+00:06:38,880 --> 00:06:40,800
+the cni plug-in policy enforcement
+
+185
+00:06:40,800 --> 00:06:44,280
+happens here in the kernel Well Service
+
+186
+00:06:44,280 --> 00:06:46,680
+mesh policy enforcement happens here at
+
+187
+00:06:46,680 --> 00:06:48,360
+the Sidecar
+
+188
+00:06:48,360 --> 00:06:50,280
+so this brings us to a place where we
+
+189
+00:06:50,280 --> 00:06:52,080
+now have two different policy
+
+190
+00:06:52,080 --> 00:06:54,600
+enforcement points in the network
+
+191
+00:06:54,600 --> 00:06:57,000
+where we have one wizard living in a
+
+192
+00:06:57,000 --> 00:06:59,460
+sidecar one wizard living in the kernel
+
+193
+00:06:59,460 --> 00:07:02,520
+now I am compelled by cncf bylaw to
+
+194
+00:07:02,520 --> 00:07:04,560
+inform you that no large language models
+
+195
+00:07:04,560 --> 00:07:06,120
+were harmed in the creation of this
+
+196
+00:07:06,120 --> 00:07:08,479
+image
+
+197
+00:07:09,360 --> 00:07:12,960
+okay wizard number one the cni what can
+
+198
+00:07:12,960 --> 00:07:16,199
+you actually enforce
+
+199
+00:07:16,199 --> 00:07:20,520
+now Calico psyllium other big cnis they
+
+200
+00:07:20,520 --> 00:07:23,580
+often offer their own network policy but
+
+201
+00:07:23,580 --> 00:07:26,039
+better crds that have fancier stuff in
+
+202
+00:07:26,039 --> 00:07:28,020
+them I'm going to talk about just the
+
+203
+00:07:28,020 --> 00:07:30,240
+vanilla Network policy that comes with
+
+204
+00:07:30,240 --> 00:07:31,620
+all kubernetes
+
+205
+00:07:31,620 --> 00:07:33,780
+just to keep things simple but basically
+
+206
+00:07:33,780 --> 00:07:36,960
+you can apply policy to a broad range of
+
+207
+00:07:36,960 --> 00:07:40,080
+traffic types and then you can make a
+
+208
+00:07:40,080 --> 00:07:43,139
+block or permit decision on that traffic
+
+209
+00:07:43,139 --> 00:07:45,660
+based on some of the characteristics of
+
+210
+00:07:45,660 --> 00:07:48,120
+the traffic itself start with kind of
+
+211
+00:07:48,120 --> 00:07:49,500
+things like don't allow things going to
+
+212
+00:07:49,500 --> 00:07:52,259
+the cider and so forth
+
+213
+00:07:52,259 --> 00:07:54,539
+so we look at our basic setup
+
+214
+00:07:54,539 --> 00:07:56,880
+let's say the pot on the left isn't a
+
+215
+00:07:56,880 --> 00:07:59,160
+namespace called front end and the pot
+
+216
+00:07:59,160 --> 00:08:01,440
+on the right is the namespace in a name
+
+217
+00:08:01,440 --> 00:08:03,900
+space called API
+
+218
+00:08:03,900 --> 00:08:05,460
+let's just say we have a network policy
+
+219
+00:08:05,460 --> 00:08:07,139
+here that says that pods in the front
+
+220
+00:08:07,139 --> 00:08:09,060
+end namespace are permitted to connect
+
+221
+00:08:09,060 --> 00:08:12,360
+to the pods in the API namespace
+
+222
+00:08:12,360 --> 00:08:15,599
+well iptables and ebpf don't know
+
+223
+00:08:15,599 --> 00:08:18,360
+anything about kubernetes named basis
+
+224
+00:08:18,360 --> 00:08:20,879
+so instead what's happening is that the
+
+225
+00:08:20,879 --> 00:08:23,160
+cni plugin has implemented uh something
+
+226
+00:08:23,160 --> 00:08:25,979
+called a network policy controller and
+
+227
+00:08:25,979 --> 00:08:27,660
+that component is going to be querying
+
+228
+00:08:27,660 --> 00:08:30,180
+the kubernetes API and keeping tabs on
+
+229
+00:08:30,180 --> 00:08:32,219
+all the pods and all the namespaces so
+
+230
+00:08:32,219 --> 00:08:33,360
+that it can keep track of those IP
+
+231
+00:08:33,360 --> 00:08:35,099
+addresses
+
+232
+00:08:35,099 --> 00:08:37,140
+so once it has those IP addresses it's
+
+233
+00:08:37,140 --> 00:08:38,399
+then going to be either updating
+
+234
+00:08:38,399 --> 00:08:40,080
+iptables rules or it's going to be
+
+235
+00:08:40,080 --> 00:08:42,240
+updating an edpf map that will Implement
+
+236
+00:08:42,240 --> 00:08:44,219
+that same logic
+
+237
+00:08:44,219 --> 00:08:46,620
+so if a connection comes out of this pod
+
+238
+00:08:46,620 --> 00:08:48,420
+in the front-end namespace it can be
+
+239
+00:08:48,420 --> 00:08:50,279
+checked against that table and dropped
+
+240
+00:08:50,279 --> 00:08:52,560
+or permitted accordingly
+
+241
+00:08:52,560 --> 00:08:55,860
+so hopefully not too tricky
+
+242
+00:08:55,860 --> 00:08:58,560
+good news for you yeah you know Drive
+
+243
+00:08:58,560 --> 00:09:00,660
+scenario because don't we all love to
+
+244
+00:09:00,660 --> 00:09:01,800
+drive scenario when we're talking about
+
+245
+00:09:01,800 --> 00:09:04,080
+the way people get into your clusters
+
+246
+00:09:04,080 --> 00:09:06,660
+so let's say an attacker has popped a
+
+247
+00:09:06,660 --> 00:09:09,120
+shell in a vulnerable pod in some other
+
+248
+00:09:09,120 --> 00:09:11,760
+name space that does not have access to
+
+249
+00:09:11,760 --> 00:09:13,920
+your API
+
+250
+00:09:13,920 --> 00:09:15,899
+now we know that our cni plugin is
+
+251
+00:09:15,899 --> 00:09:17,760
+keeping tabs on pod IP addresses to
+
+252
+00:09:17,760 --> 00:09:20,279
+update those iptables rules those ebpf
+
+253
+00:09:20,279 --> 00:09:22,740
+Maps or whatever it's using
+
+254
+00:09:22,740 --> 00:09:24,839
+now let's say this pod is in a permitted
+
+255
+00:09:24,839 --> 00:09:27,240
+namespace and it goes away for some
+
+256
+00:09:27,240 --> 00:09:28,260
+reason
+
+257
+00:09:28,260 --> 00:09:29,880
+and then it will get recreated with the
+
+258
+00:09:29,880 --> 00:09:31,380
+new IP address this kind of thing
+
+259
+00:09:31,380 --> 00:09:33,300
+happens all the time that's why we run
+
+260
+00:09:33,300 --> 00:09:34,680
+kubernetes
+
+261
+00:09:34,680 --> 00:09:38,040
+so now the clock starts
+
+262
+00:09:38,040 --> 00:09:40,260
+if there is enough churn in the
+
+263
+00:09:40,260 --> 00:09:42,600
+compromised deployment this leaves a
+
+264
+00:09:42,600 --> 00:09:45,180
+narrow window of opportunity for a
+
+265
+00:09:45,180 --> 00:09:47,880
+connection from a compromised pod to
+
+266
+00:09:47,880 --> 00:09:50,160
+make it past the check
+
+267
+00:09:50,160 --> 00:09:53,160
+before our Cloud native sdn catches up
+
+268
+00:09:53,160 --> 00:09:55,080
+and cuts the cord
+
+269
+00:09:55,080 --> 00:09:57,180
+now this is not a new idea this type of
+
+270
+00:09:57,180 --> 00:09:59,339
+race condition has been around as long
+
+271
+00:09:59,339 --> 00:10:00,959
+as software-defined networks have been
+
+272
+00:10:00,959 --> 00:10:01,740
+around
+
+273
+00:10:01,740 --> 00:10:03,480
+the only thing that's changed is that
+
+274
+00:10:03,480 --> 00:10:04,980
+now it's in kubernetes and so we need to
+
+275
+00:10:04,980 --> 00:10:06,240
+consider this when we're thinking about
+
+276
+00:10:06,240 --> 00:10:07,380
+our clusters
+
+277
+00:10:07,380 --> 00:10:09,060
+if you want details there's a blog post
+
+278
+00:10:09,060 --> 00:10:11,160
+here that will show you the specifics I
+
+279
+00:10:11,160 --> 00:10:13,200
+will talk about mitigation but not yet
+
+280
+00:10:13,200 --> 00:10:16,080
+because I'm going to switch gears and
+
+281
+00:10:16,080 --> 00:10:19,920
+compare to service mesh
+
+282
+00:10:19,920 --> 00:10:22,140
+so what can you enforce with service
+
+283
+00:10:22,140 --> 00:10:25,019
+mesh wizard number two again you can
+
+284
+00:10:25,019 --> 00:10:27,899
+apply policy on a whole range of network
+
+285
+00:10:27,899 --> 00:10:28,980
+traffic
+
+286
+00:10:28,980 --> 00:10:31,320
+and you can conditionally block or
+
+287
+00:10:31,320 --> 00:10:33,000
+permit that traffic based on
+
+288
+00:10:33,000 --> 00:10:34,740
+characteristics of the traffic itself
+
+289
+00:10:34,740 --> 00:10:38,100
+but because service mesh lives at layer
+
+290
+00:10:38,100 --> 00:10:40,980
+seven the range of characteristics that
+
+291
+00:10:40,980 --> 00:10:42,839
+you can use to make a block or permit
+
+292
+00:10:42,839 --> 00:10:44,160
+decision is broader because it can
+
+293
+00:10:44,160 --> 00:10:45,959
+inspect the traffic look inside of the
+
+294
+00:10:45,959 --> 00:10:47,640
+HTTP headers and so forth so you can say
+
+295
+00:10:47,640 --> 00:10:49,920
+don't allow gets but you can allow posts
+
+296
+00:10:49,920 --> 00:10:52,260
+or something like that
+
+297
+00:10:52,260 --> 00:10:55,140
+I'm going to focus on these two
+
+298
+00:10:55,140 --> 00:10:57,060
+conditions for the moment because the
+
+299
+00:10:57,060 --> 00:10:58,680
+way these two conditions are implemented
+
+300
+00:10:58,680 --> 00:11:01,260
+leads to an interesting situation
+
+301
+00:11:01,260 --> 00:11:05,040
+so how are the namespace or service
+
+302
+00:11:05,040 --> 00:11:08,279
+account conditions uh enforced well we
+
+303
+00:11:08,279 --> 00:11:10,140
+look back at our diagram here we know
+
+304
+00:11:10,140 --> 00:11:12,120
+service mesh enforcement happens at the
+
+305
+00:11:12,120 --> 00:11:13,320
+side card
+
+306
+00:11:13,320 --> 00:11:15,180
+so we have the same scenario we've got a
+
+307
+00:11:15,180 --> 00:11:17,040
+pod in the front end namespace we have a
+
+308
+00:11:17,040 --> 00:11:19,440
+pod in the API namespace and we have a
+
+309
+00:11:19,440 --> 00:11:21,420
+policy which permits pods in the front
+
+310
+00:11:21,420 --> 00:11:23,640
+end to talk to pods in the API namespace
+
+311
+00:11:23,640 --> 00:11:25,019
+great
+
+312
+00:11:25,019 --> 00:11:28,680
+now just like iptables just like evpf
+
+313
+00:11:28,680 --> 00:11:31,140
+sidecar proxies also know nothing about
+
+314
+00:11:31,140 --> 00:11:33,560
+kubernetes namespaces
+
+315
+00:11:33,560 --> 00:11:36,060
+instead our service mesh is going to
+
+316
+00:11:36,060 --> 00:11:41,760
+rely on mtls to enforce policy on Source
+
+317
+00:11:41,760 --> 00:11:44,220
+namespace or service account
+
+318
+00:11:44,220 --> 00:11:46,800
+so when a sidecar knows it's going to
+
+319
+00:11:46,800 --> 00:11:48,959
+talk to another side car in the mesh it
+
+320
+00:11:48,959 --> 00:11:51,600
+wraps the outbound Connection in neutral
+
+321
+00:11:51,600 --> 00:11:54,720
+TLS regardless of what it is
+
+322
+00:11:54,720 --> 00:11:57,720
+and the namespace that the request is
+
+323
+00:11:57,720 --> 00:12:01,019
+coming from is encoded in the signed
+
+324
+00:12:01,019 --> 00:12:02,820
+certificate that is used to establish
+
+325
+00:12:02,820 --> 00:12:04,800
+that mtls connection
+
+326
+00:12:04,800 --> 00:12:06,839
+so when the request arrives at the
+
+327
+00:12:06,839 --> 00:12:09,060
+destination side the receiving sidecar
+
+328
+00:12:09,060 --> 00:12:10,980
+does not need to have a list of IP
+
+329
+00:12:10,980 --> 00:12:13,260
+addresses in order to verify that the
+
+330
+00:12:13,260 --> 00:12:14,519
+request is coming from a permitted name
+
+331
+00:12:14,519 --> 00:12:16,860
+space it just needs to look at the
+
+332
+00:12:16,860 --> 00:12:18,959
+contents of the certificate and verify
+
+333
+00:12:18,959 --> 00:12:20,399
+that the signature was signed or the
+
+334
+00:12:20,399 --> 00:12:22,260
+certificate was signed with the key that
+
+335
+00:12:22,260 --> 00:12:25,620
+it trusts and then it will believe that
+
+336
+00:12:25,620 --> 00:12:27,540
+that connection came from where it said
+
+337
+00:12:27,540 --> 00:12:30,240
+it came from so two key takeaways
+
+338
+00:12:30,240 --> 00:12:33,959
+unlike cni land in the service mesh a
+
+339
+00:12:33,959 --> 00:12:37,500
+policy like this does not prevent TCP
+
+340
+00:12:37,500 --> 00:12:40,620
+connections between pods
+
+341
+00:12:40,620 --> 00:12:43,860
+and anyone who can present this client
+
+342
+00:12:43,860 --> 00:12:46,620
+certificate will be trusted as though
+
+343
+00:12:46,620 --> 00:12:47,940
+they're coming from a namespace and
+
+344
+00:12:47,940 --> 00:12:49,560
+service account that are in the
+
+345
+00:12:49,560 --> 00:12:51,480
+certificate regardless of where they
+
+346
+00:12:51,480 --> 00:12:54,000
+actually come from
+
+347
+00:12:54,000 --> 00:12:57,120
+okay I see eyebrows being raised y'all
+
+348
+00:12:57,120 --> 00:12:59,160
+see where I'm going with this that's
+
+349
+00:12:59,160 --> 00:13:00,420
+good
+
+350
+00:13:00,420 --> 00:13:02,160
+the good news is those client
+
+351
+00:13:02,160 --> 00:13:04,800
+certificates are well protected they all
+
+352
+00:13:04,800 --> 00:13:06,360
+live in memory in the sidecar proxy
+
+353
+00:13:06,360 --> 00:13:08,160
+never get written anywhere
+
+354
+00:13:08,160 --> 00:13:09,899
+even if somebody popped a shell in your
+
+355
+00:13:09,899 --> 00:13:11,519
+pod they have their work cut out for
+
+356
+00:13:11,519 --> 00:13:13,740
+them to try to extract it from the
+
+357
+00:13:13,740 --> 00:13:15,000
+process memory
+
+358
+00:13:15,000 --> 00:13:17,820
+so if we assume that that is safe great
+
+359
+00:13:17,820 --> 00:13:20,940
+awarenly certificates come from
+
+360
+00:13:20,940 --> 00:13:23,100
+well all service meshes Implement a
+
+361
+00:13:23,100 --> 00:13:24,899
+controller component and one of the
+
+362
+00:13:24,899 --> 00:13:26,940
+controller components jobs is to Mint
+
+363
+00:13:26,940 --> 00:13:29,100
+new certificates
+
+364
+00:13:29,100 --> 00:13:31,019
+so when a pod with a sidecar starts up
+
+365
+00:13:31,019 --> 00:13:33,600
+it contacts that controller and says can
+
+366
+00:13:33,600 --> 00:13:35,820
+I please have a certificate
+
+367
+00:13:35,820 --> 00:13:38,279
+and to identify itself to the controller
+
+368
+00:13:38,279 --> 00:13:40,860
+it is going to offer up a kubernetes
+
+369
+00:13:40,860 --> 00:13:43,500
+service account token so this is how
+
+370
+00:13:43,500 --> 00:13:45,120
+identity is bootstrapped in this
+
+371
+00:13:45,120 --> 00:13:46,320
+environment
+
+372
+00:13:46,320 --> 00:13:48,000
+now that token is going to contain some
+
+373
+00:13:48,000 --> 00:13:51,060
+claims and those claims are the service
+
+374
+00:13:51,060 --> 00:13:52,800
+account and the namespace that the Pod
+
+375
+00:13:52,800 --> 00:13:54,420
+is running it
+
+376
+00:13:54,420 --> 00:13:55,980
+and the controller is going to use those
+
+377
+00:13:55,980 --> 00:13:59,220
+claims when it mints the certificate
+
+378
+00:13:59,220 --> 00:14:01,260
+good news everyone I have another
+
+379
+00:14:01,260 --> 00:14:03,600
+contrived scenario for you
+
+380
+00:14:03,600 --> 00:14:05,820
+let's say an attacker has popped a shell
+
+381
+00:14:05,820 --> 00:14:07,560
+in a vulnerable pod that does not have
+
+382
+00:14:07,560 --> 00:14:10,638
+access to your API again
+
+383
+00:14:10,740 --> 00:14:13,500
+if they can find a vulnerability in this
+
+384
+00:14:13,500 --> 00:14:16,200
+pod which gives them a way to steal the
+
+385
+00:14:16,200 --> 00:14:18,420
+service count token from this Sidecar
+
+386
+00:14:18,420 --> 00:14:20,399
+maybe through directory traversal
+
+387
+00:14:20,399 --> 00:14:22,560
+develop vulnerability maybe through
+
+388
+00:14:22,560 --> 00:14:25,260
+server-side request forging maybe they
+
+389
+00:14:25,260 --> 00:14:27,240
+just bat their eyelashes and say pretty
+
+390
+00:14:27,240 --> 00:14:29,700
+please however it's done
+
+391
+00:14:29,700 --> 00:14:32,700
+they could then use that stolen token to
+
+392
+00:14:32,700 --> 00:14:34,620
+talk to the service mesh controller and
+
+393
+00:14:34,620 --> 00:14:37,380
+request a client certificate and then
+
+394
+00:14:37,380 --> 00:14:39,300
+use that client certificate to make a
+
+395
+00:14:39,300 --> 00:14:41,279
+fully encrypted and verified connection
+
+396
+00:14:41,279 --> 00:14:43,920
+to the Pod that you thought was
+
+397
+00:14:43,920 --> 00:14:46,740
+unreachable
+
+398
+00:14:46,740 --> 00:14:48,720
+there's a repo right here that shows how
+
+399
+00:14:48,720 --> 00:14:50,339
+to do this you can check it out for
+
+400
+00:14:50,339 --> 00:14:52,800
+step-by-step details
+
+401
+00:14:52,800 --> 00:14:55,800
+so there are two ways to deal with this
+
+402
+00:14:55,800 --> 00:14:57,000
+problem
+
+403
+00:14:57,000 --> 00:14:58,740
+solution number one is to follow the
+
+404
+00:14:58,740 --> 00:15:01,019
+Unix philosophy a tool should do one
+
+405
+00:15:01,019 --> 00:15:03,060
+thing and do it well and you should be
+
+406
+00:15:03,060 --> 00:15:05,040
+able to use your tools together
+
+407
+00:15:05,040 --> 00:15:08,220
+so right tool right job use your service
+
+408
+00:15:08,220 --> 00:15:10,980
+mesh to enforce layer 7 policy at the
+
+409
+00:15:10,980 --> 00:15:14,279
+sidecar use your cni to enforce layer 4
+
+410
+00:15:14,279 --> 00:15:16,740
+policy in the kernel
+
+411
+00:15:16,740 --> 00:15:18,779
+and then
+
+412
+00:15:18,779 --> 00:15:21,060
+if an attacker with a stolen client
+
+413
+00:15:21,060 --> 00:15:22,519
+search
+
+414
+00:15:22,519 --> 00:15:25,079
+an attacker with a stolen client so it
+
+415
+00:15:25,079 --> 00:15:27,360
+will be stopped by your cni plugin
+
+416
+00:15:27,360 --> 00:15:29,339
+because they're coming from the wrong IP
+
+417
+00:15:29,339 --> 00:15:30,120
+address
+
+418
+00:15:30,120 --> 00:15:33,180
+while an attacker with a stolen IP
+
+419
+00:15:33,180 --> 00:15:35,459
+address will be blocked by the sidecar
+
+420
+00:15:35,459 --> 00:15:37,260
+proxy because they haven't got the right
+
+421
+00:15:37,260 --> 00:15:40,320
+mtls client sir
+
+422
+00:15:40,320 --> 00:15:41,880
+and
+
+423
+00:15:41,880 --> 00:15:44,339
+this is not a hot take this in fact is
+
+424
+00:15:44,339 --> 00:15:46,500
+exactly what istio has recommended doing
+
+425
+00:15:46,500 --> 00:15:49,139
+for years defense and depth is not a new
+
+426
+00:15:49,139 --> 00:15:51,000
+idea
+
+427
+00:15:51,000 --> 00:15:52,980
+now that is one way to approach this
+
+428
+00:15:52,980 --> 00:15:54,839
+problem but there is a more interesting
+
+429
+00:15:54,839 --> 00:15:57,360
+approach to problems like this and that
+
+430
+00:15:57,360 --> 00:15:58,620
+is what Christine is going to tell you
+
+431
+00:15:58,620 --> 00:16:00,899
+about all right so the second approach
+
+432
+00:16:00,899 --> 00:16:03,660
+is the evolution of the projects itself
+
+433
+00:16:03,660 --> 00:16:05,459
+within the ecosystem so we're kind of
+
+434
+00:16:05,459 --> 00:16:08,100
+going back full circle so we all know
+
+435
+00:16:08,100 --> 00:16:10,260
+that the cncf landscape is continually
+
+436
+00:16:10,260 --> 00:16:12,060
+changing I blink my eyes and there's
+
+437
+00:16:12,060 --> 00:16:13,680
+like another new project and I'm like oh
+
+438
+00:16:13,680 --> 00:16:15,959
+another one and you know what they're
+
+439
+00:16:15,959 --> 00:16:18,060
+being supported by brilliant folks in
+
+440
+00:16:18,060 --> 00:16:19,980
+the open source community so some of
+
+441
+00:16:19,980 --> 00:16:21,480
+these projects have decided to expand
+
+442
+00:16:21,480 --> 00:16:23,839
+their capabilities to provide options
+
+443
+00:16:23,839 --> 00:16:27,779
+for better use of projects so tying it
+
+444
+00:16:27,779 --> 00:16:29,820
+all back istio itself had a large
+
+445
+00:16:29,820 --> 00:16:31,980
+announcement last year of introducing
+
+446
+00:16:31,980 --> 00:16:34,860
+ambient mesh mode a new data plane mode
+
+447
+00:16:34,860 --> 00:16:37,639
+for separating the L7 and The L4 layers
+
+448
+00:16:37,639 --> 00:16:41,459
+so what is ambient mesh there are more
+
+449
+00:16:41,459 --> 00:16:43,920
+detailed talks around this this the
+
+450
+00:16:43,920 --> 00:16:46,139
+specifics and there are blog posts
+
+451
+00:16:46,139 --> 00:16:48,180
+online but a rough overview of the
+
+452
+00:16:48,180 --> 00:16:49,980
+security aspect of what we care about is
+
+453
+00:16:49,980 --> 00:16:53,459
+that now we have a L4 secure overlay
+
+454
+00:16:53,459 --> 00:16:55,980
+layer to layer on mtls between your
+
+455
+00:16:55,980 --> 00:16:59,100
+applications and they include Denial in
+
+456
+00:16:59,100 --> 00:17:00,600
+service to service connectivity
+
+457
+00:17:00,600 --> 00:17:03,180
+authorization policies and this is done
+
+458
+00:17:03,180 --> 00:17:05,760
+with the Zed tunnel pardon my thick
+
+459
+00:17:05,760 --> 00:17:07,799
+Canadian accent
+
+460
+00:17:07,799 --> 00:17:10,260
+so what does this look like if we recall
+
+461
+00:17:10,260 --> 00:17:12,359
+the sidecar model is sitting right next
+
+462
+00:17:12,359 --> 00:17:14,099
+to your application pod so literally two
+
+463
+00:17:14,099 --> 00:17:16,260
+P's in a pod and then feedback from the
+
+464
+00:17:16,260 --> 00:17:18,119
+community has shown that maybe this was
+
+465
+00:17:18,119 --> 00:17:20,400
+a bit intrusive in some scenarios and
+
+466
+00:17:20,400 --> 00:17:21,780
+then some people just want to layer on
+
+467
+00:17:21,780 --> 00:17:24,059
+mtls before trying out more service mesh
+
+468
+00:17:24,059 --> 00:17:25,319
+capabilities
+
+469
+00:17:25,319 --> 00:17:27,720
+so instead of having to wait for a two
+
+470
+00:17:27,720 --> 00:17:29,280
+out of two for your containers and your
+
+471
+00:17:29,280 --> 00:17:31,559
+pods to be ready or restarting your
+
+472
+00:17:31,559 --> 00:17:33,840
+deployment to inject the side car you
+
+473
+00:17:33,840 --> 00:17:36,360
+now have the Zed tunnel per node which
+
+474
+00:17:36,360 --> 00:17:37,919
+will intercept the traffic before it
+
+475
+00:17:37,919 --> 00:17:40,740
+leaves or enters the node it layers on
+
+476
+00:17:40,740 --> 00:17:42,780
+mtls to your cluster's traffic so you
+
+477
+00:17:42,780 --> 00:17:45,000
+know that it's encrypted and I do want
+
+478
+00:17:45,000 --> 00:17:46,620
+to address that even though the slides
+
+479
+00:17:46,620 --> 00:17:48,600
+here say iptables there are
+
+480
+00:17:48,600 --> 00:17:52,020
+investigations being done to use ebpf
+
+481
+00:17:52,020 --> 00:17:53,940
+instead of Ip tables to redirect traffic
+
+482
+00:17:53,940 --> 00:17:55,919
+so you can see that pull request at the
+
+483
+00:17:55,919 --> 00:17:57,840
+bottom there
+
+484
+00:17:57,840 --> 00:18:02,100
+um and for example we have a cncf uh
+
+485
+00:18:02,100 --> 00:18:04,200
+sandbox project I think as of December
+
+486
+00:18:04,200 --> 00:18:06,419
+called merbridge which implements evpf
+
+487
+00:18:06,419 --> 00:18:08,520
+with istio and Linker d
+
+488
+00:18:08,520 --> 00:18:10,980
+and also if you want to have richer L7
+
+489
+00:18:10,980 --> 00:18:13,440
+authorization policies then you can do
+
+490
+00:18:13,440 --> 00:18:15,960
+that at the L7 layer with the processing
+
+491
+00:18:15,960 --> 00:18:17,520
+layer which is done with the Waypoint
+
+492
+00:18:17,520 --> 00:18:19,860
+proxy and is configurable with the
+
+493
+00:18:19,860 --> 00:18:21,840
+Gateway API
+
+494
+00:18:21,840 --> 00:18:24,000
+so the Waypoint proxies are like regular
+
+495
+00:18:24,000 --> 00:18:26,820
+regular pods that can be autoscaled like
+
+496
+00:18:26,820 --> 00:18:28,799
+any other kubernetes deployment and
+
+497
+00:18:28,799 --> 00:18:32,160
+ambient mesh also uses h-bone HTTP based
+
+498
+00:18:32,160 --> 00:18:34,020
+overlay Network environment say that
+
+499
+00:18:34,020 --> 00:18:36,120
+five times fast connection is
+
+500
+00:18:36,120 --> 00:18:38,100
+established with mtls and it's based on
+
+501
+00:18:38,100 --> 00:18:39,780
+the ID of the workloads that are
+
+502
+00:18:39,780 --> 00:18:41,340
+communicating with each other
+
+503
+00:18:41,340 --> 00:18:44,160
+and there was a much more throat talk
+
+504
+00:18:44,160 --> 00:18:46,440
+around this that was presented earlier
+
+505
+00:18:46,440 --> 00:18:48,600
+and surprisingly the cncf is so on top
+
+506
+00:18:48,600 --> 00:18:49,919
+of it that they've already uploaded
+
+507
+00:18:49,919 --> 00:18:51,840
+YouTube videos so please check that out
+
+508
+00:18:51,840 --> 00:18:54,720
+if you want more in-depth with security
+
+509
+00:18:54,720 --> 00:18:57,419
+and on the flip side psyllium has also
+
+510
+00:18:57,419 --> 00:18:59,640
+announced selenium service mesh pushing
+
+511
+00:18:59,640 --> 00:19:02,160
+upwards towards the L7 world
+
+512
+00:19:02,160 --> 00:19:04,080
+so psyllium service mesh is a
+
+513
+00:19:04,080 --> 00:19:05,820
+sidecarless service mesh still
+
+514
+00:19:05,820 --> 00:19:07,799
+leveraging evpf to bypass the network
+
+515
+00:19:07,799 --> 00:19:09,000
+stack so it's really great for
+
+516
+00:19:09,000 --> 00:19:11,820
+performance but if for some reason ebpf
+
+517
+00:19:11,820 --> 00:19:13,740
+can't handle the request that's coming
+
+518
+00:19:13,740 --> 00:19:15,660
+in it will fall back to using the
+
+519
+00:19:15,660 --> 00:19:18,000
+psyllium agent that is running as a
+
+520
+00:19:18,000 --> 00:19:20,340
+Daemon set on your node the psyllium
+
+521
+00:19:20,340 --> 00:19:23,760
+agent is runs by default on the on runs
+
+522
+00:19:23,760 --> 00:19:25,559
+in Envoy proxy by default and will
+
+523
+00:19:25,559 --> 00:19:27,240
+intercept the traffic on your behalf
+
+524
+00:19:27,240 --> 00:19:29,700
+there are certain L7 traffic management
+
+525
+00:19:29,700 --> 00:19:31,559
+tasks that can't be handled within the
+
+526
+00:19:31,559 --> 00:19:33,299
+kernel but again that goes beyond we
+
+527
+00:19:33,299 --> 00:19:35,039
+only care about security here
+
+528
+00:19:35,039 --> 00:19:37,500
+so there is also a lot of work being
+
+529
+00:19:37,500 --> 00:19:39,360
+done on the psyllium service mesh side
+
+530
+00:19:39,360 --> 00:19:40,980
+of things one of them being the mtls
+
+531
+00:19:40,980 --> 00:19:43,320
+investigation I was talking to Nick
+
+532
+00:19:43,320 --> 00:19:45,059
+yesterday who was saying that even
+
+533
+00:19:45,059 --> 00:19:46,559
+though there is
+
+534
+00:19:46,559 --> 00:19:48,299
+um like I think they're still looking
+
+535
+00:19:48,299 --> 00:19:49,860
+for some feedback so you know so some
+
+536
+00:19:49,860 --> 00:19:52,320
+TLC and get into the discussion I've
+
+537
+00:19:52,320 --> 00:19:54,660
+linked the issue there
+
+538
+00:19:54,660 --> 00:19:56,940
+so I want to be clear that there's still
+
+539
+00:19:56,940 --> 00:19:58,620
+a lot of work being done for both
+
+540
+00:19:58,620 --> 00:20:00,360
+projects ambient mesh is still
+
+541
+00:20:00,360 --> 00:20:03,480
+experimental in the design for mtls is
+
+542
+00:20:03,480 --> 00:20:05,640
+open for feedback Kudos put to both
+
+543
+00:20:05,640 --> 00:20:07,740
+projects for being so receptive to the
+
+544
+00:20:07,740 --> 00:20:09,299
+open source community and like actively
+
+545
+00:20:09,299 --> 00:20:10,740
+looking for that feedback that's so
+
+546
+00:20:10,740 --> 00:20:13,860
+healthy and this brings us all to the L7
+
+547
+00:20:13,860 --> 00:20:15,960
+policy support istio has been saying to
+
+548
+00:20:15,960 --> 00:20:19,320
+you cni and L7 service meshes for a long
+
+549
+00:20:19,320 --> 00:20:21,179
+time and psyllium has the ability to do
+
+550
+00:20:21,179 --> 00:20:22,799
+this and now you can see that they're
+
+551
+00:20:22,799 --> 00:20:24,419
+kind of pushing up against each other
+
+552
+00:20:24,419 --> 00:20:28,020
+but both projects are still involving so
+
+553
+00:20:28,020 --> 00:20:31,260
+rather the projects are on this path to
+
+554
+00:20:31,260 --> 00:20:34,320
+converging with all that being said what
+
+555
+00:20:34,320 --> 00:20:36,059
+are some of the takeaways
+
+556
+00:20:36,059 --> 00:20:38,400
+so now we're going to have a large array
+
+557
+00:20:38,400 --> 00:20:40,140
+of options to choose from in the future
+
+558
+00:20:40,140 --> 00:20:41,880
+I'm not here to tell you what your
+
+559
+00:20:41,880 --> 00:20:44,460
+engineering needs are or like what the
+
+560
+00:20:44,460 --> 00:20:46,860
+future is going to hold for your teams
+
+561
+00:20:46,860 --> 00:20:48,660
+um you might still want a sidecar model
+
+562
+00:20:48,660 --> 00:20:51,120
+for more isolation and it's still needed
+
+563
+00:20:51,120 --> 00:20:52,799
+in some scenarios and then sometimes
+
+564
+00:20:52,799 --> 00:20:53,820
+you're going to want something more
+
+565
+00:20:53,820 --> 00:20:56,460
+generic like a proxy per node I don't
+
+566
+00:20:56,460 --> 00:20:58,080
+think the sidecar model will go away
+
+567
+00:20:58,080 --> 00:20:59,580
+instead companies will have to choose
+
+568
+00:20:59,580 --> 00:21:01,740
+from themselves based on their needs and
+
+569
+00:21:01,740 --> 00:21:04,380
+there is a link at the bottom by a talk
+
+570
+00:21:04,380 --> 00:21:06,480
+by Liz rice about the trade-offs of the
+
+571
+00:21:06,480 --> 00:21:09,660
+sidecars versus sidecar list debate so
+
+572
+00:21:09,660 --> 00:21:11,880
+you know it's still a topic to be
+
+573
+00:21:11,880 --> 00:21:14,520
+discussed and there's also something to
+
+574
+00:21:14,520 --> 00:21:16,679
+note it's a complex costs for your
+
+575
+00:21:16,679 --> 00:21:18,240
+engineering teams you know those are
+
+576
+00:21:18,240 --> 00:21:20,640
+people you know there's the engineering
+
+577
+00:21:20,640 --> 00:21:23,340
+cost of onboarding of maintaining some
+
+578
+00:21:23,340 --> 00:21:25,140
+of the risk the maintenance and blast
+
+579
+00:21:25,140 --> 00:21:27,480
+radius and again this all depends on
+
+580
+00:21:27,480 --> 00:21:29,400
+your specific use case at your team's
+
+581
+00:21:29,400 --> 00:21:32,520
+use okay so let's take a small tangent
+
+582
+00:21:32,520 --> 00:21:35,100
+to ebpf because we mentioned it on our
+
+583
+00:21:35,100 --> 00:21:37,140
+cfp and we're like oh we gotta talk
+
+584
+00:21:37,140 --> 00:21:38,659
+about it so there are a few slides here
+
+585
+00:21:38,659 --> 00:21:41,820
+so evpf if you're not familiar again
+
+586
+00:21:41,820 --> 00:21:44,159
+it's a program that runs in your kernel
+
+587
+00:21:44,159 --> 00:21:45,840
+it's constrained for safety you know it
+
+588
+00:21:45,840 --> 00:21:47,700
+has tight guard rails so you can't like
+
+589
+00:21:47,700 --> 00:21:49,500
+you know go off and just do anything
+
+590
+00:21:49,500 --> 00:21:51,780
+that you want and it's checked by a
+
+591
+00:21:51,780 --> 00:21:53,940
+verifier before it is uploaded to your
+
+592
+00:21:53,940 --> 00:21:55,080
+kennel
+
+593
+00:21:55,080 --> 00:21:57,539
+so at the cni level you can see that
+
+594
+00:21:57,539 --> 00:21:59,760
+it's a very beneficial tool it provides
+
+595
+00:21:59,760 --> 00:22:02,220
+L3 observability routing and network
+
+596
+00:22:02,220 --> 00:22:05,280
+policy and there is a good talk that or
+
+597
+00:22:05,280 --> 00:22:06,900
+a good slideshow that goes more into
+
+598
+00:22:06,900 --> 00:22:10,320
+detail I am by no means an evpf expert I
+
+599
+00:22:10,320 --> 00:22:12,299
+wish I was but you know I think that is
+
+600
+00:22:12,299 --> 00:22:14,820
+some big brain energy beyond my scope of
+
+601
+00:22:14,820 --> 00:22:17,159
+knowledge but the main benefit is mostly
+
+602
+00:22:17,159 --> 00:22:18,960
+around performance from what I've
+
+603
+00:22:18,960 --> 00:22:20,640
+understand
+
+604
+00:22:20,640 --> 00:22:23,460
+and the sarcastic tweet made me laugh a
+
+605
+00:22:23,460 --> 00:22:25,620
+little bit about the highlights of the
+
+606
+00:22:25,620 --> 00:22:28,559
+excitement around ebpf last year I mean
+
+607
+00:22:28,559 --> 00:22:30,720
+it's no s-bomb but you know it's still
+
+608
+00:22:30,720 --> 00:22:32,159
+pretty exciting
+
+609
+00:22:32,159 --> 00:22:33,960
+um and it is a cool technology
+
+610
+00:22:33,960 --> 00:22:36,419
+but it's not a silver bullet
+
+611
+00:22:36,419 --> 00:22:38,580
+and you oh don't you ever notice that
+
+612
+00:22:38,580 --> 00:22:40,320
+there's actually numbers for a silver
+
+613
+00:22:40,320 --> 00:22:42,659
+bullet but every vendor wants to sell
+
+614
+00:22:42,659 --> 00:22:45,419
+you a single pane of glass
+
+615
+00:22:45,419 --> 00:22:48,360
+so takeaways use defense in depth and
+
+616
+00:22:48,360 --> 00:22:49,620
+know your tools there was a good talk
+
+617
+00:22:49,620 --> 00:22:51,600
+yesterday again uploaded onto YouTube
+
+618
+00:22:51,600 --> 00:22:54,059
+ready and it has this diagram of the
+
+619
+00:22:54,059 --> 00:22:55,440
+Cheese model which I love because I love
+
+620
+00:22:55,440 --> 00:22:57,240
+cheese and you can see that you know
+
+621
+00:22:57,240 --> 00:22:59,580
+might as well have as much layers and
+
+622
+00:22:59,580 --> 00:23:01,860
+you have as much safety padded on
+
+623
+00:23:01,860 --> 00:23:03,360
+everywhere
+
+624
+00:23:03,360 --> 00:23:06,480
+so what can you do about it
+
+625
+00:23:06,480 --> 00:23:09,659
+you know get involved given istio's
+
+626
+00:23:09,659 --> 00:23:11,880
+ambient mode is still experimental try
+
+627
+00:23:11,880 --> 00:23:13,799
+it out give some feedback
+
+628
+00:23:13,799 --> 00:23:16,200
+check out the psyllium mtls design
+
+629
+00:23:16,200 --> 00:23:18,000
+proposal and all the links are at the
+
+630
+00:23:18,000 --> 00:23:20,460
+bottom there and I hope you're ready to
+
+631
+00:23:20,460 --> 00:23:22,679
+get involved with all your favorite cncf
+
+632
+00:23:22,679 --> 00:23:23,880
+projects
+
+633
+00:23:23,880 --> 00:23:27,440
+all of them right
+
+634
+00:23:28,919 --> 00:23:31,559
+so again show some telc and some support
+
+635
+00:23:31,559 --> 00:23:33,240
+to these projects they need security
+
+636
+00:23:33,240 --> 00:23:35,220
+enthusiasts like yourselves in the crowd
+
+637
+00:23:35,220 --> 00:23:36,720
+to make them stronger and more resilient
+
+638
+00:23:36,720 --> 00:23:38,400
+in the future
+
+639
+00:23:38,400 --> 00:23:41,280
+again my name is Christine and I and I'm
+
+640
+00:23:41,280 --> 00:23:43,380
+Rob and
+
+641
+00:23:43,380 --> 00:23:46,919
+am a big fan of a python teacher named
+
+642
+00:23:46,919 --> 00:23:49,679
+Ray Hettinger who at the end of all of
+
+643
+00:23:49,679 --> 00:23:52,080
+his talks pulls the Audience by asking
+
+644
+00:23:52,080 --> 00:23:54,000
+the question could I see by show of
+
+645
+00:23:54,000 --> 00:23:57,600
+hands anyone who did not learn something
+
+646
+00:23:57,600 --> 00:24:00,199
+new today
+
+647
+00:24:01,860 --> 00:24:03,539
+for everyone playing at home they're not
+
+648
+00:24:03,539 --> 00:24:06,360
+I am the only hand up
+
+649
+00:24:06,360 --> 00:24:08,280
+excellent work that means you all pick
+
+650
+00:24:08,280 --> 00:24:11,220
+the right room to be it
+
+651
+00:24:11,220 --> 00:24:13,980
+so at this point I will suggest that my
+
+652
+00:24:13,980 --> 00:24:15,720
+company is super orbital offers
+
+653
+00:24:15,720 --> 00:24:17,940
+kubernetes training we uh teach service
+
+654
+00:24:17,940 --> 00:24:20,400
+mesh we teach Advanced kubernetes
+
+655
+00:24:20,400 --> 00:24:23,820
+controller development uh and we are
+
+656
+00:24:23,820 --> 00:24:26,580
+pretty chill about it so if you have
+
+657
+00:24:26,580 --> 00:24:28,860
+Juniors on your team if you have folks
+
+658
+00:24:28,860 --> 00:24:31,140
+who need to get skilled up fast send
+
+659
+00:24:31,140 --> 00:24:32,159
+them to me
+
+660
+00:24:32,159 --> 00:24:35,600
+I trade Wizards thank you
+
+661
+00:24:35,600 --> 00:24:44,100
+[Applause]
+
+662
+00:24:44,100 --> 00:24:46,320
+leave feedback or not no peer pressure
+
+663
+00:24:46,320 --> 00:24:48,179
+yeah it's fine we have a couple moments
+
+664
+00:24:48,179 --> 00:24:51,380
+for questions if anyone has questions
+
+665
+00:24:55,500 --> 00:24:59,220
+um if there aren't questions I could
+
+666
+00:24:59,220 --> 00:25:02,159
+show a demo of stealing an mtls client
+
+667
+00:25:02,159 --> 00:25:05,240
+certificate if you want to see that
+
+668
+00:25:05,580 --> 00:25:07,140
+you guys want to see it happen
+
+669
+00:25:07,140 --> 00:25:08,000
+yeah yeah
+
+670
+00:25:08,000 --> 00:25:11,179
+all right
+
+671
+00:25:12,780 --> 00:25:15,799
+oh this will be tricky
+
+672
+00:25:15,840 --> 00:25:17,159
+um
+
+673
+00:25:17,159 --> 00:25:21,380
+I got to switch back to mirroring
+
+674
+00:25:34,679 --> 00:25:40,279
+this was us uh goofing around doing a
+
+675
+00:25:45,059 --> 00:25:47,100
+okay
+
+676
+00:25:47,100 --> 00:25:49,140
+so
+
+677
+00:25:49,140 --> 00:25:52,140
+just quickly reset my environment so
+
+678
+00:25:52,140 --> 00:25:53,580
+this Coster has been running for a while
+
+679
+00:25:53,580 --> 00:25:54,900
+I've been working on this test for a
+
+680
+00:25:54,900 --> 00:25:56,820
+while I had long thought that this was
+
+681
+00:25:56,820 --> 00:25:59,100
+possible but I had never actually
+
+682
+00:25:59,100 --> 00:26:01,080
+figured out a way to do it
+
+683
+00:26:01,080 --> 00:26:04,860
+until just this last week so hopefully
+
+684
+00:26:04,860 --> 00:26:08,940
+the Wi-Fi Gods will be appeased and I
+
+685
+00:26:08,940 --> 00:26:09,960
+will actually be able to get access to
+
+686
+00:26:09,960 --> 00:26:12,500
+my cluster
+
+687
+00:26:13,020 --> 00:26:15,860
+it's not looking good
+
+688
+00:26:20,520 --> 00:26:24,000
+I cannot reach my cluster
+
+689
+00:26:24,000 --> 00:26:26,940
+no that feels handshake oh there we go
+
+690
+00:26:26,940 --> 00:26:29,720
+okay great great
+
+691
+00:26:30,059 --> 00:26:32,220
+it's just real slow everybody stop
+
+692
+00:26:32,220 --> 00:26:33,070
+tweeting
+
+693
+00:26:33,070 --> 00:26:36,200
+[Music]
+
+694
+00:26:39,240 --> 00:26:41,779
+okay
+
+695
+00:26:42,659 --> 00:26:46,440
+all right so here goes so uh what I have
+
+696
+00:26:46,440 --> 00:26:48,299
+are
+
+697
+00:26:48,299 --> 00:26:49,980
+two namespaces
+
+698
+00:26:49,980 --> 00:26:51,900
+I have a namespace called secure and a
+
+699
+00:26:51,900 --> 00:26:53,640
+namespace called attack in the secure
+
+700
+00:26:53,640 --> 00:26:56,299
+namespace
+
+701
+00:26:58,740 --> 00:27:04,520
+I have a service and I have some pods
+
+702
+00:27:06,179 --> 00:27:10,980
+in this uh namespace the legit client
+
+703
+00:27:10,980 --> 00:27:13,200
+pod is using a service account that is
+
+704
+00:27:13,200 --> 00:27:16,919
+allowed to talk to the victim service
+
+705
+00:27:16,919 --> 00:27:20,120
+in the attack name space
+
+706
+00:27:22,799 --> 00:27:24,720
+there is a pod that does not even have a
+
+707
+00:27:24,720 --> 00:27:26,580
+sidecar notice there are only one of one
+
+708
+00:27:26,580 --> 00:27:29,039
+containers in this pod
+
+709
+00:27:29,039 --> 00:27:34,260
+so I'm going to run this exercise what's
+
+710
+00:27:34,260 --> 00:27:36,299
+happening is it is now generating a new
+
+711
+00:27:36,299 --> 00:27:40,440
+RSA key pair and it is stealing the
+
+712
+00:27:40,440 --> 00:27:42,419
+service account token from the legit
+
+713
+00:27:42,419 --> 00:27:43,860
+client pod
+
+714
+00:27:43,860 --> 00:27:45,960
+uh just cool cuddle copied it out of
+
+715
+00:27:45,960 --> 00:27:46,620
+there
+
+716
+00:27:46,620 --> 00:27:52,500
+I then verify that the key in the uh oh
+
+717
+00:27:52,500 --> 00:27:55,700
+sorry then I make a grpc call to istio D
+
+718
+00:27:55,700 --> 00:27:58,620
+using the certificate signing request
+
+719
+00:27:58,620 --> 00:28:00,720
+that I just generated and using the
+
+720
+00:28:00,720 --> 00:28:02,340
+stolen service count token from the
+
+721
+00:28:02,340 --> 00:28:03,480
+legit client
+
+722
+00:28:03,480 --> 00:28:05,279
+istiog returns an mtls client
+
+723
+00:28:05,279 --> 00:28:07,080
+certificate to me I then look inside the
+
+724
+00:28:07,080 --> 00:28:08,700
+mcls client certificate to check that
+
+725
+00:28:08,700 --> 00:28:10,260
+the key is the same as the one that I
+
+726
+00:28:10,260 --> 00:28:13,260
+asked for it is uh I then copy the
+
+727
+00:28:13,260 --> 00:28:15,720
+private key in and the client
+
+728
+00:28:15,720 --> 00:28:17,700
+certificate into the attack pod and the
+
+729
+00:28:17,700 --> 00:28:20,520
+attack pod is now ready to spoof the
+
+730
+00:28:20,520 --> 00:28:23,159
+request so I'm going to exec into that
+
+731
+00:28:23,159 --> 00:28:25,460
+pod
+
+732
+00:28:27,960 --> 00:28:30,539
+okay so from in here if I curl the
+
+733
+00:28:30,539 --> 00:28:33,360
+victim service it is in his victim in
+
+734
+00:28:33,360 --> 00:28:35,039
+the namespace secure
+
+735
+00:28:35,039 --> 00:28:36,659
+I expect to see connection reset by
+
+736
+00:28:36,659 --> 00:28:38,580
+Pierre I am sending a clear text request
+
+737
+00:28:38,580 --> 00:28:41,460
+to a pod that is demanding mtls so it
+
+738
+00:28:41,460 --> 00:28:43,020
+does just hangs up
+
+739
+00:28:43,020 --> 00:28:45,419
+however here I have my client
+
+740
+00:28:45,419 --> 00:28:47,340
+certificate and my key
+
+741
+00:28:47,340 --> 00:28:52,080
+so if I do a curl pass in the search
+
+742
+00:28:52,080 --> 00:28:55,220
+pass in the key
+
+743
+00:28:57,179 --> 00:29:01,580
+remind curl to use https
+
+744
+00:29:02,039 --> 00:29:03,720
+despite the fact that I am actually
+
+745
+00:29:03,720 --> 00:29:05,940
+going to communicate on Port 80 and the
+
+746
+00:29:05,940 --> 00:29:07,980
+service that's running inside of that
+
+747
+00:29:07,980 --> 00:29:12,299
+victim pod is just an HTTP bin binary so
+
+748
+00:29:12,299 --> 00:29:13,500
+I'm going to hit the headers endpoint
+
+749
+00:29:13,500 --> 00:29:16,500
+and what you see is a 200 response back
+
+750
+00:29:16,500 --> 00:29:18,000
+from that pod that I should not be able
+
+751
+00:29:18,000 --> 00:29:21,179
+to talk to and what is happening here is
+
+752
+00:29:21,179 --> 00:29:24,600
+the envoy sidecar by default when it
+
+753
+00:29:24,600 --> 00:29:27,600
+unpacks the mtls connection it examines
+
+754
+00:29:27,600 --> 00:29:29,520
+the certificate gets the identity out
+
+755
+00:29:29,520 --> 00:29:31,679
+and puts it into a response header so
+
+756
+00:29:31,679 --> 00:29:34,140
+that you as a service mesh user can
+
+757
+00:29:34,140 --> 00:29:37,440
+verify who made the request that is this
+
+758
+00:29:37,440 --> 00:29:39,360
+this is the requester here and who
+
+759
+00:29:39,360 --> 00:29:41,159
+received the request this is the
+
+760
+00:29:41,159 --> 00:29:42,720
+identity of the receiver here so you can
+
+761
+00:29:42,720 --> 00:29:44,100
+see that even though this request came
+
+762
+00:29:44,100 --> 00:29:45,960
+from a plug called attack in a namespace
+
+763
+00:29:45,960 --> 00:29:48,299
+called deck it appears to be coming from
+
+764
+00:29:48,299 --> 00:29:51,059
+secure namespace using this legit client
+
+765
+00:29:51,059 --> 00:29:53,520
+service account
+
+766
+00:29:53,520 --> 00:29:55,740
+it worked
+
+767
+00:29:55,740 --> 00:29:57,480
+they're happy
+
+768
+00:29:57,480 --> 00:29:59,100
+cool
+
+769
+00:29:59,100 --> 00:30:01,440
+thanks
+
+770
+00:30:01,440 --> 00:30:05,360
+just one thing to point out yes
+
+771
+00:30:05,820 --> 00:30:09,379
+the reason this works yes
+
+772
+00:30:09,539 --> 00:30:11,820
+pure strong
+
+773
+00:30:11,820 --> 00:30:15,860
+yeah one thing that stays slowly
+
+774
+00:30:21,960 --> 00:30:24,200
+yeah
+
+775
+00:30:25,580 --> 00:30:28,320
+they already did
+
+776
+00:30:28,320 --> 00:30:30,120
+um so uh yeah so what's happened he's
+
+777
+00:30:30,120 --> 00:30:33,779
+talking about is um you can use a the
+
+778
+00:30:33,779 --> 00:30:35,700
+service account
+
+779
+00:30:35,700 --> 00:30:37,380
+um there's like a token API where you
+
+780
+00:30:37,380 --> 00:30:38,760
+can ask for what's called a bounded
+
+781
+00:30:38,760 --> 00:30:42,779
+token so the uh it's a JWT that has an
+
+782
+00:30:42,779 --> 00:30:44,700
+audience claim inside of there and what
+
+783
+00:30:44,700 --> 00:30:46,440
+the audience claim means is you can say
+
+784
+00:30:46,440 --> 00:30:48,840
+this token should only be received by
+
+785
+00:30:48,840 --> 00:30:50,700
+Services who are in the audience this
+
+786
+00:30:50,700 --> 00:30:52,740
+token is only met for for example
+
+787
+00:30:52,740 --> 00:30:54,360
+istio-d or this token is only meant to
+
+788
+00:30:54,360 --> 00:30:56,039
+be given to for example the kubernetes
+
+789
+00:30:56,039 --> 00:30:59,940
+API so istiod actually does have bounded
+
+790
+00:30:59,940 --> 00:31:01,320
+service account tokens turned on by
+
+791
+00:31:01,320 --> 00:31:03,360
+default and so the token that lives in
+
+792
+00:31:03,360 --> 00:31:05,940
+the sidecar proxy is bounded to only be
+
+793
+00:31:05,940 --> 00:31:08,399
+allowed to talk to
+
+794
+00:31:08,399 --> 00:31:09,140
+um
+
+795
+00:31:09,140 --> 00:31:11,220
+Citadel is the component inside of sdod
+
+796
+00:31:11,220 --> 00:31:12,899
+that signs certificates
+
+797
+00:31:12,899 --> 00:31:14,940
+however
+
+798
+00:31:14,940 --> 00:31:17,039
+um I have stolen that too that token so
+
+799
+00:31:17,039 --> 00:31:20,059
+it doesn't matter that it's bounded
+
+800
+00:31:20,580 --> 00:31:23,178
+oh okay
+
+801
+00:31:23,880 --> 00:31:25,620
+oh okay okay this is something I'm not
+
+802
+00:31:25,620 --> 00:31:28,520
+aware of so how does that work
+
+803
+00:31:30,720 --> 00:31:33,980
+uh no so uh
+
+804
+00:31:46,140 --> 00:31:48,720
+the projected
+
+805
+00:31:48,720 --> 00:31:51,840
+oh cool that's very cool so
+
+806
+00:31:51,840 --> 00:31:53,159
+yeah
+
+807
+00:31:53,159 --> 00:31:54,600
+yeah I can just repeat that for people
+
+808
+00:31:54,600 --> 00:31:55,500
+who are watching on YouTube later
+
+809
+00:31:55,500 --> 00:31:57,120
+there's work being done to allow
+
+810
+00:31:57,120 --> 00:31:58,980
+projection of an mtls certificate into
+
+811
+00:31:58,980 --> 00:32:01,020
+the uh pod so that it doesn't have to
+
+812
+00:32:01,020 --> 00:32:02,640
+use a token in fact I think there's a
+
+813
+00:32:02,640 --> 00:32:04,080
+talk I saw that somebody had to talk
+
+814
+00:32:04,080 --> 00:32:06,000
+about that today I think
+
+815
+00:32:06,000 --> 00:32:07,620
+um yeah somebody didn't do a talk about
+
+816
+00:32:07,620 --> 00:32:09,840
+that day okay so I I was busy working on
+
+817
+00:32:09,840 --> 00:32:11,640
+this talk so I didn't get to see it
+
+818
+00:32:11,640 --> 00:32:13,140
+um but uh I do want to check that out
+
+819
+00:32:13,140 --> 00:32:15,600
+and and to be clear you know the fact
+
+820
+00:32:15,600 --> 00:32:16,620
+that service account tokens are
+
+821
+00:32:16,620 --> 00:32:18,059
+sensitive not a hot take you know
+
+822
+00:32:18,059 --> 00:32:19,440
+everybody knows this I just think that
+
+823
+00:32:19,440 --> 00:32:21,779
+this is a an abuse of a stolen service
+
+824
+00:32:21,779 --> 00:32:24,600
+account token that is not commonly done
+
+825
+00:32:24,600 --> 00:32:26,700
+yeah I think you're underselling what
+
+826
+00:32:26,700 --> 00:32:27,899
+you can do with the stolen service
+
+827
+00:32:27,899 --> 00:32:29,580
+counselor if I'm not mistaken you can
+
+828
+00:32:29,580 --> 00:32:32,039
+also use it to connect the cube API uh
+
+829
+00:32:32,039 --> 00:32:34,520
+oh yeah
+
+830
+00:32:34,799 --> 00:32:36,840
+that's a good point I actually I haven't
+
+831
+00:32:36,840 --> 00:32:38,279
+looked with that oh no no actually
+
+832
+00:32:38,279 --> 00:32:39,840
+because not this token because it's
+
+833
+00:32:39,840 --> 00:32:42,559
+bounded yeah yeah
+
+834
+00:32:44,100 --> 00:32:46,980
+yes yeah that's right yeah that's very
+
+835
+00:32:46,980 --> 00:32:48,120
+cool thank you
+
+836
+00:32:48,120 --> 00:32:49,559
+I have to get my hand down now I learned
+
+837
+00:32:49,559 --> 00:32:51,320
+a new thing today
+
+838
+00:32:51,320 --> 00:32:53,890
+cool thanks everybody
+
+839
+00:32:53,890 --> 00:32:57,869
+[Applause]
+

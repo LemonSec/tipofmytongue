@@ -1,0 +1,4068 @@
+﻿1
+00:00:13,519 --> 00:00:17,720
+okay sure my name is John snow I work
+
+2
+00:00:17,720 --> 00:00:19,610
+for Red Hat I am a developer on the
+
+3
+00:00:19,610 --> 00:00:21,860
+Kimmy project I've been working on
+
+4
+00:00:21,860 --> 00:00:23,750
+backup solutions for the past two years
+
+5
+00:00:23,750 --> 00:00:26,509
+alongside my other project which is
+
+6
+00:00:26,509 --> 00:00:28,369
+making sure that ata drives work well
+
+7
+00:00:28,369 --> 00:00:30,859
+but yeah you guys are here for the
+
+8
+00:00:30,859 --> 00:00:34,850
+backup part so before I jump into it can
+
+9
+00:00:34,850 --> 00:00:36,350
+I ask how many people are familiar with
+
+10
+00:00:36,350 --> 00:00:38,090
+QEMU or even know what it is
+
+11
+00:00:38,090 --> 00:00:39,589
+there's - raise your hand if you okay
+
+12
+00:00:39,589 --> 00:00:42,559
+good good tons of people good sometimes
+
+13
+00:00:42,559 --> 00:00:44,660
+I worry that anybody only knows what km
+
+14
+00:00:44,660 --> 00:00:46,909
+means and there's this other part that
+
+15
+00:00:46,909 --> 00:00:50,449
+does like all the work but anyway and so
+
+16
+00:00:50,449 --> 00:00:52,610
+before I jump into it I would like to
+
+17
+00:00:52,610 --> 00:00:54,799
+give my acknowledgments this is open
+
+18
+00:00:54,799 --> 00:00:56,600
+source of course so this is not just my
+
+19
+00:00:56,600 --> 00:00:58,400
+work this is the work of dozens of
+
+20
+00:00:58,400 --> 00:01:01,820
+individuals so the feature proposal for
+
+21
+00:01:01,820 --> 00:01:03,530
+incremental backups in Keaney started
+
+22
+00:01:03,530 --> 00:01:06,080
+with the Jagan sundar who gave a topic
+
+23
+00:01:06,080 --> 00:01:10,549
+KDM forum 2011 on wanting to get this
+
+24
+00:01:10,549 --> 00:01:13,520
+rolling and here we are in 2017 so it's
+
+25
+00:01:13,520 --> 00:01:16,310
+been a work in progress for a while from
+
+26
+00:01:16,310 --> 00:01:19,670
+Jiang coworker from Beijing submitted
+
+27
+00:01:19,670 --> 00:01:21,740
+basically the drafts that became the
+
+28
+00:01:21,740 --> 00:01:25,759
+version 14 Stefano Yahtzee and Max
+
+29
+00:01:25,759 --> 00:01:27,530
+writes blah Claire maintain errs and
+
+30
+00:01:27,530 --> 00:01:29,030
+they've been doing a lot of the review
+
+31
+00:01:29,030 --> 00:01:32,080
+work and I'm very patient with everybody
+
+32
+00:01:32,080 --> 00:01:35,570
+we've also had a lot of involvement from
+
+33
+00:01:35,570 --> 00:01:39,439
+virtuozzo which used to be open DV or
+
+34
+00:01:39,439 --> 00:01:41,299
+what was there the company name
+
+35
+00:01:41,299 --> 00:01:43,939
+parallels and a few others and recently
+
+36
+00:01:43,939 --> 00:01:46,159
+they've split off but virtuozzo has been
+
+37
+00:01:46,159 --> 00:01:47,990
+doing an incredible amount of work for
+
+38
+00:01:47,990 --> 00:01:50,420
+us so it would be upsetting if I did not
+
+39
+00:01:50,420 --> 00:01:51,770
+give them a shout out here for all of
+
+40
+00:01:51,770 --> 00:01:55,700
+their incredible work so just as an
+
+41
+00:01:55,700 --> 00:01:57,500
+overview just so we know where we're
+
+42
+00:01:57,500 --> 00:01:59,840
+going I want to talk about kind of the
+
+43
+00:01:59,840 --> 00:02:02,659
+the problems with qmu packing an
+
+44
+00:02:02,659 --> 00:02:04,459
+incremental backup which probably
+
+45
+00:02:04,459 --> 00:02:07,250
+obvious to everybody in here I want to
+
+46
+00:02:07,250 --> 00:02:08,899
+talk about some of the primitives we use
+
+47
+00:02:08,899 --> 00:02:11,150
+to implement incremental backup in qmu
+
+48
+00:02:11,150 --> 00:02:12,950
+and some of the interfaces and how that
+
+49
+00:02:12,950 --> 00:02:15,620
+works I'm gonna go through some examples
+
+50
+00:02:15,620 --> 00:02:17,600
+showing kind of the lifecycle and
+
+51
+00:02:17,600 --> 00:02:20,750
+management of incremental backups I'll
+
+52
+00:02:20,750 --> 00:02:22,760
+get into some more advanced applications
+
+53
+00:02:22,760 --> 00:02:24,590
+of this things that we've been working
+
+54
+00:02:24,590 --> 00:02:27,950
+on the last two years and then to close
+
+55
+00:02:27,950 --> 00:02:29,870
+out I'll talk about some of the features
+
+56
+00:02:29,870 --> 00:02:31,670
+that we're currently working on things
+
+57
+00:02:31,670 --> 00:02:33,560
+that we're hoping to push upstream soon
+
+58
+00:02:33,560 --> 00:02:36,799
+some status and you can grill me with
+
+59
+00:02:36,799 --> 00:02:40,760
+questions if I stand me too much so to
+
+60
+00:02:40,760 --> 00:02:45,170
+start the problem of course I mean the
+
+61
+00:02:45,170 --> 00:02:48,109
+problem with daily backups if especially
+
+62
+00:02:48,109 --> 00:02:50,329
+if you have dozens and dozens of virtual
+
+63
+00:02:50,329 --> 00:02:53,390
+machines this is gross it's a waste of
+
+64
+00:02:53,390 --> 00:02:55,489
+space it's way too much the storage
+
+65
+00:02:55,489 --> 00:02:57,739
+efficiency is disgusting it is clunky it
+
+66
+00:02:57,739 --> 00:02:59,569
+is slow you're gonna tie up your network
+
+67
+00:02:59,569 --> 00:03:02,090
+but it is simple inconvenience if you
+
+68
+00:03:02,090 --> 00:03:04,310
+are doing full backups you know exactly
+
+69
+00:03:04,310 --> 00:03:06,200
+what you have it is a full backup is
+
+70
+00:03:06,200 --> 00:03:08,239
+stored out another disk it is easy to
+
+71
+00:03:08,239 --> 00:03:11,500
+restore it's not too hard to think about
+
+72
+00:03:11,500 --> 00:03:14,420
+so what we've done of course as you
+
+73
+00:03:14,420 --> 00:03:16,700
+might expect as we've added incremental
+
+74
+00:03:16,700 --> 00:03:19,280
+backups to queuing them the storage
+
+75
+00:03:19,280 --> 00:03:22,370
+efficiency of course is much better it's
+
+76
+00:03:22,370 --> 00:03:24,680
+only gonna copy copy the modified data
+
+77
+00:03:24,680 --> 00:03:27,680
+it's a lot fast but maybe it's more
+
+78
+00:03:27,680 --> 00:03:29,329
+complicated but I would like to convince
+
+79
+00:03:29,329 --> 00:03:32,830
+you it's worth the extra complication
+
+80
+00:03:32,830 --> 00:03:37,510
+so team you added preliminary support
+
+81
+00:03:37,510 --> 00:03:41,260
+for incremental backup in 2.4 so about
+
+82
+00:03:41,260 --> 00:03:47,190
+two years ago now good luck with that
+
+83
+00:03:47,190 --> 00:03:49,959
+development is ongoing as of 2.8 we're
+
+84
+00:03:49,959 --> 00:03:52,930
+working on 2.9 right now it's not
+
+85
+00:03:52,930 --> 00:03:54,760
+included as supported in a Red Hat
+
+86
+00:03:54,760 --> 00:03:56,200
+product yet not that that matters for
+
+87
+00:03:56,200 --> 00:03:58,569
+the open stream version but if you were
+
+88
+00:03:58,569 --> 00:04:00,340
+to come to the upstream list and ask us
+
+89
+00:04:00,340 --> 00:04:02,079
+we'd say well we're still working on it
+
+90
+00:04:02,079 --> 00:04:03,760
+we don't recommend this for data center
+
+91
+00:04:03,760 --> 00:04:07,599
+usage yet but mostly for the brave as of
+
+92
+00:04:07,599 --> 00:04:09,940
+yet but we are nearing feature
+
+93
+00:04:09,940 --> 00:04:13,989
+completion so the approach to
+
+94
+00:04:13,989 --> 00:04:18,250
+incremental backup in key new originally
+
+95
+00:04:18,250 --> 00:04:20,680
+it was jagan Sundar's patches which were
+
+96
+00:04:20,680 --> 00:04:23,410
+a whole series of separate command-line
+
+97
+00:04:23,410 --> 00:04:25,300
+tools it wasn't baked into the mankini
+
+98
+00:04:25,300 --> 00:04:28,210
+binary it used an entirely new network
+
+99
+00:04:28,210 --> 00:04:30,280
+protocol so all the existing management
+
+100
+00:04:30,280 --> 00:04:32,410
+protocols we had this tapped another one
+
+101
+00:04:32,410 --> 00:04:35,110
+on top of it it ran as an independent
+
+102
+00:04:35,110 --> 00:04:38,199
+thread so it didn't respect the key new
+
+103
+00:04:38,199 --> 00:04:40,449
+state machine at all or the main loop it
+
+104
+00:04:40,449 --> 00:04:42,570
+added its own complete separate thing
+
+105
+00:04:42,570 --> 00:04:45,449
+which made it a little dangerous for
+
+106
+00:04:45,449 --> 00:04:47,949
+making sure that these snapshots were
+
+107
+00:04:47,949 --> 00:04:50,139
+safe because we had race conditions with
+
+108
+00:04:50,139 --> 00:04:54,039
+this it utilized temporary snapshots to
+
+109
+00:04:54,039 --> 00:04:55,900
+make sure that the the backups were
+
+110
+00:04:55,900 --> 00:04:59,830
+perfectly atomic and it implemented the
+
+111
+00:04:59,830 --> 00:05:02,070
+tracking with an in-memory dirty bitmap
+
+112
+00:05:02,070 --> 00:05:05,080
+and it was ultimately not merged due to
+
+113
+00:05:05,080 --> 00:05:07,150
+some of the the complexity problems and
+
+114
+00:05:07,150 --> 00:05:08,710
+how it didn't play nicely with Kimia as
+
+115
+00:05:08,710 --> 00:05:13,090
+a whole so from Jane took another shot
+
+116
+00:05:13,090 --> 00:05:16,060
+at this in 2014 this was also a dirty
+
+117
+00:05:16,060 --> 00:05:18,760
+sector bitmap based approach but it used
+
+118
+00:05:18,760 --> 00:05:20,470
+a lot of our existing primitives that we
+
+119
+00:05:20,470 --> 00:05:23,260
+already had in queue so it was not a
+
+120
+00:05:23,260 --> 00:05:24,849
+separate thread it behaved in the main
+
+121
+00:05:24,849 --> 00:05:27,070
+loop it used all of our a i/o scheduling
+
+122
+00:05:27,070 --> 00:05:30,520
+it didn't use any external tooling no
+
+123
+00:05:30,520 --> 00:05:32,310
+new protocols it was managed
+
+124
+00:05:32,310 --> 00:05:34,020
+we are existing protocol which libvirt
+
+125
+00:05:34,020 --> 00:05:35,760
+uses to talk to commune and make sure
+
+126
+00:05:35,760 --> 00:05:38,700
+we're behaving we implemented this
+
+127
+00:05:38,700 --> 00:05:40,710
+simply is just a new backup mode we have
+
+128
+00:05:40,710 --> 00:05:42,540
+an existing backup feature and we just
+
+129
+00:05:42,540 --> 00:05:45,150
+added a new argument to it we can use
+
+130
+00:05:45,150 --> 00:05:47,820
+this with any image format so qko is my
+
+131
+00:05:47,820 --> 00:05:49,530
+personal favorite everybody else likes
+
+132
+00:05:49,530 --> 00:05:53,850
+raw that's okay and we're hoping that
+
+133
+00:05:53,850 --> 00:05:56,070
+because this is gonna use all of the
+
+134
+00:05:56,070 --> 00:05:58,500
+existing tools that Kimmy has had for a
+
+135
+00:05:58,500 --> 00:05:59,520
+while that we're gonna maximize
+
+136
+00:05:59,520 --> 00:06:01,350
+compatibility with people's existing
+
+137
+00:06:01,350 --> 00:06:02,850
+scripts and hopefully it won't be too
+
+138
+00:06:02,850 --> 00:06:05,220
+hard for people to add incremental
+
+139
+00:06:05,220 --> 00:06:08,940
+support to their management solutions so
+
+140
+00:06:08,940 --> 00:06:11,100
+yeah design goals already touching on
+
+141
+00:06:11,100 --> 00:06:12,930
+this a little bit but we wanted to make
+
+142
+00:06:12,930 --> 00:06:15,300
+sure that we were using as much as
+
+143
+00:06:15,300 --> 00:06:17,880
+possible q is a frightening lis large
+
+144
+00:06:17,880 --> 00:06:19,830
+project at times and every time we
+
+145
+00:06:19,830 --> 00:06:21,110
+reimplemented
+
+146
+00:06:21,110 --> 00:06:24,480
+it grows and grows and grows so for this
+
+147
+00:06:24,480 --> 00:06:27,240
+task we wanted to make sure that we were
+
+148
+00:06:27,240 --> 00:06:29,070
+using everything we already had so we
+
+149
+00:06:29,070 --> 00:06:32,190
+have this type of good glad that made it
+
+150
+00:06:32,190 --> 00:06:35,700
+in so key structure is the block the
+
+151
+00:06:35,700 --> 00:06:38,310
+block drive dirty bitmap and we were
+
+152
+00:06:38,310 --> 00:06:39,750
+already using this to track dirty
+
+153
+00:06:39,750 --> 00:06:41,760
+sectors for our block migration and
+
+154
+00:06:41,760 --> 00:06:44,430
+drive mirroring operations so when you
+
+155
+00:06:44,430 --> 00:06:46,050
+do a live migration in queue and you
+
+156
+00:06:46,050 --> 00:06:47,700
+want to migrate from one physical host
+
+157
+00:06:47,700 --> 00:06:50,220
+to another queue you already needs to
+
+158
+00:06:50,220 --> 00:06:52,530
+know which parts of the disk are being
+
+159
+00:06:52,530 --> 00:06:54,420
+dirty so that it can make sure that it
+
+160
+00:06:54,420 --> 00:06:56,850
+migrates those as it pivots to the new
+
+161
+00:06:56,850 --> 00:06:59,070
+host so we already had something that
+
+162
+00:06:59,070 --> 00:07:01,620
+was kind of doing what we want it had a
+
+163
+00:07:01,620 --> 00:07:04,380
+configurable granularity to depend on
+
+164
+00:07:04,380 --> 00:07:07,590
+the workload some smaller or larger
+
+165
+00:07:07,590 --> 00:07:09,330
+granularities may help the migration
+
+166
+00:07:09,330 --> 00:07:12,150
+pivot sooner and we could already hook
+
+167
+00:07:12,150 --> 00:07:14,760
+up any number of bitmaps we wanted third
+
+168
+00:07:14,760 --> 00:07:17,340
+drive so it looks like this was going to
+
+169
+00:07:17,340 --> 00:07:21,210
+be pretty much exactly what we wanted we
+
+170
+00:07:21,210 --> 00:07:22,260
+wanted to reuse
+
+171
+00:07:22,260 --> 00:07:25,680
+Drive backup interface I call the qmp
+
+172
+00:07:25,680 --> 00:07:27,240
+protocol well now and it's well known to
+
+173
+00:07:27,240 --> 00:07:28,800
+us hopefully it's well known to people
+
+174
+00:07:28,800 --> 00:07:31,980
+using community we already have this
+
+175
+00:07:31,980 --> 00:07:34,350
+command creating full backups for us it
+
+176
+00:07:34,350 --> 00:07:35,910
+was already capable of point-in-time
+
+177
+00:07:35,910 --> 00:07:38,340
+live backups we could already export
+
+178
+00:07:38,340 --> 00:07:40,500
+data to arbitrary destinations via the
+
+179
+00:07:40,500 --> 00:07:43,080
+NDB protocol so like I said we just
+
+180
+00:07:43,080 --> 00:07:46,470
+simply added a new argument and well a
+
+181
+00:07:46,470 --> 00:07:52,290
+couple of fit nap management another
+
+182
+00:07:52,290 --> 00:07:54,990
+goal for us coherency we wanted to make
+
+183
+00:07:54,990 --> 00:07:57,870
+sure that if you were backing up
+
+184
+00:07:57,870 --> 00:08:01,260
+multiple drives if you have 1020 drives
+
+185
+00:08:01,260 --> 00:08:03,120
+attached to your virtual machine we
+
+186
+00:08:03,120 --> 00:08:04,620
+wanted to make sure that the incremental
+
+187
+00:08:04,620 --> 00:08:06,900
+backup across all 20 was point in time
+
+188
+00:08:06,900 --> 00:08:09,900
+coherent across all of them and we
+
+189
+00:08:09,900 --> 00:08:11,610
+wanted to use and existed in human
+
+190
+00:08:11,610 --> 00:08:13,500
+concerns matching feature to accomplish
+
+191
+00:08:13,500 --> 00:08:16,920
+this we want to make sure that the
+
+192
+00:08:16,920 --> 00:08:19,890
+bitmaps are persistent so even if the
+
+193
+00:08:19,890 --> 00:08:22,620
+virtual machine is shut down shuffled
+
+194
+00:08:22,620 --> 00:08:25,140
+around rebooted what have you we want to
+
+195
+00:08:25,140 --> 00:08:26,490
+make sure that this thing for mental
+
+196
+00:08:26,490 --> 00:08:27,900
+data which is kind of precious because
+
+197
+00:08:27,900 --> 00:08:29,640
+it allows us to make very small backups
+
+198
+00:08:29,640 --> 00:08:30,960
+in the future we want to make sure that
+
+199
+00:08:30,960 --> 00:08:33,720
+stuff survives and we didn't want to
+
+200
+00:08:33,720 --> 00:08:35,580
+depend on the drive data format because
+
+201
+00:08:35,580 --> 00:08:37,919
+everybody has their pet favourites on
+
+202
+00:08:37,919 --> 00:08:40,260
+exactly what kind of data format they're
+
+203
+00:08:40,260 --> 00:08:42,179
+going to be using and we didn't want to
+
+204
+00:08:42,179 --> 00:08:44,130
+depend on the backup target for that so
+
+205
+00:08:44,130 --> 00:08:45,780
+we wanted to be able to go from whatever
+
+206
+00:08:45,780 --> 00:08:48,810
+format to whatever format trying to make
+
+207
+00:08:48,810 --> 00:08:50,850
+this this kind of a data storage
+
+208
+00:08:50,850 --> 00:08:55,220
+agnostic solution as possible
+
+209
+00:08:55,269 --> 00:08:57,309
+again we want to make sure that this is
+
+210
+00:08:57,309 --> 00:09:00,610
+migration safe and we wanted to make
+
+211
+00:09:00,610 --> 00:09:04,329
+sure that on error which you know
+
+212
+00:09:04,329 --> 00:09:06,069
+hopefully never gonna happen but of
+
+213
+00:09:06,069 --> 00:09:08,829
+course we know that it always will so we
+
+214
+00:09:08,829 --> 00:09:10,119
+want to make sure that can you have the
+
+215
+00:09:10,119 --> 00:09:12,660
+ability to
+
+216
+00:09:17,730 --> 00:09:20,649
+for backup change if we can help
+
+217
+00:09:20,649 --> 00:09:24,209
+and for the persistence
+
+218
+00:09:27,230 --> 00:09:30,550
+a persistent state of
+
+219
+00:09:31,430 --> 00:09:34,130
+those are the design goals what we're
+
+220
+00:09:34,130 --> 00:09:35,870
+going for and for people who are
+
+221
+00:09:35,870 --> 00:09:37,820
+familiar with snapshots this question
+
+222
+00:09:37,820 --> 00:09:38,570
+comes up a lot
+
+223
+00:09:38,570 --> 00:09:40,279
+why aren't you just using snapped up for
+
+224
+00:09:40,279 --> 00:09:42,980
+this snapshots and backups have kind of
+
+225
+00:09:42,980 --> 00:09:46,130
+different properties backups you know
+
+226
+00:09:46,130 --> 00:09:47,870
+we'd like this to be off-site and
+
+227
+00:09:47,870 --> 00:09:50,589
+impossible
+
+228
+00:09:52,160 --> 00:09:55,660
+the snapshot mechanism
+
+229
+00:09:58,380 --> 00:10:00,570
+some people do use various times of
+
+230
+00:10:00,570 --> 00:10:03,110
+snapshot
+
+231
+00:10:05,059 --> 00:10:07,489
+and time back up but we wanted to skip
+
+232
+00:10:07,489 --> 00:10:10,059
+all that mess
+
+233
+00:10:12,060 --> 00:10:13,890
+so the incremental backups you have that
+
+234
+00:10:13,890 --> 00:10:15,649
+there inert for that bro
+
+235
+00:10:15,649 --> 00:10:19,119
+not attached to the running system
+
+236
+00:10:20,829 --> 00:10:24,809
+unlike snaps elsewhere
+
+237
+00:10:26,170 --> 00:10:29,270
+[Music]
+
+238
+00:10:30,370 --> 00:10:31,809
+and maybe he don't know how much
+
+239
+00:10:31,809 --> 00:10:34,469
+dependent
+
+240
+00:10:36,480 --> 00:10:38,579
+this is kind of why we don't do
+
+241
+00:10:38,579 --> 00:10:40,529
+snapshots but it's going to depend on
+
+242
+00:10:40,529 --> 00:10:42,709
+every
+
+243
+00:10:50,680 --> 00:10:53,489
+so building blocks
+
+244
+00:10:55,320 --> 00:10:57,570
+so this is the existing structure we
+
+245
+00:10:57,570 --> 00:11:00,949
+have to track right
+
+246
+00:11:01,649 --> 00:11:04,420
+music I've never in my black migration
+
+247
+00:11:04,420 --> 00:11:06,310
+it's implemented using a hierarchical
+
+248
+00:11:06,310 --> 00:11:10,130
+bitmap which
+
+249
+00:11:10,130 --> 00:11:14,200
+the track relations
+
+250
+00:11:14,840 --> 00:11:16,940
+which is important because you can have
+
+251
+00:11:16,940 --> 00:11:19,310
+multiple independent a collision
+
+252
+00:11:19,310 --> 00:11:22,970
+occurring simultaneously with
+
+253
+00:11:22,970 --> 00:11:25,720
+and
+
+254
+00:11:29,370 --> 00:11:31,560
+so the hierarchical bitmap I'm sure you
+
+255
+00:11:31,560 --> 00:11:33,750
+can visualize this in your mind but just
+
+256
+00:11:33,750 --> 00:11:36,240
+because I like making grass it's
+
+257
+00:11:36,240 --> 00:11:39,630
+actually a seven layer data structure
+
+258
+00:11:39,630 --> 00:11:42,630
+but choose good enough but this
+
+259
+00:11:42,630 --> 00:11:44,370
+structure allows us to iterate over the
+
+260
+00:11:44,370 --> 00:11:46,320
+data very quickly especially if it's
+
+261
+00:11:46,320 --> 00:11:48,840
+sparse we're able to skip large sections
+
+262
+00:11:48,840 --> 00:11:50,970
+of the disk so that incremental backup
+
+263
+00:11:50,970 --> 00:11:54,500
+should receive quite fast and as for
+
+264
+00:11:54,500 --> 00:11:57,990
+multiple per bitmap you can create an
+
+265
+00:11:57,990 --> 00:12:01,850
+arbitrary number I think we do have some
+
+266
+00:12:02,720 --> 00:12:05,220
+such thing but you can attach any number
+
+267
+00:12:05,220 --> 00:12:07,710
+of these bitmaps to any of your virtual
+
+268
+00:12:07,710 --> 00:12:11,880
+drives as you saw in the previous slide
+
+269
+00:12:11,880 --> 00:12:15,090
+they have names so the existing usages
+
+270
+00:12:15,090 --> 00:12:17,190
+are anonymous we call them anonymous
+
+271
+00:12:17,190 --> 00:12:20,910
+bitmaps but if you are intending to use
+
+272
+00:12:20,910 --> 00:12:22,740
+these for backups their names so that we
+
+273
+00:12:22,740 --> 00:12:24,000
+can interface with them from the
+
+274
+00:12:24,000 --> 00:12:26,490
+external API and the name becomes the
+
+275
+00:12:26,490 --> 00:12:30,240
+unique ID but each Drive can have the
+
+276
+00:12:30,240 --> 00:12:32,430
+same name of a bitmap so you need the
+
+277
+00:12:32,430 --> 00:12:35,160
+pair of the drive name and the bitmap
+
+278
+00:12:35,160 --> 00:12:39,620
+name to address this backup sequence
+
+279
+00:12:39,620 --> 00:12:42,320
+so just a straight you can absolutely
+
+280
+00:12:42,320 --> 00:12:44,810
+have something named bitmap zero on both
+
+281
+00:12:44,810 --> 00:12:47,840
+drives don't necessarily recommend it
+
+282
+00:12:47,840 --> 00:12:49,690
+that they drive you insane but you can
+
+283
+00:12:49,690 --> 00:12:52,790
+and then of course we have internally
+
+284
+00:12:52,790 --> 00:12:57,699
+used anonymous bitmaps for mirroring and
+
+285
+00:12:58,210 --> 00:13:03,310
+migration so I mentioned that we have
+
+286
+00:13:03,310 --> 00:13:06,350
+configurable granularity on this the
+
+287
+00:13:06,350 --> 00:13:08,270
+smaller the granularity this is a block
+
+288
+00:13:08,270 --> 00:13:11,060
+based backup not file so we have no idea
+
+289
+00:13:11,060 --> 00:13:13,040
+where files begin and end necessarily
+
+290
+00:13:13,040 --> 00:13:14,660
+maybe we could look in and check but
+
+291
+00:13:14,660 --> 00:13:17,960
+we're not gonna so we have to go by
+
+292
+00:13:17,960 --> 00:13:23,240
+sector at some point and so you can
+
+293
+00:13:23,240 --> 00:13:25,250
+configure the granularity so one byte
+
+294
+00:13:25,250 --> 00:13:27,560
+being dirtied may incur you a backup
+
+295
+00:13:27,560 --> 00:13:30,380
+size of 64 kilobytes but you can
+
+296
+00:13:30,380 --> 00:13:31,880
+configure it larger or smaller depending
+
+297
+00:13:31,880 --> 00:13:34,870
+on your requirements or your expected
+
+298
+00:13:34,870 --> 00:13:37,790
+usages or you could even like people
+
+299
+00:13:37,790 --> 00:13:39,680
+never do try to profile it and then use
+
+300
+00:13:39,680 --> 00:13:40,970
+the one that actually works best for
+
+301
+00:13:40,970 --> 00:13:43,250
+them but I won't tell you guys what to
+
+302
+00:13:43,250 --> 00:13:44,000
+do
+
+303
+00:13:44,000 --> 00:13:47,510
+so we default to 64 kilobytes but it
+
+304
+00:13:47,510 --> 00:13:49,040
+will attempt to match the cluster size
+
+305
+00:13:49,040 --> 00:13:53,720
+of the actual disk you provide and 64 K
+
+306
+00:13:53,720 --> 00:13:57,740
+of the default 4qk - how is kind of
+
+307
+00:13:57,740 --> 00:14:00,020
+getting ahead of myself here so we're
+
+308
+00:14:00,020 --> 00:14:02,750
+tracking first sector but the
+
+309
+00:14:02,750 --> 00:14:04,580
+granularity is configured in bytes
+
+310
+00:14:04,580 --> 00:14:06,050
+because we're trying to get rid of the
+
+311
+00:14:06,050 --> 00:14:09,710
+concept of a sector in a VM so sometimes
+
+312
+00:14:09,710 --> 00:14:11,810
+we run into some interesting cases like
+
+313
+00:14:11,810 --> 00:14:15,290
+this so the backup engine itself is
+
+314
+00:14:15,290 --> 00:14:16,910
+going to copy out things per cluster
+
+315
+00:14:16,910 --> 00:14:20,750
+it's 64 K at the moment it's non
+
+316
+00:14:20,750 --> 00:14:23,060
+configurable at them at the second but
+
+317
+00:14:23,060 --> 00:14:24,980
+it's almost for sure going to be
+
+318
+00:14:24,980 --> 00:14:26,240
+something that you can tweak in the
+
+319
+00:14:26,240 --> 00:14:29,300
+future so given that queue cow to
+
+320
+00:14:29,300 --> 00:14:32,600
+default defaults to 64 K and the backup
+
+321
+00:14:32,600 --> 00:14:36,890
+engine defaults to 64 K 64 K is probably
+
+322
+00:14:36,890 --> 00:14:39,640
+the best right now
+
+323
+00:14:40,240 --> 00:14:41,670
+so the management for these things
+
+324
+00:14:41,670 --> 00:14:44,260
+everything is done via qmp which is
+
+325
+00:14:44,260 --> 00:14:45,670
+really good news if you're a computer
+
+326
+00:14:45,670 --> 00:14:47,380
+not so great news if you like doing
+
+327
+00:14:47,380 --> 00:14:51,760
+everything yourself by hand so qmp for
+
+328
+00:14:51,760 --> 00:14:53,830
+people who aren't maybe super familiar
+
+329
+00:14:53,830 --> 00:14:56,710
+with it it's a JSON based protocol if
+
+330
+00:14:56,710 --> 00:14:59,230
+like JSON ish I think we changed maybe
+
+331
+00:14:59,230 --> 00:15:01,510
+the type of quotes you can use or
+
+332
+00:15:01,510 --> 00:15:03,310
+something like that it's almost quite
+
+333
+00:15:03,310 --> 00:15:06,550
+nearly JSON and it is what libvirt and
+
+334
+00:15:06,550 --> 00:15:08,230
+everything else will use to be talking
+
+335
+00:15:08,230 --> 00:15:10,090
+to CUNY so it can be a little cumbersome
+
+336
+00:15:10,090 --> 00:15:12,970
+by hand but we do have little Python
+
+337
+00:15:12,970 --> 00:15:14,440
+tools and things you can use if you want
+
+338
+00:15:14,440 --> 00:15:16,630
+to play with it manually but there are
+
+339
+00:15:16,630 --> 00:15:19,450
+four commands here so you for the
+
+340
+00:15:19,450 --> 00:15:21,010
+management of dirty fit naps
+
+341
+00:15:21,010 --> 00:15:23,830
+there's add remove clear and then
+
+342
+00:15:23,830 --> 00:15:25,570
+there's the more generic query block
+
+343
+00:15:25,570 --> 00:15:27,970
+command which will show you status in
+
+344
+00:15:27,970 --> 00:15:29,950
+general about all block devices but it
+
+345
+00:15:29,950 --> 00:15:32,590
+includes some interesting information
+
+346
+00:15:32,590 --> 00:15:35,080
+about the bitmaps attached to each each
+
+347
+00:15:35,080 --> 00:15:39,820
+Drive so creation creations pretty
+
+348
+00:15:39,820 --> 00:15:42,010
+simple bitmaps can be created at any
+
+349
+00:15:42,010 --> 00:15:44,530
+time on any note and for any reason
+
+350
+00:15:44,530 --> 00:15:47,140
+because we're not watching you bitmaps
+
+351
+00:15:47,140 --> 00:15:49,150
+begin recording rights immediately as
+
+352
+00:15:49,150 --> 00:15:51,100
+soon as you add them and the granularity
+
+353
+00:15:51,100 --> 00:15:52,810
+is optional if you omit it that's going
+
+354
+00:15:52,810 --> 00:15:54,910
+back to 64k but here you can see this
+
+355
+00:15:54,910 --> 00:15:58,870
+kind of JSON ish command and we execute
+
+356
+00:15:58,870 --> 00:16:00,910
+the block dirty bitmap add command on
+
+357
+00:16:00,910 --> 00:16:03,310
+drive 0 we named it bitmap 0 and we've
+
+358
+00:16:03,310 --> 00:16:05,020
+decided that we want a granularity of
+
+359
+00:16:05,020 --> 00:16:10,240
+128k this time around deletion
+
+360
+00:16:10,240 --> 00:16:14,350
+similarly simple the bitmaps can only be
+
+361
+00:16:14,350 --> 00:16:16,210
+deleted when they're not in use and what
+
+362
+00:16:16,210 --> 00:16:18,339
+counts as in use in this case for us is
+
+363
+00:16:18,339 --> 00:16:20,320
+not actually being used to make a backup
+
+364
+00:16:20,320 --> 00:16:22,990
+at when you type it but otherwise you
+
+365
+00:16:22,990 --> 00:16:24,330
+can delete them whenever you want
+
+366
+00:16:24,330 --> 00:16:29,430
+bitmaps are addressed by the node name
+
+367
+00:16:30,210 --> 00:16:33,210
+absolutely
+
+368
+00:16:40,140 --> 00:16:42,949
+barely
+
+369
+00:16:45,140 --> 00:16:47,600
+if you wish to clear a bitmap for
+
+370
+00:16:47,600 --> 00:16:49,760
+convenience instead of reading to get
+
+371
+00:16:49,760 --> 00:16:52,130
+maximum reading it we do have a clear
+
+372
+00:16:52,130 --> 00:16:54,490
+command
+
+373
+00:17:00,010 --> 00:17:05,879
+oh thank you
+
+374
+00:17:06,699 --> 00:17:09,209
+as for clearing the bitmaps this is the
+
+375
+00:17:09,209 --> 00:17:13,030
+query block command which I've truncated
+
+376
+00:17:13,030 --> 00:17:15,160
+a lot of the output here just to show
+
+377
+00:17:15,160 --> 00:17:16,839
+what's relevant to us but when you query
+
+378
+00:17:16,839 --> 00:17:18,760
+the block you'll see you know device
+
+379
+00:17:18,760 --> 00:17:20,709
+drives zero and it will give you a list
+
+380
+00:17:20,709 --> 00:17:22,690
+of dirty bitmaps you can see this one is
+
+381
+00:17:22,690 --> 00:17:27,730
+active the count will show you how many
+
+382
+00:17:27,730 --> 00:17:30,100
+sectors are dirty so you can get some
+
+383
+00:17:30,100 --> 00:17:31,930
+idea of how big the backups going to be
+
+384
+00:17:31,930 --> 00:17:33,700
+based on how many bits are dirty in the
+
+385
+00:17:33,700 --> 00:17:36,130
+bitmap you'll get the name and the
+
+386
+00:17:36,130 --> 00:17:38,650
+granularity some things as well
+
+387
+00:17:38,650 --> 00:17:41,170
+if status can also indicate frozen and
+
+388
+00:17:41,170 --> 00:17:47,860
+that's the frozen status indicates that
+
+389
+00:17:47,860 --> 00:17:49,930
+the the bitmap is not allowed to be
+
+390
+00:17:49,930 --> 00:17:51,460
+interacted with because it is currently
+
+391
+00:17:51,460 --> 00:17:55,810
+in use for a backup operation yes again
+
+392
+00:17:55,810 --> 00:17:59,110
+this is the sector count and the
+
+393
+00:17:59,110 --> 00:18:02,140
+granularity so it can be hard to convert
+
+394
+00:18:02,140 --> 00:18:03,850
+in your head exactly all these different
+
+395
+00:18:03,850 --> 00:18:05,800
+formats between byte sectors clusters
+
+396
+00:18:05,800 --> 00:18:08,440
+and so on but a computer will do it for
+
+397
+00:18:08,440 --> 00:18:12,490
+you because the computers get it math so
+
+398
+00:18:12,490 --> 00:18:15,550
+the qmp commands are not super useful
+
+399
+00:18:15,550 --> 00:18:19,230
+alone they're not atomic necessarily
+
+400
+00:18:19,230 --> 00:18:21,970
+they're only safe when the VM is offline
+
+401
+00:18:21,970 --> 00:18:24,400
+and there's no frost rot coherence
+
+402
+00:18:24,400 --> 00:18:25,900
+guarantee and that's something that I
+
+403
+00:18:25,900 --> 00:18:28,030
+specifically mentioned we didn't want to
+
+404
+00:18:28,030 --> 00:18:32,590
+have happen so we do have these
+
+405
+00:18:32,590 --> 00:18:35,170
+transaction commands that are going to
+
+406
+00:18:35,170 --> 00:18:38,160
+allow us to create full backups
+
+407
+00:18:38,160 --> 00:18:41,290
+alongside a new bitmap like immediately
+
+408
+00:18:41,290 --> 00:18:43,090
+so that every single write is going to
+
+409
+00:18:43,090 --> 00:18:45,130
+be tracked accordingly we're going to be
+
+410
+00:18:45,130 --> 00:18:47,530
+able to reset bitmaps simultaneously
+
+411
+00:18:47,530 --> 00:18:49,600
+across any number of drives and we're
+
+412
+00:18:49,600 --> 00:18:51,610
+going to be able to issue any number of
+
+413
+00:18:51,610 --> 00:18:55,620
+backups across as many drives as we have
+
+414
+00:18:55,620 --> 00:18:58,600
+the problem with the individual commands
+
+415
+00:18:58,600 --> 00:19:01,930
+for instance is if you try to reset or
+
+416
+00:19:01,930 --> 00:19:04,960
+add a bitmap and then no matter how fast
+
+417
+00:19:04,960 --> 00:19:06,370
+you are and you try to send the other
+
+418
+00:19:06,370 --> 00:19:07,970
+command oh yeah oh and by the
+
+419
+00:19:07,970 --> 00:19:10,399
+I'd like to start a new backup now you
+
+420
+00:19:10,399 --> 00:19:12,409
+know idea you may have gotten a right
+
+421
+00:19:12,409 --> 00:19:14,960
+that happened in the interim and we like
+
+422
+00:19:14,960 --> 00:19:17,029
+everything to be live and fast in queues
+
+423
+00:19:17,029 --> 00:19:19,789
+so pausing the VM to do these operations
+
+424
+00:19:19,789 --> 00:19:22,309
+is not really a great solution for us so
+
+425
+00:19:22,309 --> 00:19:25,399
+we do have these transaction commands
+
+426
+00:19:25,399 --> 00:19:27,110
+that allow us to batch the commands
+
+427
+00:19:27,110 --> 00:19:28,730
+together to make sure that the
+
+428
+00:19:28,730 --> 00:19:32,120
+operations are data safe so the
+
+429
+00:19:32,120 --> 00:19:35,210
+transaction actions that interface with
+
+430
+00:19:35,210 --> 00:19:38,870
+fit Maps we have the version of dirty
+
+431
+00:19:38,870 --> 00:19:43,250
+bitmap ad and clear don't really need a
+
+432
+00:19:43,250 --> 00:19:44,870
+transaction from the move because we're
+
+433
+00:19:44,870 --> 00:19:47,690
+getting rid of it this works in
+
+434
+00:19:47,690 --> 00:19:49,490
+conjunction with the type Drive backup
+
+435
+00:19:49,490 --> 00:19:53,210
+for the transactions and this can be
+
+436
+00:19:53,210 --> 00:19:55,250
+used for everything I said the multi
+
+437
+00:19:55,250 --> 00:19:57,350
+drive coherency full backups new
+
+438
+00:19:57,350 --> 00:19:59,929
+incremental chain sync points if it's
+
+439
+00:19:59,929 --> 00:20:02,539
+kind of the major interface you'll be
+
+440
+00:20:02,539 --> 00:20:04,549
+using to do anything with more than one
+
+441
+00:20:04,549 --> 00:20:08,389
+drive really so that's a lot of talking
+
+442
+00:20:08,389 --> 00:20:14,240
+let's show some pictures so this is the
+
+443
+00:20:14,240 --> 00:20:16,250
+the lifecycle for an incremental backup
+
+444
+00:20:16,250 --> 00:20:18,950
+chain in QEMU hopefully it's exactly as
+
+445
+00:20:18,950 --> 00:20:21,259
+simple as you would hope it to be you're
+
+446
+00:20:21,259 --> 00:20:23,299
+going to in general either create a new
+
+447
+00:20:23,299 --> 00:20:25,279
+backup chain or you're going to take an
+
+448
+00:20:25,279 --> 00:20:26,960
+existing one and synchronize it with a
+
+449
+00:20:26,960 --> 00:20:28,850
+new full backup and then from then on
+
+450
+00:20:28,850 --> 00:20:30,860
+you can make as many incremental backups
+
+451
+00:20:30,860 --> 00:20:33,049
+as often as you want according to
+
+452
+00:20:33,049 --> 00:20:34,740
+whatever policy
+
+453
+00:20:34,740 --> 00:20:38,130
+they had so for an example showing the
+
+454
+00:20:38,130 --> 00:20:40,650
+qmp behind this this is the transaction
+
+455
+00:20:40,650 --> 00:20:43,140
+is going to batch the add command and
+
+456
+00:20:43,140 --> 00:20:45,360
+the drive back up command together such
+
+457
+00:20:45,360 --> 00:20:47,730
+that the bitmap will be cleared exactly
+
+458
+00:20:47,730 --> 00:20:53,540
+in time with the with the drive back up
+
+459
+00:20:53,750 --> 00:20:56,640
+here I've also highlighted doesn't come
+
+460
+00:20:56,640 --> 00:20:59,220
+across so well on the projector but this
+
+461
+00:20:59,220 --> 00:21:06,179
+is sink full as the argument at this
+
+462
+00:21:06,179 --> 00:21:07,890
+point in time and it will clear the
+
+463
+00:21:07,890 --> 00:21:10,380
+bitmap in this point in time but the
+
+464
+00:21:10,380 --> 00:21:11,850
+backup will still take some time to
+
+465
+00:21:11,850 --> 00:21:14,250
+complete and it will finish later and
+
+466
+00:21:14,250 --> 00:21:15,990
+this bitmap is going to be kind of in
+
+467
+00:21:15,990 --> 00:21:19,440
+use until that finishes so to show you
+
+468
+00:21:19,440 --> 00:21:22,620
+what will happen we have this ID drive
+
+469
+00:21:22,620 --> 00:21:25,200
+zero and we're going to run this
+
+470
+00:21:25,200 --> 00:21:27,630
+transaction and then in one shot we'll
+
+471
+00:21:27,630 --> 00:21:30,780
+get a full backup and a new bitmap with
+
+472
+00:21:30,780 --> 00:21:32,970
+no dirty sectors in it so from this
+
+473
+00:21:32,970 --> 00:21:34,980
+point forward we can use it for
+
+474
+00:21:34,980 --> 00:21:39,150
+incrementals for a different example if
+
+475
+00:21:39,150 --> 00:21:41,370
+you didn't want to add a bitmap if you
+
+476
+00:21:41,370 --> 00:21:43,590
+want to clear it just kind of like reset
+
+477
+00:21:43,590 --> 00:21:46,080
+you can use the clear and the drive back
+
+478
+00:21:46,080 --> 00:21:49,428
+up command at the same time together
+
+479
+00:22:04,780 --> 00:22:07,820
+and that's how we can make it
+
+480
+00:22:07,820 --> 00:22:10,490
+to the first backup and similarly the
+
+481
+00:22:10,490 --> 00:22:12,080
+bitmaps dirty sector count has been
+
+482
+00:22:12,080 --> 00:22:17,330
+reset for us and then finally we get to
+
+483
+00:22:17,330 --> 00:22:20,030
+creating an incremental backup so unlike
+
+484
+00:22:20,030 --> 00:22:21,620
+the other commands with the full backup
+
+485
+00:22:21,620 --> 00:22:22,570
+we're going to create an image
+
+486
+00:22:22,570 --> 00:22:25,630
+separately here we're going to tell this
+
+487
+00:22:25,630 --> 00:22:28,880
+image that the backing file is the last
+
+488
+00:22:28,880 --> 00:22:32,270
+full backup we made so that when we
+
+489
+00:22:32,270 --> 00:22:34,250
+create this sparse image of just these
+
+490
+00:22:34,250 --> 00:22:35,870
+sectors that have changed since the last
+
+491
+00:22:35,870 --> 00:22:38,930
+usage if you were to mount this
+
+492
+00:22:38,930 --> 00:22:40,760
+incremental backup you would be able to
+
+493
+00:22:40,760 --> 00:22:42,620
+see a full and complete image of the
+
+494
+00:22:42,620 --> 00:22:44,870
+hard drive it's just each is stored in a
+
+495
+00:22:44,870 --> 00:22:47,180
+separate layer so we're gonna use an
+
+496
+00:22:47,180 --> 00:22:50,000
+external cue image tool to create on an
+
+497
+00:22:50,000 --> 00:22:52,850
+empty queue for us we're going to set
+
+498
+00:22:52,850 --> 00:22:55,340
+the backing file with the dash B command
+
+499
+00:22:55,340 --> 00:22:58,880
+and the format is qko and then at any
+
+500
+00:22:58,880 --> 00:23:01,910
+point we wish we can issue this this
+
+501
+00:23:01,910 --> 00:23:05,120
+Drive backup command and the only
+
+502
+00:23:05,120 --> 00:23:06,290
+difference here you can see it's
+
+503
+00:23:06,290 --> 00:23:08,720
+highlighted is sync is incremental and
+
+504
+00:23:08,720 --> 00:23:11,500
+we named the bitmap and the device and
+
+505
+00:23:11,500 --> 00:23:14,180
+the effect is this so if we have this
+
+506
+00:23:14,180 --> 00:23:16,310
+many dirty sectors we issue the backup
+
+507
+00:23:16,310 --> 00:23:19,070
+command and now we have a new cue cow to
+
+508
+00:23:19,070 --> 00:23:22,270
+file using the backup as a backing file
+
+509
+00:23:22,270 --> 00:23:25,970
+and then the count is reset and then
+
+510
+00:23:25,970 --> 00:23:28,400
+from here on out as many times as you
+
+511
+00:23:28,400 --> 00:23:30,200
+wish you can treat keep creating
+
+512
+00:23:30,200 --> 00:23:32,090
+incremental backups just keep creating
+
+513
+00:23:32,090 --> 00:23:38,270
+new new top layers so the problem here
+
+514
+00:23:38,270 --> 00:23:40,760
+perhaps in the management aspect is of
+
+515
+00:23:40,760 --> 00:23:42,290
+course if you decide to have a backup
+
+516
+00:23:42,290 --> 00:23:44,120
+every single hour or something like this
+
+517
+00:23:44,120 --> 00:23:45,950
+you're quickly going to have a chain of
+
+518
+00:23:45,950 --> 00:23:47,720
+you know several thousand of these
+
+519
+00:23:47,720 --> 00:23:50,150
+images but hopefully if you've been
+
+520
+00:23:50,150 --> 00:23:52,220
+copying them off-site like I'm asking
+
+521
+00:23:52,220 --> 00:23:54,950
+nicely you can use tools at anytime to
+
+522
+00:23:54,950 --> 00:23:57,020
+condense these images so the management
+
+523
+00:23:57,020 --> 00:24:00,160
+layer on the other side of this take
+
+524
+00:24:00,160 --> 00:24:03,980
+these long backup chains and Pa against
+
+525
+00:24:03,980 --> 00:24:06,710
+them or copy them or move them into
+
+526
+00:24:06,710 --> 00:24:09,350
+whatever other dedupe situation that you
+
+527
+00:24:09,350 --> 00:24:13,430
+have so hopefully that is not too
+
+528
+00:24:13,430 --> 00:24:15,440
+complicated for the management side of
+
+529
+00:24:15,440 --> 00:24:18,919
+things so brief break is just going to
+
+530
+00:24:18,919 --> 00:24:23,269
+hmm no I'm kidding
+
+531
+00:24:23,269 --> 00:24:24,739
+no I'm kidding I'm gonna talk about more
+
+532
+00:24:24,739 --> 00:24:29,509
+stuff anyway so I'd like to talk just a
+
+533
+00:24:29,509 --> 00:24:35,840
+bit about you know what our jobs so qmp
+
+534
+00:24:35,840 --> 00:24:38,299
+commands are synchronous and the qmp
+
+535
+00:24:38,299 --> 00:24:39,859
+socket is going to block each time you
+
+536
+00:24:39,859 --> 00:24:42,830
+send one so for long-running commands we
+
+537
+00:24:42,830 --> 00:24:47,359
+don't really have the ability to block
+
+538
+00:24:47,359 --> 00:24:49,309
+the socket for that entire time so we
+
+539
+00:24:49,309 --> 00:24:51,679
+have this asynchronous tasks API that
+
+540
+00:24:51,679 --> 00:24:54,320
+allows us to submit a Q and P command
+
+541
+00:24:54,320 --> 00:24:57,559
+and get some kind of a long-running job
+
+542
+00:24:57,559 --> 00:24:59,749
+that we can manage we can cancel and all
+
+543
+00:24:59,749 --> 00:25:02,570
+sorts of things for more information on
+
+544
+00:25:02,570 --> 00:25:05,600
+this you can see literally any talk from
+
+545
+00:25:05,600 --> 00:25:08,090
+KVM form 2016 because three of the block
+
+546
+00:25:08,090 --> 00:25:10,940
+maintainer Zahl gave talks on exactly
+
+547
+00:25:10,940 --> 00:25:13,820
+how block management works and you know
+
+548
+00:25:13,820 --> 00:25:16,009
+figuratively only three it was a Kashyap
+
+549
+00:25:16,009 --> 00:25:18,379
+Timothy Max rights and myself all gave
+
+550
+00:25:18,379 --> 00:25:19,909
+talks on this and there's a link in the
+
+551
+00:25:19,909 --> 00:25:21,200
+end if you want to know how to manage
+
+552
+00:25:21,200 --> 00:25:25,480
+these things so transactions in detail
+
+553
+00:25:25,480 --> 00:25:28,100
+we're going to batch some of the qmp
+
+554
+00:25:28,100 --> 00:25:30,440
+commands each individual item is an
+
+555
+00:25:30,440 --> 00:25:33,409
+action the transaction succeeds only if
+
+556
+00:25:33,409 --> 00:25:36,470
+all of the actions do but the problem is
+
+557
+00:25:36,470 --> 00:25:38,149
+that some actions are going to launch
+
+558
+00:25:38,149 --> 00:25:41,799
+job synchronously and some don't and I
+
+559
+00:25:41,799 --> 00:25:45,529
+hope that doesn't cause any problems but
+
+560
+00:25:45,529 --> 00:25:50,059
+of course it did the problem was that if
+
+561
+00:25:50,059 --> 00:25:53,779
+you have a transaction and half of the
+
+562
+00:25:53,779 --> 00:25:55,549
+items are launching these long-running
+
+563
+00:25:55,549 --> 00:25:58,700
+jobs and half aren't the concept of a
+
+564
+00:25:58,700 --> 00:26:00,440
+transaction failure became really
+
+565
+00:26:00,440 --> 00:26:02,869
+muddied because normally transactions
+
+566
+00:26:02,869 --> 00:26:06,499
+fail if any component action fails but
+
+567
+00:26:06,499 --> 00:26:09,139
+the problem here is that if as long as
+
+568
+00:26:09,139 --> 00:26:11,570
+the job launched we considered that a
+
+569
+00:26:11,570 --> 00:26:13,999
+success so then later on some of the
+
+570
+00:26:13,999 --> 00:26:15,919
+jobs could fail so say if you start a
+
+571
+00:26:15,919 --> 00:26:17,929
+two terabyte backup job because you
+
+572
+00:26:17,929 --> 00:26:19,960
+really hate your network infrastructure
+
+573
+00:26:19,960 --> 00:26:23,450
+and then it failed at you know one point
+
+574
+00:26:23,450 --> 00:26:25,159
+eight terabytes or something the
+
+575
+00:26:25,159 --> 00:26:27,200
+transaction still succeeded so the
+
+576
+00:26:27,200 --> 00:26:29,119
+management client now is really confused
+
+577
+00:26:29,119 --> 00:26:31,070
+about what exactly just happened because
+
+578
+00:26:31,070 --> 00:26:31,920
+the Train
+
+579
+00:26:31,920 --> 00:26:34,530
+Action 6 Oh so what's good and what is
+
+580
+00:26:34,530 --> 00:26:37,770
+correlated at one point of time - so
+
+581
+00:26:37,770 --> 00:26:39,780
+this is a bit of a problem for us
+
+582
+00:26:39,780 --> 00:26:43,890
+so yes before 2.5 the action succeeds if
+
+583
+00:26:43,890 --> 00:26:46,260
+the job is started jobs failing later
+
+584
+00:26:46,260 --> 00:26:49,470
+have no effect on other jobs so some
+
+585
+00:26:49,470 --> 00:26:51,660
+backup succeeded and some would fail and
+
+586
+00:26:51,660 --> 00:26:56,370
+this wasn't quite so great so we added a
+
+587
+00:26:56,370 --> 00:26:58,230
+new parameter to the transaction command
+
+588
+00:26:58,230 --> 00:27:03,180
+as a whole where there would no change
+
+589
+00:27:03,180 --> 00:27:04,500
+from the original behavior where the
+
+590
+00:27:04,500 --> 00:27:06,560
+action succeeds if the job is started
+
+591
+00:27:06,560 --> 00:27:10,170
+but any jobs launched by a transaction
+
+592
+00:27:10,170 --> 00:27:12,150
+now we'll wait for completion from all
+
+593
+00:27:12,150 --> 00:27:15,060
+other jobs before they finish so for
+
+594
+00:27:15,060 --> 00:27:18,720
+instance if you try to do a backup
+
+595
+00:27:18,720 --> 00:27:20,880
+across a two terabyte drive and like a
+
+596
+00:27:20,880 --> 00:27:23,700
+you know a one gig drive clearly that
+
+597
+00:27:23,700 --> 00:27:25,830
+one gig Drive is gonna finish way sooner
+
+598
+00:27:25,830 --> 00:27:28,380
+than that two terabyte behemoth but it's
+
+599
+00:27:28,380 --> 00:27:30,660
+going to copy all of its data first but
+
+600
+00:27:30,660 --> 00:27:32,310
+then it's just going to wait in a
+
+601
+00:27:32,310 --> 00:27:34,230
+completion mode waiting for the other
+
+602
+00:27:34,230 --> 00:27:35,220
+job to finish
+
+603
+00:27:35,220 --> 00:27:37,980
+and if the two terabyte job should fail
+
+604
+00:27:37,980 --> 00:27:40,440
+the one gigabyte job knows that it's not
+
+605
+00:27:40,440 --> 00:27:42,540
+safe to clear out the bits in the bitmap
+
+606
+00:27:42,540 --> 00:27:45,000
+and it will roll back to make sure that
+
+607
+00:27:45,000 --> 00:27:48,540
+nothing is lost this isn't necessarily
+
+608
+00:27:48,540 --> 00:27:50,220
+what you want but it's up to the
+
+609
+00:27:50,220 --> 00:27:51,690
+management client some management
+
+610
+00:27:51,690 --> 00:27:53,640
+clients assume a transaction will be
+
+611
+00:27:53,640 --> 00:27:56,580
+fully all-or-nothing and this will give
+
+612
+00:27:56,580 --> 00:27:58,140
+them that behavior so you can avoid
+
+613
+00:27:58,140 --> 00:28:00,030
+keeping partial completion state and
+
+614
+00:28:00,030 --> 00:28:01,620
+memory or having to worry about that
+
+615
+00:28:01,620 --> 00:28:02,970
+sort of thing
+
+616
+00:28:02,970 --> 00:28:05,940
+but it's up to you there's no problem
+
+617
+00:28:05,940 --> 00:28:08,700
+technically if one job fails and another
+
+618
+00:28:08,700 --> 00:28:10,740
+doesn't you don't have to cancel or
+
+619
+00:28:10,740 --> 00:28:12,300
+delete the other backup you could just
+
+620
+00:28:12,300 --> 00:28:15,210
+retry the incremental on both to get a
+
+621
+00:28:15,210 --> 00:28:18,920
+point in time across both but this was a
+
+622
+00:28:18,920 --> 00:28:21,960
+hotly requested feature for people to
+
+623
+00:28:21,960 --> 00:28:23,820
+avoid having to think about partial
+
+624
+00:28:23,820 --> 00:28:27,930
+completion and failure and so on so this
+
+625
+00:28:27,930 --> 00:28:30,810
+is an example of a multi Drive backup
+
+626
+00:28:30,810 --> 00:28:32,820
+doing incremental across two drives
+
+627
+00:28:32,820 --> 00:28:34,560
+there's really no difference other than
+
+628
+00:28:34,560 --> 00:28:36,030
+this thing is all wrapped in a
+
+629
+00:28:36,030 --> 00:28:38,640
+transaction command and here I have
+
+630
+00:28:38,640 --> 00:28:40,170
+actually emitted the group to completion
+
+631
+00:28:40,170 --> 00:28:41,790
+mode that I was talking about but it
+
+632
+00:28:41,790 --> 00:28:42,710
+would be
+
+633
+00:28:42,710 --> 00:28:45,200
+an argument below action so in addition
+
+634
+00:28:45,200 --> 00:28:46,880
+to the actions array there would be like
+
+635
+00:28:46,880 --> 00:28:49,190
+a completion mode grouped parameter here
+
+636
+00:28:49,190 --> 00:28:51,620
+but this is just to illustrate what
+
+637
+00:28:51,620 --> 00:28:54,200
+happens when we want backup across two
+
+638
+00:28:54,200 --> 00:28:56,270
+drives at the same time so you may have
+
+639
+00:28:56,270 --> 00:28:58,460
+something like this and then upon
+
+640
+00:28:58,460 --> 00:29:00,800
+issuing the transaction point in time we
+
+641
+00:29:00,800 --> 00:29:06,080
+get to two backups at exactly the same
+
+642
+00:29:06,080 --> 00:29:09,650
+time yeah
+
+643
+00:29:09,650 --> 00:29:11,570
+just pointing out that those two are
+
+644
+00:29:11,570 --> 00:29:13,490
+absolutely correlated and should be safe
+
+645
+00:29:13,490 --> 00:29:17,150
+to use together so for partial failures
+
+646
+00:29:17,150 --> 00:29:20,210
+again if one failed and the other does
+
+647
+00:29:20,210 --> 00:29:22,760
+not we're gonna have to delete one but
+
+648
+00:29:22,760 --> 00:29:24,290
+then the other backups still good and
+
+649
+00:29:24,290 --> 00:29:25,940
+the way to recover from this would be to
+
+650
+00:29:25,940 --> 00:29:29,150
+add another incremental backup so you'd
+
+651
+00:29:29,150 --> 00:29:32,210
+have two incremental backups for drive
+
+652
+00:29:32,210 --> 00:29:34,490
+zero and just one incremental backup for
+
+653
+00:29:34,490 --> 00:29:36,200
+drive one at the end of that to recover
+
+654
+00:29:36,200 --> 00:29:40,160
+from like a partial failure but if that
+
+655
+00:29:40,160 --> 00:29:42,440
+is untenable for you the other solution
+
+656
+00:29:42,440 --> 00:29:46,130
+is if one fails we're actually going to
+
+657
+00:29:46,130 --> 00:29:48,230
+delete both of them so it is a bit of a
+
+658
+00:29:48,230 --> 00:29:50,540
+waste but it does save you the trouble
+
+659
+00:29:50,540 --> 00:29:52,520
+of having to think about exactly how to
+
+660
+00:29:52,520 --> 00:29:56,530
+manage the recovery situation from there
+
+661
+00:29:57,460 --> 00:30:00,650
+so we have a few more features these are
+
+662
+00:30:00,650 --> 00:30:06,800
+kind of things that were a few more
+
+663
+00:30:06,800 --> 00:30:08,690
+features that we're trying to work on so
+
+664
+00:30:08,690 --> 00:30:11,510
+bitmap migration at the moment the
+
+665
+00:30:11,510 --> 00:30:14,450
+initial version of this did not actually
+
+666
+00:30:14,450 --> 00:30:20,030
+support migrating across live hosts so
+
+667
+00:30:20,030 --> 00:30:22,490
+the initial version of migration for us
+
+668
+00:30:22,490 --> 00:30:25,550
+was to split these data the the dirty
+
+669
+00:30:25,550 --> 00:30:28,070
+bitmap into one kilobyte chunks and then
+
+670
+00:30:28,070 --> 00:30:30,950
+serialize it piece by piece and then
+
+671
+00:30:30,950 --> 00:30:34,450
+using the bitmaps themselves we could
+
+672
+00:30:34,450 --> 00:30:37,520
+kind of copy as the drive got dirtied
+
+673
+00:30:37,520 --> 00:30:40,790
+and for things that were small enough we
+
+674
+00:30:40,790 --> 00:30:42,560
+could just kind of skip the live phase
+
+675
+00:30:42,560 --> 00:30:44,930
+and send it wholesale
+
+676
+00:30:44,930 --> 00:30:47,330
+but maybe this doesn't scale so well
+
+677
+00:30:47,330 --> 00:30:49,070
+depending on how many bitmaps or how
+
+678
+00:30:49,070 --> 00:30:50,840
+many drives you have this could really
+
+679
+00:30:50,840 --> 00:30:55,540
+add some time to the migration stream so
+
+680
+00:30:55,540 --> 00:30:59,030
+the bitmaps weren't transferred
+
+681
+00:30:59,030 --> 00:31:01,310
+alongside the data so the data would go
+
+682
+00:31:01,310 --> 00:31:03,140
+in its own loop and the bitmaps would go
+
+683
+00:31:03,140 --> 00:31:06,380
+in its own loop and then we had this
+
+684
+00:31:06,380 --> 00:31:10,040
+this dirty dirty bitmap bitmaps a kind
+
+685
+00:31:10,040 --> 00:31:11,630
+of solution that was kind of really
+
+686
+00:31:11,630 --> 00:31:13,810
+confusing to name all the variables for
+
+687
+00:31:13,810 --> 00:31:17,060
+but this captures changes during live
+
+688
+00:31:17,060 --> 00:31:19,460
+migration and we could resend the pieces
+
+689
+00:31:19,460 --> 00:31:21,470
+if we needed to and it didn't use a lot
+
+690
+00:31:21,470 --> 00:31:25,670
+of memory but it kind of added some
+
+691
+00:31:25,670 --> 00:31:27,800
+complexity to the to the migration
+
+692
+00:31:27,800 --> 00:31:33,250
+itself so we have a second approach now
+
+693
+00:31:33,250 --> 00:31:36,140
+using a post copy technique if you're
+
+694
+00:31:36,140 --> 00:31:38,540
+familiar with post copy in general post
+
+695
+00:31:38,540 --> 00:31:41,270
+copy migrations are the concept that you
+
+696
+00:31:41,270 --> 00:31:44,180
+could migrate a VM from one machine to
+
+697
+00:31:44,180 --> 00:31:45,800
+another and then immediately start
+
+698
+00:31:45,800 --> 00:31:48,470
+running the VM on the new machine and
+
+699
+00:31:48,470 --> 00:31:50,390
+then as it needs the memory it would
+
+700
+00:31:50,390 --> 00:31:52,130
+false and fetch the memory from the
+
+701
+00:31:52,130 --> 00:31:54,080
+previous host and the reason this is
+
+702
+00:31:54,080 --> 00:31:57,050
+useful is because it allows you to
+
+703
+00:31:57,050 --> 00:31:59,570
+guarantee when the machine will pivot
+
+704
+00:31:59,570 --> 00:32:01,570
+because if you are not worrying about
+
+705
+00:32:01,570 --> 00:32:03,740
+the rate that the memory is being
+
+706
+00:32:03,740 --> 00:32:07,610
+dirtied it's possible that the VM will
+
+707
+00:32:07,610 --> 00:32:10,610
+be so active so busy so loaded that it
+
+708
+00:32:10,610 --> 00:32:12,590
+will dirty the memory faster than we can
+
+709
+00:32:12,590 --> 00:32:15,230
+migrate it across across the stream and
+
+710
+00:32:15,230 --> 00:32:17,090
+the same kind of problem happens for
+
+711
+00:32:17,090 --> 00:32:19,850
+disk but in post copy you just migrate
+
+712
+00:32:19,850 --> 00:32:22,850
+the VM first with an initial set and
+
+713
+00:32:22,850 --> 00:32:25,010
+then as it needs memory it fetches it
+
+714
+00:32:25,010 --> 00:32:27,110
+from the old host so we figured that we
+
+715
+00:32:27,110 --> 00:32:29,030
+could probably do something like that
+
+716
+00:32:29,030 --> 00:32:33,860
+for bitmaps so we're just going to send
+
+717
+00:32:33,860 --> 00:32:37,480
+the whole bitmap post pivot and then
+
+718
+00:32:37,480 --> 00:32:40,880
+before the the the data has fully
+
+719
+00:32:40,880 --> 00:32:42,980
+converged we're going to record the new
+
+720
+00:32:42,980 --> 00:32:44,660
+writes on the target with a new bitmap
+
+721
+00:32:44,660 --> 00:32:47,510
+we're going to disallow backups until
+
+722
+00:32:47,510 --> 00:32:49,400
+all of the bitmaps have come back to us
+
+723
+00:32:49,400 --> 00:32:50,720
+and then we're just going to merge the
+
+724
+00:32:50,720 --> 00:32:53,690
+bitmaps on the target so what this gets
+
+725
+00:32:53,690 --> 00:32:57,470
+us is the ability to guarantee like that
+
+726
+00:32:57,470 --> 00:32:59,720
+the bitmaps aren't going to be stalling
+
+727
+00:32:59,720 --> 00:33:02,420
+the migration and then the price we pay
+
+728
+00:33:02,420 --> 00:33:04,400
+for that is you may not be able to issue
+
+729
+00:33:04,400 --> 00:33:06,560
+a new incremental backup for the next
+
+730
+00:33:06,560 --> 00:33:08,039
+you know
+
+731
+00:33:08,039 --> 00:33:09,749
+or something after you migrate as
+
+732
+00:33:09,749 --> 00:33:12,929
+everything catches up this does add a
+
+733
+00:33:12,929 --> 00:33:16,559
+new failure point so this is the
+
+734
+00:33:16,559 --> 00:33:18,749
+unfortunate part we do consider this
+
+735
+00:33:18,749 --> 00:33:20,369
+kind of a non-critical loss because
+
+736
+00:33:20,369 --> 00:33:23,249
+you've just lost metadata but the bitmap
+
+737
+00:33:23,249 --> 00:33:25,559
+chains can be restarted using the clear
+
+738
+00:33:25,559 --> 00:33:28,169
+commands and so on but we are looking at
+
+739
+00:33:28,169 --> 00:33:31,049
+ways perhaps to mitigate this kind of a
+
+740
+00:33:31,049 --> 00:33:33,869
+data loss event shouldn't say data loss
+
+741
+00:33:33,869 --> 00:33:37,649
+I should say metadata loss there are
+
+742
+00:33:37,649 --> 00:33:40,259
+other options if this really spooks you
+
+743
+00:33:40,259 --> 00:33:42,239
+out you can always use a shared storage
+
+744
+00:33:42,239 --> 00:33:44,820
+migration and flush the bitmaps to the
+
+745
+00:33:44,820 --> 00:33:47,519
+disk migrate and then load the bitmaps
+
+746
+00:33:47,519 --> 00:33:49,259
+from the disk again and that's probably
+
+747
+00:33:49,259 --> 00:33:55,440
+a lot safer so for the persistence like
+
+748
+00:33:55,440 --> 00:33:58,639
+I'm hinting at we were going to do a
+
+749
+00:33:58,639 --> 00:34:04,080
+format agnostic solution but we were
+
+750
+00:34:04,080 --> 00:34:05,820
+going to use cue cow to is a generic
+
+751
+00:34:05,820 --> 00:34:09,510
+container to store bitmaps for arbitrary
+
+752
+00:34:09,510 --> 00:34:12,119
+other drives but the problem we had with
+
+753
+00:34:12,119 --> 00:34:13,440
+that is that queue is not in the
+
+754
+00:34:13,440 --> 00:34:15,960
+business of managing file names or
+
+755
+00:34:15,960 --> 00:34:17,489
+hierarchies for where things are stored
+
+756
+00:34:17,489 --> 00:34:18,989
+we leave that to live vert and other
+
+757
+00:34:18,989 --> 00:34:21,839
+management tools so when we were trying
+
+758
+00:34:21,839 --> 00:34:24,569
+to add a spec that allowed us to use cue
+
+759
+00:34:24,569 --> 00:34:28,799
+cow to to describe the dirty state of
+
+760
+00:34:28,799 --> 00:34:30,869
+other files and formats it quickly
+
+761
+00:34:30,869 --> 00:34:33,270
+became obvious that we were trying to
+
+762
+00:34:33,270 --> 00:34:35,129
+replicate too much from the layer above
+
+763
+00:34:35,129 --> 00:34:38,460
+us so now we're just targeting the cue
+
+764
+00:34:38,460 --> 00:34:41,339
+cow to format which some people might be
+
+765
+00:34:41,339 --> 00:34:43,199
+sad to hear but I'll get to that in a
+
+766
+00:34:43,199 --> 00:34:47,909
+bit so for right now it's a kick out to
+
+767
+00:34:47,909 --> 00:34:50,609
+format multiple bitmaps can be stored
+
+768
+00:34:50,609 --> 00:34:53,730
+per file the bitmaps have types there's
+
+769
+00:34:53,730 --> 00:34:56,429
+a full spec that was written kind of
+
+770
+00:34:56,429 --> 00:34:58,170
+independent of this feature that allowed
+
+771
+00:34:58,170 --> 00:35:00,059
+us to store these dirty bitmaps in a QQ
+
+772
+00:35:00,059 --> 00:35:03,119
+file so this is extensible and we may
+
+773
+00:35:03,119 --> 00:35:04,680
+use it in the future to restart
+
+774
+00:35:04,680 --> 00:35:07,349
+migrations or things but for now it's
+
+775
+00:35:07,349 --> 00:35:10,140
+incremental backup related the bitmaps
+
+776
+00:35:10,140 --> 00:35:12,720
+can autoload in queue like if there's a
+
+777
+00:35:12,720 --> 00:35:14,940
+persistent bitmap associated with a
+
+778
+00:35:14,940 --> 00:35:17,010
+storage file once you give that to key
+
+779
+00:35:17,010 --> 00:35:18,960
+the next time at boots it sees oh yes
+
+780
+00:35:18,960 --> 00:35:22,819
+good and it will start up for you
+
+781
+00:35:22,819 --> 00:35:25,499
+the spec amendment is already merged and
+
+782
+00:35:25,499 --> 00:35:27,089
+their patches ready on lift from
+
+783
+00:35:27,089 --> 00:35:28,890
+virtuozzo and hopefully we're gonna get
+
+784
+00:35:28,890 --> 00:35:34,019
+these in 22.9 so for non queue cow to
+
+785
+00:35:34,019 --> 00:35:38,819
+files there are some options some
+
+786
+00:35:38,819 --> 00:35:40,470
+formats are going to add their own
+
+787
+00:35:40,470 --> 00:35:42,809
+primary support for it I know virtuosa
+
+788
+00:35:42,809 --> 00:35:44,430
+wants to make sure that they have
+
+789
+00:35:44,430 --> 00:35:47,400
+support in their parallels format but we
+
+790
+00:35:47,400 --> 00:35:50,339
+may extend queue count to into a right
+
+791
+00:35:50,339 --> 00:35:53,160
+forwarding like header node if you will
+
+792
+00:35:53,160 --> 00:35:55,799
+where instead of a backing file which is
+
+793
+00:35:55,799 --> 00:35:57,539
+usually read-only we may have a
+
+794
+00:35:57,539 --> 00:36:00,869
+read/write backing file where qko will
+
+795
+00:36:00,869 --> 00:36:02,880
+store the metadata for other images for
+
+796
+00:36:02,880 --> 00:36:05,400
+you and then that way the managing
+
+797
+00:36:05,400 --> 00:36:07,819
+layers can worry about the backing file
+
+798
+00:36:07,819 --> 00:36:10,049
+relationships and all we need to worry
+
+799
+00:36:10,049 --> 00:36:12,059
+about is that we now have a cue cow -
+
+800
+00:36:12,059 --> 00:36:13,890
+that doesn't actually take rights
+
+801
+00:36:13,890 --> 00:36:16,049
+it just forwards them to a raw file so
+
+802
+00:36:16,049 --> 00:36:18,349
+we're hoping this is going to let us do
+
+803
+00:36:18,349 --> 00:36:21,930
+persistent bitmap storage for raw discs
+
+804
+00:36:21,930 --> 00:36:23,490
+for people who want that kind of
+
+805
+00:36:23,490 --> 00:36:25,799
+performance would still like incremental
+
+806
+00:36:25,799 --> 00:36:31,950
+backups so I think I heard in the
+
+807
+00:36:31,950 --> 00:36:33,980
+previous talk we were talking about a
+
+808
+00:36:33,980 --> 00:36:38,910
+VMware CBT a bit so this was a problem
+
+809
+00:36:38,910 --> 00:36:41,249
+that came up for us because everything
+
+810
+00:36:41,249 --> 00:36:42,930
+I've described so far as what we call a
+
+811
+00:36:42,930 --> 00:36:43,650
+push model
+
+812
+00:36:43,650 --> 00:36:46,440
+we're cueing you knows exactly what's
+
+813
+00:36:46,440 --> 00:36:48,180
+dirty and where it's dirty and us
+
+814
+00:36:48,180 --> 00:36:51,390
+queueing you to author the backup so
+
+815
+00:36:51,390 --> 00:36:54,210
+this is a largely qemu driven process
+
+816
+00:36:54,210 --> 00:36:56,789
+which isn't necessarily a problem for us
+
+817
+00:36:56,789 --> 00:36:59,009
+or for people who are already using our
+
+818
+00:36:59,009 --> 00:37:03,989
+models but we do have a lot of requests
+
+819
+00:37:03,989 --> 00:37:06,390
+for making something similar to vmware
+
+820
+00:37:06,390 --> 00:37:11,160
+CBT where you have the ability to to
+
+821
+00:37:11,160 --> 00:37:13,019
+query for which blocks are dirty and
+
+822
+00:37:13,019 --> 00:37:15,119
+then manually yourself copy those blocks
+
+823
+00:37:15,119 --> 00:37:18,329
+out so at the moment push model is
+
+824
+00:37:18,329 --> 00:37:20,190
+already in Kimia we are working on the
+
+825
+00:37:20,190 --> 00:37:22,650
+pull model and the way the pull model
+
+826
+00:37:22,650 --> 00:37:24,299
+works is it's going to offer a
+
+827
+00:37:24,299 --> 00:37:26,489
+lightweight temporary snapshot so you
+
+828
+00:37:26,489 --> 00:37:28,920
+will connect to Keamy you will request a
+
+829
+00:37:28,920 --> 00:37:32,880
+temporary like a view of the image using
+
+830
+00:37:32,880 --> 00:37:35,350
+the NBD protocol and
+
+831
+00:37:35,350 --> 00:37:38,230
+through the NBD protocol you're going to
+
+832
+00:37:38,230 --> 00:37:40,150
+have the ability to ask you know give me
+
+833
+00:37:40,150 --> 00:37:41,920
+a list of the dirty sectors I want to
+
+834
+00:37:41,920 --> 00:37:44,170
+see what's dirty and then the client can
+
+835
+00:37:44,170 --> 00:37:46,690
+at its own pace copy out the sectors it
+
+836
+00:37:46,690 --> 00:37:49,000
+thinks they're dirty and perhaps if this
+
+837
+00:37:49,000 --> 00:37:50,890
+third party client knows more than we do
+
+838
+00:37:50,890 --> 00:37:52,780
+about exactly what's dirty it can make
+
+839
+00:37:52,780 --> 00:37:54,730
+its own decisions about what to backup
+
+840
+00:37:54,730 --> 00:37:58,720
+where why for instance but this is a
+
+841
+00:37:58,720 --> 00:38:00,880
+feature that was requested by virtuozzo
+
+842
+00:38:00,880 --> 00:38:02,500
+and they've been working very hard on
+
+843
+00:38:02,500 --> 00:38:04,750
+this and we are hoping that this is
+
+844
+00:38:04,750 --> 00:38:07,690
+going to add a lot of flexibility to
+
+845
+00:38:07,690 --> 00:38:10,810
+existing clients both for people who use
+
+846
+00:38:10,810 --> 00:38:13,030
+VMware or for people who already use
+
+847
+00:38:13,030 --> 00:38:16,810
+their own scripts for QEMU we're hoping
+
+848
+00:38:16,810 --> 00:38:18,820
+that one of the two push or pull models
+
+849
+00:38:18,820 --> 00:38:23,220
+is going to fit nicely into the workflow
+
+850
+00:38:23,220 --> 00:38:26,260
+so the little bit more about the the
+
+851
+00:38:26,260 --> 00:38:29,770
+snapshot it is a point in time snapshot
+
+852
+00:38:29,770 --> 00:38:32,620
+we call it image fleecing you can open
+
+853
+00:38:32,620 --> 00:38:35,380
+up an image and get a still view of the
+
+854
+00:38:35,380 --> 00:38:38,140
+image at that point in time but because
+
+855
+00:38:38,140 --> 00:38:40,000
+of that it's going to require an on disk
+
+856
+00:38:40,000 --> 00:38:43,270
+cache because as the VM continues to run
+
+857
+00:38:43,270 --> 00:38:44,860
+we need somewhere to flush those rights
+
+858
+00:38:44,860 --> 00:38:49,330
+if we run out of memory so it has some
+
+859
+00:38:49,330 --> 00:38:51,610
+downsides perhaps compared to the key
+
+860
+00:38:51,610 --> 00:38:54,280
+new authored backups but not that
+
+861
+00:38:54,280 --> 00:38:56,410
+different but like I said it's going to
+
+862
+00:38:56,410 --> 00:38:59,500
+offer kind of full control and it's
+
+863
+00:38:59,500 --> 00:39:01,900
+probably the most key new agnostic
+
+864
+00:39:01,900 --> 00:39:03,940
+method where you're kind of cutting qmu
+
+865
+00:39:03,940 --> 00:39:06,280
+out of having to manage these a bit and
+
+866
+00:39:06,280 --> 00:39:08,350
+it is at the moment the only way to
+
+867
+00:39:08,350 --> 00:39:11,920
+query exactly which blocks are dirty so
+
+868
+00:39:11,920 --> 00:39:15,490
+it may be useful for antivirus research
+
+869
+00:39:15,490 --> 00:39:16,990
+or things like that if you want to see
+
+870
+00:39:16,990 --> 00:39:19,180
+what programs are dirty and where and so
+
+871
+00:39:19,180 --> 00:39:26,950
+on so we do have some to do's we still
+
+872
+00:39:26,950 --> 00:39:29,080
+have to work on the interface for for
+
+873
+00:39:29,080 --> 00:39:30,550
+some of like the more advanced features
+
+874
+00:39:30,550 --> 00:39:33,460
+the pull model managing persistence you
+
+875
+00:39:33,460 --> 00:39:34,960
+know if you're saying that I want to
+
+876
+00:39:34,960 --> 00:39:36,580
+delete this out of the drive I want to
+
+877
+00:39:36,580 --> 00:39:39,160
+put a new bitmap in or I don't want this
+
+878
+00:39:39,160 --> 00:39:41,080
+bitmap to be persistent so there's a lot
+
+879
+00:39:41,080 --> 00:39:43,330
+of interface questions that we're still
+
+880
+00:39:43,330 --> 00:39:46,180
+working on we don't have
+
+881
+00:39:46,180 --> 00:39:48,520
+like an integrity checker just yet but
+
+882
+00:39:48,520 --> 00:39:51,550
+we're working on one we would like to
+
+883
+00:39:51,550 --> 00:39:53,140
+add the ability to do offline
+
+884
+00:39:53,140 --> 00:39:54,850
+incremental backups so we would like a
+
+885
+00:39:54,850 --> 00:39:58,000
+reference tool to make sure that if
+
+886
+00:39:58,000 --> 00:39:59,980
+you've shut the VM down you can still
+
+887
+00:39:59,980 --> 00:40:02,410
+parse this dirty bitmap and complete a
+
+888
+00:40:02,410 --> 00:40:06,580
+backup offline if you would like to so
+
+889
+00:40:06,580 --> 00:40:09,160
+and I would also like to give a quick
+
+890
+00:40:09,160 --> 00:40:13,180
+shout out we do have a ji-suk projects
+
+891
+00:40:13,180 --> 00:40:15,160
+coming up if anybody was actually
+
+892
+00:40:15,160 --> 00:40:16,810
+interested we want to write a reference
+
+893
+00:40:16,810 --> 00:40:20,190
+implementation just a simple CLI tool
+
+894
+00:40:20,190 --> 00:40:22,750
+probably using Python to take advantage
+
+895
+00:40:22,750 --> 00:40:25,570
+of our existing test infrastructure if
+
+896
+00:40:25,570 --> 00:40:26,860
+it sounds like something that you'd be
+
+897
+00:40:26,860 --> 00:40:28,630
+interested in we're definitely looking
+
+898
+00:40:28,630 --> 00:40:33,150
+for people to help us with this and so
+
+899
+00:40:33,150 --> 00:40:37,450
+just at the end here so the project
+
+900
+00:40:37,450 --> 00:40:40,690
+status the interface is merged the
+
+901
+00:40:40,690 --> 00:40:44,980
+incremental mode is merged transaction
+
+902
+00:40:44,980 --> 00:40:48,010
+support was merged in 2.5 the
+
+903
+00:40:48,010 --> 00:40:52,119
+persistence spec got merged in 2.6 group
+
+904
+00:40:52,119 --> 00:40:55,859
+transactions got added just in 2.8
+
+905
+00:40:55,859 --> 00:40:58,990
+migration support is in review it's on a
+
+906
+00:40:58,990 --> 00:41:00,730
+list right now we're hoping to get it in
+
+907
+00:41:00,730 --> 00:41:03,640
+for 2.9 persistence it's the same story
+
+908
+00:41:03,640 --> 00:41:06,850
+and pull model is still kind of an early
+
+909
+00:41:06,850 --> 00:41:09,280
+design there were some specs written for
+
+910
+00:41:09,280 --> 00:41:12,130
+NBD to allow us to use NBD for this
+
+911
+00:41:12,130 --> 00:41:15,369
+purpose and we are hoping to get a lot
+
+912
+00:41:15,369 --> 00:41:21,270
+of that in 2.10 and any questions
+
+913
+00:41:30,430 --> 00:41:33,760
+you're not gonna like this so that's the
+
+914
+00:41:33,760 --> 00:41:37,750
+management layers job I don't care so no
+
+915
+00:41:37,750 --> 00:41:40,360
+we tried to keep that complexity out of
+
+916
+00:41:40,360 --> 00:41:41,770
+queue because we didn't want to
+
+917
+00:41:41,770 --> 00:41:43,840
+replicate what libvirt was already doing
+
+918
+00:41:43,840 --> 00:41:47,290
+so liberabit has whatever it has to
+
+919
+00:41:47,290 --> 00:41:49,990
+manage like its own storage pools and
+
+920
+00:41:49,990 --> 00:41:53,470
+things like that so we tried to not care
+
+921
+00:41:53,470 --> 00:41:55,870
+exactly about how many incrementals were
+
+922
+00:41:55,870 --> 00:41:58,810
+already created we say that it's up to
+
+923
+00:41:58,810 --> 00:42:00,550
+the management layer to remember the
+
+924
+00:42:00,550 --> 00:42:02,980
+last incremental it made and to properly
+
+925
+00:42:02,980 --> 00:42:05,140
+hook up the chain so it's a very UNIX
+
+926
+00:42:05,140 --> 00:42:06,910
+philosophy where if you ask for the
+
+927
+00:42:06,910 --> 00:42:08,880
+wrong thing you will get the wrong thing
+
+928
+00:42:08,880 --> 00:42:12,100
+so in that way we kept our part simple
+
+929
+00:42:12,100 --> 00:42:16,510
+and we just kind of live RIT's problem
+
+930
+00:42:16,510 --> 00:42:18,660
+now
+
+931
+00:42:38,760 --> 00:42:41,640
+okay so the question was if we were
+
+932
+00:42:41,640 --> 00:42:44,040
+collaborating with over it or not
+
+933
+00:42:44,040 --> 00:42:48,180
+so downstream at Red Hat yes I have I've
+
+934
+00:42:48,180 --> 00:42:50,820
+been talking to like some project
+
+935
+00:42:50,820 --> 00:42:52,590
+managers to help them explain exactly
+
+936
+00:42:52,590 --> 00:42:55,619
+what we've made and I think this info is
+
+937
+00:42:55,619 --> 00:42:57,560
+getting back to them but I haven't been
+
+938
+00:42:57,560 --> 00:43:00,119
+personally working with someone and
+
+939
+00:43:00,119 --> 00:43:03,570
+overt but I did write a white paper for
+
+940
+00:43:03,570 --> 00:43:06,510
+it that I distributed to some people and
+
+941
+00:43:06,510 --> 00:43:10,560
+if there are any requests or anything
+
+942
+00:43:10,560 --> 00:43:12,270
+like that if you know somebody directly
+
+943
+00:43:12,270 --> 00:43:14,220
+who would definitely want to talk to me
+
+944
+00:43:14,220 --> 00:43:30,690
+send me an email yes could you repeat
+
+945
+00:43:30,690 --> 00:43:42,960
+that last part for me yes probably more
+
+946
+00:43:42,960 --> 00:43:45,030
+than you would hope for or I should
+
+947
+00:43:45,030 --> 00:43:47,790
+repeat the question which was as storage
+
+948
+00:43:47,790 --> 00:43:49,190
+gets cheaper and deduplication
+
+949
+00:43:49,190 --> 00:43:51,330
+proliferates you know how much how much
+
+950
+00:43:51,330 --> 00:43:53,840
+life is left in this kind of a technique
+
+951
+00:43:53,840 --> 00:43:57,570
+more than you would hope because we
+
+952
+00:43:57,570 --> 00:44:00,480
+still use floppy drives for something so
+
+953
+00:44:00,480 --> 00:44:02,609
+it's always too early to say oh this is
+
+954
+00:44:02,609 --> 00:44:05,010
+dead people do care about this a lot
+
+955
+00:44:05,010 --> 00:44:06,990
+other companies besides Red Hat are poor
+
+956
+00:44:06,990 --> 00:44:08,880
+pouring a lot of time and effort into
+
+957
+00:44:08,880 --> 00:44:13,050
+making sure that this works so as for
+
+958
+00:44:13,050 --> 00:44:16,350
+how much sense it makes I'm not able to
+
+959
+00:44:16,350 --> 00:44:18,119
+give you like an incredibly great answer
+
+960
+00:44:18,119 --> 00:44:19,560
+for that but I can tell you that
+
+961
+00:44:19,560 --> 00:44:21,420
+businesses are extremely concerned with
+
+962
+00:44:21,420 --> 00:44:22,980
+it and are spending a lot of time and
+
+963
+00:44:22,980 --> 00:44:25,010
+money to make sure that it works well so
+
+964
+00:44:25,010 --> 00:44:27,660
+it's probably going to be around for
+
+965
+00:44:27,660 --> 00:44:29,970
+however long you think it should and
+
+966
+00:44:29,970 --> 00:44:33,560
+then another decade past that
+
+967
+00:44:36,520 --> 00:44:41,200
+I guess I'm quite a bit early but oh
+
+968
+00:44:41,200 --> 00:44:55,720
+yeah yeah okay oh sure sure okay I see
+
+969
+00:44:55,720 --> 00:44:57,430
+what you're asking so the question is
+
+970
+00:44:57,430 --> 00:44:59,380
+when would you want more than one bitmap
+
+971
+00:44:59,380 --> 00:45:04,540
+per drive so if you wanted to implement
+
+972
+00:45:04,540 --> 00:45:06,910
+separate backup paradigms at the same
+
+973
+00:45:06,910 --> 00:45:10,119
+time so say you want a daily backup and
+
+974
+00:45:10,119 --> 00:45:12,940
+you could use one bet bitmap to do every
+
+975
+00:45:12,940 --> 00:45:14,740
+day you could have a second fit map to
+
+976
+00:45:14,740 --> 00:45:18,430
+do every week you could in theory just
+
+977
+00:45:18,430 --> 00:45:20,230
+do the daily backup and then the back
+
+978
+00:45:20,230 --> 00:45:22,150
+end can manage the different chains for
+
+979
+00:45:22,150 --> 00:45:25,600
+you to give you different views but it
+
+980
+00:45:25,600 --> 00:45:28,570
+was almost already there for us you know
+
+981
+00:45:28,570 --> 00:45:30,460
+it it would have taken more effort to
+
+982
+00:45:30,460 --> 00:45:33,940
+remove that feature so the flexibility
+
+983
+00:45:33,940 --> 00:45:42,040
+is there for us so some further reading
+
+984
+00:45:42,040 --> 00:45:44,220
+if anybody's interested in this stuff
+
+985
+00:45:44,220 --> 00:45:47,580
+the Kimi project main page wiki has
+
+986
+00:45:47,580 --> 00:45:51,100
+status and updates for us there's a
+
+987
+00:45:51,100 --> 00:45:53,740
+project page for this in particular the
+
+988
+00:45:53,740 --> 00:45:57,190
+bitmaps documentation for the qmp aspect
+
+989
+00:45:57,190 --> 00:45:59,109
+of managing all the the push model
+
+990
+00:45:59,109 --> 00:46:02,740
+backups is in the source tree under the
+
+991
+00:46:02,740 --> 00:46:06,100
+docs folder bitmaps dot MD for the
+
+992
+00:46:06,100 --> 00:46:07,930
+closest thing we have to a reference
+
+993
+00:46:07,930 --> 00:46:10,630
+implementation right now we have an IO
+
+994
+00:46:10,630 --> 00:46:12,550
+test which is written in Python and
+
+995
+00:46:12,550 --> 00:46:16,050
+that's going to run through several
+
+996
+00:46:16,050 --> 00:46:19,210
+backup scenarios like failure on one
+
+997
+00:46:19,210 --> 00:46:21,700
+node failure on two nodes failure on
+
+998
+00:46:21,700 --> 00:46:24,550
+individual mode group mode and so on so
+
+999
+00:46:24,550 --> 00:46:26,590
+that's actually the closest we have to
+
+1000
+00:46:26,590 --> 00:46:28,480
+seeing like exactly how a program would
+
+1001
+00:46:28,480 --> 00:46:32,020
+request these backups the status white
+
+1002
+00:46:32,020 --> 00:46:34,000
+paper that I was talking about which is
+
+1003
+00:46:34,000 --> 00:46:36,670
+written for the benefit of libvirt and
+
+1004
+00:46:36,670 --> 00:46:39,430
+other layers above qemu is currently at
+
+1005
+00:46:39,430 --> 00:46:42,280
+this little google tiny URL link so if
+
+1006
+00:46:42,280 --> 00:46:43,240
+that's something that you were
+
+1007
+00:46:43,240 --> 00:46:45,970
+interested in reading take a picture or
+
+1008
+00:46:45,970 --> 00:46:48,220
+write it down or grab the slides or
+
+1009
+00:46:48,220 --> 00:46:51,430
+you will and then for people who are
+
+1010
+00:46:51,430 --> 00:46:54,160
+interested in writing tools to interface
+
+1011
+00:46:54,160 --> 00:46:57,940
+with key mu the the jobs talk from the
+
+1012
+00:46:57,940 --> 00:47:01,300
+last KVM forum is up through the linux
+
+1013
+00:47:01,300 --> 00:47:03,790
+foundation if you search kb m forum 2016
+
+1014
+00:47:03,790 --> 00:47:07,390
+find my name and that'll be up there so
+
+1015
+00:47:07,390 --> 00:47:11,080
+i actually a little bit early but it'll
+
+1016
+00:47:11,080 --> 00:47:13,348
+give you time
+
+1017
+00:47:14,320 --> 00:47:22,359
+[Applause]
+

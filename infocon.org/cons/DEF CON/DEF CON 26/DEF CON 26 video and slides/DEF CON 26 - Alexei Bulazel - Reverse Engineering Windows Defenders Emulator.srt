@@ -1,0 +1,2934 @@
+﻿00:00:00.000-->00:00:04.538
+>>Hi! So my name is Alexei
+Bulazel. I’m here to present my
+research on Reverse Engineering
+
+00:00:04.538-->00:00:09.910
+Windows Defender’s Antivirus
+Emulator. Little bit about me
+before we get started. I am a
+
+00:00:09.910-->00:00:13.814
+security researcher at
+ForAllSecure. You may know the
+company from their victory at
+
+00:00:13.814-->00:00:19.553
+the Cyber Grand Challenge 2
+years ago at Defcon 24 with the
+Mayhem CRS. I also do firmware
+
+00:00:19.553-->00:00:23.857
+reverse engineering and cyber
+policy at River Loop Security.
+And I’m a very proud almunist at
+
+00:00:23.857-->00:00:30.097
+RPI and RPISEC. They’re playing
+over in the CTF right now and I
+wanna say good luck guys!
+
+00:00:30.097-->00:00:33.133
+[audience applauds] And this is
+my first time speaking at Defcon
+so it’s great to be here. Uh,
+
+00:00:33.133-->00:00:38.605
+this work is my personal
+research and uh, it is my own
+views, not those of my employers
+
+00:00:38.605-->00:00:43.143
+or anyone else I’ve previously
+worked for. Before I get started
+I do wanna say this presentation
+
+00:00:43.143-->00:00:48.048
+is a deeply technical look at
+reverse engineering Windows
+Defender’s binary emulator. And
+
+00:00:48.048-->00:00:51.184
+as far as I know, the first
+conference talk to really look
+at reverse engineering the
+
+00:00:51.184-->00:00:56.823
+antivirus emulator uh, for any
+AV product. It’s not an
+evaluation of Windows Defender.
+
+00:00:56.823-->00:01:00.093
+I’m not going to tell you this
+is a good product you should use
+in your network or not. I’m not
+
+00:01:00.093-->00:01:03.664
+gonna tell you whether it
+catches viruses uh, effectively
+relative to other AV’s or
+
+00:01:03.664-->00:01:08.769
+anything like that. And also
+this talk does not address
+Windows Defender ATP, or any
+
+00:01:08.769-->00:01:13.807
+other technologies under the
+Windows Defender name. This is
+about Windows Defender
+
+00:01:13.807-->00:01:17.844
+Antivirus, the traditional
+endpoint AV product. So an
+outline of this talk. Gonna go
+
+00:01:17.844-->00:01:22.549
+through an introduction. Then
+talk about my tooling and
+process, how I did what I did.
+
+00:01:22.549-->00:01:26.720
+Then reverse engineering and the
+real meat of the presentation. A
+bit of vulnerability research,
+
+00:01:26.720-->00:01:32.392
+and then we will conclude. So,
+why look at Windows Defender
+Antivirus? Uh, this is
+
+00:01:32.392-->00:01:36.663
+Microsoft’s built in AV product
+that uh, is installed by default
+on all Windows systems. Um,
+
+00:01:36.663-->00:01:41.401
+Windows 10, it runs by default.
+Which means that over 50 percent
+of Windows 10 systems have
+
+00:01:41.401-->00:01:46.573
+Windows Antivirus running. Uh,
+the Defender name now seems to
+cover a variety of mitigations
+
+00:01:46.573-->00:01:51.044
+and security controls built into
+Microsoft uh, OS, OS’s. So you
+have, you know, control flow
+
+00:01:51.044-->00:01:55.082
+guard, EMET, ATP. All these
+different things now get lumped
+under, you know, Windows
+
+00:01:55.082-->00:01:58.785
+Defender, Device Guard Windows
+Defender, Application Guard
+Windows Defender, Exploit Guard
+
+00:01:58.785-->00:02:03.824
+and so forth. Again, here we’re
+focused on Windows Defender
+Antivirus. And it also runs
+
+00:02:03.824-->00:02:08.095
+unsandboxed as NT authority
+system. Meaning that if you
+found a vulnerability inside
+
+00:02:08.095-->00:02:12.132
+Defender uh, that would give you
+initial RCE, if you could
+exploit that. It would also give
+
+00:02:12.132-->00:02:16.536
+you a PrivEsc up the system, and
+you’d be running inside an AV
+process. So the AV would be
+
+00:02:16.536-->00:02:20.607
+unlikely to catch you doing
+anything malicious cause it’s
+not gonna flag itself say, doing
+
+00:02:20.607-->00:02:24.911
+some malicious writing a file,
+injecting another process and so
+forth. It’s also surprisingly
+
+00:02:24.911-->00:02:29.149
+easy for attackers to reser, to
+reach. I’ve not tried this
+myself, but friends of mine at
+
+00:02:29.149-->00:02:33.086
+Google Project 0 have uh, told
+me that you can send an
+executable to someone who has a
+
+00:02:33.086-->00:02:37.891
+G mail account open, and if they
+have that G mail open in a
+background tab uh, Chrome, uh,
+
+00:02:37.891-->00:02:42.529
+the Chrome browser will cache
+the downloaded file that just
+hits the inbox that’ll hit like,
+
+00:02:42.529-->00:02:46.066
+a mini filter driver in the
+Windows OS, and then the file
+that’s written to desk will be
+
+00:02:46.066-->00:02:50.103
+passed off to Defender to be
+rescanned. So you can actually
+reach this in a remote fashion
+
+00:02:50.103-->00:02:55.142
+um, even though you would think
+this is a traditional host based
+uh, protection system. My
+
+00:02:55.142-->00:02:59.980
+motivation came from uh, this
+tweet, from Tavis Ormandy at
+Google Project 0 who, about a
+
+00:02:59.980-->00:03:03.316
+year ago, found uh, some
+vulnerabilities in Defenders
+JavaScript engine with Natalie
+
+00:03:03.316-->00:03:07.921
+Silvanovich, also of Project 0.
+And I had a background
+reversing, in reverse
+
+00:03:07.921-->00:03:11.725
+engineering antivirus software.
+Did some work we called AV Leak
+with Jeremy Blackthorne who’s
+
+00:03:11.725-->00:03:17.497
+here in the audience, uh, a
+couple years ago down at that
+black hat and woot. Uh, but I
+
+00:03:17.497-->00:03:20.600
+never actually analyzed Windows
+Defender and I always wanted to.
+And I also had this interest in
+
+00:03:20.600-->00:03:24.171
+JavaScript engines. So I took on
+Defender and looked at the
+Javascript engine for about 4
+
+00:03:24.171-->00:03:28.141
+months, then presented that work
+and moved on to reverse
+engineering the windows
+
+00:03:28.141-->00:03:33.146
+emulator, which I’m on here, I’m
+here to talk about today. So our
+target is mp engine dot dll.
+
+00:03:35.615-->00:03:40.821
+This is the main dll that
+provides uh, Windows Defender’s
+scanning functionality. It’s a
+
+00:03:40.821-->00:03:45.525
+very large binary it’s about 12
+legabytes large. Um, and again,
+this is not the part of Defender
+
+00:03:45.525-->00:03:50.664
+that’s say, doing hooking for
+system calls or uh, filtering,
+you know, disc rights. This is
+
+00:03:50.664-->00:03:54.434
+the main scanning engine, this
+you take a buffer of data, and
+you say this is malicious or
+
+00:03:54.434-->00:03:59.272
+it’s not malicious. That’s it’s
+purpose. Uh, and inside mp
+engine are a variety of scanning
+
+00:03:59.272-->00:04:03.577
+engines. I’m focusing today on
+the windows binary emulator,
+which is one of many scanning
+
+00:04:03.577-->00:04:09.316
+engines. Before we go into my
+work on the windows binary
+engine, just wanna quickly recap
+
+00:04:09.316-->00:04:13.787
+what I did reverse engineering
+the JavaScript engine. This bit
+ly link there will take you to
+
+00:04:13.787-->00:04:18.391
+that presentation. And this was
+presented out at RECon Brussels
+in Brussels, Belgium back in
+
+00:04:18.391-->00:04:24.264
+February. So, Windows Defender
+has a JavaScript engine that’s
+used for analysis of potentially
+
+00:04:24.264-->00:04:29.770
+malicious Javascript code and I
+reversed it from binary. I used
+a custom loader and shell for
+
+00:04:29.770-->00:04:36.343
+dynamic experimentation with uh,
+help from Rolf Rolles. So thanks
+Rolf! Throughout the Javascript
+
+00:04:36.343-->00:04:40.647
+engine I found AV
+instrumentation callbacks that
+inform the heuristic antivirus
+
+00:04:40.647-->00:04:44.117
+portion of Defender about
+actions that the potentially
+malicious JavaScript is taking
+
+00:04:44.117-->00:04:48.121
+that it um, uses to determine if
+this is malicious JavaScript or
+not. Say, for example, an
+
+00:04:48.121-->00:04:53.860
+exploit. And I also found that
+developers seem to prioritize
+security at the cost of
+
+00:04:53.860-->00:04:57.631
+performance. So the JavaScript
+engine is very paired down,
+stripped down, doesn’t have
+
+00:04:57.631-->00:05:01.568
+chitting or many of the other
+features and optimizations that
+make modern JavaScript engines
+
+00:05:01.568-->00:05:05.906
+fast, on the other hand I found
+it to be relatively secure on
+the attacks that are supposed to
+
+00:05:05.906-->00:05:09.910
+be relatively paired down.
+You’ll see some common themes
+like that throughout this
+
+00:05:09.910-->00:05:15.015
+presentation today. As far as
+related and prior work goes,
+there’s really only a handful of
+
+00:05:15.015-->00:05:19.619
+prior publications on reverse
+engineering antivirus software
+at all, let alone the emulators
+
+00:05:19.619-->00:05:23.490
+within them. There is of course
+the work I mentioned, AV Leak,
+which I did with some
+
+00:05:23.490-->00:05:29.162
+collaborators at RPI. Um, some
+were for here. Uh, there’s also
+book uh, work from
+
+00:05:29.162-->00:05:34.534
+[indiscernible] touching on this
+There’s Tavis Ormandy’s work at
+Google Project 0. And uh, there
+
+00:05:34.534-->00:05:39.773
+actually are some talks from the
+AV industry itself such as, uh,
+Mihai uh, Chiriac’s talk from
+
+00:05:39.773-->00:05:45.412
+uh, I believe this was hack dot
+lu, uh I think 10 years ago. Uh,
+as a AV industry developer
+
+00:05:45.412-->00:05:49.049
+talking about how bit Defenders
+emulator works. But really
+there’s not been a lot of
+
+00:05:49.049-->00:05:53.086
+offensive work, or work from
+people who don’t work in the AV
+industry looking at these
+
+00:05:53.086-->00:05:57.557
+systems. I’d also mention that
+patents are a great source of
+serv, open source intelligence
+
+00:05:57.557-->00:06:01.728
+about how AV’s work. Chris Domas
+called that out in his
+presentation looking at patents
+
+00:06:01.728-->00:06:06.700
+on X86 processors. Similarly you
+can find a lot of patents that
+describe, uh, undocumented
+
+00:06:06.700-->00:06:12.572
+functionality within AV’s or how
+these particularly complex
+mechanisms work. Alright. Moving
+
+00:06:12.572-->00:06:17.911
+in to a background on emulation
+itself. So, there’s this
+traditional AV model and I think
+
+00:06:17.911-->00:06:21.982
+a lot of people have this idea
+about how AV’s may, may work.
+Which is that they scan files
+
+00:06:21.982-->00:06:26.886
+and look for known malware
+signatures such as file hashes,
+sequences of bytes or file
+
+00:06:26.886-->00:06:31.358
+traits. And they might have some
+heuristics about, say, imports
+or they recognize esthetic MD5
+
+00:06:31.358-->00:06:35.128
+hash, or they recognize a
+particular snippet of code
+that’s known to be associated
+
+00:06:35.128-->00:06:39.633
+with the given malware family.
+Um, but this is really an
+outdated model. And this is an
+
+00:06:39.633-->00:06:44.304
+outdated model, you know, 15, 20
+years ago this was outdated. Uh,
+because malware could evade
+
+00:06:44.304-->00:06:49.576
+these hard coded signatures uh,
+with packed code by creating
+novel binaries. Um, you know,
+
+00:06:49.576-->00:06:54.714
+packing obfuscation, you heard a
+lot about polymorphic viruses
+back in the late 2000’s. So the
+
+00:06:54.714-->00:06:59.586
+solution that, again, 15 to 20
+years ago, the AV industry came
+up with was uh, runtime dynamic
+
+00:06:59.586-->00:07:03.990
+analysis on the endpoint through
+emulation. So actually running
+these unknown binaries in a
+
+00:07:03.990-->00:07:08.461
+virtualized environment and
+looking for signatures there.
+This technology goes by a number
+
+00:07:08.461-->00:07:12.766
+of names, you may hear it called
+sandboxing, heuristic analysis,
+dynamic analysis, detonation,
+
+00:07:12.766-->00:07:16.269
+virtualization and so forth. At
+the end of the day it’s all
+emulation and that’s what we’re
+
+00:07:16.269-->00:07:21.441
+talking about today. So an
+overview of emulators in
+general. You begin by loading
+
+00:07:21.441-->00:07:24.811
+the potentially malicious
+unknown binary that you can’t
+identify with more expensive
+
+00:07:24.811-->00:07:29.282
+analysis, or less expensive
+analysis, rather. Such as
+hashing or, uh heuristic space
+
+00:07:29.282-->00:07:33.586
+on imports. You’re gonna then
+run the emulated, run the binary
+in an emulated environment. So
+
+00:07:33.586-->00:07:38.558
+you’re gonna have a CPU emulator
+for the particular architecture
+of the binary, generally X86.
+
+00:07:38.558-->00:07:42.028
+Uh, you’re gonna run that in
+this emulator and throughout
+running, uh, you’re gonna click
+
+00:07:42.028-->00:07:46.166
+these observations and you’ll
+terminate it at some point. Such
+as length of time it runs,
+
+00:07:46.166-->00:07:50.070
+number of instructions that have
+been executed, number of API
+calls, amount of memory the
+
+00:07:50.070-->00:07:53.673
+malware has used or so forth.
+And throughout this you’re
+collecting heuristic
+
+00:07:53.673-->00:07:58.278
+observations about the malware’s
+behavior that inform uh,
+detections. You might also look
+
+00:07:58.278-->00:08:02.382
+for things like if the malware
+caused create file and writes a
+known malware signature. Uh,
+
+00:08:02.382-->00:08:05.952
+with create file you, you’d hook
+that implementation and with
+recreate file you would look
+
+00:08:05.952-->00:08:12.292
+for, say, a known malware
+signature or known malware hash
+at that point. Moving into
+
+00:08:12.292-->00:08:17.997
+talking about tooling and
+process. How I did what I did.
+Reverse engineering-wise I used
+
+00:08:17.997-->00:08:23.169
+pretty standard industry tools,
+like IDA. Uh, and BinDiff for
+patch analysis. So as Google
+
+00:08:23.169-->00:08:27.874
+Project 0 was discovering some
+vulnerabilities, I was able to
+diff uh, updates of the DLL and
+
+00:08:27.874-->00:08:32.245
+find what had changed. How the
+Microsoft tried to mitigate
+vulnerabilities inside Defender.
+
+00:08:32.245-->00:08:38.118
+Found overall there’s about
+30-->000 functions across this
+massive 12 megabyte DLL. So this
+
+00:08:38.118-->00:08:43.256
+is enormous. Uh, probably one of
+the largest binaries I’ve ever
+taken on reversing. Um,
+
+00:08:43.256-->00:08:46.593
+obviously people look at
+firmwares that are much larger
+but this is really, absolutely
+
+00:08:46.593-->00:08:51.765
+monolithic for a single Windows
+DLL. What does make this job a
+lot easier is that Microsoft
+
+00:08:51.765-->00:08:56.002
+publishes PDBs, and that’s to
+basically debug databases that
+have symbols and sometimes type
+
+00:08:56.002-->00:09:00.940
+information uh, for the
+binaries. Dynamic analysis-wise
+uh, AVs are generally harder to
+
+00:09:03.510-->00:09:07.080
+look at than traditional
+software uh, and dynamic
+analysis does require some work
+
+00:09:07.080-->00:09:11.885
+on the part of the user or the
+reverse engineer. In Defender’s
+case, it’s a protected process,
+
+00:09:11.885-->00:09:16.055
+meaning that even if you’re
+system or admin on your local
+system, you cannot attach the
+
+00:09:16.055-->00:09:20.693
+process to debug it, even if you
+has, have a CD bug privilege or
+anything like that, you still
+
+00:09:20.693-->00:09:25.632
+can’t attach it’s protected by
+the OS. The solution to this is
+to go into a kernel debugger
+
+00:09:25.632-->00:09:29.102
+and, for example, debug and
+entire VM and then attach the
+kernel process or the, the
+
+00:09:29.102-->00:09:35.375
+process from the kernel. But
+that’s very expensive and just
+annoying to do. So, uh,
+
+00:09:35.375-->00:09:39.079
+introspection is also
+challenging, actually if you
+can, say, pause in a breakpoint,
+
+00:09:39.079-->00:09:42.549
+actually understanding what's
+going on the emulator state can
+be difficult uh, with a debugger
+
+00:09:42.549-->00:09:46.352
+even though you have the
+debugger running. Scanning on
+demand can be difficult to
+
+00:09:46.352-->00:09:50.790
+trigger. Uh, if you want to scan
+a binary you might have to go
+into a gooey interface, click a
+
+00:09:50.790-->00:09:54.294
+couple buttons, select
+something, choose it, you know
+it’s a pain to do that. You want
+
+00:09:54.294-->00:09:57.397
+an automated command line right
+in your face. Just say scan this
+file, scan that file, scan the
+
+00:09:57.397-->00:10:01.134
+other file. And code
+reachability may be
+configuration or heuristics
+
+00:10:01.134-->00:10:05.605
+dependent. Meaning that local
+settings about uh, say, how
+aggressive the scanning is, what
+
+00:10:05.605-->00:10:10.510
+time limits you allow the
+scanner to have, all of these
+can get in the way of uh,
+
+00:10:10.510-->00:10:14.948
+effective scanning. The solution
+is build a custom loader for
+these AV binaries. And it was
+
+00:10:14.948-->00:10:18.585
+nice that I was able to start
+with some work that Tavis
+Ormandy of Google Project 0 did
+
+00:10:18.585-->00:10:22.122
+on building his own custom
+harness for Defender which I
+then extended extensively. So
+
+00:10:22.122-->00:10:26.426
+first off I’m gonna talk a
+little bit about Tavis’ existing
+work, which he called load
+
+00:10:26.426-->00:10:32.432
+library. So Tavis built a PE
+loader for Linux. So this is
+able to take a Windows DLL on
+
+00:10:32.432-->00:10:38.137
+Linux and load it up, and then
+actually run it. Uh, this is not
+a full replacement for something
+
+00:10:38.137-->00:10:43.309
+like Wine or any other uh,
+Windows simulation, this is just
+enough to get Windows Defender
+
+00:10:43.309-->00:10:48.515
+itself running. And shimming out
+uh, system calls on windows that
+Defender will be making to Linux
+
+00:10:48.515-->00:10:54.554
+implementations. So talking
+through how Tavis’ tool works
+um, and the link here will take
+
+00:10:54.554-->00:10:59.459
+you to the GitHub project. We
+begin with a Linux binary, just
+standard user white binary. And
+
+00:10:59.459-->00:11:04.230
+it’s gonna load and resolve uh,
+imports for MP engine dot DLL.
+So this is just the process of
+
+00:11:04.230-->00:11:10.069
+taking the DLL, relocating it in
+memory, doing standard DLL
+loading process and putting it
+
+00:11:10.069-->00:11:15.441
+in the redirect execute memory
+buffer there in Linux. Then the
+IAT, the import address table,
+
+00:11:15.441-->00:11:19.879
+you’re gonna go through and shim
+out the implementations of
+various Windows APIs with Linux
+
+00:11:19.879-->00:11:25.552
+replacements. So for example,
+create file is replaced by a
+call to open file or F open and
+
+00:11:25.552-->00:11:32.191
+say, write files replaced to
+call to F right. Inside this
+engine you have an emulator. And
+
+00:11:32.191-->00:11:35.662
+for now just remember that
+there’s a table called G
+syscalls, which is a table of
+
+00:11:35.662-->00:11:40.767
+function pointers to various
+emulations of Windows API
+functions. And on the outside we
+
+00:11:40.767-->00:11:44.837
+have our malware binary, huh,
+with your, with the standard MZ
+header on the binary. We’re
+
+00:11:44.837-->00:11:50.243
+gonna call a function exported
+by Defender called R signal. And
+this is the main entry point to
+
+00:11:50.243-->00:11:53.680
+Defender. Uh, when we give it a
+buffer of data and it’s gonna
+come back with a malware
+
+00:11:53.680-->00:11:58.685
+classification. We then go
+through a process of selecting a
+scanning engine so Defender may
+
+00:12:00.620-->00:12:05.224
+do some initial analysis with
+things like aesthetic hashes, if
+those fail and it can’t
+
+00:12:05.224-->00:12:08.061
+determine whether this is a
+malicious binary or not, they’re
+ultimately going to rep into the
+
+00:12:08.061-->00:12:13.266
+emulator. The emulator will run,
+make its determination whether
+this is a malicious binary or
+
+00:12:13.266-->00:12:19.005
+not, and then come back with a
+virus identification or it might
+say this is just benign. So a
+
+00:12:19.005-->00:12:24.077
+quick demo. Going to show you
+scanning with mpclient. This is
+Tavis Ormandy’s unmodified uh,
+
+00:12:24.077-->00:12:29.082
+harness for Windows Defender.
+[cough from audience member] So
+here we’re scanning the eicar
+
+00:12:36.289-->00:12:41.294
+test file, this is an industry
+standard test file, um, for any
+AV. And we see we scan the file
+
+00:12:43.663-->00:12:48.234
+and it comes back and says we
+found eicar dot com. So, that’s
+kind of a demo, We’re actually
+
+00:12:48.234-->00:12:52.138
+taking this uh, windows code,
+running it to Linux and seeing
+what happens when we scan the
+
+00:12:52.138-->00:12:58.511
+binary. In addition to using
+this harness from Tavis, I did
+some dynamic analysis with
+
+00:12:58.511-->00:13:03.216
+customized code coverage tools
+developed by Markus Gaasedelen
+of Ret2 Systems, he’s a fellow
+
+00:13:03.216-->00:13:08.287
+RPISEC almumnist as well. And
+Markus made a tool called
+Lighthouse, that lets you scan a
+
+00:13:08.287-->00:13:12.458
+binary or run a binary under
+[indiscernible] or a pin,
+collect coverage information,
+
+00:13:12.458-->00:13:16.629
+then visualize that in IDA pro.
+So you can see here in this
+control flow graph, the blue,
+
+00:13:16.629-->00:13:21.167
+basic blocks are those that have
+been hit during a given scan.
+And I found this to be extremely
+
+00:13:21.167-->00:13:25.471
+powerful and useful tool when I
+was doing my reverse
+engineering. I did find it
+
+00:13:25.471-->00:13:30.410
+interesting to see how far
+flake, uh, just about a month or
+two ago, give a keynote at SSTIC
+
+00:13:30.410-->00:13:33.846
+where he was talking about
+challenges of introspect ability
+with malware. Or, whoops, sorry,
+
+00:13:33.846-->00:13:38.084
+with binaries. And how it can be
+very difficult to introspect and
+analyze and debug binaries and
+
+00:13:38.084-->00:13:42.255
+how ultimately that’s a
+hindrance to security. And
+Halvar explicitly called out the
+
+00:13:42.255-->00:13:46.793
+challenges of analyzing Windows
+Defender, as one example of this
+where because Defender is in a
+
+00:13:46.793-->00:13:51.864
+privileged process on windows
+you can’t analyze it under a
+tool like pem or dynamorio Of
+
+00:13:51.864-->00:13:55.268
+course we’re running on Linux,
+we side step the whole issue of
+protected process and we can
+
+00:13:55.268-->00:14:01.207
+actually run in visualized
+coverage. Okay. Now moving into
+the meat of the presentation.
+
+00:14:01.207-->00:14:06.112
+Talking reverse engineering the
+emulator itself. First off I’m
+gonna talk about startup of the
+
+00:14:06.112-->00:14:10.650
+engine, then we’re moving to CPU
+emulation, instrumentation, and
+then the windows environment and
+
+00:14:10.650-->00:14:15.455
+emulation. So first off, the
+first thing that has to happen
+when we want to emulate a given
+
+00:14:15.455-->00:14:20.693
+binary, is we have to load it in
+and initialize the emulator and
+get everything started up. So
+
+00:14:20.693-->00:14:23.629
+we’re gonna call the R signal
+function which provides this
+entry point into Defender’s
+
+00:14:23.629-->00:14:28.801
+scanning and we give it this
+buffer of data to be scanned to
+be classified. And uh, it will
+
+00:14:28.801-->00:14:33.573
+return the malware
+classification. Um, so these
+results are actually cached as
+
+00:14:33.573-->00:14:36.275
+well. There’s lots of numeric
+stuff going in the back that we
+don’t really care about. We
+
+00:14:36.275-->00:14:41.447
+ultimately care about just going
+into the emulator itself. So the
+emulator has to be initialized.
+
+00:14:41.447-->00:14:45.618
+Uh, we have to allocate memory
+for execution, we have to
+initialize various C plus plus
+
+00:14:45.618-->00:14:50.223
+objects that are involved in the
+emulations uh, process itself.
+Various subsystems within
+
+00:14:50.223-->00:14:53.226
+Defender, for example, the
+object manager. We have to
+create an object manager
+
+00:14:53.226-->00:14:57.864
+instance, we have to set up the
+virtual file system and so
+forth. We’re gonna load the
+
+00:14:57.864-->00:15:02.668
+binary that’s to be analyzed,
+resolve it’s imports and things
+like that. And then initialize
+
+00:15:02.668-->00:15:08.274
+virtual DLLs in this emulated
+process memory space. These are
+kin to the real DLLs in our real
+
+00:15:08.274-->00:15:12.645
+windows system that provide
+emulate, or, provide windows API
+functionality. Throughout this
+
+00:15:12.645-->00:15:15.982
+process the Defender is
+collecting heuristic
+observations about the binary.
+
+00:15:15.982-->00:15:20.153
+And you can see these on the
+right side here, for example,
+things like PEA suspicious
+
+00:15:20.153-->00:15:24.524
+section size. So these might
+inform some heuristic
+classifications in Defender
+
+00:15:24.524-->00:15:28.928
+because there’s a suspicious
+section size, maybe this is
+malware. Um, we’ll also be doing
+
+00:15:28.928-->00:15:33.366
+things like in the bottom right,
+uh, you can see some min win
+resolution resolving API MS.
+
+00:15:33.366-->00:15:38.371
+It’s when the API set DLLs. And
+here on the bottom left, uh, I
+have um, this example of uh,
+
+00:15:40.640-->00:15:45.278
+when we’re setting up a name for
+the binary to be emulated you
+can see that if the binary isn’t
+
+00:15:45.278-->00:15:49.448
+windows executable, it’ll be
+called my app dot ex E. This is
+something you could write
+
+00:15:49.448-->00:15:53.386
+evasive malware that says “if my
+name is my app dot ex E,” I
+won’t run. I know that I’m
+
+00:15:53.386-->00:15:57.490
+running inside Defender. And
+indeed, if you Google this
+string you will find malware
+
+00:15:57.490-->00:16:01.527
+binaries online that explicitly
+look for the name my app dot ex
+E, and chose not to run if they
+
+00:16:01.527-->00:16:07.200
+see it. After startup and
+initialization, we’re gonna move
+into talking about CPU
+
+00:16:07.200-->00:16:11.971
+emulation. So technically what
+Defender does is not so much
+emulation as it is to name a
+
+00:16:11.971-->00:16:17.643
+translation. This is a kin to
+what QEMU, the quick emulator,
+does, which is basically taking
+
+00:16:17.643-->00:16:21.480
+assembly code of a given
+language, lifting it up into an
+IL, or and intermediate
+
+00:16:21.480-->00:16:26.419
+presentation, and then taking
+that IL and then dumping it out
+with a JIT engine uh, into
+
+00:16:26.419-->00:16:30.857
+executable code. Um, so Defender
+supports a number of
+architectures. You can see here
+
+00:16:30.857-->00:16:37.296
+in the enum on the right.
+Ranging from X86 of 3 different
+uh, flavors to ARM and even
+
+00:16:37.296-->00:16:41.500
+VMProtect. So they can take
+VMProtect opcodes, lift those
+into IL, and dump them out into
+
+00:16:41.500-->00:16:46.606
+sanitized X86 to be run
+analyzed. As well as ARM. Now,
+this subsystem is incredibly
+
+00:16:46.606-->00:16:50.610
+complicated and not really a
+primary focus of my research but
+I’ll give you a brief overview
+
+00:16:50.610-->00:16:55.615
+of it in the next few slides. We
+begin with the uh, architecture
+to IL lifting process which are
+
+00:16:59.418-->00:17:04.824
+any of these giant functions
+that are architecture underscore
+2 IL. You can see an example
+
+00:17:04.824-->00:17:11.063
+from X86 to IL translator. Just
+an absolutely massive, ugly
+switch case. Uh, thousands of
+
+00:17:11.063-->00:17:15.268
+switch cases, you know, IDA gets
+super slow when you load this
+in. And basically what they’re
+
+00:17:15.268-->00:17:20.840
+doing here, is grabbing a byte
+of opcode from an X86 opcode,
+looking at that, uh, determining
+
+00:17:20.840-->00:17:25.678
+what it is and then emitting the
+uh, coding, or, related uh,
+Windows Defender into
+
+00:17:25.678-->00:17:32.285
+representation for that binary
+uh, operation. You can see an
+example here on the bottom
+
+00:17:32.285-->00:17:38.658
+right, where all push
+instructions lift to uh, 13 in
+the Windows Defender IL. Those
+
+00:17:38.658-->00:17:44.597
+also, after we lift to IL, there
+is an IL emulator that runs in
+software so we can actually run
+
+00:17:44.597-->00:17:48.501
+binaries in software. I’ve never
+observed this being run during
+my research. Did some code
+
+00:17:48.501-->00:17:53.572
+coverage analysis, never saw
+this being hit. My uh, intuition
+is that this is so that we can
+
+00:17:53.572-->00:17:59.946
+support uh, analysis of X86
+binaries on non-X86 host. So,
+for example, if you were running
+
+00:17:59.946-->00:18:03.950
+Windows Defender on windows for
+ARM, you don’t have to have an
+IL to our own JIT engine, you
+
+00:18:03.950-->00:18:10.523
+can just run it in software. Now
+as far as the IL to X86 JIT
+translation, uh, we’re taking IL
+
+00:18:10.523-->00:18:14.627
+code and then translating a
+basic block at a time , similar
+the way QEMU does things. And I
+
+00:18:14.627-->00:18:20.333
+did observe this JIT being uh,
+used during my research.
+Defender will actually uh,
+
+00:18:20.333-->00:18:24.971
+handle unique instructions that
+it can’t handle with emulation
+uh, through software-bound
+
+00:18:24.971-->00:18:28.607
+emulation. So if it can’t JIT an
+instruction out, it’ll actually
+generate a call directly into a
+
+00:18:28.607-->00:18:32.378
+function that does that, we’re
+gonna show them next slide. But,
+just, you can see here uh,
+
+00:18:32.378-->00:18:36.082
+circled in red on the left, you
+can actually see the opcodes
+being instructed. So they’re
+
+00:18:36.082-->00:18:40.319
+actually constructing a mood,
+move an immediate and then call
+the immediate, calling directly
+
+00:18:40.319-->00:18:43.289
+into a function handling a
+particularly unique
+architectural instruction or
+
+00:18:43.289-->00:18:49.528
+event. Uh, over here on the, uh,
+right you can see the LEA opcode
+actually being emitted. The
+
+00:18:49.528-->00:18:55.935
+opcode in X86 is 8D. So as
+you’re dumping out from the LEA
+IL instruction down to X86, you
+
+00:18:55.935-->00:19:02.541
+do 8D and then you XOR that with
+a register. Um to, uh, register
+a value to create a valid X86
+
+00:19:02.541-->00:19:06.979
+instruction. Uh, Microsoft
+actually documented this in 2005
+at Virus Bulletin with a paper
+
+00:19:06.979-->00:19:10.483
+called Defeating Polymorphism
+Beyond Emulation and it’s
+definitely worth checking out.
+
+00:19:10.483-->00:19:14.620
+And it’s really remarkable that
+Microsoft was experiment with,
+experimenting with technol, this
+
+00:19:14.620-->00:19:19.725
+technology almost 15 years ago.
+ILs are so hot right now,
+everyone’s playing with ILs for
+
+00:19:19.725-->00:19:24.497
+things like binary ninja, or
+various program analysis but,
+Microsoft was doing this on the
+
+00:19:24.497-->00:19:29.568
+end point, you know, on your,
+your computer, your grandma’s
+computer, everyone’s computer 15
+
+00:19:29.568-->00:19:33.906
+years ago. They were lifting up
+the ILs, JITing them out, doing
+analysis on them. It’s very
+
+00:19:33.906-->00:19:39.945
+impressive, I found. So then we
+have these architecture specific
+escape handlers for these unique
+
+00:19:39.945-->00:19:44.650
+architectural events that we
+can’t emulate uh, with the JIT
+engine. Uh, you can look at this
+
+00:19:44.650-->00:19:49.121
+offline and see an exact listing
+of some of these enums. And an
+example of one of these
+
+00:19:49.121-->00:19:55.027
+functions uh, would be this
+software-bound emulation of the
+X86 CPUID instruction. So this
+
+00:19:55.027-->00:20:00.399
+is an instruction that provides
+unique information about given
+X86 CPU. And here it’s emulated
+
+00:20:00.399-->00:20:07.139
+in software. So as shown here, I
+wrote a malware binary that uh,
+does CPUID with this argument
+
+00:20:07.139-->00:20:13.412
+X80001. And when we run this
+binary inside Defender’s uh,
+analysis engine, we’ll get this
+
+00:20:13.412-->00:20:16.849
+code coverage and we’ll actually
+see the little bounce off the
+block where that same immediate
+
+00:20:16.849-->00:20:21.220
+is compared, and then we go down
+the true branch because the
+immediate that our code was
+
+00:20:21.220-->00:20:24.824
+doing matches up with the
+immediate here in software and
+then they can emulate CPUID by
+
+00:20:24.824-->00:20:28.094
+sending registered date
+accordingly. Alright. Moving
+into talking about my
+
+00:20:28.094-->00:20:33.165
+instrumentation, which was a big
+enabler for the rest of my
+research. So the problem with
+
+00:20:33.165-->00:20:37.269
+uh, analyzing Windows Defender
+is, again, I said there’s very
+little introspections, very
+
+00:20:37.269-->00:20:41.707
+difficult to tell what’s going
+on inside of it. All you really
+get out of it is virus
+
+00:20:41.707-->00:20:45.177
+identification. And then you
+could exploit virus
+identification as sort of a side
+
+00:20:45.177-->00:20:49.014
+channel to extract information
+about inside the engine. And
+indeed, that’s what I did with
+
+00:20:49.014-->00:20:52.818
+the AV league project a couple
+years ago, was exploiting
+malware identifications as a
+
+00:20:52.818-->00:20:57.823
+side channel to get information
+about what’s going on inside
+various AV emulators. Um, but
+
+00:20:57.823-->00:21:02.261
+this is really slow and
+inefficient. So a smarter
+technique, is to go in and sort
+
+00:21:02.261-->00:21:07.566
+of give us a malware-ized view
+of what’s going inside, in the
+engine. So, MP engine dot DLL
+
+00:21:07.566-->00:21:11.470
+has various functions that are
+evoked when various Windows APIs
+are called by malware running
+
+00:21:11.470-->00:21:17.676
+inside of it. We can then hook
+those, uh, emulation functions
+and provide our implementations
+
+00:21:17.676-->00:21:23.182
+so we can create a 1 or 2 way IO
+path to share information with
+the outside and also, in turn,
+
+00:21:23.182-->00:21:29.121
+inform uh, the malware binary
+inside what actions we want to
+take. So let me give you uh, a
+
+00:21:29.121-->00:21:33.626
+diagram of that. This is the
+original uh, load library
+diagram I showed you. This is
+
+00:21:33.626-->00:21:39.465
+Tavis Ormandy’s tool kind of in
+an unmodified state, this is how
+it works. And I went in, and I
+
+00:21:39.465-->00:21:43.903
+hooked the G syscalls table,
+this is the table of about 120
+functions providing emulations
+
+00:21:43.903-->00:21:48.207
+for various Windows APIs. I
+hooked and replaced those
+implementations with my own
+
+00:21:48.207-->00:21:52.845
+connotations of various common
+functions. Like Output Debug
+String A or WinExec. So now when
+
+00:21:52.845-->00:21:57.049
+these functions now called
+malware binary inside the
+engine, instead, our functions
+
+00:21:57.049-->00:22:01.954
+are invoked. So, here’s an
+example of our Output Debug
+String A hook and the process we
+
+00:22:01.954-->00:22:05.891
+have to take on which is
+resolving the relative offsets
+of these functions and then
+
+00:22:05.891-->00:22:11.931
+setting hooks in the rewrite
+execute um, DLL buffer, kind of,
+in our Linux process. So what
+
+00:22:11.931-->00:22:16.535
+this looks like is this uh, here
+in the top right we have our IDA
+Pro disassembly, or
+
+00:22:16.535-->00:22:21.040
+decompilation, rather, of
+Windows Defender’s emulation of
+Output Debug String A. Basically
+
+00:22:21.040-->00:22:25.544
+a no-op. All it does is retrieve
+a single parameter off the
+virtual stack and then bump the
+
+00:22:25.544-->00:22:29.582
+tick count. So it bumps the time
+a little bit in the emulator.
+Here in the center of the
+
+00:22:29.582-->00:22:33.252
+screen, I have my
+reimplementation of this
+function. So we’re gonna walk
+
+00:22:33.252-->00:22:38.490
+through this step by step. First
+off, we have our declaration. So
+this takes a void pointer. Uh,
+
+00:22:38.490-->00:22:43.028
+PE VARS T is a mass of about
+half megabyte large structure
+past all these Windows API
+
+00:22:43.028-->00:22:46.999
+emulations. We don’t wanna know
+an exact definition of that
+function, so we could just
+
+00:22:46.999-->00:22:51.804
+provide a uh, take the void
+pointer, just say we, we’re not
+going to worry about it, it’s
+
+00:22:51.804-->00:22:57.042
+just a, a pointer. Then we have
+this local thing to hold
+parameters to the function. So,
+
+00:22:57.042-->00:23:00.546
+the function has parameters
+patched to it in the virtualized
+emulated environment, and we
+
+00:23:00.546-->00:23:05.584
+wanna interact with those so we
+have to make some space for
+them. I’m gonna use the function
+
+00:23:05.584-->00:23:09.888
+internal Defender to pull off
+one parameter from the virtual
+stack. So we’re going in,
+
+00:23:09.888-->00:23:14.960
+talking, you know, looking at
+the virtual ESP and EVP state,
+uh, in this virtual memory space
+
+00:23:14.960-->00:23:19.131
+and then pulling off the 4 bit
+value that was there. I’m
+actually calling back into
+
+00:23:19.131-->00:23:24.069
+Defender from my hook function
+to do that. Then I’m calling a
+function GetString that’s going
+
+00:23:24.069-->00:23:28.407
+to translate a virtual address
+inside the emulator to a real
+address that we can interact
+
+00:23:28.407-->00:23:32.511
+with locally. And now we can
+just print that string to
+standard out. So this sounds
+
+00:23:32.511-->00:23:38.884
+like a lot but let me show you a
+quick demo of it in action. So
+here I have a malware binary
+
+00:23:38.884-->00:23:43.188
+that’s gonna say “hello defcon”
+when we run it. It’s goes Output
+Debug String A hello defcon.
+
+00:23:43.188-->00:23:48.093
+We’re now going to scan that
+binary inside my hooked and
+modified version of Tavis’ load
+
+00:23:48.093-->00:23:53.132
+library tool. And you’ll see
+here it says, “hello defcon”
+now. Going back to visual
+
+00:23:53.132-->00:23:56.702
+studio, we’re gonna add a new
+line, this is a live demo. Of
+course this is a pre-recorded
+
+00:23:56.702-->00:24:00.939
+video because the defcon
+organizers this year wanted us
+to do pre-recorded videos, but I
+
+00:24:00.939-->00:24:07.413
+was doing this live. I just
+rebuilt the, the binary, and
+here scanning it again. It’s now
+
+00:24:07.413-->00:24:11.283
+gonna say “hello defcon” and
+then also, “this is a live
+demo.” So this is what’s
+
+00:24:11.283-->00:24:15.387
+happening, is inside the
+emulator, our malware binary is
+calling this function because
+
+00:24:15.387-->00:24:19.825
+we’ve hooked the implementation
+of the Output Debug String A
+emulation in Defender, our
+
+00:24:19.825-->00:24:24.063
+function’s being called instead.
+And we’re gonna run it one more
+time, I believe, with some more
+
+00:24:24.063-->00:24:28.367
+information you can see here uh,
+we’ve uh, more rich debug output
+and we can see things like the
+
+00:24:28.367-->00:24:33.305
+exact addresses patched to it
+uh, from the first memory space.
+So this is like, a big enabler
+
+00:24:33.305-->00:24:36.809
+for the rest of my research. The
+fact that I had this, sort of,
+window into what’s going on
+
+00:24:36.809-->00:24:40.579
+inside the emulator. I can have
+my malware binary inside take
+observations and then post them
+
+00:24:40.579-->00:24:46.018
+out to the outside world. As far
+as my malware binary goes, call
+it my app dot ex E. Again,
+
+00:24:46.018-->00:24:49.988
+that’s the name of all binaries
+running inside Defender’s
+engine. It does this IO
+
+00:24:49.988-->00:24:54.093
+communication with Output Debug
+String A and some other
+functions. On the right side,
+
+00:24:54.093-->00:24:57.896
+you’ll see a list of factors
+that I found could impede
+emulation, and then ways to get
+
+00:24:57.896-->00:25:02.768
+around them. So I had to really
+massage the linker,
+optimizations, imports, in order
+
+00:25:02.768-->00:25:06.138
+to get binaries that were
+consistently emulated by
+Defender. And I’ll be releasing
+
+00:25:06.138-->00:25:10.609
+some code at the end of this
+talk that will have a very
+simple, visual project that I
+
+00:25:10.609-->00:25:15.614
+found I was able to get
+consistently emulated when
+scanned with a library. Finally,
+
+00:25:18.217-->00:25:22.020
+as far as the reverse
+engineering goes, moving into
+the Windows emulation and the
+
+00:25:22.020-->00:25:26.258
+Windows environment. I think the
+most interesting part of this
+presentation. We’ll start off by
+
+00:25:26.258-->00:25:30.562
+talking about the user mode
+environment. So this is the
+emulation of a fake Windows user
+
+00:25:30.562-->00:25:35.567
+mode. So, in Windows Defender
+there is a virtual file system.
+Um, uh as any real system would
+
+00:25:37.603-->00:25:41.807
+have a file system and files
+that malware might look at,
+Defender virtualizes 1. And
+
+00:25:41.807-->00:25:45.744
+there’s about 15 hundred
+functions on their virtual file
+system. And you’ll see a variety
+
+00:25:45.744-->00:25:51.450
+of things in there. Mostly it’s
+fake executables that are there
+for, um, malware binaries to,
+
+00:25:51.450-->00:25:55.888
+for example, infect or, you
+know, do different things too,
+that could be indicators that
+
+00:25:55.888-->00:26:00.492
+they are in fact malicious
+binaries. So I’ll do a quick
+demo of dumping the file system,
+
+00:26:00.492-->00:26:04.563
+again, using that mechanism that
+I showed you of posting data out
+with Output Debug String A.
+
+00:26:04.563-->00:26:09.368
+We’re able to numerate the
+entire file system and dump it
+in just a few seconds. I did,
+
+00:26:09.368-->00:26:14.106
+here, actually use a slightly
+more sophisticated hook. Uh,
+where as doing WinExec and I’ll
+
+00:26:14.106-->00:26:17.943
+show some examples in my backup
+slides. It’s not as simple as
+just Output Debug String Aing
+
+00:26:17.943-->00:26:22.347
+them. But you can see here in
+just a second or 2 we dumped the
+entire virtual file system from
+
+00:26:22.347-->00:26:26.084
+inside Windows Defender. We had
+a malware binary go inside
+there, numerate all the files
+
+00:26:26.084-->00:26:30.189
+that it could see, and then dump
+them out. And after we dump them
+out, we see that there’s about
+
+00:26:30.189-->00:26:36.528
+15 hundred of them, in this
+virtual file system. And you’ll
+see things like this, the word
+
+00:26:36.528-->00:26:42.468
+“goat” repeated thousands of
+times over, in a file called AAA
+touch me not dot ex E. Um, my
+
+00:26:42.468-->00:26:47.172
+intuition is that this binary is
+right there on the, the C drive.
+And it’s there so that a malware
+
+00:26:47.172-->00:26:52.010
+binary might read that file and
+say “send over the network” or
+“encrypted” or do some, some
+
+00:26:52.010-->00:26:56.515
+indicator that we are indeed
+malware. So maybe, if you touch
+it, that might be an indicator
+
+00:26:56.515-->00:27:01.653
+that you’re malicious. Uh, the
+reason has the goat. Uh, goat,
+the word goat pasted a thousand
+
+00:27:01.653-->00:27:06.358
+times over, presumably it is a
+goat file. And that’s sort of an
+AV industry term for a
+
+00:27:06.358-->00:27:10.896
+sacrificial file. Like, a
+sacrificial goat that you can
+like, get infected or changed or
+
+00:27:10.896-->00:27:16.068
+encrypted by malware in order to
+have the malware kind of show
+it’s true intent. So that was an
+
+00:27:16.068-->00:27:19.505
+interesting artifact. Again,
+this is also something that you
+could write malware that says if
+
+00:27:19.505-->00:27:24.776
+I see the word goat thousands
+times over in a file called AAA
+touch me not, I know I’m running
+
+00:27:24.776-->00:27:27.980
+inside Defender, therefor I’m
+not gonna run, I’m not gonna do
+anything malicious. We’ll see
+
+00:27:27.980-->00:27:31.783
+fake config files. You can see
+that these are very clearly
+written by a real human, with
+
+00:27:31.783-->00:27:37.289
+comments like bla bla. Uh, and,
+you know, generic sequel
+queries. We have a virtual
+
+00:27:37.289-->00:27:40.759
+registry that has thousands of
+entries and enumerating the
+whole registry, dumping that
+
+00:27:40.759-->00:27:44.796
+out, we’ll see things like this.
+So for example, there’s a
+registry entry for world of
+
+00:27:44.796-->00:27:49.167
+warcraft, presumably there’s
+malware that maybe hooks world
+of warcraft registry entry and
+
+00:27:49.167-->00:27:55.307
+touches it. So if we saw, a call
+to say, reg open key, on world
+of warcraft, that might be an
+
+00:27:55.307-->00:28:00.646
+indicator of potential malicious
+intent. We’ll see various other
+fake processes running on the
+
+00:28:00.646-->00:28:06.351
+system, and these are not real
+processes, they’re just uh, when
+you call, you know, uh, call
+
+00:28:06.351-->00:28:10.055
+that function to enumerate all
+processes it’ll give you this
+fake listing. And highlit at the
+
+00:28:10.055-->00:28:15.060
+bottom in yellow, there is our
+function, my app dot ex E. Uh,
+quick demo of that, dumping the
+
+00:28:17.663-->00:28:22.668
+process listing. Again, using
+this same mechanism that I
+developed. So there you can see,
+
+00:28:28.740-->00:28:33.478
+uh, real time just took less
+than a second, we dumped the
+entire process listing. Alright,
+
+00:28:33.478-->00:28:40.185
+back to the presentation. In
+addition to this environment we
+have Windows usermode code that
+
+00:28:40.185-->00:28:44.590
+runs to provide emulations of
+various Windows API functions.
+Uh, and there are generally 2
+
+00:28:44.590-->00:28:50.796
+types of API emulations. Um, a
+kin to those uh, Windows API
+functions, the real Windows
+
+00:28:50.796-->00:28:54.967
+system. There are those that
+stay in usermode, which are once
+it’s in the emulator. And those
+
+00:28:54.967-->00:28:59.404
+that resolve into a syscall.
+Just like a, uh, a trap to a
+native emulation here in
+
+00:28:59.404-->00:29:04.776
+Defender. Uh, symbols indicate
+that these, uh, emulated virtual
+DLLs that are in an emulated
+
+00:29:04.776-->00:29:09.948
+environment are called VDLLs.
+And because they are simply
+DLLs, once we have a file system
+
+00:29:09.948-->00:29:14.653
+dump, we can just go reverse
+that dump, and, or reverse those
+DLLs by throwing it on IDA and
+
+00:29:14.653-->00:29:18.590
+their standard Windows PE files.
+When we look at them, they’re
+definitely not the real, uh,
+
+00:29:18.590-->00:29:23.028
+implementations of things like
+kernel32, that you would see in
+a real system. So we’ll see
+
+00:29:23.028-->00:29:27.866
+things like this, um, in
+kernel32 if we call get
+username, it’ll return a hard
+
+00:29:27.866-->00:29:32.404
+code string of John Doe. This is
+again, something we can use to
+create evasive malware that says
+
+00:29:32.404-->00:29:37.376
+if I see the username John Doe,
+I’m not gonna run. We’ll see a
+computer name Hal 9-->000.
+
+00:29:37.376-->00:29:43.815
+Ostensibly a, uh, Arthur C.
+Clark uh, you know, Space
+Odyssey 2001 reference. Uh, so
+
+00:29:43.815-->00:29:48.487
+again, you can write malware for
+Hal 9-->000 or know you’re running
+inside Defender. We’ll also see
+
+00:29:48.487-->00:29:53.058
+very simple imitations of
+functions like RTL get current
+peb. All that function takes is
+
+00:29:53.058-->00:29:58.130
+it needs to just go to the
+memory segment at uh, FS18, so
+they actually support memory
+
+00:29:58.130-->00:30:01.900
+segmentation at the
+architectural level so they can
+just do that actual instruction
+
+00:30:01.900-->00:30:07.739
+inside the emulator. Or we’ll
+see complex functions like RTL
+set sacl security descriptor
+
+00:30:07.739-->00:30:11.743
+just knocked out. They just
+return 0. More functions just
+stubbed out creating 0, negative
+
+00:30:11.743-->00:30:16.481
+1 and so forth or just
+triggering interrupt. So, lots
+of complec funct, complex
+
+00:30:16.481-->00:30:21.119
+functions you’re not fully
+emulated by Defender. We’ll also
+see things like this, again,
+
+00:30:21.119-->00:30:25.190
+more unique strings and
+identifiers that we know were
+running inside Defender. Uh,
+
+00:30:25.190-->00:30:28.627
+like these German IP addresses
+in references to German
+websites. Maybe a German
+
+00:30:28.627-->00:30:33.632
+programmer developed this
+particular DLL emulation. So
+that covers some of the usermode
+
+00:30:35.701-->00:30:38.870
+code, and the very simple
+emulations, those that just
+return hard coded names like,
+
+00:30:38.870-->00:30:45.243
+John Doe or Hal 9-->000. How bout
+the user-kernel privilege uh,
+boundary? How, How do we get
+
+00:30:45.243-->00:30:51.349
+into more complex emulations
+such as those requiring access
+to a virtual file system. These
+
+00:30:51.349-->00:30:55.921
+functions are implemented with a
+hypercall like instruction
+called apicall. This is, of
+
+00:30:55.921-->00:31:00.559
+course, not a real X86
+instruction. With the opcode
+0FFFF0 and then a 4 byte
+
+00:31:00.559-->00:31:04.062
+immediate describing the
+particular function to be
+invoked. But when this
+
+00:31:04.062-->00:31:09.768
+instruction is called and the
+virtual CPU, it’s gonna generate
+a call into a native MP engine
+
+00:31:09.768-->00:31:14.840
+dot DLL function that provides
+emulation of these uh, unique
+functions. So these are complex
+
+00:31:14.840-->00:31:19.811
+functions that identify system
+state or maybe require
+particularly complex handling.
+
+00:31:19.811-->00:31:24.816
+Uh so, in copy file worker, we
+have an API call to kernel32
+copy file W worker. The virtual
+
+00:31:26.918-->00:31:31.089
+CPU sees that instruction,
+generates a call directly into
+this emulation of that function,
+
+00:31:31.089-->00:31:36.027
+and then it’s emulated there in
+software. Uh, in MP engine dot
+DLL. This is great attack
+
+00:31:36.027-->00:31:39.264
+surface if you found any
+vulnerabilities in this native
+emulation function, so you could
+
+00:31:39.264-->00:31:44.536
+use these to break out of the
+emulator and infect the native
+host. Uh, this disassembly here,
+
+00:31:44.536-->00:31:49.241
+is provided by an IDA processor
+module. And I’ll have an article
+coming out in poker GTFO, issue
+
+00:31:49.241-->00:31:56.081
+19, describing exactly how this
+IDA process or extension module
+works. So, once we have these
+
+00:31:56.081-->00:32:00.185
+apicall instructions running,
+they’re gonna trigger a call to
+a function looks the G syscalls
+
+00:32:00.185-->00:32:03.889
+table, which is the table of
+these function pointers and
+these hashes. Let’s go look for
+
+00:32:03.889-->00:32:07.359
+the 4 byte immediate that was
+called from the apicall
+instruction and then dispatch to
+
+00:32:07.359-->00:32:13.465
+the appropriate function that
+matches up with it. So, kind of
+a work flow of what this looks
+
+00:32:13.465-->00:32:18.403
+like. Uh, inside the emulator
+here, we have kernel32 Output
+Debug String A. It’s gonna do
+
+00:32:18.403-->00:32:22.307
+things like log the number of
+times it was called. So if it’s
+called more than 900 times that
+
+00:32:22.307-->00:32:25.744
+might trigger some unique
+behavior. Um, but ultimately
+it’s gonna resolve then our,
+
+00:32:25.744-->00:32:30.615
+this function apicall kernel32
+Output Debug String A. Which is
+then gonna use the apicall
+
+00:32:30.615-->00:32:37.389
+instruction. You can see the
+0FFFF0, BB 14 80 B2, and it’s
+gonna see that instruction and
+
+00:32:37.389-->00:32:41.660
+then that hypercall’s gonna step
+in and basically transition us
+into native emulation out of
+
+00:32:41.660-->00:32:46.097
+this managed uh, [indiscernible]
+translation context. And we’re
+gonna hit the native emulation
+
+00:32:46.097-->00:32:50.101
+for Output Debug String A. Of
+course this is what we hooked
+when we had our own Output Debug
+
+00:32:50.101-->00:32:55.907
+String A influentation that I
+was using to post information
+out of the emulator. Enumerating
+
+00:32:55.907-->00:33:00.412
+the emulated functions that have
+native emulations, these are
+them. The yellow functions are
+
+00:33:00.412-->00:33:04.182
+those that are not found on real
+Windows systems, so they’re
+specific to Defender. For
+
+00:33:04.182-->00:33:08.787
+example, for debug functionality
+or unique backdoor management.
+Uh here’s more of them,
+
+00:33:08.787-->00:33:13.058
+including a number of VSF
+functions, which are for lull of
+access to the virtual file
+
+00:33:13.058-->00:33:18.763
+system. So all these native
+emulation functions take a PE
+Vars T, a very large, half
+
+00:33:18.763-->00:33:23.501
+megabyte large structure
+containing everything about a
+given emulation context. And
+
+00:33:23.501-->00:33:26.338
+then we have templated
+parameters functions that are
+used to retrieve parameters to
+
+00:33:26.338-->00:33:31.009
+the function from the emulated
+stack. And then programmatic
+APIs for manipulating return
+
+00:33:31.009-->00:33:35.580
+values, register state, the CPU
+tick count or time, uh, all that
+sort of stuff can be
+
+00:33:35.580-->00:33:41.486
+programmatically managed through
+manipulations of the PE Vars T
+structure. Virtual memory can be
+
+00:33:41.486-->00:33:46.758
+interacted with with a API
+similar to that found in many
+uh, emulation engines, such as
+
+00:33:46.758-->00:33:51.129
+Unicorn Engine. Where we can
+memory map virtual memory into
+our real memory space and
+
+00:33:51.129-->00:33:55.834
+manipulate it there. And there
+are wrapper functions for common
+operations like reading a single
+
+00:33:55.834-->00:34:01.539
+byte, writing single D word,
+reading or writing wide strings
+or, regular CharStars. And these
+
+00:34:01.539-->00:34:04.809
+all have uh, kind of these
+utility functions wrapped around
+them to make them easier for
+
+00:34:04.809-->00:34:11.549
+developers. Moving into kernel
+internals. So we’ve talked about
+the usermode code, talked about
+
+00:34:11.549-->00:34:15.687
+how the usermode code gets into
+kernel mode, or the native
+emulations. Let’s look at how
+
+00:34:15.687-->00:34:21.026
+those develop, emulations are
+themselves implemented. So, the
+Windows kernel provides a number
+
+00:34:21.026-->00:34:26.031
+of facilities to any binary, you
+know, this is NTOSKRNL dot ex E
+and the associated drivers. And
+
+00:34:26.031-->00:34:31.303
+these are really the core of the
+Windows uh, OS or the NT kernel.
+Uh, these exa, these are,
+
+00:34:31.303-->00:34:35.707
+include examples of the object
+manager, process management,
+file system access, the registry
+
+00:34:35.707-->00:34:41.446
+through registry hives, and
+synchronization primitives for
+IPC. First off we’re gonna talk
+
+00:34:41.446-->00:34:45.750
+about the object manager. This
+is an essential part of the
+Windows executive that provides
+
+00:34:45.750-->00:34:52.390
+uh, management for handles. So
+any time you are opening a file,
+a socket, so forth, it’s gonna
+
+00:34:52.390-->00:34:56.628
+go through the object manager.
+And Defender supports 5 types of
+objects with it’s object
+
+00:34:56.628-->00:35:03.401
+manager. So these are file,
+thread, event, mutant, which is
+a singular of mutex, and
+
+00:35:03.401-->00:35:09.307
+semaphore. And these are stored
+in a big object manager map uh,
+here in NT, MP engine dot DLL.
+
+00:35:09.307-->00:35:13.311
+They’re stored in memory as C
+plus plus objects and they all
+inherit from a common parent
+
+00:35:13.311-->00:35:18.049
+class, object manager object. We
+then have subclasses, like file
+object or mutant object, and you
+
+00:35:18.049-->00:35:22.654
+can see I’ve made a little
+larger for the font the unique
+traits uh, to those particular C
+
+00:35:22.654-->00:35:29.260
+plus plus objects. Such as the M
+file handle uh, thing in the
+file object, or the weight count
+
+00:35:29.260-->00:35:34.799
+variable for a mutex. If various
+processes can weight on the
+given mutex. Uh, C plus plus RTI
+
+00:35:34.799-->00:35:40.038
+is used to, RTTI is used to cast
+between these subclasses to
+their parent class when they’re
+
+00:35:40.038-->00:35:44.042
+retrieved. And the object
+manager can be interacted with,
+uh, programmatically uh, by
+
+00:35:44.042-->00:35:48.980
+these various functions. So if
+we open a mutant, they’re gonna
+grab that object, then, you
+
+00:35:48.980-->00:35:54.219
+know, mess with it. If we uh,
+open a file object, it’s action
+call extension object manager,
+
+00:35:54.219-->00:36:00.025
+get file object which will use
+our tool to first check the type
+then explicitly use RTTI to cast
+
+00:36:00.025-->00:36:06.064
+to a file object and fail if the
+retrieved handle is not indeed a
+file handle. We’ll also see
+
+00:36:06.064-->00:36:10.001
+things like the pseudo handle
+for current process uh, is
+emulated as X1234. Again, a
+
+00:36:10.001-->00:36:15.774
+trait of the emulator we can use
+to write evasive malware based
+on seeing that our own handle is
+
+00:36:15.774-->00:36:22.747
+1234. We have a virtual file
+system, provides emulation and
+access to a file system. And
+
+00:36:22.747-->00:36:26.885
+this is access through the
+standard NTDLL, NT write file,
+NT create file and so forth
+
+00:36:26.885-->00:36:31.289
+APIs. As well as these lower
+level VFS functions which
+provide sort of a back door,
+
+00:36:31.289-->00:36:36.294
+unsanitized access uh, to the
+file system in uh, emulation.
+Finally, moving into talking
+
+00:36:38.763-->00:36:43.234
+about AV instrumentation. So all
+the heuristics and analysis the
+AV is doing throughout the
+
+00:36:43.234-->00:36:47.472
+runtime. So they are some
+internal functions that are
+exposed through the hypercall
+
+00:36:47.472-->00:36:51.609
+apicall interface, and I’ve
+summarized them here. And we’re
+gonna look at a few of these.
+
+00:36:51.609-->00:36:56.114
+First off, MP report event,
+which is used to communicate
+information about malware binary
+
+00:36:56.114-->00:37:00.151
+actions with Defender’s
+heuristic detection engine. So
+these are in some of these user
+
+00:37:00.151-->00:37:04.622
+mode uh, emulations, such as get
+user name or get computer name.
+Those don’t require strapping
+
+00:37:04.622-->00:37:07.792
+into a full need of emulation,
+and that would increase the
+attacks of this greatly if they
+
+00:37:07.792-->00:37:12.530
+all did, but we do want to
+inform Defender that the given
+function was called. So if get
+
+00:37:12.530-->00:37:18.470
+system directory is called,
+it’ll report uh, event 12331, or
+if you create a process and you
+
+00:37:18.470-->00:37:23.741
+do it uh, suspended it’ll do X
+uh, 3018 but it’ll say create
+suspended, specifically noting
+
+00:37:23.741-->00:37:28.746
+that a uh, process like that was
+created. A MP report event can
+be called in more cases, you can
+
+00:37:30.815-->00:37:35.754
+see here, just more examples.
+This is called thousands of
+times throughout these VDLLs.
+
+00:37:35.754-->00:37:41.359
+And a more concrete example of
+how this might play into AV uh,
+identification or potentially
+
+00:37:41.359-->00:37:45.396
+malicious binaries is here where
+we see that if we called
+terminate process on a PID in
+
+00:37:45.396-->00:37:52.270
+the 700 range, which uh, you’ll
+note that all these various AV
+processes are in the 700 range,
+
+00:37:52.270-->00:37:57.308
+it’ll trigger MP report event
+12349. But it’ll also say “AV”.
+So if you try to terminate
+
+00:37:57.308-->00:38:02.580
+process on an AV that’s probably
+a good indicator you’re
+malicious. NT control channel is
+
+00:38:02.580-->00:38:06.184
+sort of a back door interface
+for administering the engine.
+This is something Tavis Ormandy
+
+00:38:06.184-->00:38:11.256
+hit, and I went here and reverse
+engineered the 32 switch case
+options of this function and
+
+00:38:11.256-->00:38:15.393
+showed you what they all do. So
+these help you through things
+like manipulate the uh, rewrite
+
+00:38:15.393-->00:38:19.631
+microcode, uh, manipulate
+register state, all sorts of
+stuff. Um, create an attack
+
+00:38:19.631-->00:38:22.934
+surface, definitely something
+that shouldn’t be open to
+malware binaries running inside
+
+00:38:22.934-->00:38:27.138
+the emulator. [speaker burps]
+Uh, we’re gonna conclude by
+talking about vulnerability
+
+00:38:27.138-->00:38:31.643
+research. Let’s start off by
+trying to understand some prior
+vulnerability discovered by
+
+00:38:31.643-->00:38:36.481
+Tavis Normandy at Google Project
+0. So Tavis discovered this
+apicall instruction that I
+
+00:38:36.481-->00:38:41.686
+talked about. And he was able to
+call directly into native
+emulations and functions, rather
+
+00:38:41.686-->00:38:45.590
+than passing through their
+apicall stubs, by just uh,
+generating the apicall
+
+00:38:45.590-->00:38:51.429
+instructions on the fly, as you
+can see here. And then Tavis was
+hitting internal debug
+
+00:38:51.429-->00:38:56.701
+functions, like, NT control
+channel. Which when you get
+option X12, it goes to rewrite
+
+00:38:56.701-->00:39:02.674
+microcode. And this code here
+let’s the user specify the count
+in a tight loop. Uh, and with
+
+00:39:02.674-->00:39:07.011
+the user specified count, we
+only have, I think, a thousand
+elements of allocated uh, for
+
+00:39:07.011-->00:39:10.848
+the new microcode information.
+Uh, but the user can give in,
+say, 2-->000 and we have a linear
+
+00:39:10.848-->00:39:15.253
+buffer or a flow. Microsoft
+patched this by adding a check
+that they count, is no greater
+
+00:39:15.253-->00:39:20.558
+than 1-->000. If it is, it would
+turn 0. It doesn’t, doesn’t run.
+Tavis also looked at the virtual
+
+00:39:20.558-->00:39:24.829
+file system, and by calling
+directly into these unsanitized
+functions to access the virtual
+
+00:39:24.829-->00:39:31.469
+file system, was able to uh,
+basically get a uh, linear uh,
+heap read and write paremative
+
+00:39:31.469-->00:39:37.442
+uh, by creating a file with
+these, you know, strange sizes.
+And, and this sequence of calls
+
+00:39:37.442-->00:39:42.981
+could crash the engine with an
+out of bounds write. Now, I
+looked at the mitigations that
+
+00:39:42.981-->00:39:46.584
+Microsoft put in for the abuse
+that the apicall instruction,
+which were primarily that Tavis
+
+00:39:46.584-->00:39:51.122
+himself was generating the
+apicall instruction on the fly
+from the malware’s dot text
+
+00:39:51.122-->00:39:56.160
+section. And then Microsoft
+added a check that says, is the
+call to the API call
+
+00:39:56.160-->00:40:01.132
+instruction, is it coming from a
+VDLL page? And if it’s not, it’s
+gonna deny the user the ability
+
+00:40:01.132-->00:40:05.503
+to invoke in the emulation
+function. This means that these
+uh, apicall instructions can
+
+00:40:05.503-->00:40:10.241
+only be invoked from code pages
+that are associated with a given
+VDLL that cannot be called from
+
+00:40:10.241-->00:40:14.279
+the malware binary. And, in
+fact, if you call them it’ll do
+MP set attribute, which uh,
+
+00:40:14.279-->00:40:18.416
+will, basically set a heuristic
+that, you tried to call the
+apicall instruction from your
+
+00:40:18.416-->00:40:22.320
+dot text section. This is
+really, really weird. Probably a
+strong indicator of malicious
+
+00:40:22.320-->00:40:28.259
+intent. And I found that I could
+bypass this mitigation by simply
+finding the apicall stubs in
+
+00:40:28.259-->00:40:32.997
+memory in our VDLLs, which I can
+reverse engineer. And that could
+just bounce off the apicall
+
+00:40:32.997-->00:40:37.969
+instruction, and hit this uh,
+interface, these interfaces with
+my own uh, controlled arguments.
+
+00:40:37.969-->00:40:42.240
+So this is not good. I did
+report this to Microsoft and
+they told me this is not a trust
+
+00:40:42.240-->00:40:46.044
+boundary. Kind of a classic
+Microsoft response to a lot of
+vulnerability disclosures. But
+
+00:40:46.044-->00:40:49.781
+it’s not quite a trust boundary
+um, you know, unless you
+actually found an actual
+
+00:40:49.781-->00:40:53.651
+vulnerability like, uh, you
+know, actual buffer or flow in
+there. The fact that there’s
+
+00:40:53.651-->00:40:57.989
+this logical flaw that I can hit
+internally, bug interfaces and
+do things like stop emulation
+
+00:40:57.989-->00:41:01.592
+right then and there, or change
+microcode in the emulator,
+that’s certainly not a
+
+00:41:01.592-->00:41:06.831
+vulnerability according to
+Microsoft. So an example of a
+bypass here, doing something
+
+00:41:06.831-->00:41:12.170
+pretty benign, just hit Output
+Debug String A. So I found in
+kernel32 the offset of Output
+
+00:41:12.170-->00:41:16.574
+Debug String A and I can uh,
+resolve that address and then
+treat that as a function binary
+
+00:41:16.574-->00:41:21.679
+and just bounce off this
+emulation. And when this runs we
+hit Output Debug String A. Now,
+
+00:41:21.679-->00:41:26.050
+more maliciously, we can sort of
+hit NT control channel. Uh,
+again, that internal debug
+
+00:41:26.050-->00:41:30.455
+interface left in by developers.
+Maybe debug or administer the
+engine and we can set our own
+
+00:41:30.455-->00:41:33.958
+heuristics like, for example, if
+we call virut body found, it’ll
+trigger immediate malware
+
+00:41:33.958-->00:41:38.963
+detection. So a quick demo of
+that. So in this video you can
+see we’re calling Output Debug
+
+00:41:42.934-->00:41:47.939
+String A in the legitimate way,
+and then calling it with our
+Output Debug String A abuse. Um,
+
+00:41:47.939-->00:41:52.944
+through this uh, unintended
+interface kind of left there in
+the VDLL code page. Uh, once we
+
+00:41:54.979-->00:42:01.853
+run and compile this binary,
+we’ll enroll, so hit NT control
+channel as well. And we’re gonna
+
+00:42:01.853-->00:42:05.189
+use NT control channel to check
+the exact version number of the
+engine, and this was on the
+
+00:42:05.189-->00:42:11.129
+February 2018 build of the
+engine. So with our kind of ret2
+apicall technique, we run this
+
+00:42:11.129-->00:42:15.199
+binary and we’ll see we hit
+Output Debug String A the normal
+way. Then through the apicall
+
+00:42:15.199-->00:42:18.403
+with kind of a bypass from
+Microsoft’s mitigation. So we
+have a controlled argument going
+
+00:42:18.403-->00:42:21.939
+into there. And we also show
+that we can hit NT control
+channel with controlled argument
+
+00:42:21.939-->00:42:28.546
+as well. Now uh, the, again, the
+implications of this so we can
+hit these internal debug
+
+00:42:28.546-->00:42:33.518
+interfaces with attacker control
+arguments, probably not a good
+idea. Finally I wanna talk a bit
+
+00:42:33.518-->00:42:39.424
+about fuzzing. So I was able to
+fuzz emulated APIs. Um,
+basically working out some more
+
+00:42:39.424-->00:42:43.694
+complex mechanisms to allow our,
+our channel to be a 2 way IO
+channel, not just an output
+
+00:42:43.694-->00:42:49.634
+channel. Uh, I took MWR Labs’
+OSX kernel fuzzer, which
+generate random values to fuzz
+
+00:42:49.634-->00:42:54.238
+the OSX kernel. And I folded
+that in with my code on
+generating random values each
+
+00:42:54.238-->00:42:58.609
+time. And then I pushed those in
+the emulator and I was able to
+do things like fuzz NT write
+
+00:42:58.609-->00:43:03.347
+file, and actually reproduce
+Tavis’ crash but in a unique way
+that got around uh, the
+
+00:43:03.347-->00:43:08.419
+sanitization that NT write file
+normally does. I reprode his
+crash in VFS write, but through
+
+00:43:08.419-->00:43:13.458
+NT write file without having to
+use the apicall instruction. You
+can see in this demo here, we’re
+
+00:43:13.458-->00:43:18.663
+gonna do that. We’re gonna
+resolve the address of NT write
+file uh, and then fuzz that. And
+
+00:43:18.663-->00:43:22.500
+this whole mechanism here with
+the perams, uh, this is a more
+complex interface that I have
+
+00:43:22.500-->00:43:25.970
+for passing information in and
+out of the emulator. And
+basically on the outside of the
+
+00:43:25.970-->00:43:30.741
+emulator we’re generating fuzz
+input to give to inside of it.
+Then we’re calling NT write file
+
+00:43:30.741-->00:43:35.746
+with those fuzz parameters and
+seeing what happens. So running
+this, you’re gonna see this run
+
+00:43:44.121-->00:43:48.092
+for quite awhile. It’s just
+gonna keep running. In my
+experience, it took about 7
+
+00:43:48.092-->00:43:52.830
+minutes running single threading
+around 8-->000 system calls per
+second to reproduce Tavis’
+
+00:43:52.830-->00:43:55.967
+crash. Again, this is not a
+smart fuzz and there’s no AFL,
+there’s no code coverage
+
+00:43:55.967-->00:44:00.905
+mentioned it’s just the dumb,
+the random values at uh, Windows
+Defender. In order to fuzz it.
+
+00:44:04.976-->00:44:10.715
+There’s the demo. And moving
+into the conclusion. We covered
+tooling and instrumentation, CPU
+
+00:44:10.715-->00:44:14.252
+emulation basics for X86
+binaries and a bit on
+vulnerability research and
+
+00:44:14.252-->00:44:18.623
+fuzzing for Windows Defender. We
+didn't cover a whole lot of
+other stuff. For example, uh,
+
+00:44:18.623-->00:44:23.628
+X86, uh X64 emulation [speaker
+burps] excuse me, emulation, ARM
+emulation, VMprotect emulation,
+
+00:44:25.696-->00:44:31.102
+the 16 bit emulation. There is a
+full DOS emulator uh, aside from
+the Win32 in a modern Windows
+
+00:44:31.102-->00:44:35.106
+system emulator. There’s an, a
+16 bit emulation built into
+Defender. Really interesting
+
+00:44:35.106-->00:44:39.710
+attack surface as well. Probably
+not as well looked at as the 32
+bit one. Uh we had a look at the
+
+00:44:39.710-->00:44:43.114
+threading model, how you can do
+multithreading for binaries
+inside emulators. That’s always
+
+00:44:43.114-->00:44:48.419
+uh, a source of problems for AV
+emulators at large, so, worth
+looking at. We’re also analysis
+
+00:44:48.419-->00:44:51.923
+for dot net binaries. We’re
+primarily looking at Windows
+binaries that are just compiled
+
+00:44:51.923-->00:44:58.429
+X86 code. Also inside MP engine
+we have unpackers, parsers, a
+JavaScript engine which you can
+
+00:44:58.429-->00:45:04.535
+see in my REcon Brussels talk,
+other scanning engine and dot
+net engine. Now, I wanna say
+
+00:45:04.535-->00:45:08.873
+that people love to talk about
+AVs and what they can and can’t
+do, where, whether they may or
+
+00:45:08.873-->00:45:12.710
+may not be vulnerable. But
+there’s not a lot of ground
+truth about AVs in the public.
+
+00:45:12.710-->00:45:15.846
+And I think there should be
+more. I think they’re a really
+fascinating target to analyze,
+
+00:45:15.846-->00:45:19.483
+they’re a lot of fun. I think
+this is much more interesting,
+to me at least, than looking at
+
+00:45:19.483-->00:45:22.987
+malware. Actually seeing how
+malware gets caught and
+mitigated and detected, and you
+
+00:45:22.987-->00:45:27.358
+also learn a whole lot about
+say, anit-kernel internals and
+object managers and things like
+
+00:45:27.358-->00:45:31.596
+that. It gives you an interest
+to look at all of these
+different technologies. Um, a
+
+00:45:31.596-->00:45:35.266
+lot of claims about AV
+vulnerabilities and how they may
+or may not be vulnerable are
+
+00:45:35.266-->00:45:39.704
+based on Tavis Ormandy’s work
+and a bit on Joxean’s work. But
+there’s really not a whole lot
+
+00:45:39.704-->00:45:43.541
+out there. Uh, I really like
+this tweet from Joxean where he
+said if you Google antivirus
+
+00:45:43.541-->00:45:49.213
+internals, all you find is me,
+him and then Tavis Ormandy. I
+would say if you like this sort
+
+00:45:49.213-->00:45:52.883
+of work, definitely grab a copy
+of his book. It’s an awesome
+book and really underappreciated
+
+00:45:52.883-->00:45:58.422
+by people. Um, just come really
+incredible work that went into
+that. I’m releasing some code
+
+00:45:58.422-->00:46:01.792
+later. Here’s my GitHub, I’ll
+also tweet about this so no
+worry to, you don’t have to take
+
+00:46:01.792-->00:46:05.896
+a picture of the slide. But I’ll
+be sharing some of the harnesses
+that I built. Uh, an IDA
+
+00:46:05.896-->00:46:09.834
+disassembler for the apicall
+instruction. I’ll also be
+publishing an article in Poker
+
+00:46:09.834-->00:46:13.804
+GTFO issue 19 describing more of
+this under more technical
+details of some of these
+
+00:46:13.804-->00:46:19.343
+technologies. And that concludes
+the presentation. I have a whole
+lot more slides being released
+
+00:46:19.343-->00:46:23.748
+online after this. This is only
+about 50 percent of the material
+that I prepared for today. My
+
+00:46:23.748-->00:46:27.084
+JavaScript slides are all there
+on that bit ly link. And I wanna
+thank all my friends, Tavis,
+
+00:46:27.084-->00:46:31.922
+Mark uh, Marcus, Joxean and then
+numerous friend who helped me
+edit this presentation and get
+
+00:46:31.922-->00:46:36.027
+here to Defcon. Uh, hit me up on
+Twitter if you have any
+questions. I have open DMs.
+
+00:46:36.027-->00:46:41.032
+Thanks very much. [audience
+applauds]
+

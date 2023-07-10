@@ -1,0 +1,4848 @@
+﻿1
+00:00:04,610 --> 00:00:10,139
+thank you very much so hello everyone my
+
+2
+00:00:08,400 --> 00:00:11,639
+name is Brandon Azad and I'm going to be
+
+3
+00:00:10,139 --> 00:00:15,059
+presenting crashing to rout how to
+
+4
+00:00:11,639 --> 00:00:17,700
+escape the iOS sandbox using abort first
+
+5
+00:00:15,059 --> 00:00:19,410
+a little bit about me I was until very
+
+6
+00:00:17,700 --> 00:00:21,599
+recently an independent security
+
+7
+00:00:19,410 --> 00:00:23,790
+researcher but two weeks ago I joined
+
+8
+00:00:21,600 --> 00:00:25,830
+project zero which is Google's applied
+
+9
+00:00:23,790 --> 00:00:27,599
+security research team it's kind of
+
+10
+00:00:25,830 --> 00:00:29,250
+weird since this talk is on research
+
+11
+00:00:27,600 --> 00:00:31,620
+that I did before joining project zero
+
+12
+00:00:29,250 --> 00:00:34,620
+so just to be clear this talk is all
+
+13
+00:00:31,620 --> 00:00:37,730
+about independent research I focus my
+
+14
+00:00:34,620 --> 00:00:40,949
+security research on Mac OS and iOS I
+
+15
+00:00:37,730 --> 00:00:43,500
+graduated from Stanford in 2016 and 2017
+
+16
+00:00:40,950 --> 00:00:45,180
+I was among those who discovered the
+
+17
+00:00:43,500 --> 00:00:46,829
+original variant of the Pegasus
+
+18
+00:00:45,180 --> 00:00:49,260
+Bioware's kernel code execution
+
+19
+00:00:46,829 --> 00:00:51,450
+vulnerability and I also developed some
+
+20
+00:00:49,260 --> 00:00:53,730
+open-source tools including a kernel
+
+21
+00:00:51,450 --> 00:00:56,130
+inspection tool called mem control and a
+
+22
+00:00:53,730 --> 00:01:00,180
+kernel cache analysis toolkit for Ida
+
+23
+00:00:56,130 --> 00:01:02,910
+Pro called Ida kernel cache now what got
+
+24
+00:01:00,180 --> 00:01:04,349
+me started on this research project it
+
+25
+00:01:02,910 --> 00:01:06,750
+all began when I had an interesting
+
+26
+00:01:04,349 --> 00:01:09,330
+realization while looking at a crash log
+
+27
+00:01:06,750 --> 00:01:11,220
+on an iPhone while scrolling through it
+
+28
+00:01:09,330 --> 00:01:14,190
+I was really struck by the large amount
+
+29
+00:01:11,220 --> 00:01:15,479
+of information inside the crash log here
+
+30
+00:01:14,190 --> 00:01:17,759
+you can see that this is an example
+
+31
+00:01:15,479 --> 00:01:19,830
+crash log that includes some basic
+
+32
+00:01:17,760 --> 00:01:22,619
+information about the crashing process a
+
+33
+00:01:19,830 --> 00:01:25,470
+symbolic ated back trace of the crashing
+
+34
+00:01:22,619 --> 00:01:27,750
+thread a dump of the threads register
+
+35
+00:01:25,470 --> 00:01:29,970
+state and even a listing of what
+
+36
+00:01:27,750 --> 00:01:32,640
+binaries were loaded at what addresses
+
+37
+00:01:29,970 --> 00:01:34,920
+in the processes address space so all of
+
+38
+00:01:32,640 --> 00:01:36,720
+this really got me thinking there seems
+
+39
+00:01:34,920 --> 00:01:39,119
+to be a lot of processing going on to
+
+40
+00:01:36,720 --> 00:01:43,679
+generate this crash log is this
+
+41
+00:01:39,119 --> 00:01:45,689
+processing a viable attack surface so
+
+42
+00:01:43,680 --> 00:01:48,600
+let me give you an outline of this
+
+43
+00:01:45,689 --> 00:01:51,779
+research project the focus is on crash
+
+44
+00:01:48,600 --> 00:01:54,000
+reporting on iOS and specifically we'll
+
+45
+00:01:51,780 --> 00:01:55,590
+be targeting iOS 11 point two point six
+
+46
+00:01:54,000 --> 00:01:58,200
+which was the latest version available
+
+47
+00:01:55,590 --> 00:02:00,990
+when I did this research and our goal is
+
+48
+00:01:58,200 --> 00:02:03,420
+threefold we'll try to find a zero-day
+
+49
+00:02:00,990 --> 00:02:05,399
+vulnerability will use that
+
+50
+00:02:03,420 --> 00:02:07,799
+vulnerability to escape the application
+
+51
+00:02:05,400 --> 00:02:10,920
+sandbox and we'll also try to elevate
+
+52
+00:02:07,799 --> 00:02:12,750
+privileges to route and why did I think
+
+53
+00:02:10,919 --> 00:02:14,640
+that crash reporting was an interesting
+
+54
+00:02:12,750 --> 00:02:16,770
+attack service to begin with
+
+55
+00:02:14,640 --> 00:02:19,320
+because it seems like an absurd place to
+
+56
+00:02:16,770 --> 00:02:22,950
+look I mean how can you possibly attack
+
+57
+00:02:19,320 --> 00:02:24,630
+a system by crashing so I figured that
+
+58
+00:02:22,950 --> 00:02:27,060
+since I thought it was a crazy place to
+
+59
+00:02:24,630 --> 00:02:29,579
+attack Apple has probably not put the
+
+60
+00:02:27,060 --> 00:02:33,210
+security auditing that this feature
+
+61
+00:02:29,580 --> 00:02:34,890
+really deserved so before we dive into
+
+62
+00:02:33,210 --> 00:02:38,810
+the vulnerability let's quickly discuss
+
+63
+00:02:34,890 --> 00:02:41,730
+some fundamental iOS security mechanisms
+
+64
+00:02:38,810 --> 00:02:43,380
+iOS implements code signing which means
+
+65
+00:02:41,730 --> 00:02:45,209
+that all code must have a valid
+
+66
+00:02:43,380 --> 00:02:47,970
+cryptographic signature in order to run
+
+67
+00:02:45,210 --> 00:02:50,790
+and the signature chain must route back
+
+68
+00:02:47,970 --> 00:02:52,710
+to Apple here we've used the code sign
+
+69
+00:02:50,790 --> 00:02:54,870
+utility to dump an applications code
+
+70
+00:02:52,710 --> 00:02:56,730
+signature and the part that we've
+
+71
+00:02:54,870 --> 00:02:58,890
+highlighted here in the center shows the
+
+72
+00:02:56,730 --> 00:03:00,570
+embedded certificate chain where the
+
+73
+00:02:58,890 --> 00:03:03,299
+leap certificate at the top is my
+
+74
+00:03:00,570 --> 00:03:05,220
+personal developer certificate any code
+
+75
+00:03:03,300 --> 00:03:08,760
+without an Apple approved signature will
+
+76
+00:03:05,220 --> 00:03:10,609
+be immediately killed the next security
+
+77
+00:03:08,760 --> 00:03:12,810
+feature we need is entitlements
+
+78
+00:03:10,610 --> 00:03:14,730
+entitlements are additional permissions
+
+79
+00:03:12,810 --> 00:03:17,370
+granted to an application at the time
+
+80
+00:03:14,730 --> 00:03:19,470
+the code is signed concretely the
+
+81
+00:03:17,370 --> 00:03:21,570
+entitlements are an XML blob that's
+
+82
+00:03:19,470 --> 00:03:23,100
+embedded into the binary and that it's
+
+83
+00:03:21,570 --> 00:03:26,670
+protected from change by the
+
+84
+00:03:23,100 --> 00:03:28,049
+applications code signature here you can
+
+85
+00:03:26,670 --> 00:03:30,988
+see that this binary has been granted
+
+86
+00:03:28,050 --> 00:03:33,150
+the task for PID allow entitlement which
+
+87
+00:03:30,989 --> 00:03:35,910
+allows it to call the task for PID
+
+88
+00:03:33,150 --> 00:03:39,120
+system call and we'll return to task for
+
+89
+00:03:35,910 --> 00:03:42,030
+PID later then the final security
+
+90
+00:03:39,120 --> 00:03:43,500
+mechanism we need is sandboxing which
+
+91
+00:03:42,030 --> 00:03:45,660
+allows the system to place very
+
+92
+00:03:43,500 --> 00:03:49,050
+fine-grained controls on the behavior of
+
+93
+00:03:45,660 --> 00:03:51,170
+an application all iOS apps live inside
+
+94
+00:03:49,050 --> 00:03:53,280
+a sandbox called the container sandbox
+
+95
+00:03:51,170 --> 00:03:55,708
+here's a small snippet from the
+
+96
+00:03:53,280 --> 00:03:59,600
+container sandbox profile written in a
+
+97
+00:03:55,709 --> 00:04:02,820
+scheme like language this.profile return
+
+98
+00:03:59,600 --> 00:04:05,160
+access which kernel drivers you can talk
+
+99
+00:04:02,820 --> 00:04:07,650
+to and even which Damons you can
+
+100
+00:04:05,160 --> 00:04:09,600
+communicate with so if we want to do
+
+101
+00:04:07,650 --> 00:04:11,580
+anything interesting on the device we
+
+102
+00:04:09,600 --> 00:04:15,329
+absolutely need to escape the sandbox
+
+103
+00:04:11,580 --> 00:04:17,640
+first so now let's discuss some inter
+
+104
+00:04:15,330 --> 00:04:19,769
+process communication basics on iOS and
+
+105
+00:04:17,640 --> 00:04:23,729
+this is fundamental to understanding the
+
+106
+00:04:19,769 --> 00:04:26,250
+vulnerability IPC on iOS is based on
+
+107
+00:04:23,729 --> 00:04:28,080
+mach ports mach ports are reference
+
+108
+00:04:26,250 --> 00:04:28,630
+counted message queues maintained by the
+
+109
+00:04:28,080 --> 00:04:31,070
+car
+
+110
+00:04:28,630 --> 00:04:33,139
+arbitrarily many processes can send
+
+111
+00:04:31,070 --> 00:04:35,090
+messages to the queue but only one
+
+112
+00:04:33,139 --> 00:04:37,009
+process can receive messages out of the
+
+113
+00:04:35,090 --> 00:04:39,440
+queue in userspace
+
+114
+00:04:37,009 --> 00:04:41,930
+mach ports are referenced by mach port
+
+115
+00:04:39,440 --> 00:04:43,850
+names which are just integers similar to
+
+116
+00:04:41,930 --> 00:04:47,389
+how file descriptors are references to
+
+117
+00:04:43,850 --> 00:04:49,789
+files now there's also some terminology
+
+118
+00:04:47,389 --> 00:04:52,400
+related to maka ports the ability to
+
+119
+00:04:49,789 --> 00:04:54,710
+send messages to a mach port is called a
+
+120
+00:04:52,400 --> 00:04:57,229
+send right while the ability to receive
+
+121
+00:04:54,710 --> 00:05:00,680
+messages out of a maka port is called a
+
+122
+00:04:57,229 --> 00:05:03,409
+receive right now let's talk about these
+
+123
+00:05:00,680 --> 00:05:05,110
+messages a mach message is structured
+
+124
+00:05:03,410 --> 00:05:07,460
+data that gets sent to the mach port
+
+125
+00:05:05,110 --> 00:05:09,110
+it's queued in the kernel until the
+
+126
+00:05:07,460 --> 00:05:11,810
+owner of the mach port listens for a
+
+127
+00:05:09,110 --> 00:05:14,810
+message and a mach message can contain
+
+128
+00:05:11,810 --> 00:05:16,970
+arbitrary data but also it can contain
+
+129
+00:05:14,810 --> 00:05:19,490
+send and receive rights to mach ports
+
+130
+00:05:16,970 --> 00:05:22,070
+this means that a send right can be
+
+131
+00:05:19,490 --> 00:05:23,870
+transmitted to another process by
+
+132
+00:05:22,070 --> 00:05:25,430
+embedding that send right in a mock
+
+133
+00:05:23,870 --> 00:05:29,210
+message that gets delivered to that
+
+134
+00:05:25,430 --> 00:05:31,009
+process alright so in addition to the
+
+135
+00:05:29,210 --> 00:05:33,859
+standard mach ports there are also
+
+136
+00:05:31,009 --> 00:05:35,570
+special mach ports in which the receive
+
+137
+00:05:33,860 --> 00:05:38,570
+write is actually owned by the kernel
+
+138
+00:05:35,570 --> 00:05:41,419
+itself chief among them are tasks in
+
+139
+00:05:38,570 --> 00:05:42,770
+thread ports a task port is a special
+
+140
+00:05:41,419 --> 00:05:45,889
+port that can be used to control the
+
+141
+00:05:42,770 --> 00:05:48,799
+corresponding task object for example
+
+142
+00:05:45,889 --> 00:05:50,720
+calling mach vm allocate on a task fork
+
+143
+00:05:48,800 --> 00:05:53,090
+will cause the kernel to allocate
+
+144
+00:05:50,720 --> 00:05:56,690
+virtual memory inside the tasks address
+
+145
+00:05:53,090 --> 00:05:59,179
+space similarly thread ports allow you
+
+146
+00:05:56,690 --> 00:06:02,240
+to control an individual thread inside a
+
+147
+00:05:59,180 --> 00:06:05,090
+task and for example calling thread set
+
+148
+00:06:02,240 --> 00:06:07,930
+state on a thread port will set the
+
+149
+00:06:05,090 --> 00:06:10,099
+values of the registers in that thread
+
+150
+00:06:07,930 --> 00:06:12,199
+now permit me to go on a brief
+
+151
+00:06:10,099 --> 00:06:14,330
+digression for a moment we've just
+
+152
+00:06:12,199 --> 00:06:16,789
+talked about task ports and task ports
+
+153
+00:06:14,330 --> 00:06:18,710
+have a rich history of exploitation and
+
+154
+00:06:16,789 --> 00:06:21,320
+abuse and that's because there's a
+
+155
+00:06:18,710 --> 00:06:23,888
+formula for how to go from holding a
+
+156
+00:06:21,320 --> 00:06:26,810
+task port to taking control of a process
+
+157
+00:06:23,889 --> 00:06:28,550
+now the method of using a task board to
+
+158
+00:06:26,810 --> 00:06:30,860
+take control of a process is very
+
+159
+00:06:28,550 --> 00:06:33,830
+complicated so I'll put up a diagram
+
+160
+00:06:30,860 --> 00:06:36,680
+here of how the technique works when you
+
+161
+00:06:33,830 --> 00:06:39,380
+have a task port you can call the
+
+162
+00:06:36,680 --> 00:06:41,360
+functions mach vm read and mach vm write
+
+163
+00:06:39,380 --> 00:06:42,390
+to directly read and write that
+
+164
+00:06:41,360 --> 00:06:46,420
+processes
+
+165
+00:06:42,390 --> 00:06:48,430
+and then you're done as I said it's very
+
+166
+00:06:46,420 --> 00:06:49,690
+complicated stuff Apple has really put
+
+167
+00:06:48,430 --> 00:06:53,020
+in a lot of effort to make our lives
+
+168
+00:06:49,690 --> 00:06:55,900
+difficult right here so obviously it's
+
+169
+00:06:53,020 --> 00:06:57,789
+not that difficult all things aside it's
+
+170
+00:06:55,900 --> 00:06:59,560
+really good to keep in mind that if you
+
+171
+00:06:57,790 --> 00:07:02,970
+have the task part of an application
+
+172
+00:06:59,560 --> 00:07:05,350
+you basically have full control over it
+
+173
+00:07:02,970 --> 00:07:07,600
+all right so let's get back to the
+
+174
+00:07:05,350 --> 00:07:11,140
+background info now that we've talked
+
+175
+00:07:07,600 --> 00:07:14,140
+about Mach ports which provide IPC let's
+
+176
+00:07:11,140 --> 00:07:16,360
+see what Damon's on iOS look like iOS
+
+177
+00:07:14,140 --> 00:07:18,130
+Damon's are called Mach services because
+
+178
+00:07:16,360 --> 00:07:22,060
+you communicate with them by sending and
+
+179
+00:07:18,130 --> 00:07:24,370
+receiving Mach messages they're each
+
+180
+00:07:22,060 --> 00:07:27,580
+each Mach service is identified by a
+
+181
+00:07:24,370 --> 00:07:29,560
+name for example calm dot a police a
+
+182
+00:07:27,580 --> 00:07:32,320
+render server is the name for the core
+
+183
+00:07:29,560 --> 00:07:34,360
+animation rendering server and how does
+
+184
+00:07:32,320 --> 00:07:36,730
+a client process actually gain the
+
+185
+00:07:34,360 --> 00:07:39,000
+ability to talk with a service well the
+
+186
+00:07:36,730 --> 00:07:41,920
+launch D process which is PID one
+
+187
+00:07:39,000 --> 00:07:44,650
+actually vens all the mock services on
+
+188
+00:07:41,920 --> 00:07:46,600
+the system to interested clients so if a
+
+189
+00:07:44,650 --> 00:07:48,940
+client wants to talk with a service
+
+190
+00:07:46,600 --> 00:07:50,890
+it'll send a message to launch D saying
+
+191
+00:07:48,940 --> 00:07:53,770
+hey launch D I want to talk with this
+
+192
+00:07:50,890 --> 00:07:55,599
+service and then launch D will send a
+
+193
+00:07:53,770 --> 00:07:58,000
+reply to the original mock message
+
+194
+00:07:55,600 --> 00:08:00,060
+containing a send right to that services
+
+195
+00:07:58,000 --> 00:08:02,500
+mock port
+
+196
+00:08:00,060 --> 00:08:04,300
+alright so that's all the background
+
+197
+00:08:02,500 --> 00:08:06,220
+information that we're going to need as
+
+198
+00:08:04,300 --> 00:08:09,100
+a reminder the focus of this talk is
+
+199
+00:08:06,220 --> 00:08:11,530
+crash reporting on iOS and we have a
+
+200
+00:08:09,100 --> 00:08:13,900
+3-phase goal to find a zero-day
+
+201
+00:08:11,530 --> 00:08:17,919
+vulnerability to escape the sandbox and
+
+202
+00:08:13,900 --> 00:08:20,460
+to elevate privileges to root now let's
+
+203
+00:08:17,919 --> 00:08:22,719
+look at how crash handling works on iOS
+
+204
+00:08:20,460 --> 00:08:25,060
+crash handling is based on mock
+
+205
+00:08:22,720 --> 00:08:27,790
+exceptions which are a generalization of
+
+206
+00:08:25,060 --> 00:08:30,340
+BSD signals just like there are many
+
+207
+00:08:27,790 --> 00:08:32,770
+types of signals such as SIGINT and cigs
+
+208
+00:08:30,340 --> 00:08:36,400
+eggby there are many different exception
+
+209
+00:08:32,770 --> 00:08:38,199
+conditions for example X bad access is
+
+210
+00:08:36,400 --> 00:08:40,900
+an exception that occurs on an invalid
+
+211
+00:08:38,200 --> 00:08:42,400
+memory access while X crash is an
+
+212
+00:08:40,900 --> 00:08:44,920
+exception that occurs when a process
+
+213
+00:08:42,400 --> 00:08:47,260
+terminates abnormally for each of these
+
+214
+00:08:44,920 --> 00:08:49,569
+exception types we can register a mock
+
+215
+00:08:47,260 --> 00:08:52,630
+port to be notified when an exception
+
+216
+00:08:49,570 --> 00:08:55,150
+occurs and this notification can occur
+
+217
+00:08:52,630 --> 00:08:56,080
+three levels of granularity you can
+
+218
+00:08:55,150 --> 00:08:57,490
+register to be
+
+219
+00:08:56,080 --> 00:09:00,760
+to fight when a particular thread
+
+220
+00:08:57,490 --> 00:09:03,940
+generates an exception or to be notified
+
+221
+00:09:00,760 --> 00:09:06,880
+when a particular task generates an
+
+222
+00:09:03,940 --> 00:09:09,520
+exception or when any thread on the
+
+223
+00:09:06,880 --> 00:09:11,800
+whole host generates an exception and
+
+224
+00:09:09,520 --> 00:09:13,689
+once an exception does occur the kernel
+
+225
+00:09:11,800 --> 00:09:15,640
+will send a mock message containing
+
+226
+00:09:13,690 --> 00:09:19,090
+details about the exception to the
+
+227
+00:09:15,640 --> 00:09:20,830
+registered exception port so how do you
+
+228
+00:09:19,090 --> 00:09:23,170
+actually go about catching a mock
+
+229
+00:09:20,830 --> 00:09:25,180
+exception you need to implement an
+
+230
+00:09:23,170 --> 00:09:27,729
+exception handling service routine which
+
+231
+00:09:25,180 --> 00:09:29,920
+has this prototype the exception message
+
+232
+00:09:27,730 --> 00:09:32,140
+will contain the thread and task ports
+
+233
+00:09:29,920 --> 00:09:34,870
+of the crashing thread as well as other
+
+234
+00:09:32,140 --> 00:09:36,100
+information about the exception when
+
+235
+00:09:34,870 --> 00:09:38,830
+this message is received
+
+236
+00:09:36,100 --> 00:09:41,290
+it'll be parsed by Auto generated code
+
+237
+00:09:38,830 --> 00:09:43,960
+and the contents will be passed to this
+
+238
+00:09:41,290 --> 00:09:45,939
+function as parameters the code that
+
+239
+00:09:43,960 --> 00:09:48,280
+calls this function is auto generated by
+
+240
+00:09:45,940 --> 00:09:51,100
+MiG a tool that generates mock message
+
+241
+00:09:48,280 --> 00:09:53,920
+parsing code the details of MiG aren't
+
+242
+00:09:51,100 --> 00:09:55,960
+that important what is important is that
+
+243
+00:09:53,920 --> 00:09:57,969
+because this function is called by MiG
+
+244
+00:09:55,960 --> 00:10:01,210
+there are some very important semantics
+
+245
+00:09:57,970 --> 00:10:03,640
+around the return value if this function
+
+246
+00:10:01,210 --> 00:10:05,230
+returns success then the MiG code that
+
+247
+00:10:03,640 --> 00:10:06,880
+called this function will tell the
+
+248
+00:10:05,230 --> 00:10:09,190
+kernel that the exception was handled
+
+249
+00:10:06,880 --> 00:10:12,400
+and that the crashing process should be
+
+250
+00:10:09,190 --> 00:10:14,320
+resumed if this function returns failure
+
+251
+00:10:12,400 --> 00:10:16,329
+however then the MiG code will
+
+252
+00:10:14,320 --> 00:10:18,580
+deallocate the thread and task for its
+
+253
+00:10:16,330 --> 00:10:20,260
+sent in the message and then tell the
+
+254
+00:10:18,580 --> 00:10:25,270
+kernel to try the next exception handler
+
+255
+00:10:20,260 --> 00:10:27,160
+these semantics are critical so what
+
+256
+00:10:25,270 --> 00:10:30,100
+does exception handling actually look
+
+257
+00:10:27,160 --> 00:10:32,800
+like here's a hypothetical example where
+
+258
+00:10:30,100 --> 00:10:35,410
+our process blanket in blue has a
+
+259
+00:10:32,800 --> 00:10:38,199
+registered exception port 4x bad access
+
+260
+00:10:35,410 --> 00:10:39,780
+and that port is owned by this crash
+
+261
+00:10:38,200 --> 00:10:43,240
+handler process in red
+
+262
+00:10:39,780 --> 00:10:45,220
+so when blanket accesses invalid memory
+
+263
+00:10:43,240 --> 00:10:47,230
+address the kernel will check its
+
+264
+00:10:45,220 --> 00:10:49,390
+exception table and see that there is
+
+265
+00:10:47,230 --> 00:10:52,420
+indeed a registered exception port 4x
+
+266
+00:10:49,390 --> 00:10:54,250
+bad access the kernel will then end Q a
+
+267
+00:10:52,420 --> 00:10:56,589
+mock message containing details about
+
+268
+00:10:54,250 --> 00:10:58,240
+the exception on the board and when the
+
+269
+00:10:56,590 --> 00:11:01,030
+crash handler process listens on port
+
+270
+00:10:58,240 --> 00:11:02,170
+for new messages it'll receive a copy of
+
+271
+00:11:01,030 --> 00:11:05,260
+that message in userspace
+
+272
+00:11:02,170 --> 00:11:07,060
+at this point the crash handler process
+
+273
+00:11:05,260 --> 00:11:09,460
+can use the task and thread ports in the
+
+274
+00:11:07,060 --> 00:11:10,000
+message to inspect or even to fix up at
+
+275
+00:11:09,460 --> 00:11:14,260
+the crashing
+
+276
+00:11:10,000 --> 00:11:17,500
+process so what does this crash handling
+
+277
+00:11:14,260 --> 00:11:19,810
+process look like on iOS it's a binary
+
+278
+00:11:17,500 --> 00:11:21,700
+called report crash and this one binary
+
+279
+00:11:19,810 --> 00:11:23,729
+is responsible for running two separate
+
+280
+00:11:21,700 --> 00:11:27,070
+mock services each in its own process
+
+281
+00:11:23,730 --> 00:11:29,200
+the first and most important is Kampala
+
+282
+00:11:27,070 --> 00:11:31,300
+for crash which is the host level
+
+283
+00:11:29,200 --> 00:11:34,300
+exception handler for ex crash
+
+284
+00:11:31,300 --> 00:11:35,589
+exceptions this service port receives an
+
+285
+00:11:34,300 --> 00:11:37,180
+exception message whenever an
+
+286
+00:11:35,590 --> 00:11:39,730
+application on the device terminates
+
+287
+00:11:37,180 --> 00:11:41,589
+abnormally and then report crash will
+
+288
+00:11:39,730 --> 00:11:45,340
+inspect the process and generate a crash
+
+289
+00:11:41,590 --> 00:11:47,560
+log the other service is comm da Apple
+
+290
+00:11:45,340 --> 00:11:49,360
+dot report crash safety net which is the
+
+291
+00:11:47,560 --> 00:11:51,939
+task level exception handler for when
+
+292
+00:11:49,360 --> 00:11:54,250
+the first service crashes the reason
+
+293
+00:11:51,940 --> 00:11:55,900
+that safety net exists is basically so
+
+294
+00:11:54,250 --> 00:11:59,560
+that report crash doesn't have to handle
+
+295
+00:11:55,900 --> 00:12:03,060
+its own exception messages so why is
+
+296
+00:11:59,560 --> 00:12:05,770
+report crash worthy of investigation if
+
+297
+00:12:03,060 --> 00:12:07,959
+you start an instance of report crash on
+
+298
+00:12:05,770 --> 00:12:11,770
+a jailbroken device you'll see that it
+
+299
+00:12:07,960 --> 00:12:13,840
+runs his route is on sandboxed and has
+
+300
+00:12:11,770 --> 00:12:17,380
+the coveted task for PID allow
+
+301
+00:12:13,840 --> 00:12:19,420
+entitlement tasks for PID allow allows
+
+302
+00:12:17,380 --> 00:12:21,400
+you to call the task for PID system call
+
+303
+00:12:19,420 --> 00:12:24,160
+which returns the task port for a
+
+304
+00:12:21,400 --> 00:12:26,290
+particular PID and we've already seen
+
+305
+00:12:24,160 --> 00:12:27,819
+that task port allows you to directly
+
+306
+00:12:26,290 --> 00:12:29,980
+read and write memory in the target
+
+307
+00:12:27,820 --> 00:12:33,040
+process which means that you have full
+
+308
+00:12:29,980 --> 00:12:35,260
+control over it thus having the task for
+
+309
+00:12:33,040 --> 00:12:37,480
+PID allow entitlement is basically
+
+310
+00:12:35,260 --> 00:12:40,420
+equivalent to having full control over
+
+311
+00:12:37,480 --> 00:12:41,920
+any process on the phone and this level
+
+312
+00:12:40,420 --> 00:12:45,459
+of privilege definitely warrants
+
+313
+00:12:41,920 --> 00:12:46,180
+investigation so let's talk about the
+
+314
+00:12:45,460 --> 00:12:49,450
+vulnerability
+
+315
+00:12:46,180 --> 00:12:51,280
+I opened report crash in Ida Pro and D
+
+316
+00:12:49,450 --> 00:12:53,730
+compiled it to look at its exception
+
+317
+00:12:51,280 --> 00:12:56,230
+handling service routine here's the code
+
+318
+00:12:53,730 --> 00:12:58,720
+this function gets called directly by
+
+319
+00:12:56,230 --> 00:13:00,520
+the auto-generated code and the thread
+
+320
+00:12:58,720 --> 00:13:03,040
+in task port parameters are parsed
+
+321
+00:13:00,520 --> 00:13:06,160
+directly from the exception message if
+
+322
+00:13:03,040 --> 00:13:08,469
+the exception type is X crash then the
+
+323
+00:13:06,160 --> 00:13:10,449
+return value is set to kern failure and
+
+324
+00:13:08,470 --> 00:13:13,120
+the port sent in the message rd
+
+325
+00:13:10,450 --> 00:13:15,100
+allocated now this is a problem because
+
+326
+00:13:13,120 --> 00:13:16,780
+this function is called by mig code with
+
+327
+00:13:15,100 --> 00:13:19,870
+important semantics on the return value
+
+328
+00:13:16,780 --> 00:13:21,970
+remember if the return code is failure
+
+329
+00:13:19,870 --> 00:13:23,470
+the mig code that called this function
+
+330
+00:13:21,970 --> 00:13:25,600
+will also deallocate those
+
+331
+00:13:23,470 --> 00:13:28,180
+Macha ports and this is problematic
+
+332
+00:13:25,600 --> 00:13:30,520
+because Mach ports are reference counted
+
+333
+00:13:28,180 --> 00:13:32,680
+so the double the allocation means that
+
+334
+00:13:30,520 --> 00:13:34,870
+the process has one less reference on
+
+335
+00:13:32,680 --> 00:13:36,760
+those ports than it expects which can
+
+336
+00:13:34,870 --> 00:13:40,180
+lead to a kind of mach port use after
+
+337
+00:13:36,760 --> 00:13:42,100
+free this can result in an interesting
+
+338
+00:13:40,180 --> 00:13:44,739
+attack called mock service impersonation
+
+339
+00:13:42,100 --> 00:13:46,720
+where we effectively substitute one mock
+
+340
+00:13:44,740 --> 00:13:49,570
+port with another without the victim
+
+341
+00:13:46,720 --> 00:13:51,100
+knowing to start with report crash is
+
+342
+00:13:49,570 --> 00:13:53,290
+talking with some privileged system
+
+343
+00:13:51,100 --> 00:13:55,720
+service that is report crash has a mock
+
+344
+00:13:53,290 --> 00:13:57,939
+ascend right to the service using this
+
+345
+00:13:55,720 --> 00:14:01,780
+vulnerability we'll try to trick report
+
+346
+00:13:57,940 --> 00:14:03,880
+crash into talking with us instead first
+
+347
+00:14:01,780 --> 00:14:05,680
+we will generate a malicious exception
+
+348
+00:14:03,880 --> 00:14:07,600
+message where the thread in the task
+
+349
+00:14:05,680 --> 00:14:10,180
+ports in the exception message are not
+
+350
+00:14:07,600 --> 00:14:11,620
+real threat and task ports but instead
+
+351
+00:14:10,180 --> 00:14:14,530
+are send rights to the mock service
+
+352
+00:14:11,620 --> 00:14:16,720
+report crash is talking to this message
+
+353
+00:14:14,530 --> 00:14:19,120
+would never be generated by the kernel
+
+354
+00:14:16,720 --> 00:14:21,430
+but because the sandbox profile allows
+
+355
+00:14:19,120 --> 00:14:24,040
+us to talk to report crash directly we
+
+356
+00:14:21,430 --> 00:14:25,959
+can craft it and send it ourselves once
+
+357
+00:14:24,040 --> 00:14:27,730
+report crash receives the message it'll
+
+358
+00:14:25,960 --> 00:14:29,500
+process it with the service routine
+
+359
+00:14:27,730 --> 00:14:31,870
+shown earlier and the vulnerability will
+
+360
+00:14:29,500 --> 00:14:33,550
+be triggered this causes the thread in
+
+361
+00:14:31,870 --> 00:14:35,830
+task ports in the message which are
+
+362
+00:14:33,550 --> 00:14:38,170
+really send rights to the service to be
+
+363
+00:14:35,830 --> 00:14:40,390
+over D allocated and this will
+
+364
+00:14:38,170 --> 00:14:42,880
+inadvertently free report crashes send
+
+365
+00:14:40,390 --> 00:14:45,280
+write to the service report crash thinks
+
+366
+00:14:42,880 --> 00:14:47,500
+that the target port still refers to the
+
+367
+00:14:45,280 --> 00:14:49,120
+service it was just talking to but we've
+
+368
+00:14:47,500 --> 00:14:51,460
+used the vulnerability to drop its
+
+369
+00:14:49,120 --> 00:14:53,230
+reference count to zero so the port is
+
+370
+00:14:51,460 --> 00:14:56,860
+freed and the port name becomes
+
+371
+00:14:53,230 --> 00:14:59,500
+available for reuse then we try to get
+
+372
+00:14:56,860 --> 00:15:01,510
+that port name reused with a send write
+
+373
+00:14:59,500 --> 00:15:04,540
+to a port for which we hold the receive
+
+374
+00:15:01,510 --> 00:15:06,069
+write we generate a new mock message
+
+375
+00:15:04,540 --> 00:15:08,800
+containing a whole bunch of ports that
+
+376
+00:15:06,070 --> 00:15:11,320
+we own and then we send that to report
+
+377
+00:15:08,800 --> 00:15:13,569
+crash when report crash receives that
+
+378
+00:15:11,320 --> 00:15:15,940
+message the ports will enter report
+
+379
+00:15:13,570 --> 00:15:17,920
+crashes IPC namespace and one of them
+
+380
+00:15:15,940 --> 00:15:20,740
+will reuse the name that originally
+
+381
+00:15:17,920 --> 00:15:23,110
+referred to the service at this point
+
+382
+00:15:20,740 --> 00:15:26,080
+report crash does not know that the
+
+383
+00:15:23,110 --> 00:15:27,580
+service port was changed any messages
+
+384
+00:15:26,080 --> 00:15:29,920
+that report crash sends that are
+
+385
+00:15:27,580 --> 00:15:31,570
+intended for the service will instead be
+
+386
+00:15:29,920 --> 00:15:33,189
+sent to us allowing us to
+
+387
+00:15:31,570 --> 00:15:35,890
+man-in-the-middle report crashes
+
+388
+00:15:33,190 --> 00:15:37,329
+connection with the service for example
+
+389
+00:15:35,890 --> 00:15:39,189
+this could be useful if
+
+390
+00:15:37,329 --> 00:15:42,160
+for crash tries to send its own task
+
+391
+00:15:39,189 --> 00:15:44,799
+board to the service that message will
+
+392
+00:15:42,160 --> 00:15:47,110
+instead be delivered to us and giving us
+
+393
+00:15:44,799 --> 00:15:50,549
+a copy of report crashes task board and
+
+394
+00:15:47,110 --> 00:15:54,189
+then allowing us to take control over it
+
+395
+00:15:50,549 --> 00:15:56,350
+now this is a very powerful attack but
+
+396
+00:15:54,189 --> 00:15:58,238
+exploitation depends on being able to
+
+397
+00:15:56,350 --> 00:16:01,119
+find a useful service to man in the
+
+398
+00:15:58,239 --> 00:16:03,339
+middle and if we list out the mach ports
+
+399
+00:16:01,119 --> 00:16:06,339
+used by report crash there really aren't
+
+400
+00:16:03,339 --> 00:16:09,040
+any useful targets so at this point I
+
+401
+00:16:06,339 --> 00:16:10,230
+had a vulnerability but nothing useful
+
+402
+00:16:09,040 --> 00:16:17,529
+to do with it
+
+403
+00:16:10,230 --> 00:16:18,610
+so I gave up that's it thank you I'm
+
+404
+00:16:17,529 --> 00:16:22,299
+messing with you I'm messing with you
+
+405
+00:16:18,610 --> 00:16:24,939
+don't worry so the story might have
+
+406
+00:16:22,299 --> 00:16:27,249
+ended there but I was reversing launch D
+
+407
+00:16:24,939 --> 00:16:28,829
+for some unrelated security research and
+
+408
+00:16:27,249 --> 00:16:31,449
+I found something quite surprising
+
+409
+00:16:28,829 --> 00:16:34,988
+launch D also implements a mock
+
+410
+00:16:31,449 --> 00:16:37,809
+exception Handler and guess what it has
+
+411
+00:16:34,989 --> 00:16:39,489
+the same bug in it now I have some
+
+412
+00:16:37,809 --> 00:16:41,799
+theories as to what development
+
+413
+00:16:39,489 --> 00:16:44,379
+technique might have led to this but the
+
+414
+00:16:41,799 --> 00:16:47,139
+end results is the same sending an ex
+
+415
+00:16:44,379 --> 00:16:49,360
+crash exception message to launch D will
+
+416
+00:16:47,139 --> 00:16:53,139
+cause it to over D allocate the threaten
+
+417
+00:16:49,360 --> 00:16:55,839
+task ports so here's the vulnerable code
+
+418
+00:16:53,139 --> 00:16:57,459
+but this time from launch D it's very
+
+419
+00:16:55,839 --> 00:17:01,119
+similar to the code from report crash
+
+420
+00:16:57,459 --> 00:17:02,618
+but it's not identical like before the
+
+421
+00:17:01,119 --> 00:17:04,269
+thread and task port parameters are
+
+422
+00:17:02,619 --> 00:17:06,850
+parsed directly from the exception
+
+423
+00:17:04,269 --> 00:17:08,409
+message but there's also this check here
+
+424
+00:17:06,849 --> 00:17:12,099
+on the audit token which will have to
+
+425
+00:17:08,409 --> 00:17:14,110
+bypass once we do bypass that check the
+
+426
+00:17:12,099 --> 00:17:16,629
+thread in task ports Rd allocated and
+
+427
+00:17:14,109 --> 00:17:21,638
+then failures returned causing those
+
+428
+00:17:16,630 --> 00:17:23,589
+ports to be D allocated again now launch
+
+429
+00:17:21,638 --> 00:17:26,138
+D is a much more promising target for an
+
+430
+00:17:23,589 --> 00:17:27,938
+exploit the reason is that launch team
+
+431
+00:17:26,138 --> 00:17:29,469
+manages mock ports for the whole rest of
+
+432
+00:17:27,939 --> 00:17:31,799
+the system which means there are many
+
+433
+00:17:29,470 --> 00:17:33,820
+more targets for mock port replacement
+
+434
+00:17:31,799 --> 00:17:35,500
+additionally our mock service
+
+435
+00:17:33,820 --> 00:17:38,168
+impersonation technique is now
+
+436
+00:17:35,500 --> 00:17:39,970
+exponentially more powerful not only do
+
+437
+00:17:38,169 --> 00:17:42,429
+we trick launch D into thinking that we
+
+438
+00:17:39,970 --> 00:17:44,320
+own a service port but since launch T is
+
+439
+00:17:42,429 --> 00:17:46,899
+the mock service Authority on the phone
+
+440
+00:17:44,320 --> 00:17:48,389
+launch D will tell other processes that
+
+441
+00:17:46,899 --> 00:17:50,850
+we own that service too
+
+442
+00:17:48,389 --> 00:17:52,439
+thus we can now impersonate
+
+443
+00:17:50,850 --> 00:17:55,469
+services against almost any other
+
+444
+00:17:52,440 --> 00:17:58,169
+process so how do we actually go about
+
+445
+00:17:55,470 --> 00:17:59,970
+triggering this vulnerability if you
+
+446
+00:17:58,169 --> 00:18:01,530
+recall there's a conditional check in
+
+447
+00:17:59,970 --> 00:18:03,210
+the code that we need to bypass if we're
+
+448
+00:18:01,530 --> 00:18:05,580
+going to trigger the bug this thing
+
+449
+00:18:03,210 --> 00:18:07,530
+about an audit token this code is
+
+450
+00:18:05,580 --> 00:18:09,389
+launchkey checking that the exception
+
+451
+00:18:07,530 --> 00:18:12,030
+message was really sent by the kernel
+
+452
+00:18:09,390 --> 00:18:14,789
+and not sent by some user space process
+
+453
+00:18:12,030 --> 00:18:16,710
+now this is problematic for us because
+
+454
+00:18:14,789 --> 00:18:18,750
+the kernel will only send an exception
+
+455
+00:18:16,710 --> 00:18:21,870
+message when a process actually crashes
+
+456
+00:18:18,750 --> 00:18:23,549
+and crashing our process directly will
+
+457
+00:18:21,870 --> 00:18:25,320
+not work remember
+
+458
+00:18:23,549 --> 00:18:27,929
+the thread in task ports in the
+
+459
+00:18:25,320 --> 00:18:29,850
+exception message must be send right to
+
+460
+00:18:27,929 --> 00:18:32,909
+the mock service we want to free not
+
+461
+00:18:29,850 --> 00:18:36,030
+real thread and passports so at this
+
+462
+00:18:32,909 --> 00:18:39,510
+point exploitability hinges entirely on
+
+463
+00:18:36,030 --> 00:18:43,110
+one question can we make the kernel send
+
+464
+00:18:39,510 --> 00:18:45,629
+a malicious exception message the answer
+
+465
+00:18:43,110 --> 00:18:47,760
+isn't obvious but after some digging I
+
+466
+00:18:45,630 --> 00:18:50,490
+discovered that the mock function task
+
+467
+00:18:47,760 --> 00:18:52,350
+set special port can set a custom send
+
+468
+00:18:50,490 --> 00:18:55,950
+right for the kernel to use in some
+
+469
+00:18:52,350 --> 00:18:57,959
+situations including as it turns out
+
+470
+00:18:55,950 --> 00:19:01,080
+when the kernel generates an exception
+
+471
+00:18:57,960 --> 00:19:03,210
+message and conveniently there's a
+
+472
+00:19:01,080 --> 00:19:06,480
+parallel API thread set special port
+
+473
+00:19:03,210 --> 00:19:08,750
+that does the same thing for threads so
+
+474
+00:19:06,480 --> 00:19:11,309
+at this point we're in business
+
+475
+00:19:08,750 --> 00:19:14,460
+it's actually pretty easy to trigger
+
+476
+00:19:11,309 --> 00:19:16,260
+this bug first we look up the send right
+
+477
+00:19:14,460 --> 00:19:20,190
+to the mock service we want to free in
+
+478
+00:19:16,260 --> 00:19:22,110
+launch D next we register launch D to be
+
+479
+00:19:20,190 --> 00:19:25,890
+our exception handler for X crash
+
+480
+00:19:22,110 --> 00:19:29,219
+exceptions then we call task set special
+
+481
+00:19:25,890 --> 00:19:31,289
+port and thread set special port to make
+
+482
+00:19:29,220 --> 00:19:34,740
+the kernel use the target service port
+
+483
+00:19:31,289 --> 00:19:37,320
+in the exception message and finally we
+
+484
+00:19:34,740 --> 00:19:39,150
+call abort this triggers the kernel to
+
+485
+00:19:37,320 --> 00:19:41,668
+send a malicious X crash exception
+
+486
+00:19:39,150 --> 00:19:43,700
+message launch D causing launch key send
+
+487
+00:19:41,669 --> 00:19:47,010
+right to the target service to be freed
+
+488
+00:19:43,700 --> 00:19:49,140
+now all this is great but it does beg
+
+489
+00:19:47,010 --> 00:19:52,169
+the question how do we keep running
+
+490
+00:19:49,140 --> 00:19:54,539
+exploit code after calling abort calling
+
+491
+00:19:52,169 --> 00:19:56,429
+abort will crash our process and we
+
+492
+00:19:54,539 --> 00:19:58,049
+definitely need to run more code in
+
+493
+00:19:56,429 --> 00:19:59,460
+order to take advantage of the dangling
+
+494
+00:19:58,049 --> 00:20:03,030
+port that we just created and launch
+
+495
+00:19:59,460 --> 00:20:04,679
+team unfortunately we can't create a sub
+
+496
+00:20:03,030 --> 00:20:06,539
+process using 4/4
+
+497
+00:20:04,679 --> 00:20:08,960
+spawn because these functions are
+
+498
+00:20:06,539 --> 00:20:12,210
+disallowed by the sandbox profile
+
+499
+00:20:08,960 --> 00:20:14,610
+however for a proof-of-concept exploit
+
+500
+00:20:12,210 --> 00:20:16,590
+we can get around this restriction by
+
+501
+00:20:14,610 --> 00:20:18,959
+using a feature called app extensions
+
+502
+00:20:16,590 --> 00:20:21,749
+spawn another binary that's also part of
+
+503
+00:20:18,960 --> 00:20:23,580
+our application the app extension will
+
+504
+00:20:21,749 --> 00:20:25,499
+crash maliciously while the main
+
+505
+00:20:23,580 --> 00:20:31,110
+application continues running the
+
+506
+00:20:25,499 --> 00:20:32,610
+exploit so how are we doing so far we've
+
+507
+00:20:31,110 --> 00:20:34,408
+found a zero-day vulnerability and
+
+508
+00:20:32,610 --> 00:20:37,860
+launch D so that part of our goal is
+
+509
+00:20:34,409 --> 00:20:41,129
+achieved we know know how to trigger the
+
+510
+00:20:37,860 --> 00:20:43,408
+bug by crashing maliciously and we now
+
+511
+00:20:41,129 --> 00:20:45,389
+have an exploit primitive that uses an
+
+512
+00:20:43,409 --> 00:20:48,600
+app extension to free Mach ports and
+
+513
+00:20:45,389 --> 00:20:50,399
+launch D at this point we know that we
+
+514
+00:20:48,600 --> 00:20:52,889
+want to use this primitive to
+
+515
+00:20:50,399 --> 00:20:54,928
+impersonate a system service and after
+
+516
+00:20:52,889 --> 00:20:58,949
+that we still need to figure out how to
+
+517
+00:20:54,929 --> 00:21:00,899
+elevate privileges so let's look at the
+
+518
+00:20:58,950 --> 00:21:02,789
+first challenge how to use this port
+
+519
+00:21:00,899 --> 00:21:06,119
+freeing primitive to impersonate system
+
+520
+00:21:02,789 --> 00:21:08,158
+services let's say that we're trying to
+
+521
+00:21:06,119 --> 00:21:10,110
+impersonate some target service so that
+
+522
+00:21:08,159 --> 00:21:12,240
+when a new process starts up and tries
+
+523
+00:21:10,110 --> 00:21:15,029
+to connect to this target launch D will
+
+524
+00:21:12,240 --> 00:21:17,279
+connect them with us instead first we'll
+
+525
+00:21:15,029 --> 00:21:20,070
+use the app extension to free launch D
+
+526
+00:21:17,279 --> 00:21:24,059
+send right to the target next we
+
+527
+00:21:20,070 --> 00:21:26,129
+generate about 500 Mach ports then we
+
+528
+00:21:24,059 --> 00:21:28,499
+use those ports to repeatedly register
+
+529
+00:21:26,129 --> 00:21:31,769
+dummy services and launch team until the
+
+530
+00:21:28,499 --> 00:21:34,049
+olds target port name gets reused we can
+
+531
+00:21:31,769 --> 00:21:37,200
+check for success by asking launch D to
+
+532
+00:21:34,049 --> 00:21:39,090
+send us the target services port once
+
+533
+00:21:37,200 --> 00:21:42,330
+launch key returns one of the ports that
+
+534
+00:21:39,090 --> 00:21:45,149
+we've created earlier we've won and at
+
+535
+00:21:42,330 --> 00:21:47,279
+this point any new process that starts
+
+536
+00:21:45,149 --> 00:21:49,289
+up and tries tasks launch D to talk to
+
+537
+00:21:47,279 --> 00:21:51,570
+the target will instead be talking to us
+
+538
+00:21:49,289 --> 00:21:55,499
+allowing us to man in the middle its
+
+539
+00:21:51,570 --> 00:21:58,590
+requests so now that we can impersonate
+
+540
+00:21:55,499 --> 00:22:00,330
+services let's look at my first attempt
+
+541
+00:21:58,590 --> 00:22:03,299
+to use this capability to elevate
+
+542
+00:22:00,330 --> 00:22:05,220
+privileges the key to using service
+
+543
+00:22:03,299 --> 00:22:07,980
+impersonation well is increasing to the
+
+544
+00:22:05,220 --> 00:22:10,470
+right service to impersonate remember
+
+545
+00:22:07,980 --> 00:22:13,950
+our goal is to execute code in a nun
+
+546
+00:22:10,470 --> 00:22:17,070
+sandbox root process fortunately we can
+
+547
+00:22:13,950 --> 00:22:18,540
+look to past exploits for ideas the mock
+
+548
+00:22:17,070 --> 00:22:21,000
+service impersonation technique
+
+549
+00:22:18,540 --> 00:22:23,280
+was actually invented by Ian beer of
+
+550
+00:22:21,000 --> 00:22:26,130
+project zero as part of his mock portal
+
+551
+00:22:23,280 --> 00:22:30,720
+exploit the strategy used there was to
+
+552
+00:22:26,130 --> 00:22:33,720
+find a service to which an unsanded spaz
+
+553
+00:22:30,720 --> 00:22:35,370
+port in a mock message then use the
+
+554
+00:22:33,720 --> 00:22:37,470
+vulnerability to impersonate that
+
+555
+00:22:35,370 --> 00:22:39,629
+service and then trigger the client to
+
+556
+00:22:37,470 --> 00:22:41,550
+start the client thinks that it's
+
+557
+00:22:39,630 --> 00:22:43,680
+talking to the original service and so
+
+558
+00:22:41,550 --> 00:22:48,330
+it sends us this task abort giving us
+
+559
+00:22:43,680 --> 00:22:51,390
+full control over it unfortunately Apple
+
+560
+00:22:48,330 --> 00:22:53,399
+got wise to this and on iOS 11 there are
+
+561
+00:22:51,390 --> 00:22:55,770
+no longer any unsound box group
+
+562
+00:22:53,400 --> 00:23:00,420
+processes that send their task ports to
+
+563
+00:22:55,770 --> 00:23:02,070
+a mock service however even though their
+
+564
+00:23:00,420 --> 00:23:04,140
+traditional approach doesn't work we can
+
+565
+00:23:02,070 --> 00:23:06,570
+actually devise our own strategy by
+
+566
+00:23:04,140 --> 00:23:09,330
+reusing what we already know see
+
+567
+00:23:06,570 --> 00:23:13,379
+exception messages contain tasks ports
+
+568
+00:23:09,330 --> 00:23:16,830
+and report crash itself is unsanded and
+
+569
+00:23:13,380 --> 00:23:19,110
+runs his route so why not impersonate
+
+570
+00:23:16,830 --> 00:23:23,699
+safety net and then trigger a crash in
+
+571
+00:23:19,110 --> 00:23:25,550
+report crash see report crash set safety
+
+572
+00:23:23,700 --> 00:23:27,960
+net as its exception handler on launch
+
+573
+00:23:25,550 --> 00:23:30,810
+so if we can impersonate safety net
+
+574
+00:23:27,960 --> 00:23:32,700
+first before report crash starts up then
+
+575
+00:23:30,810 --> 00:23:34,889
+launch D will tell report crash that we
+
+576
+00:23:32,700 --> 00:23:37,050
+our safety net and so report crash will
+
+577
+00:23:34,890 --> 00:23:40,200
+set us at this exception handler instead
+
+578
+00:23:37,050 --> 00:23:42,240
+at this point we can force report crash
+
+579
+00:23:40,200 --> 00:23:44,100
+generate an exception for example by
+
+580
+00:23:42,240 --> 00:23:46,650
+sending a malformed message that causes
+
+581
+00:23:44,100 --> 00:23:48,449
+an out-of-bounds read and then the
+
+582
+00:23:46,650 --> 00:23:51,750
+kernel will send us report crashes task
+
+583
+00:23:48,450 --> 00:23:55,470
+port an exception message allowing us to
+
+584
+00:23:51,750 --> 00:23:58,050
+execute arbitrary code now this almost
+
+585
+00:23:55,470 --> 00:24:00,870
+works but it's not quite that easy
+
+586
+00:23:58,050 --> 00:24:03,389
+see report crash set safety net as this
+
+587
+00:24:00,870 --> 00:24:06,060
+exception handler for ex crash which is
+
+588
+00:24:03,390 --> 00:24:08,160
+not a recoverable exception type by the
+
+589
+00:24:06,060 --> 00:24:10,710
+time we get report crashes tasks fort
+
+590
+00:24:08,160 --> 00:24:12,300
+report crashes already in process exit
+
+591
+00:24:10,710 --> 00:24:15,450
+and will no longer be scheduled on the
+
+592
+00:24:12,300 --> 00:24:17,310
+CPU thus there's no way to use the task
+
+593
+00:24:15,450 --> 00:24:20,820
+force that we've obtained to execute
+
+594
+00:24:17,310 --> 00:24:23,010
+code and report crash nevertheless even
+
+595
+00:24:20,820 --> 00:24:24,840
+though we can't use were crashes task 4
+
+596
+00:24:23,010 --> 00:24:28,050
+to execute arbitrary code in a report
+
+597
+00:24:24,840 --> 00:24:29,919
+crash one thing we can do is use it to
+
+598
+00:24:28,050 --> 00:24:32,290
+steal mock ports from a program
+
+599
+00:24:29,920 --> 00:24:34,060
+and if we look back to the list of
+
+600
+00:24:32,290 --> 00:24:36,700
+reportage as mock reports from earlier
+
+601
+00:24:34,060 --> 00:24:39,129
+there's one that really stands out as
+
+602
+00:24:36,700 --> 00:24:41,680
+being useful for exploitation the host
+
+603
+00:24:39,130 --> 00:24:43,870
+free report the host proof port is
+
+604
+00:24:41,680 --> 00:24:45,940
+another special mock port that's owned
+
+605
+00:24:43,870 --> 00:24:47,770
+by the colonel and you need to have it
+
+606
+00:24:45,940 --> 00:24:50,710
+in order to calm any important system
+
+607
+00:24:47,770 --> 00:24:53,080
+calls for example the way that report
+
+608
+00:24:50,710 --> 00:24:55,270
+crash registers to receive exceptions in
+
+609
+00:24:53,080 --> 00:24:58,179
+all processes on the system is with a
+
+610
+00:24:55,270 --> 00:24:59,889
+call to host set exception ports and the
+
+611
+00:24:58,180 --> 00:25:03,430
+host proofed port must be the first
+
+612
+00:24:59,890 --> 00:25:07,060
+argument so even though we can't execute
+
+613
+00:25:03,430 --> 00:25:09,010
+code we can use report crashes task 4 to
+
+614
+00:25:07,060 --> 00:25:11,530
+steal the host proof port which will
+
+615
+00:25:09,010 --> 00:25:14,260
+give us access to system calls like host
+
+616
+00:25:11,530 --> 00:25:17,020
+set exception reports and actually if
+
+617
+00:25:14,260 --> 00:25:20,230
+you think about it host set exception
+
+618
+00:25:17,020 --> 00:25:22,780
+ports gives us a new way forward to set
+
+619
+00:25:20,230 --> 00:25:25,320
+a new recoverable host level exception
+
+620
+00:25:22,780 --> 00:25:27,790
+handler and then run the exploit again
+
+621
+00:25:25,320 --> 00:25:30,040
+so the exploit will start off the same
+
+622
+00:25:27,790 --> 00:25:33,070
+as before will impersonate safety net
+
+623
+00:25:30,040 --> 00:25:34,629
+and crash report crash then will receive
+
+624
+00:25:33,070 --> 00:25:36,879
+the exception message containing a
+
+625
+00:25:34,630 --> 00:25:39,850
+report crashes task board which will use
+
+626
+00:25:36,880 --> 00:25:42,220
+to extract the host proof port once we
+
+627
+00:25:39,850 --> 00:25:44,169
+have host Prive we can use host set
+
+628
+00:25:42,220 --> 00:25:46,480
+exception ports to register our own
+
+629
+00:25:44,170 --> 00:25:48,940
+process as the new host level exception
+
+630
+00:25:46,480 --> 00:25:53,020
+handler but this time for a recoverable
+
+631
+00:25:48,940 --> 00:25:55,630
+exception type like X bat access then we
+
+632
+00:25:53,020 --> 00:25:57,400
+do the same exploit all over again we
+
+633
+00:25:55,630 --> 00:25:59,230
+trigger a bad memory access and report
+
+634
+00:25:57,400 --> 00:26:00,970
+crash and receive another exception
+
+635
+00:25:59,230 --> 00:26:04,570
+message containing or for crashes task
+
+636
+00:26:00,970 --> 00:26:06,910
+port and finally because this time it
+
+637
+00:26:04,570 --> 00:26:09,220
+was a recoverable exception we can fix
+
+638
+00:26:06,910 --> 00:26:13,090
+up report crash and use the task port to
+
+639
+00:26:09,220 --> 00:26:16,780
+execute arbitrary code now once again
+
+640
+00:26:13,090 --> 00:26:19,330
+this almost works but there's still a
+
+641
+00:26:16,780 --> 00:26:20,860
+small problem extracting the host proof
+
+642
+00:26:19,330 --> 00:26:23,169
+port for report crash actually works
+
+643
+00:26:20,860 --> 00:26:26,350
+perfectly so we do get the host berth
+
+644
+00:26:23,170 --> 00:26:29,050
+port however calling host set exception
+
+645
+00:26:26,350 --> 00:26:30,699
+ports actually fails and the reason is
+
+646
+00:26:29,050 --> 00:26:32,919
+that host set exception ports is
+
+647
+00:26:30,700 --> 00:26:36,700
+actually forbidden inside the
+
+648
+00:26:32,920 --> 00:26:39,100
+application sandbox so if we want to
+
+649
+00:26:36,700 --> 00:26:42,820
+continue down this path we do need to
+
+650
+00:26:39,100 --> 00:26:43,790
+escape the sandbox first alright so how
+
+651
+00:26:42,820 --> 00:26:46,129
+are we doing over
+
+652
+00:26:43,790 --> 00:26:48,020
+we've successfully obtained the hosts
+
+653
+00:26:46,130 --> 00:26:50,630
+purport using our mock service
+
+654
+00:26:48,020 --> 00:26:53,150
+impersonation primitive and we know that
+
+655
+00:26:50,630 --> 00:26:54,920
+we want to call post set exception ports
+
+656
+00:26:53,150 --> 00:26:58,100
+in order to complete the exploit and
+
+657
+00:26:54,920 --> 00:27:00,170
+execute code in report crash however in
+
+658
+00:26:58,100 --> 00:27:04,159
+order to do that we need to escape the
+
+659
+00:27:00,170 --> 00:27:07,580
+sandbox first so how will we escape the
+
+660
+00:27:04,160 --> 00:27:09,380
+sandbox well we already have this very
+
+661
+00:27:07,580 --> 00:27:12,889
+nifty mock service impersonation
+
+662
+00:27:09,380 --> 00:27:14,840
+primitive so let's try to reuse that so
+
+663
+00:27:12,890 --> 00:27:18,080
+once again we need to find the right
+
+664
+00:27:14,840 --> 00:27:20,379
+service to impersonate this time we can
+
+665
+00:27:18,080 --> 00:27:22,520
+actually use the mock portal strategy
+
+666
+00:27:20,380 --> 00:27:25,030
+impersonate a service to which an
+
+667
+00:27:22,520 --> 00:27:27,740
+unsound boxed client sends its task port
+
+668
+00:27:25,030 --> 00:27:30,320
+now this didn't work for us last time
+
+669
+00:27:27,740 --> 00:27:34,040
+because we needed to find an unsound box
+
+670
+00:27:30,320 --> 00:27:35,929
+root client process however this time we
+
+671
+00:27:34,040 --> 00:27:39,170
+do not need to target a root client
+
+672
+00:27:35,930 --> 00:27:41,360
+Justin on sandbox one and it turns out
+
+673
+00:27:39,170 --> 00:27:44,120
+that those do exist using a brute force
+
+674
+00:27:41,360 --> 00:27:46,429
+search i impersonated every mock service
+
+675
+00:27:44,120 --> 00:27:48,320
+on the phone and eventually found that
+
+676
+00:27:46,430 --> 00:27:50,810
+the Drude daemon which is responsible
+
+677
+00:27:48,320 --> 00:27:53,330
+for handling drag-and-drop sends its
+
+678
+00:27:50,810 --> 00:27:56,480
+task port to the combi a Polly render
+
+679
+00:27:53,330 --> 00:27:59,360
+server service and Drew it is on
+
+680
+00:27:56,480 --> 00:28:01,910
+sandboxed thus we actually have a
+
+681
+00:27:59,360 --> 00:28:04,370
+complete sandbox escape just impersonate
+
+682
+00:28:01,910 --> 00:28:06,530
+see a render server launch druid and
+
+683
+00:28:04,370 --> 00:28:09,129
+we'll get a nun sandbox task for
+
+684
+00:28:06,530 --> 00:28:12,470
+allowing us to execute arbitrary code
+
+685
+00:28:09,130 --> 00:28:15,170
+now unfortunately once again it's not
+
+686
+00:28:12,470 --> 00:28:17,030
+actually that easy because apples added
+
+687
+00:28:15,170 --> 00:28:19,040
+a mitigation if you look through the
+
+688
+00:28:17,030 --> 00:28:20,690
+source code of xnu you'll find that
+
+689
+00:28:19,040 --> 00:28:22,940
+there's a new mitigation in a function
+
+690
+00:28:20,690 --> 00:28:25,700
+called task conversion eval with a
+
+691
+00:28:22,940 --> 00:28:28,010
+comment that says on embedded platforms
+
+692
+00:28:25,700 --> 00:28:30,190
+only a platform binary can resolve the
+
+693
+00:28:28,010 --> 00:28:32,840
+task port of another platform binary
+
+694
+00:28:30,190 --> 00:28:34,700
+concretely this means that we can't use
+
+695
+00:28:32,840 --> 00:28:37,429
+the task port of an apple signed process
+
+696
+00:28:34,700 --> 00:28:40,010
+to modify it unless our own process also
+
+697
+00:28:37,430 --> 00:28:41,870
+bears an Apple signature and clearly
+
+698
+00:28:40,010 --> 00:28:44,420
+Apple will never directly sign our
+
+699
+00:28:41,870 --> 00:28:46,939
+exploit code so even though we have
+
+700
+00:28:44,420 --> 00:28:50,150
+druids task port there's no way we can
+
+701
+00:28:46,940 --> 00:28:51,800
+use this task port to modify druid if we
+
+702
+00:28:50,150 --> 00:28:54,200
+go back to our diagram from earlier
+
+703
+00:28:51,800 --> 00:28:56,668
+Apple has effectively blocked us at this
+
+704
+00:28:54,200 --> 00:28:58,619
+step we can't use the task for
+
+705
+00:28:56,669 --> 00:29:01,409
+that we've obtained with our exploit to
+
+706
+00:28:58,619 --> 00:29:04,590
+call mach vm read or mach vm right so we
+
+707
+00:29:01,409 --> 00:29:06,330
+can't modify druids memory now this
+
+708
+00:29:04,590 --> 00:29:08,129
+seems like a pretty robust mitigation
+
+709
+00:29:06,330 --> 00:29:10,139
+but i was way too far down the rabbit
+
+710
+00:29:08,129 --> 00:29:13,049
+hole to give up here so I started
+
+711
+00:29:10,139 --> 00:29:14,869
+looking for a way to bypass it and it
+
+712
+00:29:13,049 --> 00:29:18,509
+turns out there's a pretty big loophole
+
+713
+00:29:14,869 --> 00:29:20,428
+dysfunction tasks threats task threads
+
+714
+00:29:18,509 --> 00:29:23,190
+returns the list of threads in a
+
+715
+00:29:20,429 --> 00:29:26,190
+particular task but it's semantics are
+
+716
+00:29:23,190 --> 00:29:29,549
+crucial see task threads takes an
+
+717
+00:29:26,190 --> 00:29:31,830
+inspect write to a task and inspect
+
+718
+00:29:29,549 --> 00:29:33,980
+writes are not subject to the task
+
+719
+00:29:31,830 --> 00:29:38,519
+conversion eval mitigation
+
+720
+00:29:33,980 --> 00:29:40,619
+meanwhile it returns a list of threads
+
+721
+00:29:38,519 --> 00:29:43,049
+thread control writes for the tasks
+
+722
+00:29:40,619 --> 00:29:44,970
+threads and the mitigation does not
+
+723
+00:29:43,049 --> 00:29:47,789
+restrict controlling the threads of a
+
+724
+00:29:44,970 --> 00:29:49,739
+platform binary thus while it's
+
+725
+00:29:47,789 --> 00:29:52,830
+nominally true that we can't modify
+
+726
+00:29:49,739 --> 00:29:55,559
+Druid directly using its task port we
+
+727
+00:29:52,830 --> 00:29:57,889
+can call task threads to get a control
+
+728
+00:29:55,559 --> 00:30:00,269
+write to one of druids threads and then
+
+729
+00:29:57,889 --> 00:30:02,869
+set that threads register values
+
+730
+00:30:00,269 --> 00:30:05,639
+directly so if we go back to our diagram
+
+731
+00:30:02,869 --> 00:30:08,699
+we'll just ignore the mitigating path
+
+732
+00:30:05,639 --> 00:30:11,219
+altogether and instead we'll use the
+
+733
+00:30:08,700 --> 00:30:13,799
+task port to call task threads which is
+
+734
+00:30:11,220 --> 00:30:15,119
+not protected and this will give us a
+
+735
+00:30:13,799 --> 00:30:17,999
+thread port for one of the druids
+
+736
+00:30:15,119 --> 00:30:20,820
+threads next we call thread set state
+
+737
+00:30:17,999 --> 00:30:23,879
+which again is not protected at which
+
+738
+00:30:20,820 --> 00:30:25,619
+point we now have PC control so of
+
+739
+00:30:23,879 --> 00:30:27,988
+course actually doing this in practice
+
+740
+00:30:25,619 --> 00:30:29,939
+is much more complicated since you want
+
+741
+00:30:27,989 --> 00:30:31,980
+to perform function calls and get return
+
+742
+00:30:29,940 --> 00:30:34,739
+values rather than just directly setting
+
+743
+00:30:31,980 --> 00:30:36,210
+the value of the PC register but I wrote
+
+744
+00:30:34,739 --> 00:30:38,249
+a library called thread exec to make
+
+745
+00:30:36,210 --> 00:30:41,759
+controlling a process by its thread port
+
+746
+00:30:38,249 --> 00:30:44,129
+relatively straightforward so now we
+
+747
+00:30:41,759 --> 00:30:46,200
+have a complete sandbox escape first
+
+748
+00:30:44,129 --> 00:30:48,658
+we'll use the launch D vulnerability to
+
+749
+00:30:46,200 --> 00:30:51,269
+impersonate C I render server next will
+
+750
+00:30:48,659 --> 00:30:53,580
+trigger the druid daemon to start then
+
+751
+00:30:51,269 --> 00:30:55,320
+druid will send us its task port in a
+
+752
+00:30:53,580 --> 00:30:58,320
+mock message intended for C a render
+
+753
+00:30:55,320 --> 00:31:00,269
+server and finally we'll use druids task
+
+754
+00:30:58,320 --> 00:31:02,100
+port along with the loophole just
+
+755
+00:31:00,269 --> 00:31:06,539
+discussed to execute arbitrary code
+
+756
+00:31:02,100 --> 00:31:08,389
+outside the sandbox and that gives us
+
+757
+00:31:06,539 --> 00:31:11,450
+the complete exploit
+
+758
+00:31:08,390 --> 00:31:13,100
+so first we impersonate safety-net trash
+
+759
+00:31:11,450 --> 00:31:16,040
+report crash and extract to the host
+
+760
+00:31:13,100 --> 00:31:18,770
+port next we impersonate see a render
+
+761
+00:31:16,040 --> 00:31:22,520
+server force druid to start and get
+
+762
+00:31:18,770 --> 00:31:25,340
+druids task board then we combine the
+
+763
+00:31:22,520 --> 00:31:27,440
+host proof port with unsanded execution
+
+764
+00:31:25,340 --> 00:31:29,720
+inside the druid process to register
+
+765
+00:31:27,440 --> 00:31:33,320
+ourselves as the host level exception
+
+766
+00:31:29,720 --> 00:31:34,880
+handler for X bad access next we trigger
+
+767
+00:31:33,320 --> 00:31:36,889
+a bad memory access and report crash
+
+768
+00:31:34,880 --> 00:31:40,280
+causing us to receive report crashes
+
+769
+00:31:36,890 --> 00:31:41,990
+task port a second time and finally we
+
+770
+00:31:40,280 --> 00:31:44,570
+use this task fork to execute arbitrary
+
+771
+00:31:41,990 --> 00:31:47,299
+code and at this point we are now
+
+772
+00:31:44,570 --> 00:31:51,230
+unsound boxed root and have tasks for
+
+773
+00:31:47,299 --> 00:31:53,120
+PID so I think it'll be a lot clearer in
+
+774
+00:31:51,230 --> 00:31:55,880
+a graphical exploit walkthrough so let's
+
+775
+00:31:53,120 --> 00:31:58,820
+do that now here are all the processes
+
+776
+00:31:55,880 --> 00:32:01,160
+involved blanket are attacking process
+
+777
+00:31:58,820 --> 00:32:03,980
+is on the bottom in blue launch D is in
+
+778
+00:32:01,160 --> 00:32:07,040
+the center the arrows represent having
+
+779
+00:32:03,980 --> 00:32:08,809
+send rights to the destination report
+
+780
+00:32:07,040 --> 00:32:10,360
+crashes on the left with safety net as
+
+781
+00:32:08,809 --> 00:32:12,139
+its registered exception Handler and
+
+782
+00:32:10,360 --> 00:32:15,020
+druid is on the right
+
+783
+00:32:12,140 --> 00:32:17,299
+talking with CI render server so we
+
+784
+00:32:15,020 --> 00:32:19,190
+first start or crash or app extension
+
+785
+00:32:17,299 --> 00:32:21,320
+which registers launch D as its
+
+786
+00:32:19,190 --> 00:32:24,110
+exception handler for ex crash and then
+
+787
+00:32:21,320 --> 00:32:25,850
+crashes maliciously causing launch D
+
+788
+00:32:24,110 --> 00:32:29,030
+send right to the target service to be
+
+789
+00:32:25,850 --> 00:32:31,399
+freed we now register a bunch of dummy
+
+790
+00:32:29,030 --> 00:32:33,980
+mock services with launch D until one of
+
+791
+00:32:31,400 --> 00:32:35,960
+them reuses safety net sport name at
+
+792
+00:32:33,980 --> 00:32:39,200
+which point launch D now thinks that we
+
+793
+00:32:35,960 --> 00:32:41,240
+are safety net now we send a message to
+
+794
+00:32:39,200 --> 00:32:43,549
+report crash causing it to crash and
+
+795
+00:32:41,240 --> 00:32:45,980
+when report crash starts up again it's
+
+796
+00:32:43,549 --> 00:32:48,410
+going to ask launch D hey who is safety
+
+797
+00:32:45,980 --> 00:32:50,330
+net and launch T will reply that we are
+
+798
+00:32:48,410 --> 00:32:53,360
+safety net and so report crash will
+
+799
+00:32:50,330 --> 00:32:55,280
+register us as its exception handler we
+
+800
+00:32:53,360 --> 00:32:58,070
+now send another message to report crash
+
+801
+00:32:55,280 --> 00:33:00,139
+causing it to crash and this time we are
+
+802
+00:32:58,070 --> 00:33:02,780
+the registered exception handler so we
+
+803
+00:33:00,140 --> 00:33:04,820
+get the exception message we then use
+
+804
+00:33:02,780 --> 00:33:06,620
+report crashes task fork to extract to
+
+805
+00:33:04,820 --> 00:33:10,309
+the host proof port which we save for
+
+806
+00:33:06,620 --> 00:33:12,320
+later next we repeat the same attack but
+
+807
+00:33:10,309 --> 00:33:14,418
+this time against C a render server and
+
+808
+00:33:12,320 --> 00:33:16,460
+druid we start off our crash or app
+
+809
+00:33:14,419 --> 00:33:18,350
+extension again which registers launch d
+
+810
+00:33:16,460 --> 00:33:20,750
+athis exception handler and crashes
+
+811
+00:33:18,350 --> 00:33:22,250
+maliciously causing launch D to free its
+
+812
+00:33:20,750 --> 00:33:24,500
+send right to CI render server
+
+813
+00:33:22,250 --> 00:33:26,690
+we now register a bunch of dummy mock
+
+814
+00:33:24,500 --> 00:33:28,850
+services with launch D and get the SIA
+
+815
+00:33:26,690 --> 00:33:31,309
+render serve report name reused by a
+
+816
+00:33:28,850 --> 00:33:33,580
+port that we own at which point launch D
+
+817
+00:33:31,309 --> 00:33:36,470
+now thinks that we are CR render server
+
+818
+00:33:33,580 --> 00:33:38,210
+we now send a message to druid causing
+
+819
+00:33:36,470 --> 00:33:40,970
+it to crash and when Drew it starts up
+
+820
+00:33:38,210 --> 00:33:43,190
+again it'll ask launch D hey who is CI
+
+821
+00:33:40,970 --> 00:33:46,070
+render server and launch give a reply
+
+822
+00:33:43,190 --> 00:33:48,049
+that we are CI render server so druid
+
+823
+00:33:46,070 --> 00:33:51,710
+will start talking with us and it'll
+
+824
+00:33:48,049 --> 00:33:53,870
+send us its task port we now take that
+
+825
+00:33:51,710 --> 00:33:56,120
+task port and use the task threads
+
+826
+00:33:53,870 --> 00:33:59,330
+loophole from earlier to get arbitrary
+
+827
+00:33:56,120 --> 00:34:01,039
+code execution inside of druid then we
+
+828
+00:33:59,330 --> 00:34:03,020
+send the host proof port over to druid
+
+829
+00:34:01,039 --> 00:34:06,289
+and combining the host proof port with
+
+830
+00:34:03,020 --> 00:34:08,690
+Druids on sand box code execution we can
+
+831
+00:34:06,289 --> 00:34:12,168
+now set ourselves as the new host level
+
+832
+00:34:08,690 --> 00:34:14,929
+exception handler for ex bat access at
+
+833
+00:34:12,168 --> 00:34:17,540
+this point we repeat the first leg of
+
+834
+00:34:14,929 --> 00:34:19,609
+the attack we make report crash start up
+
+835
+00:34:17,540 --> 00:34:22,070
+again and send it a message causing it
+
+836
+00:34:19,609 --> 00:34:24,348
+to crash and this time there is a
+
+837
+00:34:22,070 --> 00:34:26,659
+registered exception handler for ex bad
+
+838
+00:34:24,349 --> 00:34:28,879
+access which means that we receive the
+
+839
+00:34:26,659 --> 00:34:31,369
+exception message with a copy of report
+
+840
+00:34:28,879 --> 00:34:34,129
+crashes task port and this time the
+
+841
+00:34:31,369 --> 00:34:36,470
+exception is recoverable so we can fix
+
+842
+00:34:34,129 --> 00:34:39,469
+up report crash and then use the task or
+
+843
+00:34:36,469 --> 00:34:42,020
+to take control over it and this time
+
+844
+00:34:39,469 --> 00:34:44,779
+week at this point we can restore the
+
+845
+00:34:42,020 --> 00:34:46,790
+host exception port to default and then
+
+846
+00:34:44,780 --> 00:34:49,070
+using a report crashes task for PID
+
+847
+00:34:46,790 --> 00:34:51,199
+privileges we can take control over
+
+848
+00:34:49,070 --> 00:34:53,810
+launch D and once we have control over
+
+849
+00:34:51,199 --> 00:34:56,239
+launch D we can fix up the ports that we
+
+850
+00:34:53,810 --> 00:34:58,580
+messed up earlier and then finally we
+
+851
+00:34:56,239 --> 00:35:01,430
+can make report crash spawn our payload
+
+852
+00:34:58,580 --> 00:35:04,819
+binary as unsound bucks root and tasks
+
+853
+00:35:01,430 --> 00:35:08,779
+for PID and that is how you route an
+
+854
+00:35:04,820 --> 00:35:15,050
+iPhone by crashing so let's see a demo
+
+855
+00:35:08,780 --> 00:35:19,339
+of how this actually works so here let's
+
+856
+00:35:15,050 --> 00:35:21,349
+see we have Xcode I was not able to get
+
+857
+00:35:19,339 --> 00:35:24,650
+the graphical display of the phone
+
+858
+00:35:21,349 --> 00:35:25,940
+screen to show but this is a live demo
+
+859
+00:35:24,650 --> 00:35:31,270
+and I'm going to be exploiting this
+
+860
+00:35:25,940 --> 00:35:31,270
+phone right here and so let's run it
+
+861
+00:35:35,980 --> 00:35:42,670
+okay so we've impersonated safety net
+
+862
+00:35:39,800 --> 00:35:45,230
+and we're crashing a report crash now
+
+863
+00:35:42,670 --> 00:35:46,790
+this is going to take about 10 seconds
+
+864
+00:35:45,230 --> 00:35:48,290
+for a report crash to start up again and
+
+865
+00:35:46,790 --> 00:35:50,570
+now we've just gotten the host proof
+
+866
+00:35:48,290 --> 00:35:52,430
+port and started impersonating CIA
+
+867
+00:35:50,570 --> 00:35:54,530
+render server and got druids task for
+
+868
+00:35:52,430 --> 00:35:57,669
+reset the hosts exception handler to
+
+869
+00:35:54,530 --> 00:36:00,560
+expat access and then we're going to get
+
+870
+00:35:57,670 --> 00:36:02,900
+drew we got a report crash to test port
+
+871
+00:36:00,560 --> 00:36:05,270
+a second time and we've now spawned our
+
+872
+00:36:02,900 --> 00:36:08,869
+payload binary and we have a buying
+
+873
+00:36:05,270 --> 00:36:11,000
+shell listening on port 42 42 so if I go
+
+874
+00:36:08,869 --> 00:36:13,450
+down here and I'm gonna put the mic down
+
+875
+00:36:11,000 --> 00:36:13,450
+for a second
+
+876
+00:36:19,809 --> 00:36:27,640
+all right and now we have a shell on our
+
+877
+00:36:21,890 --> 00:36:30,680
+iPhone and so you can see I ad
+
+878
+00:36:27,640 --> 00:36:38,029
+so I'm root on my iPhone I can run
+
+879
+00:36:30,680 --> 00:36:39,950
+arbitrary commands you can even do like
+
+880
+00:36:38,029 --> 00:36:43,279
+debugging things so here I'm listing out
+
+881
+00:36:39,950 --> 00:36:44,808
+all the Mokka ports used by launch D so
+
+882
+00:36:43,279 --> 00:36:46,369
+it's very useful as a development
+
+883
+00:36:44,809 --> 00:36:47,960
+platform to kind of inspect what's going
+
+884
+00:36:46,369 --> 00:36:50,720
+on in the phone you can take control
+
+885
+00:36:47,960 --> 00:36:53,119
+debug any process things like that so
+
+886
+00:36:50,720 --> 00:36:55,819
+it's it's very cool
+
+887
+00:36:53,119 --> 00:37:00,260
+yeah so let's go back to the
+
+888
+00:36:55,819 --> 00:37:02,269
+presentation all right yeah thank you so
+
+889
+00:37:00,260 --> 00:37:04,039
+let's talk about post exploitation now
+
+890
+00:37:02,269 --> 00:37:06,589
+we've already touched on this a little
+
+891
+00:37:04,039 --> 00:37:09,170
+bit in the walkthrough in the demo but
+
+892
+00:37:06,589 --> 00:37:11,210
+this is basically how I go from having a
+
+893
+00:37:09,170 --> 00:37:14,210
+report crashes task port to actually
+
+894
+00:37:11,210 --> 00:37:16,339
+achieving our objectives so using our
+
+895
+00:37:14,210 --> 00:37:18,170
+code execution library we have the
+
+896
+00:37:16,339 --> 00:37:20,839
+ability to perform arbitrary function
+
+897
+00:37:18,170 --> 00:37:23,420
+calls inside report crash which again is
+
+898
+00:37:20,839 --> 00:37:26,569
+unsound bucks route and tasks for PID
+
+899
+00:37:23,420 --> 00:37:28,039
+allow so what are our actual bowles our
+
+900
+00:37:26,569 --> 00:37:30,650
+first level goal is to use this
+
+901
+00:37:28,039 --> 00:37:33,140
+capability to achieve native code
+
+902
+00:37:30,650 --> 00:37:35,059
+execution with these privileges this
+
+903
+00:37:33,140 --> 00:37:36,828
+isn't an elevation of privileges since
+
+904
+00:37:35,059 --> 00:37:39,170
+we can do anything we want in report
+
+905
+00:37:36,829 --> 00:37:40,970
+crash using a Rob however I'm sure we'd
+
+906
+00:37:39,170 --> 00:37:42,559
+all agree that negative code execution
+
+907
+00:37:40,970 --> 00:37:45,439
+is much nicer than writing your entire
+
+908
+00:37:42,559 --> 00:37:48,500
+payload and Rob so as for our second
+
+909
+00:37:45,440 --> 00:37:50,930
+goal I wanted to spawn a bind shell and
+
+910
+00:37:48,500 --> 00:37:53,059
+now when I started this project I didn't
+
+911
+00:37:50,930 --> 00:37:55,038
+even know if having a starting a bind
+
+912
+00:37:53,059 --> 00:37:56,960
+shell on an iPhone would be possible
+
+913
+00:37:55,039 --> 00:37:59,390
+because all the other recent iOS
+
+914
+00:37:56,960 --> 00:38:01,309
+exploits that had spawned a shell had
+
+915
+00:37:59,390 --> 00:38:03,799
+needed kernel privileges in order to do
+
+916
+00:38:01,309 --> 00:38:05,839
+so but I wanted to see if it was
+
+917
+00:38:03,799 --> 00:38:07,069
+possible to get a working shell without
+
+918
+00:38:05,839 --> 00:38:10,578
+a kernel bug at all
+
+919
+00:38:07,069 --> 00:38:12,470
+and obviously we just saw that in the
+
+920
+00:38:10,579 --> 00:38:14,319
+demo that this is possible but I'm going
+
+921
+00:38:12,470 --> 00:38:16,459
+to walk you through how I got there
+
+922
+00:38:14,319 --> 00:38:18,288
+so broadly speaking there are two
+
+923
+00:38:16,460 --> 00:38:20,750
+techniques for getting native code
+
+924
+00:38:18,289 --> 00:38:23,059
+execution the first is to compile your
+
+925
+00:38:20,750 --> 00:38:26,000
+code into a dynamic library or Die Lib
+
+926
+00:38:23,059 --> 00:38:28,579
+and then call DL open to load the
+
+927
+00:38:26,000 --> 00:38:30,619
+library in the target process the second
+
+928
+00:38:28,579 --> 00:38:31,850
+native code execution technique is to
+
+929
+00:38:30,619 --> 00:38:34,640
+compile your code into a
+
+930
+00:38:31,850 --> 00:38:37,210
+Oh executable and then call exec ve or
+
+931
+00:38:34,640 --> 00:38:39,859
+POSIX spawn to run it as its own process
+
+932
+00:38:37,210 --> 00:38:42,470
+actually though while I was reversing
+
+933
+00:38:39,860 --> 00:38:44,780
+launch D I discovered a third technique
+
+934
+00:38:42,470 --> 00:38:46,609
+for getting native code execution and
+
+935
+00:38:44,780 --> 00:38:48,680
+it's very similar to the POSIX spawn
+
+936
+00:38:46,610 --> 00:38:51,920
+technique but it takes advantage of
+
+937
+00:38:48,680 --> 00:38:53,690
+launch D jobs however at the time that I
+
+938
+00:38:51,920 --> 00:38:56,090
+discovered this technique it was closely
+
+939
+00:38:53,690 --> 00:38:59,390
+related to a Mac OS zero day so I
+
+940
+00:38:56,090 --> 00:39:02,810
+decided not to use it here so let's look
+
+941
+00:38:59,390 --> 00:39:05,660
+at how the DL open technique works first
+
+942
+00:39:02,810 --> 00:39:07,820
+we'll compile our payload into a Die Lib
+
+943
+00:39:05,660 --> 00:39:10,009
+and then Mark the payloads main function
+
+944
+00:39:07,820 --> 00:39:11,210
+with attribute constructor this will
+
+945
+00:39:10,010 --> 00:39:13,400
+cause our payload to be run
+
+946
+00:39:11,210 --> 00:39:15,950
+automatically during the dialog loading
+
+947
+00:39:13,400 --> 00:39:18,320
+process and once we have our compiled
+
+948
+00:39:15,950 --> 00:39:21,020
+die lid we can use thread exact to call
+
+949
+00:39:18,320 --> 00:39:23,480
+DL open inside report crash which will
+
+950
+00:39:21,020 --> 00:39:26,450
+cause report crash to load our payload
+
+951
+00:39:23,480 --> 00:39:28,840
+then the payload will run inside report
+
+952
+00:39:26,450 --> 00:39:32,149
+crash and inherit all of its privileges
+
+953
+00:39:28,840 --> 00:39:33,770
+sounds great but if you actually try
+
+954
+00:39:32,150 --> 00:39:35,630
+this technique and practice on the phone
+
+955
+00:39:33,770 --> 00:39:38,390
+you'll see the following error message
+
+956
+00:39:35,630 --> 00:39:40,670
+the first line says that DL open failed
+
+957
+00:39:38,390 --> 00:39:42,859
+and the second shows the error message
+
+958
+00:39:40,670 --> 00:39:45,290
+the only important part is here at the
+
+959
+00:39:42,860 --> 00:39:47,450
+bottom where it says mapping process is
+
+960
+00:39:45,290 --> 00:39:49,640
+a platform binary but mapped file is not
+
+961
+00:39:47,450 --> 00:39:51,680
+this means that we're getting an error
+
+962
+00:39:49,640 --> 00:39:54,620
+because we're trying to load our payload
+
+963
+00:39:51,680 --> 00:39:57,560
+die lib which is not Apple signed into a
+
+964
+00:39:54,620 --> 00:39:59,270
+process that is Apple signed now it's
+
+965
+00:39:57,560 --> 00:40:01,190
+possible to work around this restriction
+
+966
+00:39:59,270 --> 00:40:04,370
+but I decided to move on to the second
+
+967
+00:40:01,190 --> 00:40:06,800
+approach instead and that's the exact EE
+
+968
+00:40:04,370 --> 00:40:09,650
+or POSIX spawn technique although we'll
+
+969
+00:40:06,800 --> 00:40:11,480
+be focusing on POSIX spawn this time
+
+970
+00:40:09,650 --> 00:40:14,960
+we'll need to compile our payload into a
+
+971
+00:40:11,480 --> 00:40:17,780
+standalone executable and once we have
+
+972
+00:40:14,960 --> 00:40:19,850
+our binary we can call exec ve or POSIX
+
+973
+00:40:17,780 --> 00:40:22,220
+spawn from within report crash to load
+
+974
+00:40:19,850 --> 00:40:24,049
+it the resulting process will inherit
+
+975
+00:40:22,220 --> 00:40:26,649
+report crashes on sandbox group
+
+976
+00:40:24,050 --> 00:40:29,450
+privileges but not it's entitlements
+
+977
+00:40:26,650 --> 00:40:31,250
+however we can specify arbitrary
+
+978
+00:40:29,450 --> 00:40:33,799
+entitlements ourselves in the code
+
+979
+00:40:31,250 --> 00:40:37,520
+signature so we be sure to put tasks for
+
+980
+00:40:33,800 --> 00:40:39,620
+PID there so I tried it and I got this
+
+981
+00:40:37,520 --> 00:40:41,900
+error message which is not exactly the
+
+982
+00:40:39,620 --> 00:40:43,400
+clearest error message I've ever seen
+
+983
+00:40:41,900 --> 00:40:44,800
+but eventually I was able to work out
+
+984
+00:40:43,400 --> 00:40:47,410
+what was going on
+
+985
+00:40:44,800 --> 00:40:49,180
+the problem is that when our app is
+
+986
+00:40:47,410 --> 00:40:51,359
+installed on the phone the payload
+
+987
+00:40:49,180 --> 00:40:53,500
+binary is not being marked as executable
+
+988
+00:40:51,360 --> 00:40:55,570
+and in fact this actually makes a lot of
+
+989
+00:40:53,500 --> 00:40:57,760
+sense since under normal circumstances
+
+990
+00:40:55,570 --> 00:40:59,619
+an app would never be just like randomly
+
+991
+00:40:57,760 --> 00:41:02,230
+spawning binaries that are part of its
+
+992
+00:40:59,619 --> 00:41:03,700
+app bundle but we're not in normal
+
+993
+00:41:02,230 --> 00:41:06,190
+circumstances we're writing an exploit
+
+994
+00:41:03,700 --> 00:41:08,618
+so the easiest thing we can do is to
+
+995
+00:41:06,190 --> 00:41:10,240
+simply make report crash call to mod to
+
+996
+00:41:08,619 --> 00:41:13,540
+set the execute permission on our
+
+997
+00:41:10,240 --> 00:41:16,209
+payload after we do that we get this
+
+998
+00:41:13,540 --> 00:41:18,160
+equally enlightening error message this
+
+999
+00:41:16,210 --> 00:41:20,230
+time we do get extra hints from the
+
+1000
+00:41:18,160 --> 00:41:22,540
+device console you'll see that there are
+
+1001
+00:41:20,230 --> 00:41:25,119
+two related entries the first is MPD
+
+1002
+00:41:22,540 --> 00:41:27,640
+claiming that the executable was signed
+
+1003
+00:41:25,119 --> 00:41:30,010
+with invalid entitlements and the second
+
+1004
+00:41:27,640 --> 00:41:32,470
+is the kernel amphi is saying the code
+
+1005
+00:41:30,010 --> 00:41:35,050
+signature validation failed so what's
+
+1006
+00:41:32,470 --> 00:41:36,850
+going on here up until this point we've
+
+1007
+00:41:35,050 --> 00:41:38,440
+been able to avoid talking about anthe
+
+1008
+00:41:36,850 --> 00:41:41,170
+but we actually need to do so now
+
+1009
+00:41:38,440 --> 00:41:43,540
+so anthe stands for Apple mobile file
+
+1010
+00:41:41,170 --> 00:41:46,030
+integrity which is the kernel extension
+
+1011
+00:41:43,540 --> 00:41:48,040
+that enforces code signing it gets
+
+1012
+00:41:46,030 --> 00:41:50,260
+called whenever new code is about to be
+
+1013
+00:41:48,040 --> 00:41:52,570
+loaded onto the device and needs to be
+
+1014
+00:41:50,260 --> 00:41:56,550
+validated and anthe will kill the
+
+1015
+00:41:52,570 --> 00:41:59,500
+process if the code signature is invalid
+
+1016
+00:41:56,550 --> 00:42:02,080
+but since doing code signature checking
+
+1017
+00:41:59,500 --> 00:42:05,230
+is really complicated and slow anthe
+
+1018
+00:42:02,080 --> 00:42:07,119
+actually delegates this checking to the
+
+1019
+00:42:05,230 --> 00:42:10,300
+am pd daemon in userspace
+
+1020
+00:42:07,119 --> 00:42:12,160
+so this daemon is what actually does the
+
+1021
+00:42:10,300 --> 00:42:14,260
+work of verifying your code signatures
+
+1022
+00:42:12,160 --> 00:42:16,210
+and so it's the component that will need
+
+1023
+00:42:14,260 --> 00:42:19,390
+to bypass if we're going to get our
+
+1024
+00:42:16,210 --> 00:42:22,150
+payload to spawn fortunately for us
+
+1025
+00:42:19,390 --> 00:42:24,670
+there's already a rich history of MPD
+
+1026
+00:42:22,150 --> 00:42:27,820
+bypasses and the current technique as of
+
+1027
+00:42:24,670 --> 00:42:29,590
+iOS 10 is to use exception ports we
+
+1028
+00:42:27,820 --> 00:42:31,869
+register our own process as the
+
+1029
+00:42:29,590 --> 00:42:33,880
+exception handler for MPD and then we
+
+1030
+00:42:31,869 --> 00:42:37,660
+perform a data patch of amputees memory
+
+1031
+00:42:33,880 --> 00:42:39,550
+that so that when MPD tries to call the
+
+1032
+00:42:37,660 --> 00:42:44,290
+function mi ask validate signature and
+
+1033
+00:42:39,550 --> 00:42:47,290
+copy info it'll crash then when anthe
+
+1034
+00:42:44,290 --> 00:42:49,150
+actually does the up call to amputee MPD
+
+1035
+00:42:47,290 --> 00:42:52,150
+will try to call that function and then
+
+1036
+00:42:49,150 --> 00:42:54,609
+crash we then catch an pd's exception
+
+1037
+00:42:52,150 --> 00:42:57,230
+and manually set the return value we
+
+1038
+00:42:54,609 --> 00:43:00,770
+want from that function
+
+1039
+00:42:57,230 --> 00:43:03,650
+then when we resume amputee it's going
+
+1040
+00:43:00,770 --> 00:43:05,900
+to tell the colonel that the validation
+
+1041
+00:43:03,650 --> 00:43:08,540
+in MI ass validate signature and copy
+
+1042
+00:43:05,900 --> 00:43:11,350
+info succeeded and so MPD will tell the
+
+1043
+00:43:08,540 --> 00:43:14,359
+colonel that the binary is okay to run
+
+1044
+00:43:11,350 --> 00:43:14,720
+so if we add the amputee bypass and try
+
+1045
+00:43:14,359 --> 00:43:16,850
+again
+
+1046
+00:43:14,720 --> 00:43:19,819
+it actually works POSIX spawn will
+
+1047
+00:43:16,850 --> 00:43:22,368
+return a valid PID unfortunately though
+
+1048
+00:43:19,820 --> 00:43:24,200
+our code isn't actually running and we
+
+1049
+00:43:22,369 --> 00:43:25,790
+you look at the device logs you'll see
+
+1050
+00:43:24,200 --> 00:43:28,220
+that there's an entry noting that the
+
+1051
+00:43:25,790 --> 00:43:30,800
+colonel killed our newly spawned process
+
+1052
+00:43:28,220 --> 00:43:32,899
+for trying to call exec ve and the
+
+1053
+00:43:30,800 --> 00:43:35,690
+message says only launch T is allowed to
+
+1054
+00:43:32,900 --> 00:43:37,040
+spawn untrusted binaries and the problem
+
+1055
+00:43:35,690 --> 00:43:39,170
+here is that we're running against the
+
+1056
+00:43:37,040 --> 00:43:40,970
+platform profile which is a set of
+
+1057
+00:43:39,170 --> 00:43:43,670
+sandbox restrictions under which all
+
+1058
+00:43:40,970 --> 00:43:46,669
+processes on the system must live even
+
+1059
+00:43:43,670 --> 00:43:48,710
+on sandboxed ones thus even though
+
+1060
+00:43:46,670 --> 00:43:50,810
+report crash is on sandbox and runs as
+
+1061
+00:43:48,710 --> 00:43:52,970
+root it's still bound by the rules of
+
+1062
+00:43:50,810 --> 00:43:55,460
+this hand box profile and one of those
+
+1063
+00:43:52,970 --> 00:43:58,939
+rules is that only launch D is allowed
+
+1064
+00:43:55,460 --> 00:44:00,800
+to spawn so-called untrusted binaries we
+
+1065
+00:43:58,940 --> 00:44:02,480
+can bypass this restriction by simply
+
+1066
+00:44:00,800 --> 00:44:05,060
+adding the platform application
+
+1067
+00:44:02,480 --> 00:44:07,040
+entitlement to our payload and this will
+
+1068
+00:44:05,060 --> 00:44:09,920
+make antfee think that the binary is
+
+1069
+00:44:07,040 --> 00:44:11,990
+trusted so if we do this what happens
+
+1070
+00:44:09,920 --> 00:44:14,869
+when you spawn our payload now more
+
+1071
+00:44:11,990 --> 00:44:16,910
+errors if we check the device logs that
+
+1072
+00:44:14,869 --> 00:44:20,390
+are now entries from container manager D
+
+1073
+00:44:16,910 --> 00:44:22,399
+and the kernel and finally we see that
+
+1074
+00:44:20,390 --> 00:44:24,529
+our payload was once again killed during
+
+1075
+00:44:22,400 --> 00:44:26,420
+exec ve this time with a message that
+
+1076
+00:44:24,530 --> 00:44:28,910
+says failure and up call - container
+
+1077
+00:44:26,420 --> 00:44:30,800
+manager D for a platform happen so
+
+1078
+00:44:28,910 --> 00:44:32,029
+what's going on this time is that we're
+
+1079
+00:44:30,800 --> 00:44:34,820
+bumping into another feature of
+
+1080
+00:44:32,030 --> 00:44:37,310
+sandboxing called containers a container
+
+1081
+00:44:34,820 --> 00:44:39,920
+is a special area of the file system for
+
+1082
+00:44:37,310 --> 00:44:42,049
+a sandbox tap now containers are very
+
+1083
+00:44:39,920 --> 00:44:43,670
+interesting security feature but the
+
+1084
+00:44:42,050 --> 00:44:46,369
+only thing we really need to know is
+
+1085
+00:44:43,670 --> 00:44:48,950
+this the system is appears to be trying
+
+1086
+00:44:46,369 --> 00:44:51,770
+to containerize our payload which is
+
+1087
+00:44:48,950 --> 00:44:53,600
+clearly not good for us all the errors
+
+1088
+00:44:51,770 --> 00:44:55,609
+that we're seeing are because container
+
+1089
+00:44:53,600 --> 00:44:57,740
+manager D is being blocked by the
+
+1090
+00:44:55,609 --> 00:45:01,640
+sandbox when it tries to create a
+
+1091
+00:44:57,740 --> 00:45:03,859
+container for a root process and to make
+
+1092
+00:45:01,640 --> 00:45:06,170
+a long story short all we need to do to
+
+1093
+00:45:03,859 --> 00:45:09,020
+avoid being placed in a container is add
+
+1094
+00:45:06,170 --> 00:45:10,940
+another entitlement comm dot a police
+
+1095
+00:45:09,020 --> 00:45:13,819
+acuity container required
+
+1096
+00:45:10,940 --> 00:45:17,539
+set to the value false and once we do
+
+1097
+00:45:13,819 --> 00:45:20,270
+that success our payload runs and we can
+
+1098
+00:45:17,539 --> 00:45:22,460
+finally see its output so we finally
+
+1099
+00:45:20,270 --> 00:45:24,200
+have native code execution with
+
+1100
+00:45:22,460 --> 00:45:26,690
+arbitrary entitlements and full
+
+1101
+00:45:24,200 --> 00:45:28,730
+privileges and since rapport crash was
+
+1102
+00:45:26,690 --> 00:45:30,170
+able to spawn another binary with no
+
+1103
+00:45:28,730 --> 00:45:32,869
+problem we should have no trouble
+
+1104
+00:45:30,170 --> 00:45:34,910
+getting a bash shell to work as well all
+
+1105
+00:45:32,869 --> 00:45:36,980
+we have to do is make sure that all the
+
+1106
+00:45:34,910 --> 00:45:38,779
+binaries we want in our bash shell are
+
+1107
+00:45:36,980 --> 00:45:41,839
+signed with the same entitlements that
+
+1108
+00:45:38,780 --> 00:45:44,030
+we just saw all right so what are the
+
+1109
+00:45:41,839 --> 00:45:46,520
+takeaways from this presentation and
+
+1110
+00:45:44,030 --> 00:45:48,740
+this research project first I want to go
+
+1111
+00:45:46,520 --> 00:45:50,509
+over what we've actually achieved report
+
+1112
+00:45:48,740 --> 00:45:53,270
+crash has the task for PID allow
+
+1113
+00:45:50,510 --> 00:45:54,859
+entitlement and as we've seen we can use
+
+1114
+00:45:53,270 --> 00:45:57,410
+this entitlement to take control over
+
+1115
+00:45:54,859 --> 00:45:59,029
+any process on the phone and this is
+
+1116
+00:45:57,410 --> 00:46:01,430
+basically the highest level of privilege
+
+1117
+00:45:59,030 --> 00:46:04,849
+that we can achieve without having a
+
+1118
+00:46:01,430 --> 00:46:07,009
+kernel exploit also it's interesting to
+
+1119
+00:46:04,849 --> 00:46:09,170
+note that we have full user space
+
+1120
+00:46:07,010 --> 00:46:11,690
+control without having to attack the
+
+1121
+00:46:09,170 --> 00:46:14,329
+kernel at all this means that we don't
+
+1122
+00:46:11,690 --> 00:46:16,490
+have to defeat the current apples kernel
+
+1123
+00:46:14,329 --> 00:46:18,260
+exploit mitigations and the kernel
+
+1124
+00:46:16,490 --> 00:46:20,058
+mitigations are improving all the time
+
+1125
+00:46:18,260 --> 00:46:21,859
+most recently with the addition of
+
+1126
+00:46:20,059 --> 00:46:24,710
+pointer authentication on the new iPhone
+
+1127
+00:46:21,859 --> 00:46:26,690
+10s so anytime that we can attain our
+
+1128
+00:46:24,710 --> 00:46:30,740
+goals without having to defeat these
+
+1129
+00:46:26,690 --> 00:46:32,119
+mitigations that's a huge win also the
+
+1130
+00:46:30,740 --> 00:46:33,890
+reason I started looking at crash
+
+1131
+00:46:32,119 --> 00:46:36,529
+reporting to begin with was because it
+
+1132
+00:46:33,890 --> 00:46:38,029
+was an unconventional attack surface the
+
+1133
+00:46:36,529 --> 00:46:39,859
+traditional attack surfaces have been
+
+1134
+00:46:38,029 --> 00:46:41,720
+used in past exploits have been
+
+1135
+00:46:39,859 --> 00:46:43,788
+significantly hardened which makes
+
+1136
+00:46:41,720 --> 00:46:45,500
+unconventional attack services much more
+
+1137
+00:46:43,789 --> 00:46:47,900
+attractive to exploit developers and
+
+1138
+00:46:45,500 --> 00:46:49,970
+many areas of the operating system have
+
+1139
+00:46:47,900 --> 00:46:52,279
+not received adequate security auditing
+
+1140
+00:46:49,970 --> 00:46:55,490
+despite the huge risk that they pose if
+
+1141
+00:46:52,279 --> 00:46:57,650
+they're compromised next we saw that
+
+1142
+00:46:55,490 --> 00:46:59,839
+Apple's task court mitigations had a
+
+1143
+00:46:57,650 --> 00:47:02,329
+serious and not previously published
+
+1144
+00:46:59,839 --> 00:47:03,950
+loophole the mitigation attempted to
+
+1145
+00:47:02,329 --> 00:47:06,470
+prevent attackers from using a task
+
+1146
+00:47:03,950 --> 00:47:08,868
+court to execute arbitrary code in an
+
+1147
+00:47:06,470 --> 00:47:11,750
+Apple science process but we found that
+
+1148
+00:47:08,869 --> 00:47:14,329
+the task threads API rendered the entire
+
+1149
+00:47:11,750 --> 00:47:16,460
+mitigation ineffective thus it's always
+
+1150
+00:47:14,329 --> 00:47:20,029
+worth checking whether a new mitigation
+
+1151
+00:47:16,460 --> 00:47:22,099
+has big loopholes like this and finally
+
+1152
+00:47:20,029 --> 00:47:24,500
+we saw there was a new way to obtain
+
+1153
+00:47:22,099 --> 00:47:27,290
+tasks for PID privileges
+
+1154
+00:47:24,500 --> 00:47:29,540
+for a long time processor set tasks was
+
+1155
+00:47:27,290 --> 00:47:32,540
+the de facto task for PID workaround on
+
+1156
+00:47:29,540 --> 00:47:35,599
+iOS but Apple has recently blocked that
+
+1157
+00:47:32,540 --> 00:47:38,150
+technique however we've seen that host
+
+1158
+00:47:35,599 --> 00:47:39,800
+set exception reports also allows us to
+
+1159
+00:47:38,150 --> 00:47:43,130
+get the task port of a more privileged
+
+1160
+00:47:39,800 --> 00:47:45,740
+process thus if we have arbitrary code
+
+1161
+00:47:43,130 --> 00:47:48,230
+execution in an unsound boxed Apple
+
+1162
+00:47:45,740 --> 00:47:51,109
+signed binary and we have the host per
+
+1163
+00:47:48,230 --> 00:47:54,800
+port and we can crash a task for PID
+
+1164
+00:47:51,109 --> 00:47:57,259
+allow process these features are we can
+
+1165
+00:47:54,800 --> 00:48:01,480
+combine these capabilities to execute
+
+1166
+00:47:57,260 --> 00:48:04,310
+code with tasks for PID privileges and
+
+1167
+00:48:01,480 --> 00:48:07,300
+before I wrap up there's one more thing
+
+1168
+00:48:04,310 --> 00:48:09,680
+a new and improved way to bypass an VD
+
+1169
+00:48:07,300 --> 00:48:12,319
+we've already seen the traditional
+
+1170
+00:48:09,680 --> 00:48:14,720
+approach which works by patching an PD
+
+1171
+00:48:12,319 --> 00:48:17,390
+and catching it's exceptions in this new
+
+1172
+00:48:14,720 --> 00:48:19,970
+approach we impersonate an PD by
+
+1173
+00:48:17,390 --> 00:48:21,859
+directly stealing its kernel port we
+
+1174
+00:48:19,970 --> 00:48:24,109
+implement verify code directory to
+
+1175
+00:48:21,859 --> 00:48:26,839
+directly handle the up call from empty
+
+1176
+00:48:24,109 --> 00:48:29,598
+ourselves and then finally we use code
+
+1177
+00:48:26,839 --> 00:48:31,849
+execution inside of an PD to make an PD
+
+1178
+00:48:29,599 --> 00:48:32,380
+send the reply that we want back to the
+
+1179
+00:48:31,849 --> 00:48:34,880
+kernel
+
+1180
+00:48:32,380 --> 00:48:37,819
+since the amputee process actually
+
+1181
+00:48:34,880 --> 00:48:39,560
+presented reply we still fool the kernel
+
+1182
+00:48:37,819 --> 00:48:42,349
+into thinking an PD performs the
+
+1183
+00:48:39,560 --> 00:48:44,900
+validation however this approach has a
+
+1184
+00:48:42,349 --> 00:48:47,240
+few neat advantages for one thing it
+
+1185
+00:48:44,900 --> 00:48:48,980
+avoids the data patch but much more
+
+1186
+00:48:47,240 --> 00:48:52,009
+importantly it gives us access to some
+
+1187
+00:48:48,980 --> 00:48:53,869
+very interesting flags here's an example
+
+1188
+00:48:52,010 --> 00:48:55,849
+implementation of verify code directory
+
+1189
+00:48:53,869 --> 00:48:58,550
+using this technique if you look
+
+1190
+00:48:55,849 --> 00:49:01,310
+carefully the third-to-last line sets
+
+1191
+00:48:58,550 --> 00:49:03,800
+the is Apple parameter to one this will
+
+1192
+00:49:01,310 --> 00:49:05,599
+give the spawned process platform
+
+1193
+00:49:03,800 --> 00:49:07,490
+privileges effectively telling the
+
+1194
+00:49:05,599 --> 00:49:10,130
+kernel that the binary has a valid Apple
+
+1195
+00:49:07,490 --> 00:49:12,140
+signature if we do this we no longer
+
+1196
+00:49:10,130 --> 00:49:14,599
+need the task threads loophole
+
+1197
+00:49:12,140 --> 00:49:17,900
+since all processes are now treated as
+
+1198
+00:49:14,599 --> 00:49:19,760
+Apple signed in the exploit the code
+
+1199
+00:49:17,900 --> 00:49:21,859
+that implements this technique is called
+
+1200
+00:49:19,760 --> 00:49:24,079
+an feed OOP and the big advantage of am
+
+1201
+00:49:21,859 --> 00:49:26,509
+PD is that it grants platform binary
+
+1202
+00:49:24,079 --> 00:49:29,060
+status to spawned processes without
+
+1203
+00:49:26,510 --> 00:49:31,849
+having any kernel bug at all which i
+
+1204
+00:49:29,060 --> 00:49:33,859
+think is pretty awesome and that's it
+
+1205
+00:49:31,849 --> 00:49:36,410
+thank you so much for listening you can
+
+1206
+00:49:33,859 --> 00:49:37,970
+find write-up and code on my github and
+
+1207
+00:49:36,410 --> 00:49:41,319
+a project called blanket
+
+1208
+00:49:37,970 --> 00:49:42,890
+and also check out my blog to see
+
+1209
+00:49:41,319 --> 00:49:45,049
+explanations about the various
+
+1210
+00:49:42,890 --> 00:49:48,859
+strategies used in this exploit so thank
+
+1211
+00:49:45,049 --> 00:49:51,009
+you very much you got those I missed
+
+1212
+00:49:48,859 --> 00:49:51,009
+that
+

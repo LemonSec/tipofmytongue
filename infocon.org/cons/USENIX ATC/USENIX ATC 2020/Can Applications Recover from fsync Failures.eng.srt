@@ -1,0 +1,2544 @@
+﻿1
+00:00:08,639 --> 00:00:11,599
+hi everyone
+
+2
+00:00:09,760 --> 00:00:13,599
+my name is anthony rebello and i'm going
+
+3
+00:00:11,599 --> 00:00:15,440
+to be presenting the stock titled
+
+4
+00:00:13,599 --> 00:00:17,920
+can applications recover from fsing
+
+5
+00:00:15,440 --> 00:00:19,439
+failures co-authored by yuvraj patel
+
+6
+00:00:17,920 --> 00:00:21,439
+ramnath
+
+7
+00:00:19,439 --> 00:00:23,039
+andrey arpachi dusseh and ramsey apache
+
+8
+00:00:21,439 --> 00:00:25,840
+doso from the university of
+
+9
+00:00:23,039 --> 00:00:26,960
+wisconsin-madison
+
+10
+00:00:25,840 --> 00:00:29,039
+we'll start with a little bit of
+
+11
+00:00:26,960 --> 00:00:32,239
+background on how data reaches the disk
+
+12
+00:00:29,039 --> 00:00:34,160
+as fsync plays an important role here
+
+13
+00:00:32,238 --> 00:00:35,919
+generally applications don't interact
+
+14
+00:00:34,160 --> 00:00:37,599
+with the disk directly
+
+15
+00:00:35,920 --> 00:00:40,480
+instead they use the file system through
+
+16
+00:00:37,600 --> 00:00:42,480
+system calls such as open read and write
+
+17
+00:00:40,480 --> 00:00:44,000
+however when they use this write system
+
+18
+00:00:42,480 --> 00:00:46,239
+call the file system
+
+19
+00:00:44,000 --> 00:00:47,760
+doesn't really write to disk immediately
+
+20
+00:00:46,239 --> 00:00:50,078
+it buffers it in the page cache and
+
+21
+00:00:47,760 --> 00:00:51,920
+marks those pages dirty
+
+22
+00:00:50,079 --> 00:00:53,920
+once in a while the file system will
+
+23
+00:00:51,920 --> 00:00:55,680
+flush these dirty pages to disk
+
+24
+00:00:53,920 --> 00:00:57,440
+while this approach lets writes complete
+
+25
+00:00:55,680 --> 00:00:58,000
+fast the drawback is that your
+
+26
+00:00:57,440 --> 00:00:59,680
+application
+
+27
+00:00:58,000 --> 00:01:02,160
+can lose data for the period that it is
+
+28
+00:00:59,680 --> 00:01:04,239
+a drag so if you want to force data to
+
+29
+00:01:02,160 --> 00:01:06,399
+disk immediately instead of waiting
+
+30
+00:01:04,239 --> 00:01:08,159
+you can call fsync after the right and
+
+31
+00:01:06,400 --> 00:01:10,560
+this will ensure that all dirty pages
+
+32
+00:01:08,159 --> 00:01:12,400
+for that file are synced to disk
+
+33
+00:01:10,560 --> 00:01:14,320
+by the way i am going to be using the
+
+34
+00:01:12,400 --> 00:01:16,640
+same representation for pages
+
+35
+00:01:14,320 --> 00:01:18,399
+throughout the presentation clean pages
+
+36
+00:01:16,640 --> 00:01:18,960
+will match the color of the disk a blue
+
+37
+00:01:18,400 --> 00:01:22,159
+color
+
+38
+00:01:18,960 --> 00:01:23,280
+and dirty page is a red color so as you
+
+39
+00:01:22,159 --> 00:01:25,920
+can guess
+
+40
+00:01:23,280 --> 00:01:27,520
+fsync is really important the ability to
+
+41
+00:01:25,920 --> 00:01:28,960
+force data to disk immediately
+
+42
+00:01:27,520 --> 00:01:30,720
+allows applications to provide
+
+43
+00:01:28,960 --> 00:01:32,559
+durability guarantees
+
+44
+00:01:30,720 --> 00:01:33,920
+in most cases applications want to
+
+45
+00:01:32,560 --> 00:01:35,119
+acknowledge a user's right or
+
+46
+00:01:33,920 --> 00:01:36,720
+modification
+
+47
+00:01:35,119 --> 00:01:38,880
+and guarantee that those changes will
+
+48
+00:01:36,720 --> 00:01:41,840
+survive power failure or crash
+
+49
+00:01:38,880 --> 00:01:43,439
+and fsync helps you do that and even if
+
+50
+00:01:41,840 --> 00:01:44,880
+you are bypassing the page cache and
+
+51
+00:01:43,439 --> 00:01:46,240
+using directio
+
+52
+00:01:44,880 --> 00:01:48,158
+your data could be sitting in the
+
+53
+00:01:46,240 --> 00:01:49,839
+volatile portion of the device
+
+54
+00:01:48,159 --> 00:01:51,360
+you still need to call fsync to issue a
+
+55
+00:01:49,840 --> 00:01:52,479
+flush command to the device
+
+56
+00:01:51,360 --> 00:01:54,720
+which moves the data into the
+
+57
+00:01:52,479 --> 00:01:56,799
+non-volatile region
+
+58
+00:01:54,720 --> 00:01:58,640
+and lastly sometimes you want to force
+
+59
+00:01:56,799 --> 00:01:59,600
+some data at a disk before other data is
+
+60
+00:01:58,640 --> 00:02:01,360
+written
+
+61
+00:01:59,600 --> 00:02:03,439
+this ordering can be enforced using
+
+62
+00:02:01,360 --> 00:02:04,960
+fsync if you're interested in this you
+
+63
+00:02:03,439 --> 00:02:05,839
+should check out prior work from our
+
+64
+00:02:04,960 --> 00:02:09,840
+group
+
+65
+00:02:05,840 --> 00:02:09,840
+which decouples ordering from durability
+
+66
+00:02:10,318 --> 00:02:14,079
+so while fsync is important for
+
+67
+00:02:11,840 --> 00:02:16,160
+durability applications find it really
+
+68
+00:02:14,080 --> 00:02:18,800
+difficult to get it right
+
+69
+00:02:16,160 --> 00:02:20,480
+even when fsync works correctly take for
+
+70
+00:02:18,800 --> 00:02:21,680
+instance the case of creating and
+
+71
+00:02:20,480 --> 00:02:23,440
+writing to a file
+
+72
+00:02:21,680 --> 00:02:25,120
+on some file systems you can't just
+
+73
+00:02:23,440 --> 00:02:26,319
+fsync the file itself
+
+74
+00:02:25,120 --> 00:02:28,000
+you will also have to have sync the
+
+75
+00:02:26,319 --> 00:02:28,720
+directory to ensure that the entries
+
+76
+00:02:28,000 --> 00:02:30,080
+persisted
+
+77
+00:02:28,720 --> 00:02:32,959
+so you can access this file in the
+
+78
+00:02:30,080 --> 00:02:34,800
+future this example is one of
+
+79
+00:02:32,959 --> 00:02:36,640
+taken from prior work where the authors
+
+80
+00:02:34,800 --> 00:02:38,560
+found several vulnerabilities
+
+81
+00:02:36,640 --> 00:02:41,760
+when applications try to get durability
+
+82
+00:02:38,560 --> 00:02:43,200
+right update protocols are tricky
+
+83
+00:02:41,760 --> 00:02:44,720
+and it just becomes tougher for
+
+84
+00:02:43,200 --> 00:02:47,518
+applications when you think about the
+
+85
+00:02:44,720 --> 00:02:49,040
+fact that everything can fail
+
+86
+00:02:47,519 --> 00:02:51,200
+sometimes everything fails for simple
+
+87
+00:02:49,040 --> 00:02:53,280
+reasons for example passing bad
+
+88
+00:02:51,200 --> 00:02:54,958
+arguments are not enough space
+
+89
+00:02:53,280 --> 00:02:56,400
+and these are quite easy to handle and
+
+90
+00:02:54,959 --> 00:02:57,440
+check for before interacting with the
+
+91
+00:02:56,400 --> 00:02:58,879
+disk
+
+92
+00:02:57,440 --> 00:03:00,720
+but we are more concerned about the
+
+93
+00:02:58,879 --> 00:03:02,560
+fsync failures that occur after a file
+
+94
+00:03:00,720 --> 00:03:04,239
+system interacts with the disk
+
+95
+00:03:02,560 --> 00:03:06,560
+because at this point the file system
+
+96
+00:03:04,239 --> 00:03:08,720
+has already modified its internal state
+
+97
+00:03:06,560 --> 00:03:10,319
+while getting ready to write a disk and
+
+98
+00:03:08,720 --> 00:03:12,239
+disks can fail
+
+99
+00:03:10,319 --> 00:03:13,920
+transient failures are common and now
+
+100
+00:03:12,239 --> 00:03:15,440
+cloud providers are offering disks that
+
+101
+00:03:13,920 --> 00:03:16,079
+can be attached or removed over the
+
+102
+00:03:15,440 --> 00:03:17,680
+network
+
+103
+00:03:16,080 --> 00:03:19,120
+so you are susceptible to network
+
+104
+00:03:17,680 --> 00:03:20,640
+failures as well
+
+105
+00:03:19,120 --> 00:03:22,879
+so if the file system encounters
+
+106
+00:03:20,640 --> 00:03:23,920
+failures at this point it returns -1 and
+
+107
+00:03:22,879 --> 00:03:26,879
+sets the error code
+
+108
+00:03:23,920 --> 00:03:27,679
+eio and because in memory state has been
+
+109
+00:03:26,879 --> 00:03:32,640
+modified
+
+110
+00:03:27,680 --> 00:03:34,720
+it might need to revert it
+
+111
+00:03:32,640 --> 00:03:36,720
+and these fsync failures are important
+
+112
+00:03:34,720 --> 00:03:37,680
+to quote thomas wandra from foster last
+
+113
+00:03:36,720 --> 00:03:39,680
+year
+
+114
+00:03:37,680 --> 00:03:42,000
+about a year ago the postcris community
+
+115
+00:03:39,680 --> 00:03:43,360
+discovered that fsync on linux and some
+
+116
+00:03:42,000 --> 00:03:44,959
+bsd systems
+
+117
+00:03:43,360 --> 00:03:47,200
+may not work the way we always thought
+
+118
+00:03:44,959 --> 00:03:49,280
+it did with possibly disastrous
+
+119
+00:03:47,200 --> 00:03:51,440
+consequences for data durability
+
+120
+00:03:49,280 --> 00:03:54,239
+and consistency which is something the
+
+121
+00:03:51,440 --> 00:03:56,000
+posterous community really values
+
+122
+00:03:54,239 --> 00:03:58,480
+they had been using f-sync incorrectly
+
+123
+00:03:56,000 --> 00:04:00,319
+for years specifically they made some
+
+124
+00:03:58,480 --> 00:04:03,760
+incorrect assumptions about the way file
+
+125
+00:04:00,319 --> 00:04:05,679
+systems handled failures during fsync
+
+126
+00:04:03,760 --> 00:04:07,518
+so our work is about systematically
+
+127
+00:04:05,680 --> 00:04:10,239
+understanding the fsync problem
+
+128
+00:04:07,519 --> 00:04:12,319
+in two pieces of the storage stack first
+
+129
+00:04:10,239 --> 00:04:14,000
+on file systems we study how they react
+
+130
+00:04:12,319 --> 00:04:17,120
+to failures during fsync
+
+131
+00:04:14,000 --> 00:04:18,639
+we do this for ext4 xfs and butterfs
+
+132
+00:04:17,120 --> 00:04:20,239
+and once we characterize these file
+
+133
+00:04:18,639 --> 00:04:21,120
+systems based on their fsync failure
+
+134
+00:04:20,238 --> 00:04:23,840
+reactions
+
+135
+00:04:21,120 --> 00:04:25,600
+we move to the next part we look at five
+
+136
+00:04:23,840 --> 00:04:27,359
+widely used applications
+
+137
+00:04:25,600 --> 00:04:29,120
+and see how effective their strategies
+
+138
+00:04:27,360 --> 00:04:31,360
+are when fsync fails
+
+139
+00:04:29,120 --> 00:04:33,520
+postchris moved away from retrying and
+
+140
+00:04:31,360 --> 00:04:35,280
+used the crash restart strategy
+
+141
+00:04:33,520 --> 00:04:36,479
+we wanted to see if other applications
+
+142
+00:04:35,280 --> 00:04:37,359
+out there were trying out different
+
+143
+00:04:36,479 --> 00:04:38,639
+strategies
+
+144
+00:04:37,360 --> 00:04:41,199
+and figure out what's effective and
+
+145
+00:04:38,639 --> 00:04:41,199
+what's not
+
+146
+00:04:41,280 --> 00:04:45,679
+so here's our results at a high level
+
+147
+00:04:44,000 --> 00:04:47,759
+all three file systems mark the dirty
+
+148
+00:04:45,680 --> 00:04:50,560
+pages clean after f-sync failure
+
+149
+00:04:47,759 --> 00:04:52,560
+and so retries were pretty much useless
+
+150
+00:04:50,560 --> 00:04:55,120
+and although they mark the page clean
+
+151
+00:04:52,560 --> 00:04:57,759
+they don't have handle errors uniformly
+
+152
+00:04:55,120 --> 00:04:58,479
+ext4 and xfs keep the latest content in
+
+153
+00:04:57,759 --> 00:05:01,280
+ram
+
+154
+00:04:58,479 --> 00:05:02,960
+while butterfest reverts it and exe4
+
+155
+00:05:01,280 --> 00:05:05,039
+data mode reports errors later than the
+
+156
+00:05:02,960 --> 00:05:07,280
+others
+
+157
+00:05:05,039 --> 00:05:08,880
+lastly the in-memory data structures are
+
+158
+00:05:07,280 --> 00:05:11,359
+not entirely reverted
+
+159
+00:05:08,880 --> 00:05:13,840
+so in ext4 and xfs the free space and
+
+160
+00:05:11,360 --> 00:05:15,680
+block allocations remain unaltered
+
+161
+00:05:13,840 --> 00:05:17,359
+much like page content and you end up
+
+162
+00:05:15,680 --> 00:05:19,759
+with blocks belonging to your file
+
+163
+00:05:17,360 --> 00:05:22,080
+they don't have the data you wrote to it
+
+164
+00:05:19,759 --> 00:05:24,000
+with butterfs although reverted
+
+165
+00:05:22,080 --> 00:05:25,359
+the file descriptor points to an offset
+
+166
+00:05:24,000 --> 00:05:27,360
+ahead of the file
+
+167
+00:05:25,360 --> 00:05:29,919
+so you end up with a hole for that
+
+168
+00:05:27,360 --> 00:05:31,840
+skipped region
+
+169
+00:05:29,919 --> 00:05:33,680
+and coming to applications it's easy to
+
+170
+00:05:31,840 --> 00:05:36,400
+see why retries were ineffective
+
+171
+00:05:33,680 --> 00:05:38,000
+since dirty pages were marked clean but
+
+172
+00:05:36,400 --> 00:05:39,919
+it turns out crash restart isn't
+
+173
+00:05:38,000 --> 00:05:41,759
+completely correct either
+
+174
+00:05:39,919 --> 00:05:44,080
+we notice these failures we call false
+
+175
+00:05:41,759 --> 00:05:46,320
+failures where an application informs
+
+176
+00:05:44,080 --> 00:05:48,240
+the user that the operation has failed
+
+177
+00:05:46,320 --> 00:05:50,320
+but the state of the application is as
+
+178
+00:05:48,240 --> 00:05:51,759
+if the operation succeeded
+
+179
+00:05:50,320 --> 00:05:53,599
+and these occur usually during the
+
+180
+00:05:51,759 --> 00:05:55,280
+restart phase because recovery ends up
+
+181
+00:05:53,600 --> 00:05:58,000
+reading the latest content of the log
+
+182
+00:05:55,280 --> 00:06:00,638
+from the page cache
+
+183
+00:05:58,000 --> 00:06:02,400
+ext4 data mode reports errors later and
+
+184
+00:06:00,639 --> 00:06:04,000
+this is quite problematic
+
+185
+00:06:02,400 --> 00:06:05,758
+applications require immediate
+
+186
+00:06:04,000 --> 00:06:06,720
+notification for the strategies to be
+
+187
+00:06:05,759 --> 00:06:08,400
+effective
+
+188
+00:06:06,720 --> 00:06:10,639
+we see that most applications faced
+
+189
+00:06:08,400 --> 00:06:12,799
+corruptions and all had cases of data
+
+190
+00:06:10,639 --> 00:06:14,560
+loss
+
+191
+00:06:12,800 --> 00:06:16,800
+but rfs did have the least number of
+
+192
+00:06:14,560 --> 00:06:18,560
+data loss instances and fault failures
+
+193
+00:06:16,800 --> 00:06:20,800
+and it seems pretty good for strategies
+
+194
+00:06:18,560 --> 00:06:22,560
+that recover from a writer log
+
+195
+00:06:20,800 --> 00:06:24,800
+but it's particularly bad for rollback
+
+196
+00:06:22,560 --> 00:06:27,520
+strategies and i'll be diving deeper
+
+197
+00:06:24,800 --> 00:06:29,520
+into each of these in the talk
+
+198
+00:06:27,520 --> 00:06:31,039
+so with that we have our introduction
+
+199
+00:06:29,520 --> 00:06:32,799
+for the rest of the talk i'm going to go
+
+200
+00:06:31,039 --> 00:06:34,159
+over the two parts file systems first
+
+201
+00:06:32,800 --> 00:06:35,840
+and then applications
+
+202
+00:06:34,160 --> 00:06:37,280
+and then conclude with a few points of
+
+203
+00:06:35,840 --> 00:06:39,919
+what challenges we might face while
+
+204
+00:06:37,280 --> 00:06:39,919
+going forward
+
+205
+00:06:41,600 --> 00:06:46,240
+to study file systems on an unmodified
+
+206
+00:06:43,840 --> 00:06:47,520
+kernel we decided to inject false at the
+
+207
+00:06:46,240 --> 00:06:49,440
+block layer
+
+208
+00:06:47,520 --> 00:06:50,799
+we did this by building a device mapper
+
+209
+00:06:49,440 --> 00:06:53,199
+tool dm low key
+
+210
+00:06:50,800 --> 00:06:54,440
+to intercept block requests we wanted
+
+211
+00:06:53,199 --> 00:06:56,319
+something that could fail things
+
+212
+00:06:54,440 --> 00:06:58,080
+deterministically
+
+213
+00:06:56,319 --> 00:06:59,840
+you could configure dm loki to allow the
+
+214
+00:06:58,080 --> 00:07:01,840
+first five rights to pass
+
+215
+00:06:59,840 --> 00:07:04,799
+fail the sixth and seventh and then let
+
+216
+00:07:01,840 --> 00:07:06,400
+everything succeed after that
+
+217
+00:07:04,800 --> 00:07:09,520
+and we simplify the operations we
+
+218
+00:07:06,400 --> 00:07:11,679
+thought were common to most applications
+
+219
+00:07:09,520 --> 00:07:13,359
+the first is a single block update
+
+220
+00:07:11,680 --> 00:07:14,080
+essentially you're modifying a file in
+
+221
+00:07:13,360 --> 00:07:15,919
+place
+
+222
+00:07:14,080 --> 00:07:18,159
+the content changes and maybe the time
+
+223
+00:07:15,919 --> 00:07:19,120
+stamps but your file doesn't shrink or
+
+224
+00:07:18,160 --> 00:07:20,800
+grow
+
+225
+00:07:19,120 --> 00:07:22,240
+so we modify the middle page in a
+
+226
+00:07:20,800 --> 00:07:23,919
+three-page file
+
+227
+00:07:22,240 --> 00:07:26,960
+and this is pretty common especially
+
+228
+00:07:23,919 --> 00:07:29,198
+when updating entries in databases
+
+229
+00:07:26,960 --> 00:07:30,960
+the second is multi-block append where
+
+230
+00:07:29,199 --> 00:07:32,479
+you're growing a file by adding blocks
+
+231
+00:07:30,960 --> 00:07:34,080
+to the end of the file
+
+232
+00:07:32,479 --> 00:07:36,318
+you typically see this in write edit
+
+233
+00:07:34,080 --> 00:07:39,039
+logs
+
+234
+00:07:36,319 --> 00:07:40,800
+so let's dive into the results we found
+
+235
+00:07:39,039 --> 00:07:42,400
+that all three file system marks the
+
+236
+00:07:40,800 --> 00:07:44,400
+page clean
+
+237
+00:07:42,400 --> 00:07:46,239
+taking the in-place modification as an
+
+238
+00:07:44,400 --> 00:07:47,840
+example
+
+239
+00:07:46,240 --> 00:07:49,680
+when the write system call returns the
+
+240
+00:07:47,840 --> 00:07:51,679
+middle page is dirty
+
+241
+00:07:49,680 --> 00:07:52,720
+and we configure dm loki to fail the
+
+242
+00:07:51,680 --> 00:07:55,199
+right of the disk
+
+243
+00:07:52,720 --> 00:07:57,680
+so when fsync is called it fails but the
+
+244
+00:07:55,199 --> 00:08:00,319
+page isn't dirty anymore
+
+245
+00:07:57,680 --> 00:08:02,160
+and this isn't really a bug there's been
+
+246
+00:08:00,319 --> 00:08:04,000
+a lot of emails between the postgres
+
+247
+00:08:02,160 --> 00:08:05,599
+community and the file system developers
+
+248
+00:08:04,000 --> 00:08:07,199
+regarding this
+
+249
+00:08:05,599 --> 00:08:09,280
+turns out the main reason is the support
+
+250
+00:08:07,199 --> 00:08:11,360
+for removable usb sticks
+
+251
+00:08:09,280 --> 00:08:12,799
+if a user pulls out a usb stick while
+
+252
+00:08:11,360 --> 00:08:14,639
+there are dirty pages
+
+253
+00:08:12,800 --> 00:08:17,199
+keeping them dirty would cause a memory
+
+254
+00:08:14,639 --> 00:08:18,720
+leak and to the file system developers
+
+255
+00:08:17,199 --> 00:08:22,000
+there are way more users like that
+
+256
+00:08:18,720 --> 00:08:23,280
+compared to postgres installations
+
+257
+00:08:22,000 --> 00:08:25,599
+and you can see why retries are
+
+258
+00:08:23,280 --> 00:08:26,000
+ineffective if the page is marked clean
+
+259
+00:08:25,599 --> 00:08:27,599
+the next
+
+260
+00:08:26,000 --> 00:08:30,000
+fsync won't do anything since there
+
+261
+00:08:27,599 --> 00:08:31,599
+aren't any dirty pages to write out
+
+262
+00:08:30,000 --> 00:08:33,440
+and because there aren't any pages to
+
+263
+00:08:31,599 --> 00:08:34,958
+write out there are no errors
+
+264
+00:08:33,440 --> 00:08:36,560
+so the application will actually think
+
+265
+00:08:34,958 --> 00:08:39,518
+that fsync succeeds
+
+266
+00:08:36,559 --> 00:08:40,000
+even though nothing was written this was
+
+267
+00:08:39,519 --> 00:08:41,919
+the crux
+
+268
+00:08:40,000 --> 00:08:43,599
+of the postgres issue where they
+
+269
+00:08:41,919 --> 00:08:45,360
+truncated the right head log thinking
+
+270
+00:08:43,599 --> 00:08:47,760
+that fsync succeeded to process their
+
+271
+00:08:45,360 --> 00:08:49,279
+data
+
+272
+00:08:47,760 --> 00:08:50,800
+and while file systems have marking
+
+273
+00:08:49,279 --> 00:08:52,640
+pages clean and common
+
+274
+00:08:50,800 --> 00:08:54,079
+they actually differ in what's contained
+
+275
+00:08:52,640 --> 00:08:55,920
+in these pages
+
+276
+00:08:54,080 --> 00:08:57,519
+using the same example as before if
+
+277
+00:08:55,920 --> 00:08:58,560
+you're modifying the middle block from b
+
+278
+00:08:57,519 --> 00:09:00,800
+to x
+
+279
+00:08:58,560 --> 00:09:01,760
+the disk still contains b since f-sync
+
+280
+00:09:00,800 --> 00:09:04,319
+fails
+
+281
+00:09:01,760 --> 00:09:05,120
+but on ext4 and xfs even though the page
+
+282
+00:09:04,320 --> 00:09:08,000
+is clean
+
+283
+00:09:05,120 --> 00:09:09,600
+it contains the latest write x
+
+284
+00:09:08,000 --> 00:09:10,320
+butterfist reverts back to the old
+
+285
+00:09:09,600 --> 00:09:12,880
+content
+
+286
+00:09:10,320 --> 00:09:14,560
+because of its copy and write approach
+
+287
+00:09:12,880 --> 00:09:17,760
+so you cannot depend on the page cache
+
+288
+00:09:14,560 --> 00:09:17,760
+content after a failure
+
+289
+00:09:18,080 --> 00:09:22,880
+also ext4 data mode reports errors later
+
+290
+00:09:20,720 --> 00:09:24,720
+than the other file systems
+
+291
+00:09:22,880 --> 00:09:26,240
+it does this because the fsync writes
+
+292
+00:09:24,720 --> 00:09:28,800
+your data to the journal
+
+293
+00:09:26,240 --> 00:09:30,240
+at that point it may succeed but if it
+
+294
+00:09:28,800 --> 00:09:32,560
+fails to write the data out of the
+
+295
+00:09:30,240 --> 00:09:34,240
+journal to the actual block location
+
+296
+00:09:32,560 --> 00:09:35,599
+it just empties the journal and logs the
+
+297
+00:09:34,240 --> 00:09:37,760
+error to syslog
+
+298
+00:09:35,600 --> 00:09:39,120
+if you happen to call fsync later you'll
+
+299
+00:09:37,760 --> 00:09:42,240
+get to know about it
+
+300
+00:09:39,120 --> 00:09:44,240
+but it might be too late at that point
+
+301
+00:09:42,240 --> 00:09:46,240
+we did notice that always following with
+
+302
+00:09:44,240 --> 00:09:46,959
+the second fsync forces that data to be
+
+303
+00:09:46,240 --> 00:09:49,279
+written
+
+304
+00:09:46,959 --> 00:09:52,160
+out of the journal so you can detect the
+
+305
+00:09:49,279 --> 00:09:52,160
+problem early on
+
+306
+00:09:53,200 --> 00:09:57,920
+moving on to in-memory state we find
+
+307
+00:09:55,360 --> 00:09:58,800
+that ext4 and xfs don't try to revert
+
+308
+00:09:57,920 --> 00:10:01,519
+them
+
+309
+00:09:58,800 --> 00:10:03,599
+although the fsync operation is stopped
+
+310
+00:10:01,519 --> 00:10:05,839
+when they see a data block failure
+
+311
+00:10:03,600 --> 00:10:07,200
+the other metadata is left intact just
+
+312
+00:10:05,839 --> 00:10:08,560
+like the page content
+
+313
+00:10:07,200 --> 00:10:10,560
+we're going to walk through this with
+
+314
+00:10:08,560 --> 00:10:12,079
+the append workload where we initially
+
+315
+00:10:10,560 --> 00:10:14,399
+just have a single 4kb
+
+316
+00:10:12,079 --> 00:10:16,000
+file the first thing to notice here is
+
+317
+00:10:14,399 --> 00:10:17,040
+that there is a link that associates the
+
+318
+00:10:16,000 --> 00:10:18,959
+offset fully
+
+319
+00:10:17,040 --> 00:10:20,640
+with a block on disk this is like the
+
+320
+00:10:18,959 --> 00:10:22,160
+ino table containing the links to the
+
+321
+00:10:20,640 --> 00:10:24,079
+actual blocks
+
+322
+00:10:22,160 --> 00:10:25,519
+when you write b to the end of the file
+
+323
+00:10:24,079 --> 00:10:27,359
+there's a dirty page
+
+324
+00:10:25,519 --> 00:10:28,800
+and if the fsync fails the page is
+
+325
+00:10:27,360 --> 00:10:29,600
+marked clean and no matter data is
+
+326
+00:10:28,800 --> 00:10:31,439
+written
+
+327
+00:10:29,600 --> 00:10:33,600
+but the link for that offset to the
+
+328
+00:10:31,440 --> 00:10:36,640
+block is not reverted
+
+329
+00:10:33,600 --> 00:10:39,200
+it's not persisted yet though
+
+330
+00:10:36,640 --> 00:10:41,519
+but if you unmount the file system or
+
+331
+00:10:39,200 --> 00:10:43,279
+wait for a while it will be persisted
+
+332
+00:10:41,519 --> 00:10:45,040
+and now you have a link to a block but
+
+333
+00:10:43,279 --> 00:10:47,839
+not the content you wrote
+
+334
+00:10:45,040 --> 00:10:49,599
+we call these non-overwritten blocks
+
+335
+00:10:47,839 --> 00:10:50,240
+also if you proceed to write an fsync
+
+336
+00:10:49,600 --> 00:10:53,440
+more data
+
+337
+00:10:50,240 --> 00:10:55,120
+that persists the link as well and if an
+
+338
+00:10:53,440 --> 00:10:56,320
+application tries to read these contents
+
+339
+00:10:55,120 --> 00:10:59,200
+from disk
+
+340
+00:10:56,320 --> 00:10:59,200
+it's a corruption
+
+341
+00:10:59,519 --> 00:11:02,560
+on butterfist the entire state is
+
+342
+00:11:01,680 --> 00:11:04,560
+reverted
+
+343
+00:11:02,560 --> 00:11:05,920
+but if you keep writing it writes at the
+
+344
+00:11:04,560 --> 00:11:08,399
+updated offset
+
+345
+00:11:05,920 --> 00:11:10,560
+so you end up with a hole in that region
+
+346
+00:11:08,399 --> 00:11:12,079
+again if an application reads that block
+
+347
+00:11:10,560 --> 00:11:13,760
+it will see zeros which is also a
+
+348
+00:11:12,079 --> 00:11:16,800
+corruption
+
+349
+00:11:13,760 --> 00:11:17,439
+so to summarize we've seen dirty pages
+
+350
+00:11:16,800 --> 00:11:19,839
+mark clean
+
+351
+00:11:17,440 --> 00:11:21,519
+even after failure on all file systems
+
+352
+00:11:19,839 --> 00:11:22,000
+they don't handle errors in a standard
+
+353
+00:11:21,519 --> 00:11:24,320
+way
+
+354
+00:11:22,000 --> 00:11:25,920
+the page content differs and ext4 data
+
+355
+00:11:24,320 --> 00:11:26,880
+mode reports failures later than the
+
+356
+00:11:25,920 --> 00:11:28,560
+others
+
+357
+00:11:26,880 --> 00:11:30,399
+and in-memory data structures are
+
+358
+00:11:28,560 --> 00:11:31,518
+incorrect leading to applications facing
+
+359
+00:11:30,399 --> 00:11:33,440
+corruptions
+
+360
+00:11:31,519 --> 00:11:35,200
+or data loss depending on whether the
+
+361
+00:11:33,440 --> 00:11:38,320
+non-overwritten block is an in-place
+
+362
+00:11:35,200 --> 00:11:38,320
+update or an append
+
+363
+00:11:38,560 --> 00:11:44,959
+and now we move on to applications
+
+364
+00:11:42,079 --> 00:11:46,479
+we study five widely used applications
+
+365
+00:11:44,959 --> 00:11:48,800
+three of them are embedded
+
+366
+00:11:46,480 --> 00:11:52,639
+two servers and we have a mix of key
+
+367
+00:11:48,800 --> 00:11:54,560
+value stores and relational databases
+
+368
+00:11:52,639 --> 00:11:56,160
+our goal here is to find out whether an
+
+369
+00:11:54,560 --> 00:11:58,560
+application strategies
+
+370
+00:11:56,160 --> 00:12:00,719
+are effective when fsync fails so we
+
+371
+00:11:58,560 --> 00:12:03,040
+choose a simple workload that inserts or
+
+372
+00:12:00,720 --> 00:12:05,279
+updates a single key value pair
+
+373
+00:12:03,040 --> 00:12:06,959
+for relational databases we use a two
+
+374
+00:12:05,279 --> 00:12:09,439
+column table
+
+375
+00:12:06,959 --> 00:12:11,359
+and we fit the fsync not by mocking it
+
+376
+00:12:09,440 --> 00:12:13,440
+but by actually causing f sync to fail
+
+377
+00:12:11,360 --> 00:12:15,360
+for some underlying reason
+
+378
+00:12:13,440 --> 00:12:16,880
+and after that we dump all key value
+
+379
+00:12:15,360 --> 00:12:18,000
+pairs if the application is still
+
+380
+00:12:16,880 --> 00:12:20,720
+running
+
+381
+00:12:18,000 --> 00:12:22,320
+we do that even when it restarts we also
+
+382
+00:12:20,720 --> 00:12:24,000
+force page evictions and machine
+
+383
+00:12:22,320 --> 00:12:26,160
+restarts and dump the key value
+
+384
+00:12:24,000 --> 00:12:28,079
+pairs this gives us an idea of whether
+
+385
+00:12:26,160 --> 00:12:31,360
+there is data loss corruptions or false
+
+386
+00:12:28,079 --> 00:12:33,199
+failures and when they occur
+
+387
+00:12:31,360 --> 00:12:34,959
+we built our own file system in user
+
+388
+00:12:33,200 --> 00:12:37,760
+space called cuttlefs
+
+389
+00:12:34,959 --> 00:12:38,000
+to help inject faults deterministically
+
+390
+00:12:37,760 --> 00:12:39,600
+we
+
+391
+00:12:38,000 --> 00:12:42,079
+needed this because we didn't want to
+
+392
+00:12:39,600 --> 00:12:44,240
+deal with failing specific blocks
+
+393
+00:12:42,079 --> 00:12:46,399
+dm loki was useful when the workload was
+
+394
+00:12:44,240 --> 00:12:47,440
+simple but applications are much more
+
+395
+00:12:46,399 --> 00:12:49,200
+complex
+
+396
+00:12:47,440 --> 00:12:51,440
+and it's not possible to always get the
+
+397
+00:12:49,200 --> 00:12:54,560
+same block allotted to a file
+
+398
+00:12:51,440 --> 00:12:56,800
+using file names and offsets was easier
+
+399
+00:12:54,560 --> 00:12:58,479
+also we were able to simulate the
+
+400
+00:12:56,800 --> 00:13:00,719
+different failure reactions
+
+401
+00:12:58,480 --> 00:13:03,519
+from the file systems we studied earlier
+
+402
+00:13:00,720 --> 00:13:05,839
+by using our own user space page cache
+
+403
+00:13:03,519 --> 00:13:07,040
+so marking page is clean changing what
+
+404
+00:13:05,839 --> 00:13:09,120
+content was served
+
+405
+00:13:07,040 --> 00:13:10,560
+and when fsync errors were reported were
+
+406
+00:13:09,120 --> 00:13:12,240
+all in our control
+
+407
+00:13:10,560 --> 00:13:14,000
+this also made it easier for us to
+
+408
+00:13:12,240 --> 00:13:17,120
+choose what pages were evicted
+
+409
+00:13:14,000 --> 00:13:18,320
+and when so to give you an overview of
+
+410
+00:13:17,120 --> 00:13:20,720
+the results
+
+411
+00:13:18,320 --> 00:13:21,519
+we found false failures mainly in ext4
+
+412
+00:13:20,720 --> 00:13:24,079
+ordered mode
+
+413
+00:13:21,519 --> 00:13:25,760
+and xfs and this is mostly to do with
+
+414
+00:13:24,079 --> 00:13:27,760
+recovery from the right ed log which
+
+415
+00:13:25,760 --> 00:13:29,519
+we'll get to shortly
+
+416
+00:13:27,760 --> 00:13:31,519
+data loss and corruptions were mostly in
+
+417
+00:13:29,519 --> 00:13:32,480
+ext4 data mode due to late error
+
+418
+00:13:31,519 --> 00:13:34,160
+reporting
+
+419
+00:13:32,480 --> 00:13:36,639
+readers has a lot of errors because they
+
+420
+00:13:34,160 --> 00:13:39,360
+don't check the fsync return code
+
+421
+00:13:36,639 --> 00:13:41,519
+and butterfest had minimal errors we'll
+
+422
+00:13:39,360 --> 00:13:43,839
+first go over false failures in ext4
+
+423
+00:13:41,519 --> 00:13:45,040
+ordered mode and then data mode and then
+
+424
+00:13:43,839 --> 00:13:46,720
+bar fs
+
+425
+00:13:45,040 --> 00:13:50,399
+we're not going to cover xfs as it's
+
+426
+00:13:46,720 --> 00:13:50,399
+similar to ext4 ordered mode
+
+427
+00:13:51,040 --> 00:13:54,160
+so we know that the simple retry
+
+428
+00:13:52,880 --> 00:13:55,920
+strategy fails
+
+429
+00:13:54,160 --> 00:13:57,519
+but crash restart was also not
+
+430
+00:13:55,920 --> 00:13:59,120
+completely correct
+
+431
+00:13:57,519 --> 00:14:01,120
+the main issue here is that when
+
+432
+00:13:59,120 --> 00:14:02,160
+restarting you're reading from the page
+
+433
+00:14:01,120 --> 00:14:03,600
+cache
+
+434
+00:14:02,160 --> 00:14:05,519
+we're going to look at postgres as an
+
+435
+00:14:03,600 --> 00:14:07,760
+example
+
+436
+00:14:05,519 --> 00:14:10,000
+so postgres maintains tables as files on
+
+437
+00:14:07,760 --> 00:14:11,600
+disk and also has a write eyed log
+
+438
+00:14:10,000 --> 00:14:13,440
+and when it starts up it loads the
+
+439
+00:14:11,600 --> 00:14:14,480
+tables and replays any operations from
+
+440
+00:14:13,440 --> 00:14:17,440
+the log
+
+441
+00:14:14,480 --> 00:14:18,560
+so here a changes from zero to one and
+
+442
+00:14:17,440 --> 00:14:21,199
+now when you update
+
+443
+00:14:18,560 --> 00:14:22,880
+a to two postgres first writes it to the
+
+444
+00:14:21,199 --> 00:14:24,479
+log dirting the page
+
+445
+00:14:22,880 --> 00:14:26,399
+it then f syncs the log before
+
+446
+00:14:24,480 --> 00:14:27,920
+responding to the user because it has to
+
+447
+00:14:26,399 --> 00:14:29,519
+survive power failures
+
+448
+00:14:27,920 --> 00:14:32,079
+and only after an fsync can you be
+
+449
+00:14:29,519 --> 00:14:34,160
+guaranteed that it will be replayed
+
+450
+00:14:32,079 --> 00:14:36,239
+but see the fsync fails so the
+
+451
+00:14:34,160 --> 00:14:38,079
+transaction fails and postcards crashes
+
+452
+00:14:36,240 --> 00:14:40,880
+intentionally
+
+453
+00:14:38,079 --> 00:14:42,839
+the page is marked clean but on ext4 and
+
+454
+00:14:40,880 --> 00:14:45,040
+xfs the content is still in the page
+
+455
+00:14:42,839 --> 00:14:47,600
+cache so when you restart
+
+456
+00:14:45,040 --> 00:14:49,760
+you are rebuilding incorrect state state
+
+457
+00:14:47,600 --> 00:14:51,920
+represents the successful operation
+
+458
+00:14:49,760 --> 00:14:53,839
+even though it had failed we call these
+
+459
+00:14:51,920 --> 00:14:56,000
+false failures
+
+460
+00:14:53,839 --> 00:14:57,680
+and false failures are bad if you run
+
+461
+00:14:56,000 --> 00:15:00,160
+queries and get a failure
+
+462
+00:14:57,680 --> 00:15:01,760
+users typically just retry it no one
+
+463
+00:15:00,160 --> 00:15:03,040
+checks if it passed because you told us
+
+464
+00:15:01,760 --> 00:15:04,560
+it failed
+
+465
+00:15:03,040 --> 00:15:06,399
+these may not be a problem for id
+
+466
+00:15:04,560 --> 00:15:07,680
+important operations like setting
+
+467
+00:15:06,399 --> 00:15:09,040
+absolute values
+
+468
+00:15:07,680 --> 00:15:11,920
+but they are a problem when say
+
+469
+00:15:09,040 --> 00:15:13,680
+decrementing a retry here could cause a
+
+470
+00:15:11,920 --> 00:15:15,360
+double decrement
+
+471
+00:15:13,680 --> 00:15:17,359
+we find these in every application
+
+472
+00:15:15,360 --> 00:15:18,160
+except readers readers always report
+
+473
+00:15:17,360 --> 00:15:21,920
+success
+
+474
+00:15:18,160 --> 00:15:21,920
+because it never checks if fsync fails
+
+475
+00:15:22,639 --> 00:15:26,079
+there's also this false sense of
+
+476
+00:15:24,160 --> 00:15:28,240
+durability with the xt4 data
+
+477
+00:15:26,079 --> 00:15:30,479
+mode that just because it writes data to
+
+478
+00:15:28,240 --> 00:15:32,639
+the journal you're safer than usual
+
+479
+00:15:30,480 --> 00:15:33,519
+but this isn't true finding out about
+
+480
+00:15:32,639 --> 00:15:35,600
+errors later
+
+481
+00:15:33,519 --> 00:15:37,279
+is actually more dangerous and causes
+
+482
+00:15:35,600 --> 00:15:39,120
+data loss for every application we've
+
+483
+00:15:37,279 --> 00:15:41,199
+studied
+
+484
+00:15:39,120 --> 00:15:42,720
+for example say you're updating a's
+
+485
+00:15:41,199 --> 00:15:46,399
+value to 2.
+
+486
+00:15:42,720 --> 00:15:48,880
+so the page is dirty and now you fsync
+
+487
+00:15:46,399 --> 00:15:49,759
+fsync succeeds since ext4 puts it in the
+
+488
+00:15:48,880 --> 00:15:52,480
+journal
+
+489
+00:15:49,759 --> 00:15:55,040
+so you report the success to the user
+
+490
+00:15:52,480 --> 00:15:56,079
+but when ext4 fails to move the data out
+
+491
+00:15:55,040 --> 00:15:58,560
+of the journal
+
+492
+00:15:56,079 --> 00:16:00,239
+it just logs it in syslog so it's not on
+
+493
+00:15:58,560 --> 00:16:02,479
+disk and it's not in the journal
+
+494
+00:16:00,240 --> 00:16:03,680
+it's only in the page cache if the
+
+495
+00:16:02,480 --> 00:16:08,000
+machine restarts
+
+496
+00:16:03,680 --> 00:16:09,758
+you've lost your data is value is one
+
+497
+00:16:08,000 --> 00:16:11,920
+and while this is just for the right eye
+
+498
+00:16:09,759 --> 00:16:13,120
+log it also happens during postgres
+
+499
+00:16:11,920 --> 00:16:14,880
+checkpoints
+
+500
+00:16:13,120 --> 00:16:16,800
+and this is just data loss but we've
+
+501
+00:16:14,880 --> 00:16:20,160
+documented cases of corruption for all
+
+502
+00:16:16,800 --> 00:16:20,160
+the other applications as well
+
+503
+00:16:20,399 --> 00:16:23,759
+so it looks like the copy on right
+
+504
+00:16:22,000 --> 00:16:25,040
+strategy where you revert on failure is
+
+505
+00:16:23,759 --> 00:16:26,560
+working pretty well
+
+506
+00:16:25,040 --> 00:16:29,040
+we don't find too many failures on
+
+507
+00:16:26,560 --> 00:16:30,079
+butterfs and because the page contents
+
+508
+00:16:29,040 --> 00:16:31,839
+match the disk
+
+509
+00:16:30,079 --> 00:16:33,519
+it works well with the crash restart
+
+510
+00:16:31,839 --> 00:16:34,880
+strategy when recovering from the
+
+511
+00:16:33,519 --> 00:16:36,800
+righthead log
+
+512
+00:16:34,880 --> 00:16:38,160
+but it doesn't really work for sqlite
+
+513
+00:16:36,800 --> 00:16:42,240
+and rollback mode
+
+514
+00:16:38,160 --> 00:16:44,079
+we're gonna see why so in sqlite if you
+
+515
+00:16:42,240 --> 00:16:44,720
+run a query that is going to modify your
+
+516
+00:16:44,079 --> 00:16:46,800
+page
+
+517
+00:16:44,720 --> 00:16:49,199
+it first writes the original contents of
+
+518
+00:16:46,800 --> 00:16:50,880
+the page to the rollback journal
+
+519
+00:16:49,199 --> 00:16:53,359
+that way you can always revert state if
+
+520
+00:16:50,880 --> 00:16:55,279
+you abort the transaction
+
+521
+00:16:53,360 --> 00:16:57,040
+sqlite then proceeds to dirty the page
+
+522
+00:16:55,279 --> 00:16:57,920
+in the main database with the updated
+
+523
+00:16:57,040 --> 00:17:00,000
+value
+
+524
+00:16:57,920 --> 00:17:01,120
+and right before committing it fsync the
+
+525
+00:17:00,000 --> 00:17:02,880
+rollback first
+
+526
+00:17:01,120 --> 00:17:04,400
+it has to make sure that the rollback is
+
+527
+00:17:02,880 --> 00:17:06,799
+safe before it can persist the main
+
+528
+00:17:04,400 --> 00:17:09,760
+database changes
+
+529
+00:17:06,799 --> 00:17:11,199
+but if it fails here it's relying on the
+
+530
+00:17:09,760 --> 00:17:12,400
+fact that it can recover using the
+
+531
+00:17:11,199 --> 00:17:15,280
+rollback
+
+532
+00:17:12,400 --> 00:17:16,880
+unfortunately on butter fs the rollback
+
+533
+00:17:15,280 --> 00:17:18,559
+file has been reverted
+
+534
+00:17:16,880 --> 00:17:20,400
+so sqlite thinks there is nothing to
+
+535
+00:17:18,559 --> 00:17:23,119
+revert and you keep the new state
+
+536
+00:17:20,400 --> 00:17:24,240
+a false failure and this is just to
+
+537
+00:17:23,119 --> 00:17:26,799
+prove that butterfs
+
+538
+00:17:24,240 --> 00:17:27,839
+isn't bulletproof but it's worse on ext4
+
+539
+00:17:26,799 --> 00:17:29,520
+and xfs
+
+540
+00:17:27,839 --> 00:17:31,200
+we found that the same scenario caused
+
+541
+00:17:29,520 --> 00:17:34,240
+corruptions because you might roll back
+
+542
+00:17:31,200 --> 00:17:37,120
+from a non-overwritten block
+
+543
+00:17:34,240 --> 00:17:38,160
+so to summarize simple strategies aren't
+
+544
+00:17:37,120 --> 00:17:39,520
+effective
+
+545
+00:17:38,160 --> 00:17:42,559
+and you don't want to trust the page
+
+546
+00:17:39,520 --> 00:17:44,080
+cache while recovering state
+
+547
+00:17:42,559 --> 00:17:45,760
+most applications have issues with the
+
+548
+00:17:44,080 --> 00:17:47,600
+extfos data mode
+
+549
+00:17:45,760 --> 00:17:49,520
+but doing a double fsync seems like a
+
+550
+00:17:47,600 --> 00:17:51,439
+quick fix
+
+551
+00:17:49,520 --> 00:17:53,600
+and butterfest's copy on right approach
+
+552
+00:17:51,440 --> 00:17:57,120
+is promising but you have to be careful
+
+553
+00:17:53,600 --> 00:17:57,120
+when using a rollback strategy
+
+554
+00:17:57,200 --> 00:18:01,679
+so we've seen that applications still
+
+555
+00:17:59,200 --> 00:18:03,679
+face errors after fsync failures
+
+556
+00:18:01,679 --> 00:18:04,960
+they don't handle them correctly not
+
+557
+00:18:03,679 --> 00:18:08,160
+entirely
+
+558
+00:18:04,960 --> 00:18:09,600
+but can they recover from them right now
+
+559
+00:18:08,160 --> 00:18:12,320
+you could if you wrote file system
+
+560
+00:18:09,600 --> 00:18:14,240
+specific code but we probably need to
+
+561
+00:18:12,320 --> 00:18:16,799
+standardize file system behavior
+
+562
+00:18:14,240 --> 00:18:19,760
+especially when everything fails posix
+
+563
+00:18:16,799 --> 00:18:19,760
+is really vague on that
+
+564
+00:18:20,799 --> 00:18:24,480
+i wanted to conclude with a few things
+
+565
+00:18:22,559 --> 00:18:26,320
+to think about when trying to solve this
+
+566
+00:18:24,480 --> 00:18:28,640
+problem
+
+567
+00:18:26,320 --> 00:18:31,280
+if you're looking at uniform behavior
+
+568
+00:18:28,640 --> 00:18:33,760
+freebsd re-dirties the pages at the vfs
+
+569
+00:18:31,280 --> 00:18:35,120
+layer when it sees a failure
+
+570
+00:18:33,760 --> 00:18:37,760
+and there has been some discussion
+
+571
+00:18:35,120 --> 00:18:39,600
+online about doing the same in linux
+
+572
+00:18:37,760 --> 00:18:41,280
+maybe using a flag when mounting to
+
+573
+00:18:39,600 --> 00:18:42,000
+choose whether to re-dirty or keep the
+
+574
+00:18:41,280 --> 00:18:44,879
+pages clean
+
+575
+00:18:42,000 --> 00:18:46,960
+after a failure but it isn't that simple
+
+576
+00:18:44,880 --> 00:18:48,799
+because file systems like butterfs
+
+577
+00:18:46,960 --> 00:18:50,559
+revert the content before it goes back
+
+578
+00:18:48,799 --> 00:18:54,000
+out to the vfs layer
+
+579
+00:18:50,559 --> 00:18:55,678
+so it may not be a simple fix the second
+
+580
+00:18:54,000 --> 00:18:56,080
+is whether we want applications to be
+
+581
+00:18:55,679 --> 00:18:57,760
+aware
+
+582
+00:18:56,080 --> 00:18:59,360
+of file system differences in an
+
+583
+00:18:57,760 --> 00:19:01,039
+operating system
+
+584
+00:18:59,360 --> 00:19:03,439
+the major one is if you're on a mac you
+
+585
+00:19:01,039 --> 00:19:04,320
+can't just fsync you have to call f full
+
+586
+00:19:03,440 --> 00:19:06,000
+sync
+
+587
+00:19:04,320 --> 00:19:07,600
+but do we want applications to actually
+
+588
+00:19:06,000 --> 00:19:09,679
+think about differences within an
+
+589
+00:19:07,600 --> 00:19:11,840
+operating system
+
+590
+00:19:09,679 --> 00:19:13,679
+we also need a stronger contract once a
+
+591
+00:19:11,840 --> 00:19:15,039
+file system promises that your data is
+
+592
+00:19:13,679 --> 00:19:17,600
+on disk
+
+593
+00:19:15,039 --> 00:19:19,679
+ext4 data mode emptying the journal even
+
+594
+00:19:17,600 --> 00:19:22,399
+when it fails to write the data block
+
+595
+00:19:19,679 --> 00:19:24,320
+is not good enough and lastly
+
+596
+00:19:22,400 --> 00:19:26,160
+applications do a lot of testing
+
+597
+00:19:24,320 --> 00:19:28,080
+but just ensure that you're testing the
+
+598
+00:19:26,160 --> 00:19:28,720
+file system's error handling code parts
+
+599
+00:19:28,080 --> 00:19:30,480
+too
+
+600
+00:19:28,720 --> 00:19:33,760
+because how you recover depends on the
+
+601
+00:19:30,480 --> 00:19:35,440
+state of the system after the failure
+
+602
+00:19:33,760 --> 00:19:38,320
+if you go the block fault injection
+
+603
+00:19:35,440 --> 00:19:39,679
+route dm loki can help you or you can
+
+604
+00:19:38,320 --> 00:19:43,439
+simulate all the post failure
+
+605
+00:19:39,679 --> 00:19:43,440
+characteristics using cut lfs
+
+606
+00:19:44,000 --> 00:19:49,600
+to conclude durability is important
+
+607
+00:19:47,120 --> 00:19:51,039
+and fsync is essential we still want to
+
+608
+00:19:49,600 --> 00:19:53,199
+use the page cache
+
+609
+00:19:51,039 --> 00:19:54,879
+it has a lot of performance benefits and
+
+610
+00:19:53,200 --> 00:19:55,679
+no one wants to re-implement their own
+
+611
+00:19:54,880 --> 00:19:57,520
+cache
+
+612
+00:19:55,679 --> 00:20:00,559
+so fsync is a good way of forcing things
+
+613
+00:19:57,520 --> 00:20:00,559
+to disk when you want to
+
+614
+00:20:00,720 --> 00:20:04,559
+failures are inevitable though i don't
+
+615
+00:20:02,720 --> 00:20:07,039
+think it's wise to ever assume that
+
+616
+00:20:04,559 --> 00:20:09,520
+disks or cloud provided attached storage
+
+617
+00:20:07,039 --> 00:20:11,200
+will be free or false and so failure
+
+618
+00:20:09,520 --> 00:20:12,879
+handling code is necessary
+
+619
+00:20:11,200 --> 00:20:14,400
+but just remember that different file
+
+620
+00:20:12,880 --> 00:20:15,440
+systems handle fsync failures
+
+621
+00:20:14,400 --> 00:20:16,720
+differently
+
+622
+00:20:15,440 --> 00:20:18,960
+so if you are trying a specific
+
+623
+00:20:16,720 --> 00:20:20,720
+technique make sure you understand the
+
+624
+00:20:18,960 --> 00:20:22,720
+characteristics of all the file systems
+
+625
+00:20:20,720 --> 00:20:24,480
+you're supporting
+
+626
+00:20:22,720 --> 00:20:26,080
+and we've seen that applications handle
+
+627
+00:20:24,480 --> 00:20:28,159
+f-sync errors differently
+
+628
+00:20:26,080 --> 00:20:29,439
+but no single strategy works well on all
+
+629
+00:20:28,159 --> 00:20:30,960
+file systems
+
+630
+00:20:29,440 --> 00:20:34,640
+at least not if you want the benefits of
+
+631
+00:20:30,960 --> 00:20:36,799
+the page cache
+
+632
+00:20:34,640 --> 00:20:38,480
+we have a lot more results in the paper
+
+633
+00:20:36,799 --> 00:20:40,158
+and they describe the exact conditions
+
+634
+00:20:38,480 --> 00:20:49,840
+that cause these failures and more
+
+635
+00:20:40,159 --> 00:20:49,840
+i hope you enjoy it thank you
+
+636
+00:23:03,039 --> 00:23:05,120
+you
+

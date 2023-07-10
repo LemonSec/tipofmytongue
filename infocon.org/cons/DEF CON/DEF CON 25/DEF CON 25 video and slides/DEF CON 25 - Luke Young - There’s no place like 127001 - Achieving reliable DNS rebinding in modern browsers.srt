@@ -1,0 +1,2074 @@
+﻿00:00:00.000-->00:00:06.874
+>>Hi [laughs] uuhh so for those
+of you that didn't catch that my
+name is uh Luke Young uh and I'm
+
+00:00:06.874-->00:00:13.680
+here to talk about uh achieving
+reliable DNS rebinding in modern
+browsers. Uhh thank you everyone
+
+00:00:13.680-->00:00:18.685
+who made it out here got- woke
+up early and got your badge uuh
+really appreciate it. Alright,
+
+00:00:21.455-->00:00:27.828
+so. Um my name is Luke like I
+said. I am a senior information
+security engineer at LINKEDIN.
+
+00:00:27.828-->00:00:32.065
+Uh I've been there about a year
+now. Since I started full time
+uh I've interned at a couple
+
+00:00:32.065-->00:00:36.670
+different security teams at a
+few other companies. I see some
+familiar faces out in the crowd.
+
+00:00:36.670-->00:00:42.543
+Umm that's my email address uh
+both work and personal, link to
+my LINKEDIN profile. All that
+
+00:00:42.543-->00:00:48.382
+will be up at the end if you
+have any questions uh just shoot
+me a message. Um and as
+
+00:00:48.382-->00:00:53.620
+mentioned this is my third year
+at Def Con so I gave a talk last
+year on the subject of attacking
+
+00:00:53.620-->00:00:59.092
+network infrastructure to
+generate a 4 terabit a second
+DDOS for 5 bucks. And the year
+
+00:00:59.092-->00:01:04.231
+before that I gave a talk about
+investigating the practicality
+and cost of abusing memory
+
+00:01:04.231-->00:01:10.304
+errors uh where I explored DNS
+bit flips. So in case you don't
+see a bit of a theme there, uh I
+
+00:01:10.304-->00:01:15.742
+like networking stuff,
+specifically anything that has
+to do with DNS. Um so when I
+
+00:01:15.742-->00:01:22.482
+heard a bit about DNS rebinding
+I decided it was right up my
+alley. So here's how we're gonna
+
+00:01:22.482-->00:01:28.155
+talk about this today. We're
+gonna establish a uh fictional
+company called ACME Corp. Uh and
+
+00:01:28.155-->00:01:34.194
+we're gonna use that for all of
+our references so that everyone
+can understand DNS rebinding. Um
+
+00:01:34.194-->00:01:38.065
+we're gonna establish a network
+topology for this company we're
+gonna talk about how DNS
+
+00:01:38.065-->00:01:42.436
+rebinding could be leveraged in
+an attack against this company
+and then how to automate some of
+
+00:01:42.436-->00:01:46.873
+that using the tool that I built
+which will be released at the
+end of the talk. Uh and then
+
+00:01:46.873-->00:01:50.844
+finally I'm gonna talk about
+some of the practical exploits
+of DNS rebinding and give some
+
+00:01:50.844-->00:01:55.849
+real tools and applications.
+Alright [breathes] So we have
+our uh ACME corp and we're gonna
+
+00:01:59.486-->00:02:03.890
+start with an int- internal
+corporate network which we're
+gonna refor to refer to as corp
+
+00:02:03.890-->00:02:09.696
+dot acme dot com. Of course we
+need some employees so we're
+gonna add a developer Chris. Uh
+
+00:02:09.696-->00:02:15.402
+Chris needs somewhere to commit
+all that wonderful code that he
+writes to so we're gonna add a
+
+00:02:15.402-->00:02:21.508
+code repository located at code
+dot corp dot acme dot com. Of
+course our developer Chris needs
+
+00:02:21.508-->00:02:25.212
+to get to the internet so he can
+look at cat pictures at work so
+we're gonna connect the corp
+
+00:02:25.212-->00:02:32.219
+internet to the actual internet.
+Um and finally we need our bad
+actor in this scenario. So we're
+
+00:02:32.219-->00:02:38.625
+gonna add our attacker who owns
+attacker domain. Alright so a
+couple of quick notes about this
+
+00:02:38.625-->00:02:44.765
+architecture, um first off we're
+gonna refer to this entire area
+on the right as the intranet um
+
+00:02:44.765-->00:02:51.405
+essentially the internal network
+of this fictional company. Next
+we're going to assume that our
+
+00:02:51.405-->00:02:57.244
+attacker has insider knowledge
+of this network layout. So
+whether you're network engineer
+
+00:02:57.244-->00:03:02.115
+decided to post the entire
+network topology on his resume
+on his personal website or a
+
+00:03:02.115-->00:03:06.286
+disgruntled employee took some
+internal docs I'll leave that
+entirely up to your imagination.
+
+00:03:06.286-->00:03:11.992
+Uh and we'll get to why that's
+necessary in a little bit. Uh
+for the sake of simplicity we're
+
+00:03:11.992-->00:03:16.997
+gonna uh assume that code dot
+corp dot acme dot com has no
+authentication on it. So uh ACME
+
+00:03:19.099-->00:03:23.370
+had a long meeting with their
+single employee and decided they
+trust their one employee and you
+
+00:03:23.370-->00:03:28.575
+have to be on the intranet in
+order to access this so they're
+not gonna put authentication on
+
+00:03:28.575-->00:03:34.581
+it. Uh now this is just an
+example this [indistinguishable]
+could be anything lacking
+
+00:03:34.581-->00:03:40.253
+authentication on your internal
+network. It could be a wiki page
+containing company secrets, it
+
+00:03:40.253-->00:03:45.525
+could be your internal HR
+system, it could be some
+marketing website for a new
+
+00:03:45.525-->00:03:51.098
+product that hasn't been
+announced yet. Um who knows.
+Could be anything.Uh and I don't
+
+00:03:51.098-->00:03:55.502
+think I need to ask people to
+raise their hand about at least
+one of those things probably has
+
+00:03:55.502-->00:04:00.040
+existed on their network at some
+point in time. Everyone spins up
+something and goes "Oh it's
+
+00:04:00.040-->00:04:05.045
+fine, it's safe, it's only
+accessible on the intranet. Uh
+our our only our employees can
+
+00:04:05.045-->00:04:12.052
+access it." Alright. Finally the
+edge of our network like I said
+is gonna act as a firewall
+
+00:04:12.052-->00:04:17.958
+preventing our bad actor from
+directly accessing code dot corp
+dot acme dot com. So the only
+
+00:04:17.958-->00:04:24.331
+way you can access that is again
+being on the internal network.
+Alright and the lastly we're
+
+00:04:24.331-->00:04:29.169
+going to assume that our
+developer Chris just loves to
+click on links. Doesn't matter
+
+00:04:29.169-->00:04:33.773
+if it's a sketchy ad [audience
+laughter] or a a phishing email,
+Chris is gonna click on that
+
+00:04:33.773-->00:04:40.213
+link. Um alright. So before we
+get into how DNS rebinding works
+I wanted to do a a quick
+
+00:04:40.213-->00:04:46.019
+refresher on same origin policy
+and browsers, how they work. So
+let's suppose that our developer
+
+00:04:46.019-->00:04:51.024
+Chris has browsed to attacker
+domain. Now Chris has loaded our
+malicious website it can start
+
+00:04:53.059-->00:04:59.366
+executing uh active content like
+Javascript or Flash um assuming
+he doesn't have any plugins set
+
+00:04:59.366-->00:05:04.070
+up. But Chris likes to click all
+the links doesn't like to
+install things like NoScript. Um
+
+00:05:04.070-->00:05:09.910
+and since Chris is on the
+internal network he also has
+access to code dot corpdot acme
+
+00:05:09.910-->00:05:16.483
+dot com in another tab so as you
+can see here we have hello world
+uh there you know billion dollar
+
+00:05:16.483-->00:05:21.488
+company plan from
+helloworld.cpp. Alright so what
+if our attacker domain loads
+
+00:05:23.557-->00:05:30.263
+evil.js and evil.js makes a
+request to code dot corp. Does
+the browser just let this
+
+00:05:30.263-->00:05:36.036
+through and we get a 200 OK? Of
+course not. This is blocked by
+the browser's same origin
+
+00:05:36.036-->00:05:41.908
+policy. Uh so same origin policy
+is exactly like it sounds. It
+checks if a request has
+
+00:05:41.908-->00:05:48.782
+originated from the same origin
+as the current currently
+executing script. Um so while a
+
+00:05:48.782-->00:05:55.021
+request to code dot corp.acme
+will fail a request to the same
+origin attacker domain would
+
+00:05:55.021-->00:05:59.960
+would succeed. Of course there
+are exemptions to same origin
+policy. Um you have uh CORS or
+
+00:06:03.163-->00:06:08.568
+JSONP um but overall uh same
+origin policy is actually pretty
+restrictive. You can't even do
+
+00:06:08.568-->00:06:14.174
+things like accessing a sub
+domain. Uh that will get blocked
+by default same origin policy.
+
+00:06:14.174-->00:06:20.180
+So uh but like I said CORS,
+JSONP there are special
+exemptions to same origin policy
+
+00:06:20.180-->00:06:26.319
+but it requires opt in from the
+participating server. Uh so this
+is kind of same origin policy at
+
+00:06:26.319-->00:06:31.191
+the most basic level this is
+what protects uh all of your uh
+information when you're browsing
+
+00:06:31.191-->00:06:37.364
+facebook in one tab and your
+bank is open in another. Alright
+so. How does DNS rebinding play
+
+00:06:37.364-->00:06:43.737
+into all of this? DNS rebinding
+allows us to essentially trick
+the browser into making what it
+
+00:06:43.737-->00:06:48.341
+believes are same origin
+requests that actually reach
+different servers on the back
+
+00:06:48.341-->00:06:53.346
+end. Um so let me get a little
+bit into how that works. So
+let's imagine we have uhh a
+
+00:06:55.749-->00:07:00.687
+browser run by our developer
+Chris. We have uhh our internal
+DNS server located at 10.0.0.1
+
+00:07:06.459-->00:07:09.529
+our attacker server which we've
+located at 137137137137. And
+finally our internal code
+
+00:07:09.529-->00:07:14.534
+repository located at 10.0.0.99.
+So our developer Chris goes and
+goes to his keyboard and types
+
+00:07:16.603-->00:07:21.608
+in rebind dot attackerdomain and
+hits enter. Now our browser
+takes a look at this and goes "I
+
+00:07:24.411-->00:07:29.516
+don't know what to do with
+this." and so it asks our DNS
+resolver for help. It says "Can
+
+00:07:29.516-->00:07:34.754
+you help me locate rebind dot
+attackerdomain?" And sends an A
+query. That A query gets sent
+
+00:07:34.754-->00:07:39.693
+along, DNS resolver goes "I
+don't know about this" and so it
+asks the DNS root. The DNS root
+
+00:07:39.693-->00:07:44.998
+comes back and says "Hey, if you
+wanna know about rebind dot
+attackerdomain, you have to ask
+
+00:07:44.998-->00:07:50.203
+attackerdomain, they have all
+the info about that." So it
+forwards our question along to
+
+00:07:50.203-->00:07:55.342
+attacker domain who goes and
+faithfully returns a response
+that atta- rebind dot
+
+00:07:55.342-->00:08:00.280
+attackerdomain is located at
+137137137137. And we set a TTL
+of 2, so t- uh TTL basically
+
+00:08:02.916-->00:08:08.855
+says how long you're allowed to
+cache this record for. Uh so
+this gets sent back along
+
+00:08:08.855-->00:08:14.027
+through our DNS resolver all the
+way back to our browser. And our
+DNS resolver goes and saves that
+
+00:08:14.027-->00:08:19.933
+in its cache. Alright our
+browser takes a look at that IP
+and it generates a generic HTTP
+
+00:08:19.933-->00:08:26.473
+request. Um note this is an HTTP
+request not an HTTPS request and
+we'll talk about that in a
+
+00:08:26.473-->00:08:31.678
+little bit. Um our browser sends
+this it gets sent along to our
+attacker controlled server and
+
+00:08:31.678-->00:08:37.283
+our attacker controlled server
+generates a response, sends it
+back to the browser and the
+
+00:08:37.283-->00:08:42.322
+browser renders it. So far this
+is a completely normal flow,
+this is exactly how you would
+
+00:08:42.322-->00:08:48.061
+answer the uh infamous interview
+question "What happens when you
+type www.google.com and hit
+
+00:08:48.061-->00:08:54.200
+enter?" Um so this is where it
+gets a little messy. Let's
+imagine that our webpage that we
+
+00:08:54.200-->00:09:00.974
+just loaded wants to make a
+request to secrets.text. Again
+on rebind dot attackerdomain. So
+
+00:09:00.974-->00:09:06.146
+it sends sends this request the
+browser goes "Oh I don't know
+what rebind dot attackerdomain
+
+00:09:06.146-->00:09:12.152
+is." And it asks our DNS server
+again. Our DNS server takes a
+look at that question and
+
+00:09:12.152-->00:09:15.588
+normally this is where the flow
+would end. The DNS server would
+say "Hey I have a cached
+
+00:09:15.588-->00:09:20.794
+response from last time" But if
+uh any of you have been timing
+it's been more than 2 seconds
+
+00:09:20.794-->00:09:25.698
+since the last time we sent that
+response there and so our our
+DNS resolver has completely
+
+00:09:25.698-->00:09:31.271
+forgotten where attack rebind
+dot attackerdomain is located.
+So it asks the DNS root again
+
+00:09:31.271-->00:09:36.543
+who gets told "ask
+attackerdomain" This question
+gets relayed along to
+
+00:09:36.543-->00:09:41.448
+attackerdomain and this time
+attackerdomain sends back a
+different answer. So we say
+
+00:09:41.448-->00:09:47.620
+rebind dot attackerdomain is
+actually located at 10.0.0.99.
+This gets sent back to the
+
+00:09:47.620-->00:09:52.625
+browser the browser goes along
+its merry way and generates an
+HTTP request and sends it along
+
+00:09:55.595-->00:10:02.135
+to the IP it was given, that of
+code dot corp. code dot corp
+sees a request and because it
+
+00:10:02.135-->00:10:07.140
+doesn't have authentication
+sends the response back. And now
+our browser has a copy of the
+
+00:10:09.476-->00:10:13.713
+billion dollar business plan but
+it's loaded on rebind dot
+attackerdomain where our
+
+00:10:13.713-->00:10:19.719
+attacker can read that file and
+exfiltrate it. So if we take a
+step back for a second here,
+
+00:10:19.719-->00:10:24.724
+let's look at what happened. Did
+we violate the DNS spec? No this
+is a perfectly legitimate
+
+00:10:26.960-->00:10:31.731
+answer. Um companies do switch
+around IPS all the time and
+companies do have extremely
+
+00:10:31.731-->00:10:37.070
+short TTLs all the time. So for
+example companies that uh
+commonly come under attack will
+
+00:10:37.070-->00:10:41.274
+will fast fluctuate between
+short TTLs that they can change
+servers quickly. Um did we
+
+00:10:41.274-->00:10:46.279
+violate the HTTP spec? No we
+sent a regular HTTP request,
+this is all perfectly valid. So
+
+00:10:50.350-->00:10:56.756
+this right here is DNS rebinding
+at its simplest. Uh basically
+we've tricked the browser into
+
+00:10:56.756-->00:11:01.694
+rebinding the DNS record as the
+page was loaded. Alright, so if
+we loop back to that ACME
+
+00:11:05.498-->00:11:11.171
+network diagram what we've done
+is just let our bad actor
+actually utilize the access that
+
+00:11:11.171-->00:11:15.708
+Chris had on the network in
+order to access the code,
+exfiltrate data from code dot
+
+00:11:15.708-->00:11:21.614
+corp. If you want to think about
+this in another way, what we've
+essentially done is let our bad
+
+00:11:21.614-->00:11:26.686
+actor assume Chris' position on
+the network in the physical
+sense. Uh an easy way to think
+
+00:11:26.686-->00:11:31.491
+about DNS rebinding is if our
+bad actor was physically in the
+room and plugged into the same
+
+00:11:31.491-->00:11:37.830
+network jack as Chris. Uh this
+company was already vulnerable
+or at risk to having all of
+
+00:11:37.830-->00:11:42.468
+their code stolen if you walked
+into their office and plugged
+into a jack, we just eliminated
+
+00:11:42.468-->00:11:46.339
+the need to be physically
+present to do so. The other
+reason that analogy actually
+
+00:11:46.339-->00:11:52.178
+holds up pretty well is because
+we didn't- we weren't able to
+assume Chris' authentication for
+
+00:11:52.178-->00:11:56.449
+code dot corp just as if I
+walked into your building and
+plugged into a network jack I
+
+00:11:56.449-->00:12:00.219
+don't know you're what you're
+developers password is. And DNS
+rebinding works that same way.
+
+00:12:00.219-->00:12:05.391
+Because when a- when the browser
+acts as rebind dot
+attackerdomain it wasn't the
+
+00:12:05.391-->00:12:10.597
+same DNS entry that all the
+cookies were saved under, which
+was code dot corp they won't get
+
+00:12:10.597-->00:12:15.602
+sent. So it's an unauthenticated
+request. Alright so that sounds
+a little bit scary let's let's
+
+00:12:18.705-->00:12:25.244
+talk about some of the "gotchas"
+about this tech. Uh for any of
+it to happen uh Chris had to
+
+00:12:25.244-->00:12:31.217
+visit a malicious webpage. Then
+we required internal knowledge
+of the ACME network and we had
+
+00:12:31.217-->00:12:38.124
+to know the internal IP of code
+dot corp dot acme dot com ahead
+of time. Umm so for those of you
+
+00:12:38.124-->00:12:44.564
+that don't work with split DNS
+basically uh the way it works if
+you're on the corporate intranet
+
+00:12:44.564-->00:12:48.835
+you have certain results that
+will only resolve when you're
+inside of the network. And the
+
+00:12:48.835-->00:12:52.038
+way that works is your DNS
+resolver takes when it gets a
+query it looks at it and says
+
+00:12:52.038-->00:12:57.510
+"Is this coming from inside? OK
+let me serve it these records
+over here." And "oh this request
+
+00:12:57.510-->00:13:01.581
+came from the outside let me
+serve it those records over
+here." That's called split DNS.
+
+00:13:01.581-->00:13:07.920
+So we can't go query code dot
+corp dot acme dot com from the
+outside to know its IP. We we
+
+00:13:07.920-->00:13:12.792
+had to know that ahead of time.
+And finally it was, DNS
+rebinding is notoriously
+
+00:13:12.792-->00:13:18.698
+unreliable. So let's break some
+of these down and talk about how
+to get past some of these. First
+
+00:13:18.698-->00:13:24.070
+he had to visit the the webpage
+uh I I don't really feel like I
+even need to talk about this if
+
+00:13:24.070-->00:13:29.642
+uh I you honestly believe that I
+can't convince a single one of
+your employees to click one link
+
+00:13:29.642-->00:13:34.547
+you're lying to yourself. Um and
+that's literally all you have to
+do. You just have to click the
+
+00:13:34.547-->00:13:40.253
+link. Uh you don't have to click
+on the page or interact with it
+in any way. You just have to
+
+00:13:40.253-->00:13:45.491
+open it up. Of course there are
+other delivery mechanisms for
+something like this too, you
+
+00:13:45.491-->00:13:51.130
+could serve this in a drive by
+malware uh or a drive by
+malicious ad. You could of
+
+00:13:51.130-->00:13:55.268
+course send phishing emails, all
+of the traditional ways to get
+someone to click a single link.
+
+00:13:55.268-->00:14:00.206
+Uh yep. Alright the next thing
+we needed to do was we needed
+internal knowledge of the target
+
+00:14:03.309-->00:14:08.715
+network. We had to know that
+code dot corp dot acme dot com
+existed. Now I wish I could say
+
+00:14:08.715-->00:14:12.785
+that would be difficult to
+obtain that sort of information,
+but I wasn't joking when I said
+
+00:14:12.785-->00:14:17.123
+your network engineer probably
+put the entire diagram on his
+resume. I've seen that before.
+
+00:14:17.123-->00:14:23.596
+Umm. And you have people leaking
+hostnames all over the place.
+All of those GitHub issues that
+
+00:14:23.596-->00:14:28.968
+your uh developer posts and
+accidentally includes all the
+hostnames in the debug log.
+
+00:14:28.968-->00:14:33.306
+People like me are scraping
+those. All the time. Doesn't
+matter if you had it up there
+
+00:14:33.306-->00:14:38.544
+for sixty seconds someone pulled
+it down and we have that
+hostname now. Plus these
+
+00:14:38.544-->00:14:45.151
+hostnames are typically built
+for people, you know. The-
+they're not that hard to guess.
+
+00:14:45.151-->00:14:50.456
+code dot corp dot acme dot com.
+Git.corp.acle er dot acme dot
+com, svn.corp dot acme dot com,
+
+00:14:50.456-->00:14:56.062
+wiki dot corp dot acme dot com,
+they're, they're very
+predictable. Um so let's say we
+
+00:14:56.062-->00:14:59.332
+we probably didn't actually need
+to know that. Of course we had
+to know it lacked
+
+00:14:59.332-->00:15:04.170
+authentication. Uh there's no
+real way to get around that
+requirement uh we can just try
+
+00:15:04.170-->00:15:08.741
+it though. So if I was a
+malicious actor I can try it and
+see if it works if it works
+
+00:15:08.741-->00:15:13.479
+great it didn't need
+authentication if it doesn't
+move on to the next target. Um
+
+00:15:13.479-->00:15:17.350
+and we had to know that
+secrets.text was located there.
+But I don't really think this
+
+00:15:17.350-->00:15:22.088
+one's a requirement either again
+all of our web pages are built
+for people. I'll bet you if I
+
+00:15:22.088-->00:15:26.325
+went and hit the root of code
+dot corp dot acme dot com I
+would get a beautiful directory
+
+00:15:26.325-->00:15:31.931
+listing with all of the nice
+icons next to every file telling
+me where secrets.text is. It's
+
+00:15:31.931-->00:15:36.702
+not difficult at all for a
+script to do that and do some
+real basic checks for anything
+
+00:15:36.702-->00:15:42.775
+with the word "secret" in it,
+anything with the word
+"password" in it. Uh etcetera.
+
+00:15:42.775-->00:15:47.780
+Alright next we had to know the
+internal IP of code dot corp dot
+acme dot com. And unfortunately
+
+00:15:50.449-->00:15:55.855
+people don't really leak
+internal IPs nearly as often as
+they leak hostnames. Thankfully
+
+00:15:55.855-->00:16:01.460
+at least in some configurations
+we can just use that hostname.
+So DNS has this wonderful
+
+00:16:01.460-->00:16:07.600
+feature called CNAME Records, uh
+they basically act very similar
+to a symlink on linux. When your
+
+00:16:07.600-->00:16:12.205
+DNS client reaches a CNAME
+Record it just starts over the
+process with the value you gave
+
+00:16:12.205-->00:16:18.744
+it. So when I ask for rebind dot
+attackerdomain if I serve a
+CNAME for code dot corp, my DNS
+
+00:16:18.744-->00:16:23.983
+resolver will get say "Oh where
+do we go? Oh let me go look up
+code dot corp instead." And
+
+00:16:23.983-->00:16:28.721
+we've just now bypassed that
+requirement. And what's really
+really interesting about this uh
+
+00:16:28.721-->00:16:33.960
+we've let the internal DNS
+resolver do all of this work for
+us so even though that record
+
+00:16:33.960-->00:16:38.998
+isn't accessible externally,
+your DNS client that's looking
+up this record is coming from
+
+00:16:38.998-->00:16:44.704
+internal. So I can CNAME to
+internal DNS records that don't
+exist from the outside and they
+
+00:16:44.704-->00:16:49.709
+will faithfully resolve on the
+inside. Um now in theory you
+could block some of this on your
+
+00:16:52.044-->00:16:58.351
+DNS name server. Uh you could
+never let external DNS records
+resolve to an internal IP
+
+00:16:58.351-->00:17:05.057
+address. Unfortunately as far as
+I'm aware no DNS resolver uh
+with split DNS functionality
+
+00:17:05.057-->00:17:10.997
+supports this sort of setup. Um
+if anybody is aware of any that
+do by all means please let me
+
+00:17:10.997-->00:17:15.701
+know I'd be more than happy to
+take a look at the
+implementation. Alright and the
+
+00:17:15.701-->00:17:21.507
+next problem. DNS rebinding's
+notorious unreliability. So if
+you do manage to find uh some of
+
+00:17:21.507-->00:17:26.078
+the folks that have heard of DNS
+rebinding one of the first
+things they say is "that doesn't
+
+00:17:26.078-->00:17:30.583
+work anymore, it's so
+unreliable, it's not practical
+in the real world."
+
+00:17:30.583-->00:17:36.756
+Unfortunately this unreliability
+and kind of this stigma around
+it from everything is commonly
+
+00:17:36.756-->00:17:41.193
+used as an excuse to avoid
+fixing vulnerable services.
+Everything from small
+
+00:17:41.193-->00:17:45.831
+applications to popular
+libraries like uh one of the
+Ruby on Rails web console
+
+00:17:45.831-->00:17:51.003
+scripts has this issue and
+commonly developers will decide
+not to fix it because of
+
+00:17:51.003-->00:17:57.543
+concerns that its not a real
+world attack. So let's talk
+about where some of that
+
+00:17:57.543-->00:18:01.480
+unreliability comes from.
+There's a lot of ways that this
+can go wrong. You have a lot of
+
+00:18:01.480-->00:18:06.485
+layers here um both in DNS and
+TCP and in the HTTP level. So
+first thing you've got is
+
+00:18:10.056-->00:18:16.228
+browser DNS caches. So some
+people don't even know this is a
+thing. Some browsers, Chrome for
+
+00:18:16.228-->00:18:21.067
+example, depending on your
+system configuration, implement
+their own entire DNS client.
+
+00:18:21.067-->00:18:27.139
+They don't use the OS one or
+they build on top of the O uh
+the OS one. And so internally to
+
+00:18:27.139-->00:18:33.913
+the browser they actually have
+DNS records that are cached. So
+if you take a look chrome://net
+
+00:18:33.913-->00:18:38.951
+internals is a a wonderful tool
+if you're ever debugging any
+network issues. In Chrome it
+
+00:18:38.951-->00:18:43.923
+will actually tell you all the
+DNS records that it has cached
+how long they're gonna live for
+
+00:18:43.923-->00:18:49.328
+when they expire. You can view
+them in flight actually as they
+they go across the wire. But
+
+00:18:49.328-->00:18:55.234
+things like this can interfere
+with a successful DNS rebinding
+attack. For example if uh in
+
+00:18:55.234-->00:19:00.806
+certain configurations Chrome
+will cache all records for 60
+seconds even though the TTL is
+
+00:19:00.806-->00:19:05.711
+set shorter than that; which
+means I now have to keep my
+developer Chris on the page for
+
+00:19:05.711-->00:19:11.050
+60 seconds. And Chris has a
+really short attention span. So
+that's not gonna work very well.
+
+00:19:11.050-->00:19:16.055
+And we have the same issue at
+the OS level. So lots of OSs now
+actually do DNS caching
+
+00:19:19.458-->00:19:26.332
+internally as well. So Chrome's
+will actually again in certain
+configurations build on top of
+
+00:19:26.332-->00:19:31.270
+the OS cache as well. So you now
+have 2 layers of caching where
+your record can get mangled get
+
+00:19:31.270-->00:19:36.275
+uh modified in some ways um. And
+that can cause more problems. Uh
+you have name server DNS caches.
+
+00:19:40.680-->00:19:46.685
+So for example that int internal
+DNS resolver probably caches
+that record for some time. That
+
+00:19:46.685-->00:19:52.358
+also means if I'm executing an
+attack against Chris and Chris'
+fictional second employee at the
+
+00:19:52.358-->00:19:57.263
+same time both of those records
+can get confused in the DNS
+resolver because one of them is
+
+00:19:57.263-->00:20:04.136
+cached. Um so we'll talk about
+how we kinda get around some of
+that later. Uh browsers. So
+
+00:20:04.136-->00:20:10.076
+browsers have some protections
+here as well. Uh some of them
+will pin DNS records so
+
+00:20:10.076-->00:20:16.582
+basically what that means is uh
+when you get a DNS query and an
+answer it will save that that uh
+
+00:20:16.582-->00:20:20.886
+two fold together. So you have
+the host that it looked up and
+the IP address it resolved to.
+
+00:20:20.886-->00:20:26.192
+And they won't let that resolve
+to a different IP on the same
+page. If you open up a new tab
+
+00:20:26.192-->00:20:30.763
+it'll go make a new query but
+that way you can't rebind on the
+same page. Some of them have
+
+00:20:30.763-->00:20:36.268
+done stuff like blacklist really
+dangerous ports. Um I'm pretty
+sure it's actually the same list
+
+00:20:36.268-->00:20:41.807
+between uh all the browsers for
+the most part. Uh common ports
+that have had issues as a result
+
+00:20:41.807-->00:20:48.013
+of DNS rebinding or even other
+just generic XHR things. So for
+example the SRTP port um or I
+
+00:20:48.013-->00:20:54.386
+believe SSH is in there as well.
+You basically cannot make
+requests to those ports um when
+
+00:20:54.386-->00:21:00.226
+it's on internal RFC1918 IPs.
+And then some of them have some
+failed attempts at detecting DNS
+
+00:21:00.226-->00:21:05.531
+rebinding and trying to avoid
+it. So they try to look and see
+"Oh our DNS record is changing
+
+00:21:05.531-->00:21:11.604
+uh in- in between responses." Uh
+I have yet to see one of those
+actually really work super well
+
+00:21:11.604-->00:21:16.609
+um so, you have that. You have
+network protections so this is
+kind of interesting the... you
+
+00:21:19.145-->00:21:24.150
+can actually try to fix some of
+this at your DNS resolver. So uh
+DNS mask on the top has a uh
+
+00:21:26.218-->00:21:31.857
+some settings that you can turn
+on to basically try to prevent
+DNS rebinding attacks. And uh
+
+00:21:31.857-->00:21:37.363
+openDNS has a similar commercial
+actually it might be free if uh
+if you already have an account
+
+00:21:37.363-->00:21:42.968
+with them that you can turn on
+and uh it will try to prevent
+some of these attacks. Now the
+
+00:21:42.968-->00:21:46.238
+really important part with all
+these network protections is
+they only work if you configure
+
+00:21:46.238-->00:21:53.245
+them correctly. And nobody does,
+so lots of people will block for
+example local hosts. I can't set
+
+00:21:53.245-->00:21:58.250
+a DNS record that resolves to
+127001. But I can set it to
+resolve to 1921681.30 which is
+
+00:22:00.886-->00:22:07.526
+your IP address on the network
+still. Um so if you do use
+things like this and these are
+
+00:22:07.526-->00:22:12.731
+not a good- a solution for
+everyone and they will not fix
+the problem overall you have to
+
+00:22:12.731-->00:22:17.570
+make sure you configure them
+correctly. And then finally just
+the general hack-iness of this
+
+00:22:17.570-->00:22:24.476
+sort of approach. Uh so we'll
+we'll touch on that again in a
+minute. OK so this is DNS
+
+00:22:24.476-->00:22:28.280
+rebinding. Why isn't this fixed
+yet? This has been around this
+has been a known issue like I
+
+00:22:28.280-->00:22:34.920
+said this is an old attack this
+is this has been here forever.
+Why isn't this fixed? Arguably
+
+00:22:34.920-->00:22:40.526
+it's not the browser's fault and
+it's not that easy to fix
+either. There are legitimate use
+
+00:22:40.526-->00:22:46.732
+cases for all of this
+functionality. For example uh if
+any of you guys use uh Plex uh
+
+00:22:46.732-->00:22:51.737
+the uh media server uh Plex will
+commonly trigger DNS rebinding
+uh warnings because of the way
+
+00:22:55.374-->00:23:01.046
+that they do their local network
+configuration. Uh I believe
+Spotify as well will actually do
+
+00:23:01.046-->00:23:05.517
+if you use any of their web
+client they have this feature
+where you can uh go to ss- to
+
+00:23:05.517-->00:23:09.788
+browse music on their site and
+click play and it opens up in
+the browser. The way some of
+
+00:23:09.788-->00:23:14.793
+that works is through basically
+a DNS rebinding attack and it
+will trigger some of these
+
+00:23:14.793-->00:23:20.132
+issues. So you will break
+legitimate functionality if you
+try to try to fix this. So uh
+
+00:23:20.132-->00:23:25.771
+there are open bugs against a
+lot of the browser vendors, it's
+basically asking them to fix
+
+00:23:25.771-->00:23:30.142
+these and most of them have come
+out and said "We're not gonna
+fix this." So Firefox er um
+
+00:23:30.142-->00:23:35.481
+Firefox's response was "I'd also
+recommend that Firefox not fix
+this issue, it's not feasible
+
+00:23:35.481-->00:23:39.418
+for the browser to protect the
+user from DNS rebinding attacks.
+Servers need to protect
+
+00:23:39.418-->00:23:43.122
+themselves by validating the
+host header and firewalls need
+to protect themselves by
+
+00:23:43.122-->00:23:48.527
+preventing external names from
+resolving to internal IP
+addresses. OK so, and we're
+
+00:23:48.527-->00:23:53.532
+gonna talk about those
+protections in a minute when I'm
+going to show a demo. But there
+
+00:23:53.532-->00:23:59.038
+is somethings they can fix. So
+for example uh there's this
+wonderful feature called uh
+
+00:23:59.038-->00:24:03.976
+HTTPO.9. So for those of you
+that aren't aware HTTPO.9 is uh
+a very lenient parsing http. So
+
+00:24:07.646-->00:24:12.651
+the way that works is if I have
+a uh I send a request and the
+server doesn't answer back with
+
+00:24:14.720-->00:24:20.426
+a full HTTP 200 OK we still let
+the request go through and we
+continue talking to that server.
+
+00:24:20.426-->00:24:25.731
+Uh this can be really really
+problematic because you have
+things like for example
+
+00:24:25.731-->00:24:32.671
+MEMCached or REDIS that speak
+line protocols that you can
+actually attack using this
+
+00:24:32.671-->00:24:38.444
+thing. So you send a request to
+MEMcache, MEMcache says "I don't
+know what this is I don't know
+
+00:24:38.444-->00:24:42.481
+what this" is you know it
+basically returns "I don't know"
+because it's a line protocol for
+
+00:24:42.481-->00:24:46.952
+every line of your HTTP request
+until you reach a command. And
+you can then send commands to
+
+00:24:46.952-->00:24:52.491
+these. And it never answers back
+with a valid HTTP request. So
+this is here because of legacy
+
+00:24:52.491-->00:24:56.662
+reasons, they're this was uh a
+lot more common back when
+basically servers weren't
+
+00:24:56.662-->00:25:01.266
+configured right. Um you had a
+lot of a lot of legitimate use
+cases for this. There aren't
+
+00:25:01.266-->00:25:07.005
+really any today and most of the
+browser vendors have tr- decided
+or are working on re- on getting
+
+00:25:07.005-->00:25:11.410
+rid of this functionality.
+Either they're actively turning
+it off, uh they have plans to
+
+00:25:11.410-->00:25:16.582
+turn it off, or it's turned off
+already. So here are two
+examples of that um both in
+
+00:25:16.582-->00:25:22.187
+Safari and Chrome. So this is
+this is what I would ask that
+that the browser vendors do. Is
+
+00:25:22.187-->00:25:27.192
+turn off HTTPO.9 after that it's
+on each of the each of the
+applications to fix this issue.
+
+00:25:29.561-->00:25:33.632
+Alright. That general hackiness.
+Let let's let's talk about how
+we're gonna fix this. See this
+
+00:25:33.632-->00:25:38.003
+is a weird attack this isn't it
+wasn't designed to be abused in
+this way and so it just doesn't
+
+00:25:38.003-->00:25:43.008
+work sometimes. So uh like any
+true uh engineer I decided the
+best way to fix this was brute
+
+00:25:45.043-->00:25:50.048
+force um so basically what we're
+gonna do here is uh try a whole
+bunch of DNS rebinds at the same
+
+00:25:53.318-->00:25:58.757
+time. And we multiplex that out
+across a couple different
+I-frames and we take whatever
+
+00:25:58.757-->00:26:02.928
+one succeeds and save that. And
+then we use that again next
+time, we know that this
+
+00:26:02.928-->00:26:07.633
+technique works against this
+user at this point in time we're
+gonna try that attack attack
+
+00:26:07.633-->00:26:14.440
+first. Um couple other things we
+want him to do. So uh I took a
+look at some of the existing
+
+00:26:14.440-->00:26:20.446
+tooling that's there for DNS
+rebinds. And some of it's great,
+there's a couple different ways
+
+00:26:20.446-->00:26:26.151
+you can do DNS DNS rebinds and
+the tools then support all of
+these ways. They didn't have uh
+
+00:26:26.151-->00:26:32.024
+some features like IPV6 DNS
+rebinding. Basically I could not
+find a tool that that worked
+
+00:26:32.024-->00:26:36.895
+correctly in. Umm I wanted to
+have that sort of intelligent
+method selection so certain
+
+00:26:36.895-->00:26:41.967
+methods work better in certain
+browsers. I wanted to be able to
+have the server try to target
+
+00:26:41.967-->00:26:46.271
+this th- this DNS rebinding
+method versus that one for a
+certain browser. And then
+
+00:26:46.271-->00:26:50.843
+finally I wanted the ability to
+have dynamic payloads. So some
+of these tools the way they work
+
+00:26:50.843-->00:26:56.381
+you write up a uh an HTML page
+and put it in with the tool and
+you have to serve that tool and
+
+00:26:56.381-->00:27:01.687
+get it running on the network
+and you can only serve that one
+payload or you have to go and
+
+00:27:01.687-->00:27:06.625
+restart the server every time
+you change the payload. That's
+not very efficient. Um we wanted
+
+00:27:06.625-->00:27:10.963
+to do that better. And then
+finally some of these tools do
+some really interesting stuff
+
+00:27:10.963-->00:27:17.469
+with the TCP stacks. So either
+listening uhh on all ports or
+attempting to listen on all
+
+00:27:17.469-->00:27:24.209
+ports umm I saw one that I don't
+actually think worked that was
+using LIBPCAP to try to detect
+
+00:27:24.209-->00:27:29.848
+when a request came in and spin
+up a listener first before it
+actually handled it. We want to
+
+00:27:29.848-->00:27:35.320
+avoid all that. We want to do
+basically on the fly IP and port
+allocation so when it when I
+
+00:27:35.320-->00:27:40.158
+have a request come in that I
+want to attack this server on
+this port the server goes "Ok
+
+00:27:40.158-->00:27:45.164
+give me a second." Ss- grabs an
+IP grabs a port and and triggers
+that. So let's talk about
+
+00:27:47.165-->00:27:52.170
+quickly about what the different
+types of rebinds that this tool
+supports. So TTL re- rebind this
+
+00:27:52.170-->00:27:58.610
+is kind of the simplest rebind
+this is the one I showed you
+guys uh earlier. So basically eh
+
+00:27:58.610-->00:28:03.549
+you rely on the TTL expiring for
+that for that record. So uh you
+send one answer and then
+
+00:28:06.151-->00:28:09.421
+immediately flip any time you
+get asked about that question
+again you send a different
+
+00:28:09.421-->00:28:16.328
+answer. Uhh and then you
+exponentially back off on those
+TTLs to handle weird edge cases
+
+00:28:16.328-->00:28:21.099
+with caches. So this is what
+that looks like uh when you're
+when you're actually triggering
+
+00:28:21.099-->00:28:27.172
+an attack. So those are flipped
+around, they should be the other
+way. Um [chuckles] so the first
+
+00:28:27.172-->00:28:32.277
+time no actually that's correct,
+sorry. Uh so the first time you
+get you get a question you
+
+00:28:32.277-->00:28:37.583
+respond with the server's IP and
+the TTL will say "2 seconds" the
+second time you get a question
+
+00:28:37.583-->00:28:43.855
+you respond with the internal IP
+address that you're targeting.
+Alright pretty simple. Threshold
+
+00:28:43.855-->00:28:49.828
+rebind, this relies on basically
+uh a second the second DNS
+request. So you say "after I
+
+00:28:49.828-->00:28:56.668
+receive this threshold of answer
+of questions, change my answer."
+So the reason this happens is is
+
+00:28:56.668-->00:29:00.472
+you get really weird
+configurations for some of these
+caches. Some of them will send
+
+00:29:00.472-->00:29:06.445
+the same question like 3 or 4
+times uh even though there was
+only 1 question internally that
+
+00:29:06.445-->00:29:10.916
+triggered it. So things like the
+TTL rebinds can get really mess
+there so basically what this
+
+00:29:10.916-->00:29:16.221
+says is "I got 1 request, I got
+2 requests, I got 3 requests, ok
+change my answer." And so you do
+
+00:29:16.221-->00:29:21.493
+the same sort of thing you send
+you setup one of these with a
+couple different back ops there
+
+00:29:21.493-->00:29:27.766
+in terms of timing. Alright
+multi-record rebinds. So this
+one is super interesting uh this
+
+00:29:27.766-->00:29:32.771
+one is was I believe uh most
+publicly talked about I think at
+Def Con 18 um and the way it
+
+00:29:35.907-->00:29:40.512
+works is it is very interesting.
+It's nearly instant in most
+configurations but it's really
+
+00:29:40.512-->00:29:45.517
+expensive uh to to host on the
+other side. So the reason that
+that it's expensive is this: so
+
+00:29:47.552-->00:29:54.092
+I get a question for my DNS
+rebinding record and I respond
+back with 2 records. I say
+
+00:29:54.092-->00:29:59.097
+"rebind dot attacker domain is
+located at 203 and at 192.168."
+And some browsers basically if
+
+00:30:03.368-->00:30:08.206
+if you've fallen in the posix
+spec and everything correctly
+you should try both of these
+
+00:30:08.206-->00:30:14.746
+IPs. Um not all browsers do some
+of them do especially if they're
+built like chrome will try to do
+
+00:30:14.746-->00:30:19.551
+this if it's because it has its
+own custom DNS stack. So the way
+this works is is the page loads
+
+00:30:19.551-->00:30:24.556
+the first time you get a query
+to 203 you serve up your payload
+and then on your server you
+
+00:30:26.892-->00:30:32.831
+blacklist the IP address here.
+Literally set up and IPtables
+rule to block any new request
+
+00:30:32.831-->00:30:38.937
+coming from this client over
+here at ACME corp. Then, when I
+go to make an XHR request, it
+
+00:30:38.937-->00:30:44.242
+goes it tries to make an HTTP
+request to 203, it fails because
+its blocked in IPtables. It can
+
+00:30:44.242-->00:30:50.182
+never complete the TCP handshake
+so it falls through to the
+second record. This one is super
+
+00:30:50.182-->00:30:54.853
+interesting as well 'cause it
+defeats a lot of the uh
+protections in place by some of
+
+00:30:54.853-->00:30:59.858
+the browsers uh or some of the
+other uh DNS rebinding tools for
+eh um detection because it's
+
+00:31:03.428-->00:31:08.233
+only 1 answer and it's just 2
+records. There are legitimate
+reasons to serve round robin DNS
+
+00:31:08.233-->00:31:14.539
+like that uh lots of companies
+do. One of the problems with
+this though is the spec. I I I
+
+00:31:14.539-->00:31:21.012
+don't actually know what the
+spec says about this but lots of
+uh ISPs will actually uh rotate
+
+00:31:21.012-->00:31:24.483
+those answers so you won't you
+can't guarantee that they're
+gonna show up in the right
+
+00:31:24.483-->00:31:28.987
+order, and the only way that
+this attack works is if your
+serv- your attacker's server is
+
+00:31:28.987-->00:31:35.961
+served as the first request. Um
+so yeah. And the other reason
+it's really expensive to host is
+
+00:31:35.961-->00:31:40.966
+you have to cycle IPs very
+quickly um so if I blacklist the
+IP of you at ACME corp and I am
+
+00:31:43.835-->00:31:48.039
+trying to target another
+employee at the same time they
+won't even be able to get the
+
+00:31:48.039-->00:31:53.478
+page to load, because it's
+already black- blocked by from
+by their IP address. So what you
+
+00:31:53.478-->00:31:58.049
+have to do is you have to
+maintain a pool of IPs and
+basically dynamically allocate
+
+00:31:58.049-->00:32:02.687
+them out and say "Oh I'm
+targeting 2 people at the same
+company here, we have to give
+
+00:32:02.687-->00:32:09.461
+them different external IPS."
+And IPV4 IPs are getting harder
+and harder to get ahold of uh
+
+00:32:09.461-->00:32:14.466
+especially if you're hosting on
+really cheap uh VPSs like IM.
+[crowd noise] Alright so this is
+
+00:32:17.302-->00:32:22.307
+the usage of Janice. Er of not
+of Janice of Jaqen. So this
+[breathes] it's simple. This was
+
+00:32:24.576-->00:32:31.316
+the idea was make it as simple
+as possible and hide all of
+that. Do all that for you in the
+
+00:32:31.316-->00:32:35.554
+background and you don't have to
+worry about it. Basically
+include the rebinding javascript
+
+00:32:35.554-->00:32:39.891
+and then use a standard
+javascript fetch and it's
+magically done for you on the
+
+00:32:39.891-->00:32:44.896
+back end. So hopefully demo
+question mark [laughs] we'll
+we'll be able to see this live.
+
+00:32:47.933-->00:32:52.938
+So. [crowd noise] Give me a
+second. [inaudible voice off
+mic] Alright [inaudible voice
+
+00:33:01.079-->00:33:07.185
+off mic] So we've got up on the
+top I have a server which [voice
+off mic] I now have the tool
+
+00:33:07.185-->00:33:12.424
+running on. So the tool is
+written in GoLay uh it's up on
+GitHub right now I'll have the
+
+00:33:12.424-->00:33:17.495
+link at the end um and it's
+pretty easy to use. Basically
+you provide it a couple tools
+
+00:33:17.495-->00:33:22.167
+you say "what is the base URI
+that I am going to serve from?"
+So in this case V1.rebind dot
+
+00:33:22.167-->00:33:27.172
+attackerdomain uh and then you
+serve let's see... alright so
+you pass it a pool of IPs that
+
+00:33:31.877-->00:33:36.882
+it's gonna be able to use so in
+this case we have uh some IPV6
+IP addresses, we have some IPV4
+
+00:33:42.220-->00:33:46.725
+IP addresses, and I wanted to
+show this is one of the features
+of the tool as well. Uh this is
+
+00:33:46.725-->00:33:52.530
+an internal IP so this is uh a
+digital ocean box and they have
+this thing called Anchor IPs
+
+00:33:52.530-->00:33:58.803
+that basically it's an external
+IP but it comes to your box as
+an internal IP address when you
+
+00:33:58.803-->00:34:03.141
+look at it. So uh that's a con-
+configuration that's kind of
+interesting uh the tool is built
+
+00:34:03.141-->00:34:07.445
+to handle some of this. So
+basically you can provide a
+mapping and say "this internal
+
+00:34:07.445-->00:34:12.584
+IP is actually this external IP"
+and it will serve the correct
+DNS records so that means you
+
+00:34:12.584-->00:34:17.088
+could actually if if you really
+wanted to you could put like
+this tool behind a load balancer
+
+00:34:17.088-->00:34:22.093
+or something if you for some
+reason needed it to do that many
+DNS rebinds. Alright. Oop. This
+
+00:34:25.530-->00:34:31.503
+is the problem with live demos
+[laughs] Alright so here we go.
+Hopefully so what I've got here
+
+00:34:31.503-->00:34:36.508
+on my attacker server oops we've
+already got it triggering in the
+other tab. So [breathes] what
+
+00:34:40.812-->00:34:46.818
+I've got here in the bottom left
+tab is a basic python HTTP
+server and right now its listing
+
+00:34:46.818-->00:34:52.090
+to the world serving up the
+entire files system this is a
+brand new VPS so uh not actually
+
+00:34:52.090-->00:34:57.095
+anything on there please don't
+go try to pull SSH keys or
+anything off of it, you're
+
+00:34:59.230-->00:35:04.669
+wasting your time. So
+hopefully... I've been having
+network issues this morning so.
+
+00:35:04.669-->00:35:09.674
+Alright so you can see what it's
+doing here on the left. Whoop.
+Apparently we don't have an Etsy
+
+00:35:12.711-->00:35:17.716
+password so someone has already
+gotten to this box. Uhh umm
+[laughs] [big crowd laughter]
+
+00:35:24.889-->00:35:31.796
+Eh-heh [applause] Heh. But we
+can see there that is the 404
+page from python there on the
+
+00:35:31.796-->00:35:36.067
+right so it did actually trigger
+a rebind and request the file
+even though that file doesn't
+
+00:35:36.067-->00:35:40.772
+seem to exist. So if we take a
+look at actually in the the
+network tab here you can see
+
+00:35:40.772-->00:35:45.076
+kind of how the attack works.
+Loads up the javascript it
+starts a web socket with the
+
+00:35:45.076-->00:35:49.614
+back end where we send some
+information. Uh it loads up a
+bunch of I frames and so you can
+
+00:35:49.614-->00:35:55.253
+see some of these hopefully uh
+are red so these are the ones
+that failed to load because they
+
+00:35:55.253-->00:36:00.191
+directly rebinded so you can see
+it's trying the multiple
+attempts. It starts pinging we
+
+00:36:00.191-->00:36:05.764
+see success here once it finally
+hit a successful one, deletes
+all of the frames and makes our
+
+00:36:05.764-->00:36:10.669
+request to Etsy password which
+of course resulted in our 404.
+And so what that looks like here
+
+00:36:10.669-->00:36:16.574
+on the back end this is running
+in extremely verbose mode but do
+you see it goes it finds IPs
+
+00:36:16.574-->00:36:21.146
+meeting certain criteria so for
+example if there were multiple
+people I was targeting here like
+
+00:36:21.146-->00:36:26.651
+I said it would bounce between
+IPs. It will go create HTTP
+servers on the fly, it leases
+
+00:36:26.651-->00:36:33.258
+the IPs basically. Um and then
+goes and serves all of that.
+Alright. We're running low on
+
+00:36:33.258-->00:36:38.263
+time so we'll hopefully .Alright
+so how do you fix this issue?
+Here's the suggested
+
+00:36:42.367-->00:36:46.871
+mitigations. First off, add
+strong authentication to your
+services. You should be doing
+
+00:36:46.871-->00:36:52.277
+this already. Anything that is
+vulnerable to DNS rebinding, for
+the most part, you already have
+
+00:36:52.277-->00:36:56.414
+risk there of someone internal
+to your company taking that
+data. You should put strong
+
+00:36:56.414-->00:37:00.952
+authentication on everything.
+Even if its internal. There are
+cases where that's not possible
+
+00:37:00.952-->00:37:05.990
+for example local tools that are
+bound to loop back. Uh one of
+the ways that you can do some of
+
+00:37:05.990-->00:37:11.663
+that is verifying the host
+header instead. So you take a
+look at what the host request is
+
+00:37:11.663-->00:37:17.235
+so for legitimate requests that
+host header will be 127001 in
+the case of a rebind it will be
+
+00:37:17.235-->00:37:22.140
+rebind dot attackerdomain. So
+you should whitelist here is the
+expected host that this machine
+
+00:37:22.140-->00:37:27.879
+will ever be served on. For
+example wiki dot code er wiki
+dot corp dot acme dot com thats
+
+00:37:27.879-->00:37:32.984
+the only a uh address that
+should ever be accessed as you
+should whitelist that. So um
+
+00:37:32.984-->00:37:37.489
+I'll have a link at the end we
+have a blog post up on the the
+LINKEDIN engineering blog with
+
+00:37:37.489-->00:37:43.027
+the link to the tool and some of
+this. We actually link to uh how
+Kubernetes fixed this issue with
+
+00:37:43.027-->00:37:46.965
+their local tool they basically
+did this. It's a really good
+implementation verifying the
+
+00:37:46.965-->00:37:51.102
+host header they just check
+against a couple red Xs. Make
+sure you anchor the red Xs
+
+00:37:51.102-->00:37:57.342
+though or else it doesn't work.
+And then finally adding TLS can
+be an a a way around to fix this
+
+00:37:57.342-->00:38:03.248
+as well. The reason is is if you
+have your ICPS cert. It's only
+valid for wiki dot corp dot acme
+
+00:38:03.248-->00:38:08.353
+dot com if you have a rebind
+that hostname doesn't match and
+so the the rebind will fail.
+
+00:38:08.353-->00:38:14.459
+However you're relying on your
+developer not to just click "ok"
+on the cert. mismatch so not the
+
+00:38:14.459-->00:38:19.464
+best fix. Alright so super
+excited to announce that this
+tool is live right now on the
+
+00:38:21.933-->00:38:28.373
+LINKEDIN GitHub. Uh you can go
+check it out uh it's released
+under BSD 2-clause, umm and it's
+
+00:38:28.373-->00:38:33.378
+all Golang. More than happy to
+uh accept some some inputs on
+it. Uh or file any issues. What
+
+00:38:35.813-->00:38:41.853
+is the future of the tool? Uh
+bug fixes, lots of bug fixes.
+Uhhh if you have it and it
+
+00:38:41.853-->00:38:45.123
+doesn't work under certain
+configurations please open an
+issue I'd be more than happy to
+
+00:38:45.123-->00:38:49.694
+take a look at it. I'd love to
+dockerize it or something
+similar so that you can
+
+00:38:49.694-->00:38:55.433
+literally just drop this on a VM
+and get it running eh and and
+then what I'd really love to see
+
+00:38:55.433-->00:39:00.038
+is automated browser testing.
+I'd like to set up sort of a a
+browserstack type setup where
+
+00:39:00.038-->00:39:05.043
+you can see oh they changed the
+DNS handling on Windows 10 for
+this version of Firefox uh and
+
+00:39:07.545-->00:39:13.218
+get alerts for site er sort of
+that so we can improve the tool.
+Alright so like I promised here
+
+00:39:13.218-->00:39:19.424
+is all of my information um I
+will have the slides up on my
+blog the uh blog post is
+
+00:39:19.424-->00:39:23.461
+actually I'm not sure it's up on
+the security blog yet but it's
+on the engineering blog that has
+
+00:39:23.461-->00:39:29.801
+a link to all of the mitigations
+in more depth along with uh all
+of the actual code or there's
+
+00:39:29.801-->00:39:34.806
+the direct link to the code.
+Thank you. [audience applause]
+

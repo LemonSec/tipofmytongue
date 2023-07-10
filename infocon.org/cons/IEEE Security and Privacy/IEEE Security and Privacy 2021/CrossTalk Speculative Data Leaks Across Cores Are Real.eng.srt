@@ -1,0 +1,1592 @@
+﻿1
+00:00:00,240 --> 00:00:02,800
+hi i'm alyssa and together with my co-op
+
+2
+00:00:02,800 --> 00:00:03,600
+for honey
+
+3
+00:00:03,600 --> 00:00:05,200
+we're going to be giving you a talk
+
+4
+00:00:05,200 --> 00:00:07,120
+about our paper crosstalk
+
+5
+00:00:07,120 --> 00:00:09,200
+speculative data leaks of course course
+
+6
+00:00:09,200 --> 00:00:10,240
+are real
+
+7
+00:00:10,240 --> 00:00:12,400
+so today we're going to talk about
+
+8
+00:00:12,400 --> 00:00:14,000
+interesting ways we found for
+
+9
+00:00:14,000 --> 00:00:15,759
+reverse engineering cpu pipeline
+
+10
+00:00:15,759 --> 00:00:18,800
+behavior the tool we built to help us
+
+11
+00:00:18,800 --> 00:00:21,279
+use these ways and also the awesome
+
+12
+00:00:21,279 --> 00:00:22,880
+results that we found
+
+13
+00:00:22,880 --> 00:00:26,160
+but first story time so in this story
+
+14
+00:00:26,160 --> 00:00:29,359
+we have a witch and we have bulb or
+
+15
+00:00:29,359 --> 00:00:30,000
+rather
+
+16
+00:00:30,000 --> 00:00:32,000
+we have the code the witch is running
+
+17
+00:00:32,000 --> 00:00:33,840
+and the code that bob is running
+
+18
+00:00:33,840 --> 00:00:35,520
+and bob's code is protecting some kind
+
+19
+00:00:35,520 --> 00:00:37,280
+of confidential information
+
+20
+00:00:37,280 --> 00:00:40,320
+such as private user data
+
+21
+00:00:40,320 --> 00:00:42,800
+passwords private keys and the which
+
+22
+00:00:42,800 --> 00:00:43,680
+really wants
+
+23
+00:00:43,680 --> 00:00:46,719
+to access this data but thankfully
+
+24
+00:00:46,719 --> 00:00:48,960
+these isolated maybe separate processes
+
+25
+00:00:48,960 --> 00:00:50,640
+maybe instead of virtual machines
+
+26
+00:00:50,640 --> 00:00:52,879
+but still on the same cpu and it turns
+
+27
+00:00:52,879 --> 00:00:53,680
+out the witch
+
+28
+00:00:53,680 --> 00:00:56,800
+can use a bunch of spells
+
+29
+00:00:56,800 --> 00:00:59,600
+or transient execution vulnerabilities
+
+30
+00:00:59,600 --> 00:01:02,079
+that take advantage of issues in the way
+
+31
+00:01:02,079 --> 00:01:04,799
+cpu pipelines are implemented and still
+
+32
+00:01:04,799 --> 00:01:05,360
+lets
+
+33
+00:01:05,360 --> 00:01:08,720
+the which jump over this isolation
+
+34
+00:01:08,720 --> 00:01:09,360
+boundary
+
+35
+00:01:09,360 --> 00:01:12,640
+and access bob's secret data we can
+
+36
+00:01:12,640 --> 00:01:14,080
+simply solve this
+
+37
+00:01:14,080 --> 00:01:16,080
+by just running the witch's code and
+
+38
+00:01:16,080 --> 00:01:18,640
+bob's code on separate cpu cores
+
+39
+00:01:18,640 --> 00:01:20,960
+which means that even if there are bugs
+
+40
+00:01:20,960 --> 00:01:22,560
+in the cpu course
+
+41
+00:01:22,560 --> 00:01:27,520
+bob's data should still be safe
+
+42
+00:01:27,520 --> 00:01:29,280
+since all of these security issues are
+
+43
+00:01:29,280 --> 00:01:31,840
+now solved thanks to this isolation
+
+44
+00:01:31,840 --> 00:01:33,520
+we can use these vulnerabilities for
+
+45
+00:01:33,520 --> 00:01:35,920
+what they're really useful for
+
+46
+00:01:35,920 --> 00:01:38,400
+cpu reverse engineering it turns out in
+
+47
+00:01:38,400 --> 00:01:40,320
+particular the mds vulnerabilities in
+
+48
+00:01:40,320 --> 00:01:41,920
+intel cpus
+
+49
+00:01:41,920 --> 00:01:44,640
+mean that we can observe the contents of
+
+50
+00:01:44,640 --> 00:01:46,560
+some of the internal cpu pipeline
+
+51
+00:01:46,560 --> 00:01:47,920
+buffers
+
+52
+00:01:47,920 --> 00:01:50,560
+and if we just run code and then just
+
+53
+00:01:50,560 --> 00:01:51,200
+watch
+
+54
+00:01:51,200 --> 00:01:53,119
+what's in these buffers we get a good
+
+55
+00:01:53,119 --> 00:01:56,320
+understanding of what's going on
+
+56
+00:01:56,560 --> 00:01:59,200
+this can just be expected memory reads
+
+57
+00:01:59,200 --> 00:02:00,000
+and writes
+
+58
+00:02:00,000 --> 00:02:02,079
+but it can also be unexpected memory
+
+59
+00:02:02,079 --> 00:02:04,560
+accesses such as the cpu walking over
+
+60
+00:02:04,560 --> 00:02:06,079
+page table entries
+
+61
+00:02:06,079 --> 00:02:09,598
+or even more mysterious things
+
+62
+00:02:09,598 --> 00:02:11,599
+to work out what's going on we needed to
+
+63
+00:02:11,599 --> 00:02:13,920
+look a step further
+
+64
+00:02:13,920 --> 00:02:16,480
+hi everyone my name is hani and i am a
+
+65
+00:02:16,480 --> 00:02:17,520
+phd student
+
+66
+00:02:17,520 --> 00:02:21,280
+at fusak so since the main requirement
+
+67
+00:02:21,280 --> 00:02:23,280
+of all transit execution attacks is the
+
+68
+00:02:23,280 --> 00:02:25,599
+co-location of attackers and victims on
+
+69
+00:02:25,599 --> 00:02:26,879
+the same core
+
+70
+00:02:26,879 --> 00:02:28,959
+the solution to all these attacks seem
+
+71
+00:02:28,959 --> 00:02:30,720
+to be the physical isolation
+
+72
+00:02:30,720 --> 00:02:32,640
+where attackers and victims run on
+
+73
+00:02:32,640 --> 00:02:34,319
+separate physical cores to avoid
+
+74
+00:02:34,319 --> 00:02:36,480
+sharing any core private resources that
+
+75
+00:02:36,480 --> 00:02:37,599
+might contain
+
+76
+00:02:37,599 --> 00:02:41,119
+observable sensitive information
+
+77
+00:02:42,640 --> 00:02:44,000
+so we started looking at different
+
+78
+00:02:44,000 --> 00:02:45,599
+performance counters to study the
+
+79
+00:02:45,599 --> 00:02:47,519
+behavior of x86 instructions
+
+80
+00:02:47,519 --> 00:02:50,080
+but beyond the cpu core boundaries and
+
+81
+00:02:50,080 --> 00:02:51,360
+we found counters
+
+82
+00:02:51,360 --> 00:02:52,959
+which are monitoring the off-core
+
+83
+00:02:52,959 --> 00:02:54,640
+requests and responses
+
+84
+00:02:54,640 --> 00:02:57,360
+during the execution of an instruction
+
+85
+00:02:57,360 --> 00:02:58,959
+some of these of course requests are
+
+86
+00:02:58,959 --> 00:03:00,560
+actually quite intuitive
+
+87
+00:03:00,560 --> 00:03:02,400
+for instance when we excuse the seal
+
+88
+00:03:02,400 --> 00:03:04,319
+flush instruction it needs to go
+
+89
+00:03:04,319 --> 00:03:06,400
+off core to flush also the last level
+
+90
+00:03:06,400 --> 00:03:07,440
+cache
+
+91
+00:03:07,440 --> 00:03:08,959
+and when you execute the cpid
+
+92
+00:03:08,959 --> 00:03:10,879
+instruction it can go off cord to
+
+93
+00:03:10,879 --> 00:03:12,159
+recover the brand string
+
+94
+00:03:12,159 --> 00:03:14,080
+of the current processor from the power
+
+95
+00:03:14,080 --> 00:03:16,480
+control unit
+
+96
+00:03:16,480 --> 00:03:18,640
+last when we execute the rdran
+
+97
+00:03:18,640 --> 00:03:20,720
+instruction it needs to go off core
+
+98
+00:03:20,720 --> 00:03:22,480
+to obtain a random number from the
+
+99
+00:03:22,480 --> 00:03:25,360
+digital random number generator
+
+100
+00:03:25,360 --> 00:03:27,680
+as you can see all these are system-wide
+
+101
+00:03:27,680 --> 00:03:28,560
+resources
+
+102
+00:03:28,560 --> 00:03:33,840
+and are located outside of the cpu core
+
+103
+00:03:34,640 --> 00:03:36,480
+resources such as the digital random
+
+104
+00:03:36,480 --> 00:03:38,799
+number generator are shared between all
+
+105
+00:03:38,799 --> 00:03:39,599
+cores
+
+106
+00:03:39,599 --> 00:03:41,599
+and we discovered an off-course staging
+
+107
+00:03:41,599 --> 00:03:44,000
+buffer which is shared between all cpu
+
+108
+00:03:44,000 --> 00:03:44,640
+cores
+
+109
+00:03:44,640 --> 00:03:46,799
+and is used to temporarily store the
+
+110
+00:03:46,799 --> 00:03:48,080
+data returned from
+
+111
+00:03:48,080 --> 00:03:51,760
+these off-core resources and therefore
+
+112
+00:03:51,760 --> 00:03:54,239
+all of core responses directed to any
+
+113
+00:03:54,239 --> 00:03:54,799
+core
+
+114
+00:03:54,799 --> 00:03:57,200
+are actually visible to all cpu cores in
+
+115
+00:03:57,200 --> 00:03:58,239
+the system
+
+116
+00:03:58,239 --> 00:04:00,400
+so to analyze these of core requests and
+
+117
+00:04:00,400 --> 00:04:01,360
+responses
+
+118
+00:04:01,360 --> 00:04:03,599
+we built crosstalk a profiler for
+
+119
+00:04:03,599 --> 00:04:05,360
+analyzing complex microcoding
+
+120
+00:04:05,360 --> 00:04:06,239
+instructions
+
+121
+00:04:06,239 --> 00:04:09,599
+which perform off-core requests and by
+
+122
+00:04:09,599 --> 00:04:10,239
+leveraging
+
+123
+00:04:10,239 --> 00:04:12,879
+transit execution attacks like mds
+
+124
+00:04:12,879 --> 00:04:14,799
+crosstalk analyzes a shared station
+
+125
+00:04:14,799 --> 00:04:15,360
+buffer
+
+126
+00:04:15,360 --> 00:04:18,079
+located outside of the cpu cores leaking
+
+127
+00:04:18,079 --> 00:04:18,560
+across
+
+128
+00:04:18,560 --> 00:04:20,560
+cores the content of the off-core
+
+129
+00:04:20,560 --> 00:04:22,240
+responses directed to other physical
+
+130
+00:04:22,240 --> 00:04:25,120
+cores instant system
+
+131
+00:04:25,120 --> 00:04:26,880
+crosstalk consists of two main
+
+132
+00:04:26,880 --> 00:04:28,800
+components the first one
+
+133
+00:04:28,800 --> 00:04:30,800
+is the instruction generation stage
+
+134
+00:04:30,800 --> 00:04:32,800
+where we prepare the correct profiling
+
+135
+00:04:32,800 --> 00:04:35,600
+environment for all x86 instructions
+
+136
+00:04:35,600 --> 00:04:37,120
+the second one is the instruction
+
+137
+00:04:37,120 --> 00:04:39,280
+profiling stage where we first check
+
+138
+00:04:39,280 --> 00:04:40,960
+whether an instruction makes an off-call
+
+139
+00:04:40,960 --> 00:04:41,680
+request
+
+140
+00:04:41,680 --> 00:04:44,479
+or not and in case it does we analyze
+
+141
+00:04:44,479 --> 00:04:45,040
+then its
+
+142
+00:04:45,040 --> 00:04:47,120
+staging buffer interaction during its
+
+143
+00:04:47,120 --> 00:04:49,040
+execution
+
+144
+00:04:49,040 --> 00:04:50,880
+the last step is where we keep the
+
+145
+00:04:50,880 --> 00:04:52,080
+relevant instructions
+
+146
+00:04:52,080 --> 00:04:54,320
+which can be used as course core leak
+
+147
+00:04:54,320 --> 00:04:55,120
+primitives
+
+148
+00:04:55,120 --> 00:04:58,400
+in the exploitation stage for now
+
+149
+00:04:58,400 --> 00:05:00,320
+we're going to focus on the staging
+
+150
+00:05:00,320 --> 00:05:03,440
+buffer analysis part
+
+151
+00:05:04,880 --> 00:05:06,400
+so let's assume that we have one
+
+152
+00:05:06,400 --> 00:05:09,600
+physical core with two hyper threads
+
+153
+00:05:09,600 --> 00:05:11,840
+on the first one we execute in a tight
+
+154
+00:05:11,840 --> 00:05:13,759
+loop the cpid instruction
+
+155
+00:05:13,759 --> 00:05:16,080
+requesting over and over the brass
+
+156
+00:05:16,080 --> 00:05:16,800
+string
+
+157
+00:05:16,800 --> 00:05:19,600
+from the power control unit the
+
+158
+00:05:19,600 --> 00:05:21,840
+microcode of cpid will initiate an off
+
+159
+00:05:21,840 --> 00:05:22,639
+core request
+
+160
+00:05:22,639 --> 00:05:24,560
+to the power control unit which will
+
+161
+00:05:24,560 --> 00:05:25,919
+write the brand string
+
+162
+00:05:25,919 --> 00:05:27,759
+to a specific offset in the staging
+
+163
+00:05:27,759 --> 00:05:29,199
+buffer
+
+164
+00:05:29,199 --> 00:05:32,320
+later the microcode of cpid will copy
+
+165
+00:05:32,320 --> 00:05:33,759
+the entire staging buffer
+
+166
+00:05:33,759 --> 00:05:35,919
+to the local line field buffer of core 1
+
+167
+00:05:35,919 --> 00:05:36,800
+and then
+
+168
+00:05:36,800 --> 00:05:38,560
+will return the offsets containing the
+
+169
+00:05:38,560 --> 00:05:41,520
+brand string to the program
+
+170
+00:05:41,520 --> 00:05:44,160
+now we execute on core 2 a target
+
+171
+00:05:44,160 --> 00:05:44,880
+instruction
+
+172
+00:05:44,880 --> 00:05:46,800
+which makes offcore requests that we
+
+173
+00:05:46,800 --> 00:05:48,160
+would like to profile
+
+174
+00:05:48,160 --> 00:05:51,680
+in this case we're executing our durand
+
+175
+00:05:51,680 --> 00:05:53,600
+the microcode of rd-rand will initiate
+
+176
+00:05:53,600 --> 00:05:55,199
+an off-core request to the digital
+
+177
+00:05:55,199 --> 00:05:57,600
+random number generator located outside
+
+178
+00:05:57,600 --> 00:05:59,840
+of the cpu course and ask for a random
+
+179
+00:05:59,840 --> 00:06:00,960
+number
+
+180
+00:06:00,960 --> 00:06:03,280
+which the drng will write to a specific
+
+181
+00:06:03,280 --> 00:06:05,520
+offset in the stage of buffer
+
+182
+00:06:05,520 --> 00:06:08,240
+later the microcode of rdrand will copy
+
+183
+00:06:08,240 --> 00:06:09,520
+the entire stage and buffer
+
+184
+00:06:09,520 --> 00:06:12,160
+to the local landfill buffer of core2
+
+185
+00:06:12,160 --> 00:06:13,600
+and then the offsets containing the
+
+186
+00:06:13,600 --> 00:06:14,560
+random number
+
+187
+00:06:14,560 --> 00:06:17,840
+will be returned to the program
+
+188
+00:06:17,840 --> 00:06:20,400
+as we can see now we have an identical
+
+189
+00:06:20,400 --> 00:06:22,240
+copy of the staging buffer
+
+190
+00:06:22,240 --> 00:06:23,919
+in the two local line field buffers of
+
+191
+00:06:23,919 --> 00:06:25,759
+core one and core two
+
+192
+00:06:25,759 --> 00:06:27,840
+both containing the two of core
+
+193
+00:06:27,840 --> 00:06:29,840
+responses requested by each other
+
+194
+00:06:29,840 --> 00:06:31,919
+but each core is entrusted only in
+
+195
+00:06:31,919 --> 00:06:34,160
+specific buffer offsets defined by its
+
+196
+00:06:34,160 --> 00:06:36,720
+corresponding instruction
+
+197
+00:06:36,720 --> 00:06:39,759
+now if we run the riddle attack on the
+
+198
+00:06:39,759 --> 00:06:41,520
+second hyper thread of core 1
+
+199
+00:06:41,520 --> 00:06:43,520
+we can leak the content of the local
+
+200
+00:06:43,520 --> 00:06:44,720
+landfill buffer
+
+201
+00:06:44,720 --> 00:06:47,120
+containing also the random number
+
+202
+00:06:47,120 --> 00:06:48,000
+returned to core
+
+203
+00:06:48,000 --> 00:06:50,240
+2.
+
+204
+00:06:52,639 --> 00:06:54,800
+so during our reverse engineering we
+
+205
+00:06:54,800 --> 00:06:56,080
+observe different properties of the
+
+206
+00:06:56,080 --> 00:06:57,840
+staging buffer
+
+207
+00:06:57,840 --> 00:07:00,240
+first different instructions write to
+
+208
+00:07:00,240 --> 00:07:02,639
+different offsets within the buffer
+
+209
+00:07:02,639 --> 00:07:04,960
+second instruction operands determine
+
+210
+00:07:04,960 --> 00:07:06,800
+the offset where the off-call responses
+
+211
+00:07:06,800 --> 00:07:08,560
+are written to
+
+212
+00:07:08,560 --> 00:07:10,880
+third different instructions might write
+
+213
+00:07:10,880 --> 00:07:11,840
+to overlapping
+
+214
+00:07:11,840 --> 00:07:14,960
+offsets within the buffer so with these
+
+215
+00:07:14,960 --> 00:07:16,720
+properties we still have one major
+
+216
+00:07:16,720 --> 00:07:17,599
+challenge
+
+217
+00:07:17,599 --> 00:07:19,280
+to be able to lead the victims of
+
+218
+00:07:19,280 --> 00:07:20,720
+corresponds
+
+219
+00:07:20,720 --> 00:07:23,199
+which is how can we distinguish between
+
+220
+00:07:23,199 --> 00:07:24,000
+the victims
+
+221
+00:07:24,000 --> 00:07:26,560
+of core response and the noise within
+
+222
+00:07:26,560 --> 00:07:31,759
+the leaked staging buffer
+
+223
+00:07:31,759 --> 00:07:33,680
+we were able to lead the victims of core
+
+224
+00:07:33,680 --> 00:07:36,080
+response in three steps
+
+225
+00:07:36,080 --> 00:07:38,639
+step one we bring the staging buffer to
+
+226
+00:07:38,639 --> 00:07:39,599
+a known state
+
+227
+00:07:39,599 --> 00:07:41,680
+by executing a series of instructions
+
+228
+00:07:41,680 --> 00:07:43,680
+which can cover the entire buffer with
+
+229
+00:07:43,680 --> 00:07:45,520
+known data
+
+230
+00:07:45,520 --> 00:07:47,919
+step 2 we execute on a different core
+
+231
+00:07:47,919 --> 00:07:49,440
+the target instruction we want to
+
+232
+00:07:49,440 --> 00:07:50,319
+profile
+
+233
+00:07:50,319 --> 00:07:52,479
+which of course response will overwrite
+
+234
+00:07:52,479 --> 00:07:53,360
+some offsets
+
+235
+00:07:53,360 --> 00:07:56,639
+of the staging buffer step 3
+
+236
+00:07:56,639 --> 00:07:58,800
+we compare the current staging buffer
+
+237
+00:07:58,800 --> 00:08:00,720
+with the one in the first step
+
+238
+00:08:00,720 --> 00:08:02,319
+to find out the offset that have been
+
+239
+00:08:02,319 --> 00:08:04,160
+overwritten and the content of the
+
+240
+00:08:04,160 --> 00:08:05,840
+off-core response returned to the target
+
+241
+00:08:05,840 --> 00:08:08,318
+instruction
+
+242
+00:08:08,879 --> 00:08:10,479
+here is a list of some instructions we
+
+243
+00:08:10,479 --> 00:08:12,560
+profiled with the corresponding staging
+
+244
+00:08:12,560 --> 00:08:13,599
+buffer offsets
+
+245
+00:08:13,599 --> 00:08:15,120
+and the off-cool responses that we
+
+246
+00:08:15,120 --> 00:08:17,520
+observed
+
+247
+00:08:20,080 --> 00:08:22,800
+now i will head over to alyssa who will
+
+248
+00:08:22,800 --> 00:08:24,800
+tell you more about how we exploited
+
+249
+00:08:24,800 --> 00:08:26,639
+this vulnerability and how it got
+
+250
+00:08:26,639 --> 00:08:29,199
+mitigated
+
+251
+00:08:29,520 --> 00:08:32,559
+as a concrete example of such an attack
+
+252
+00:08:32,559 --> 00:08:35,760
+consider an sgx enclave calculating an
+
+253
+00:08:35,760 --> 00:08:37,599
+ecdsa signature
+
+254
+00:08:37,599 --> 00:08:40,799
+for example nsgx attestation in such a
+
+255
+00:08:40,799 --> 00:08:41,679
+case
+
+256
+00:08:41,679 --> 00:08:44,720
+the attacker obtains a signature r comma
+
+257
+00:08:44,720 --> 00:08:45,279
+s so
+
+258
+00:08:45,279 --> 00:08:47,839
+both r and s are part of the signature
+
+259
+00:08:47,839 --> 00:08:48,480
+and
+
+260
+00:08:48,480 --> 00:08:50,800
+they do not have the private key which
+
+261
+00:08:50,800 --> 00:08:52,720
+is safely inside the octave
+
+262
+00:08:52,720 --> 00:08:54,240
+of course an attacker wants the private
+
+263
+00:08:54,240 --> 00:08:56,560
+key so we can look at how the signature
+
+264
+00:08:56,560 --> 00:08:57,440
+is calculated
+
+265
+00:08:57,440 --> 00:08:59,600
+with this equation and rewrite it in
+
+266
+00:08:59,600 --> 00:09:01,920
+terms of the private key
+
+267
+00:09:01,920 --> 00:09:04,720
+remember the attacker has the message
+
+268
+00:09:04,720 --> 00:09:05,760
+signature
+
+269
+00:09:05,760 --> 00:09:08,800
+so the r and the s and they know what
+
+270
+00:09:08,800 --> 00:09:11,120
+was signed
+
+271
+00:09:11,120 --> 00:09:13,440
+what that means is the only thing left
+
+272
+00:09:13,440 --> 00:09:14,720
+is the randomness
+
+273
+00:09:14,720 --> 00:09:18,399
+k again
+
+274
+00:09:18,399 --> 00:09:20,839
+the attacker has the signature and the
+
+275
+00:09:20,839 --> 00:09:22,240
+hash
+
+276
+00:09:22,240 --> 00:09:24,080
+but they do not have the randomness and
+
+277
+00:09:24,080 --> 00:09:25,760
+so typically they cannot recover the
+
+278
+00:09:25,760 --> 00:09:27,760
+private key
+
+279
+00:09:27,760 --> 00:09:30,640
+of course the only source of randomness
+
+280
+00:09:30,640 --> 00:09:32,959
+available to this enclave
+
+281
+00:09:32,959 --> 00:09:35,839
+is rd ramp and that means that when it
+
+282
+00:09:35,839 --> 00:09:36,880
+needs such a k
+
+283
+00:09:36,880 --> 00:09:39,680
+it will generate it using rd band and
+
+284
+00:09:39,680 --> 00:09:40,480
+typically
+
+285
+00:09:40,480 --> 00:09:44,240
+for example intel's sgx libraries
+
+286
+00:09:44,240 --> 00:09:46,560
+they will simply take rd band and use
+
+287
+00:09:46,560 --> 00:09:50,800
+that directly as k that means
+
+288
+00:09:50,800 --> 00:09:52,640
+that thanks to course torque we can
+
+289
+00:09:52,640 --> 00:09:53,920
+simply read
+
+290
+00:09:53,920 --> 00:09:57,200
+the randomness from the buffer as it's
+
+291
+00:09:57,200 --> 00:09:58,240
+being generated
+
+292
+00:09:58,240 --> 00:10:00,640
+by the enclave as deductive signature
+
+293
+00:10:00,640 --> 00:10:01,680
+and that gives us
+
+294
+00:10:01,680 --> 00:10:05,120
+the contents of k and that means
+
+295
+00:10:05,120 --> 00:10:07,040
+we can simply fill it into the equation
+
+296
+00:10:07,040 --> 00:10:09,680
+and recover the private key
+
+297
+00:10:09,680 --> 00:10:12,560
+it really is this simple you can obtain
+
+298
+00:10:12,560 --> 00:10:14,480
+a private key from such an enclave
+
+299
+00:10:14,480 --> 00:10:17,680
+with only one signature so now we're
+
+300
+00:10:17,680 --> 00:10:20,640
+going to do a quick demo
+
+301
+00:10:20,880 --> 00:10:22,880
+on one core we're going to preserve both
+
+302
+00:10:22,880 --> 00:10:25,600
+hyper threads
+
+303
+00:10:26,079 --> 00:10:28,240
+we're going to run a sniffer which just
+
+304
+00:10:28,240 --> 00:10:29,839
+basically uses
+
+305
+00:10:29,839 --> 00:10:31,760
+the primitives we found to dump the
+
+306
+00:10:31,760 --> 00:10:35,200
+contents of the staging buffer
+
+307
+00:10:37,279 --> 00:10:39,680
+on another core we're just going to call
+
+308
+00:10:39,680 --> 00:10:41,040
+our demand in a loop
+
+309
+00:10:41,040 --> 00:10:43,519
+we're going to do it slowly because we
+
+310
+00:10:43,519 --> 00:10:44,720
+want you to be able to see what's going
+
+311
+00:10:44,720 --> 00:10:45,120
+on
+
+312
+00:10:45,120 --> 00:10:46,880
+you can see the contents of the staging
+
+313
+00:10:46,880 --> 00:10:49,519
+buffer are changing
+
+314
+00:10:49,519 --> 00:10:52,959
+every time we call our demand
+
+315
+00:10:56,240 --> 00:10:59,360
+and for example you look here so our
+
+316
+00:10:59,360 --> 00:11:00,160
+event was
+
+317
+00:11:00,160 --> 00:11:03,200
+a8 f8 and you see this again in the
+
+318
+00:11:03,200 --> 00:11:04,560
+staging buffer dump
+
+319
+00:11:04,560 --> 00:11:07,600
+if we pick the previous output of our
+
+320
+00:11:07,600 --> 00:11:08,320
+demand
+
+321
+00:11:08,320 --> 00:11:11,279
+then again we also see this output from
+
+322
+00:11:11,279 --> 00:11:12,959
+the staging buffer
+
+323
+00:11:12,959 --> 00:11:15,920
+we're now going to try the attack on the
+
+324
+00:11:15,920 --> 00:11:17,040
+sjx enclave
+
+325
+00:11:17,040 --> 00:11:20,079
+and done we only need the one random
+
+326
+00:11:20,079 --> 00:11:22,160
+number remember
+
+327
+00:11:22,160 --> 00:11:24,640
+and so we simply go there we use sjx
+
+328
+00:11:24,640 --> 00:11:25,920
+step to single step
+
+329
+00:11:25,920 --> 00:11:28,160
+we link our demand values and we just
+
+330
+00:11:28,160 --> 00:11:29,120
+join them together
+
+331
+00:11:29,120 --> 00:11:32,000
+and we recover the key this of course
+
+332
+00:11:32,000 --> 00:11:32,560
+led to
+
+333
+00:11:32,560 --> 00:11:35,120
+a whole bunch of drama as is typical
+
+334
+00:11:35,120 --> 00:11:36,800
+with these fancy michael architectural
+
+335
+00:11:36,800 --> 00:11:37,680
+papers
+
+336
+00:11:37,680 --> 00:11:41,680
+we got a cve and a fancy name for intel
+
+337
+00:11:41,680 --> 00:11:43,920
+and we got an extremely long embargo
+
+338
+00:11:43,920 --> 00:11:44,959
+period
+
+339
+00:11:44,959 --> 00:11:47,839
+we also got some very impressive looking
+
+340
+00:11:47,839 --> 00:11:49,200
+performance loss numbers
+
+341
+00:11:49,200 --> 00:11:51,519
+from the mitigation so what's going on
+
+342
+00:11:51,519 --> 00:11:53,519
+with the mitigation
+
+343
+00:11:53,519 --> 00:11:55,680
+so intel released the microcode update
+
+344
+00:11:55,680 --> 00:11:57,200
+and they made some instructions
+
+345
+00:11:57,200 --> 00:12:00,240
+way slower in particular the random
+
+346
+00:12:00,240 --> 00:12:01,519
+number instructions
+
+347
+00:12:01,519 --> 00:12:03,680
+and one of the sgx instructions that was
+
+348
+00:12:03,680 --> 00:12:06,399
+also affected
+
+349
+00:12:06,399 --> 00:12:08,720
+the new microcode locks the entire
+
+350
+00:12:08,720 --> 00:12:09,760
+memory bus
+
+351
+00:12:09,760 --> 00:12:12,079
+for the period of the instruction while
+
+352
+00:12:12,079 --> 00:12:13,680
+it obtains the result from the staging
+
+353
+00:12:13,680 --> 00:12:14,320
+buffer
+
+354
+00:12:14,320 --> 00:12:17,519
+and clears it which prevents
+
+355
+00:12:17,519 --> 00:12:20,560
+other course from accessing this data
+
+356
+00:12:20,560 --> 00:12:23,440
+in the meantime what's interesting is we
+
+357
+00:12:23,440 --> 00:12:24,800
+can go back and use
+
+358
+00:12:24,800 --> 00:12:26,959
+the course talk tooling to actually
+
+359
+00:12:26,959 --> 00:12:28,160
+check
+
+360
+00:12:28,160 --> 00:12:30,000
+does this make sense is the described
+
+361
+00:12:30,000 --> 00:12:31,519
+mitigation actually probably what's
+
+362
+00:12:31,519 --> 00:12:33,040
+happening
+
+363
+00:12:33,040 --> 00:12:35,360
+so we look at the performance counters
+
+364
+00:12:35,360 --> 00:12:37,600
+before and after the microcode update
+
+365
+00:12:37,600 --> 00:12:40,000
+and we see that the number of cycles has
+
+366
+00:12:40,000 --> 00:12:40,800
+indeed
+
+367
+00:12:40,800 --> 00:12:44,560
+drastically increased as we'd expect
+
+368
+00:12:44,560 --> 00:12:46,639
+and interestingly the number of micro
+
+369
+00:12:46,639 --> 00:12:48,240
+ops has
+
+370
+00:12:48,240 --> 00:12:50,240
+massively increased and that probably
+
+371
+00:12:50,240 --> 00:12:52,160
+means that it's busy looping
+
+372
+00:12:52,160 --> 00:12:54,320
+waiting for the response and for the
+
+373
+00:12:54,320 --> 00:12:56,240
+buffer to be cleared
+
+374
+00:12:56,240 --> 00:12:58,480
+and since clearing the buffer means more
+
+375
+00:12:58,480 --> 00:12:59,600
+off call requests
+
+376
+00:12:59,600 --> 00:13:02,240
+we'd expect more of call requests and
+
+377
+00:13:02,240 --> 00:13:02,800
+indeed
+
+378
+00:13:02,800 --> 00:13:06,000
+we also see this
+
+379
+00:13:06,000 --> 00:13:08,000
+course this is only relevant when you're
+
+380
+00:13:08,000 --> 00:13:10,160
+actually running these instructions
+
+381
+00:13:10,160 --> 00:13:11,600
+and of course you do not run these
+
+382
+00:13:11,600 --> 00:13:13,519
+instructors in a loop you just run them
+
+383
+00:13:13,519 --> 00:13:16,160
+enough to get some entropy
+
+384
+00:13:16,160 --> 00:13:18,320
+for random numbers there are obviously
+
+385
+00:13:18,320 --> 00:13:20,000
+an awful lot of things we didn't mention
+
+386
+00:13:20,000 --> 00:13:23,200
+here such as more results from our tool
+
+387
+00:13:23,200 --> 00:13:25,760
+in particular more performance counters
+
+388
+00:13:25,760 --> 00:13:26,639
+details
+
+389
+00:13:26,639 --> 00:13:28,880
+of what you need to exploit and how you
+
+390
+00:13:28,880 --> 00:13:29,760
+do it
+
+391
+00:13:29,760 --> 00:13:32,079
+a covert channel just for fun the
+
+392
+00:13:32,079 --> 00:13:34,320
+effective cpus and more
+
+393
+00:13:34,320 --> 00:13:35,920
+please hopefully the paper is super
+
+394
+00:13:35,920 --> 00:13:38,959
+readable feel free to ask questions
+
+395
+00:13:38,959 --> 00:13:40,480
+you can also find more information on
+
+396
+00:13:40,480 --> 00:13:43,040
+our website or you can bother us on
+
+397
+00:13:43,040 --> 00:13:44,560
+twitter
+
+398
+00:13:44,560 --> 00:13:48,239
+thanks for listening
+

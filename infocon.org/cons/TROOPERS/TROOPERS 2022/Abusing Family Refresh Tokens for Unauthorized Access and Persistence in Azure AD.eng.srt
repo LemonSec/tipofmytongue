@@ -1,0 +1,3948 @@
+﻿1
+00:00:00,900 --> 00:00:02,639
+good morning everybody can everyone hear
+
+2
+00:00:02,639 --> 00:00:03,959
+me okay
+
+3
+00:00:03,959 --> 00:00:06,120
+all right so this uh this talk is about
+
+4
+00:00:06,120 --> 00:00:09,240
+Microsoft's implementation of oauth 2 in
+
+5
+00:00:09,240 --> 00:00:12,179
+Azure active directory and in particular
+
+6
+00:00:12,179 --> 00:00:14,400
+um some of its quirky implementation
+
+7
+00:00:14,400 --> 00:00:17,039
+details that deviate from the spec and
+
+8
+00:00:17,039 --> 00:00:19,380
+in particular undocumented features that
+
+9
+00:00:19,380 --> 00:00:21,720
+are highly abusable we'll get there in
+
+10
+00:00:21,720 --> 00:00:22,740
+just a minute
+
+11
+00:00:22,740 --> 00:00:23,880
+so we're going to start by talking about
+
+12
+00:00:23,880 --> 00:00:25,740
+some of the basics of oauth and Azure
+
+13
+00:00:25,740 --> 00:00:27,240
+active directory we're going to go into
+
+14
+00:00:27,240 --> 00:00:29,699
+some of my experimental methodologies
+
+15
+00:00:29,699 --> 00:00:31,380
+and then into some of the findings there
+
+16
+00:00:31,380 --> 00:00:34,200
+and how lastly bad guys can abuse some
+
+17
+00:00:34,200 --> 00:00:36,440
+of this
+
+18
+00:00:36,600 --> 00:00:37,739
+um so if anyone's interested in
+
+19
+00:00:37,739 --> 00:00:39,960
+following along at home you can check
+
+20
+00:00:39,960 --> 00:00:40,739
+out
+
+21
+00:00:40,739 --> 00:00:42,719
+um this talk in a longer format as well
+
+22
+00:00:42,719 --> 00:00:45,840
+as with an interactive binder Hub uh
+
+23
+00:00:45,840 --> 00:00:48,480
+link so you can reproduce all of the
+
+24
+00:00:48,480 --> 00:00:50,039
+little demos here that I'm gonna be
+
+25
+00:00:50,039 --> 00:00:51,120
+doing today
+
+26
+00:00:51,120 --> 00:00:52,680
+um please pray the demo gods for me
+
+27
+00:00:52,680 --> 00:00:54,300
+because this is effectively one giant
+
+28
+00:00:54,300 --> 00:00:56,280
+Long Live demo um so we're hoping that
+
+29
+00:00:56,280 --> 00:00:59,000
+everything goes well
+
+30
+00:00:59,160 --> 00:01:00,899
+so first things first this is a bit of
+
+31
+00:01:00,899 --> 00:01:03,840
+an oversimplification but uh ultimately
+
+32
+00:01:03,840 --> 00:01:06,119
+the purpose of oauth is to let users
+
+33
+00:01:06,119 --> 00:01:09,600
+Grant access to something that they own
+
+34
+00:01:09,600 --> 00:01:12,600
+to a third-party application and and do
+
+35
+00:01:12,600 --> 00:01:13,979
+so in such a way that the third party
+
+36
+00:01:13,979 --> 00:01:15,479
+application does not need to have access
+
+37
+00:01:15,479 --> 00:01:18,180
+to that user's credentials
+
+38
+00:01:18,180 --> 00:01:21,200
+um and the process of a user
+
+39
+00:01:21,200 --> 00:01:24,240
+allowing an application to get access to
+
+40
+00:01:24,240 --> 00:01:25,979
+something that the user owns is this
+
+41
+00:01:25,979 --> 00:01:28,320
+thing called consent and consent is
+
+42
+00:01:28,320 --> 00:01:31,140
+generally an explicit process
+
+43
+00:01:31,140 --> 00:01:32,820
+and is usually required for pretty much
+
+44
+00:01:32,820 --> 00:01:35,520
+all um all third party applications to
+
+45
+00:01:35,520 --> 00:01:38,100
+access user data
+
+46
+00:01:38,100 --> 00:01:39,299
+um this is not always the case though
+
+47
+00:01:39,299 --> 00:01:41,159
+I'm in particular
+
+48
+00:01:41,159 --> 00:01:42,619
+um Microsoft
+
+49
+00:01:42,619 --> 00:01:46,860
+365 and you know office these are
+
+50
+00:01:46,860 --> 00:01:48,479
+themselves implemented as oauth
+
+51
+00:01:48,479 --> 00:01:50,040
+applications and it would be a really
+
+52
+00:01:50,040 --> 00:01:52,560
+awful user experience to have the user
+
+53
+00:01:52,560 --> 00:01:54,960
+consent and accept the consent for
+
+54
+00:01:54,960 --> 00:01:56,579
+potentially hundreds of these
+
+55
+00:01:56,579 --> 00:01:57,840
+applications in their sort of SAS
+
+56
+00:01:57,840 --> 00:02:00,540
+catalog so instead Microsoft does this
+
+57
+00:02:00,540 --> 00:02:02,360
+convenient thing for the user called
+
+58
+00:02:02,360 --> 00:02:04,920
+pre-authorization or pre-consent which
+
+59
+00:02:04,920 --> 00:02:06,899
+effectively means that ahead of time
+
+60
+00:02:06,899 --> 00:02:09,119
+they are consenting these applications
+
+61
+00:02:09,119 --> 00:02:11,099
+on the user's behalf and this is
+
+62
+00:02:11,099 --> 00:02:12,900
+invisible to the user and to
+
+63
+00:02:12,900 --> 00:02:14,760
+administrators
+
+64
+00:02:14,760 --> 00:02:15,660
+um but we're going to talk a lot about
+
+65
+00:02:15,660 --> 00:02:17,700
+what these um pre-consented or
+
+66
+00:02:17,700 --> 00:02:20,220
+pre-authorized applications can do in
+
+67
+00:02:20,220 --> 00:02:23,099
+your in your Azure ID tenant
+
+68
+00:02:23,099 --> 00:02:24,840
+and then ultimately
+
+69
+00:02:24,840 --> 00:02:27,599
+um even if a user grants consent to an
+
+70
+00:02:27,599 --> 00:02:29,520
+application to access some data on their
+
+71
+00:02:29,520 --> 00:02:32,340
+behalf at one point the client will have
+
+72
+00:02:32,340 --> 00:02:34,560
+to present some proof to the resource
+
+73
+00:02:34,560 --> 00:02:36,300
+server that they are in fact authorized
+
+74
+00:02:36,300 --> 00:02:37,620
+to do the things that they are
+
+75
+00:02:37,620 --> 00:02:40,020
+requesting to do and as you're all
+
+76
+00:02:40,020 --> 00:02:42,000
+probably aware the the medium for doing
+
+77
+00:02:42,000 --> 00:02:44,099
+that is these these things called Json
+
+78
+00:02:44,099 --> 00:02:46,819
+web tokens
+
+79
+00:02:47,040 --> 00:02:49,560
+um there the oauth specs Define a series
+
+80
+00:02:49,560 --> 00:02:51,959
+of kind of convoluted protocols
+
+81
+00:02:51,959 --> 00:02:53,160
+um all of which
+
+82
+00:02:53,160 --> 00:02:55,019
+um ultimately result in the issuance of
+
+83
+00:02:55,019 --> 00:02:57,599
+tickets or sorry of of tokens
+
+84
+00:02:57,599 --> 00:03:00,120
+so here's an example on screen of a a
+
+85
+00:03:00,120 --> 00:03:03,480
+like a cookie cutter authorization code
+
+86
+00:03:03,480 --> 00:03:05,580
+um Grant flow but effectively what this
+
+87
+00:03:05,580 --> 00:03:07,800
+sort of works how this works the client
+
+88
+00:03:07,800 --> 00:03:09,860
+wants to sign in
+
+89
+00:03:09,860 --> 00:03:13,140
+as the user to access some resource
+
+90
+00:03:13,140 --> 00:03:15,659
+um it will create some sort of a URL for
+
+91
+00:03:15,659 --> 00:03:17,700
+the user to go navigate to which is
+
+92
+00:03:17,700 --> 00:03:20,360
+called the authorization URI they will
+
+93
+00:03:20,360 --> 00:03:22,620
+go to the identity provider or the
+
+94
+00:03:22,620 --> 00:03:23,940
+authorization server which in this case
+
+95
+00:03:23,940 --> 00:03:26,640
+is azure ID they'll sign in and then a
+
+96
+00:03:26,640 --> 00:03:28,980
+code gets returned to the client to
+
+97
+00:03:28,980 --> 00:03:31,620
+complete ultimately the last leg of the
+
+98
+00:03:31,620 --> 00:03:33,599
+flow where they exchange that code for
+
+99
+00:03:33,599 --> 00:03:37,220
+for these tokens right
+
+100
+00:03:37,680 --> 00:03:40,799
+there are basically three kinds of jwts
+
+101
+00:03:40,799 --> 00:03:43,379
+that are typically dealt with we're
+
+102
+00:03:43,379 --> 00:03:44,940
+really only going to focus on the latter
+
+103
+00:03:44,940 --> 00:03:48,480
+two here access tokens which are um
+
+104
+00:03:48,480 --> 00:03:49,799
+right these are your short-lived
+
+105
+00:03:49,799 --> 00:03:51,540
+credentials that you the client
+
+106
+00:03:51,540 --> 00:03:54,180
+exchanges in in Bears to the resource
+
+107
+00:03:54,180 --> 00:03:56,280
+server when they're trying to request
+
+108
+00:03:56,280 --> 00:03:58,319
+um access as the user and then we'll go
+
+109
+00:03:58,319 --> 00:03:59,819
+into a lot of detail about refresh
+
+110
+00:03:59,819 --> 00:04:01,920
+tokens which are a way to prolong your
+
+111
+00:04:01,920 --> 00:04:04,500
+access to that resource so the user
+
+112
+00:04:04,500 --> 00:04:07,519
+doesn't have to log in every hour
+
+113
+00:04:08,040 --> 00:04:09,420
+um so like I said this is kind of one
+
+114
+00:04:09,420 --> 00:04:11,280
+long live demo um so we're going to
+
+115
+00:04:11,280 --> 00:04:12,299
+start by just importing some really
+
+116
+00:04:12,299 --> 00:04:14,159
+basic dependencies here all this is done
+
+117
+00:04:14,159 --> 00:04:16,320
+in Python and using um Microsoft's
+
+118
+00:04:16,320 --> 00:04:19,399
+authentication Library
+
+119
+00:04:21,060 --> 00:04:22,860
+so the first thing we're going to do is
+
+120
+00:04:22,860 --> 00:04:24,240
+do What's called the device code flow
+
+121
+00:04:24,240 --> 00:04:25,440
+it's a little bit different than the
+
+122
+00:04:25,440 --> 00:04:26,880
+flow I was just showing on screen a
+
+123
+00:04:26,880 --> 00:04:28,680
+minute ago but ultimately what we're
+
+124
+00:04:28,680 --> 00:04:30,419
+going to try to do is obtain a set of
+
+125
+00:04:30,419 --> 00:04:34,500
+tokens as in this case the Azure CLI now
+
+126
+00:04:34,500 --> 00:04:36,180
+this is only possible because the Azure
+
+127
+00:04:36,180 --> 00:04:39,000
+CLI belongs to a category of application
+
+128
+00:04:39,000 --> 00:04:40,979
+called a public application which means
+
+129
+00:04:40,979 --> 00:04:42,419
+it doesn't it doesn't have its own
+
+130
+00:04:42,419 --> 00:04:45,240
+secrets and there is no way for the
+
+131
+00:04:45,240 --> 00:04:48,000
+Azure CLI to prove that it is itself
+
+132
+00:04:48,000 --> 00:04:51,240
+when um is trying to request tokens so
+
+133
+00:04:51,240 --> 00:04:54,000
+anyone can request tokens on behalf of
+
+134
+00:04:54,000 --> 00:04:56,460
+or as the Azure CLI on behalf of a given
+
+135
+00:04:56,460 --> 00:04:58,380
+user without sort of any exploitation or
+
+136
+00:04:58,380 --> 00:05:00,960
+any kind of hacking required
+
+137
+00:05:00,960 --> 00:05:02,940
+so the first things first we're going to
+
+138
+00:05:02,940 --> 00:05:06,419
+go ahead and generate our device code uh
+
+139
+00:05:06,419 --> 00:05:09,060
+to to sign in we're going to copy this
+
+140
+00:05:09,060 --> 00:05:10,080
+here
+
+141
+00:05:10,080 --> 00:05:13,080
+now I am going to complete what you guys
+
+142
+00:05:13,080 --> 00:05:14,460
+have probably seen before if you've ever
+
+143
+00:05:14,460 --> 00:05:16,979
+logged into uh on your television right
+
+144
+00:05:16,979 --> 00:05:18,660
+to Netflix or something like that we put
+
+145
+00:05:18,660 --> 00:05:21,000
+in our code this is going to complete
+
+146
+00:05:21,000 --> 00:05:23,220
+our our authentic authentication here
+
+147
+00:05:23,220 --> 00:05:25,199
+saying do we want to sign in as the
+
+148
+00:05:25,199 --> 00:05:27,900
+Azure CLI we sure do are you the Azure
+
+149
+00:05:27,900 --> 00:05:30,780
+CLI yep we are and then that will go
+
+150
+00:05:30,780 --> 00:05:33,240
+ahead and return tokens to our our
+
+151
+00:05:33,240 --> 00:05:36,320
+application The Notebook here
+
+152
+00:05:36,360 --> 00:05:39,300
+and if that works according to plan we
+
+153
+00:05:39,300 --> 00:05:42,979
+should get tokens back hooray
+
+154
+00:05:43,560 --> 00:05:45,060
+um I think for this audience you've all
+
+155
+00:05:45,060 --> 00:05:46,979
+seen what the tokens look like this
+
+156
+00:05:46,979 --> 00:05:49,199
+shouldn't be a surprise for anyone but
+
+157
+00:05:49,199 --> 00:05:50,580
+this is kind of the response from the
+
+158
+00:05:50,580 --> 00:05:53,220
+authorization server and I'm going to
+
+159
+00:05:53,220 --> 00:05:55,259
+highlight one field in particular for
+
+160
+00:05:55,259 --> 00:05:56,880
+you that is really kind of the heart of
+
+161
+00:05:56,880 --> 00:05:58,919
+what I was researching for this talk and
+
+162
+00:05:58,919 --> 00:06:01,979
+it's this you see this faux C1 here sort
+
+163
+00:06:01,979 --> 00:06:03,139
+of towards the middle part of the screen
+
+164
+00:06:03,139 --> 00:06:05,400
+we'll get back to that in a second but
+
+165
+00:06:05,400 --> 00:06:07,620
+that flag is not always set not set by
+
+166
+00:06:07,620 --> 00:06:10,080
+most authorizations it is really going
+
+167
+00:06:10,080 --> 00:06:11,699
+to be very important as for what we can
+
+168
+00:06:11,699 --> 00:06:15,680
+do with these with these tokens
+
+169
+00:06:16,500 --> 00:06:17,880
+um again I think this is a bit remedial
+
+170
+00:06:17,880 --> 00:06:19,800
+for this kind of audience but a an
+
+171
+00:06:19,800 --> 00:06:23,460
+access token is just a base64 encoded
+
+172
+00:06:23,460 --> 00:06:25,259
+Json blob that contains a bunch of
+
+173
+00:06:25,259 --> 00:06:27,180
+claims which is basically what the
+
+174
+00:06:27,180 --> 00:06:30,960
+authorization server says that a given
+
+175
+00:06:30,960 --> 00:06:33,660
+client is allowed to do as the user
+
+176
+00:06:33,660 --> 00:06:37,580
+and we can go ahead and decode those
+
+177
+00:06:37,580 --> 00:06:39,960
+the access tokens that we just requested
+
+178
+00:06:39,960 --> 00:06:41,819
+using the device code flow ask the Azure
+
+179
+00:06:41,819 --> 00:06:44,460
+CLI to go ahead and see hey we do have
+
+180
+00:06:44,460 --> 00:06:46,500
+you know various claims this is the
+
+181
+00:06:46,500 --> 00:06:48,479
+application that I am this is these are
+
+182
+00:06:48,479 --> 00:06:51,240
+the resources I'm trying to request and
+
+183
+00:06:51,240 --> 00:06:52,979
+these are the Scopes I.E the sort of
+
+184
+00:06:52,979 --> 00:06:55,319
+specific granular permissions that this
+
+185
+00:06:55,319 --> 00:06:59,419
+client can do as the user
+
+186
+00:07:00,000 --> 00:07:02,220
+so how do you actually use one of these
+
+187
+00:07:02,220 --> 00:07:04,800
+access tokens well um typically is just
+
+188
+00:07:04,800 --> 00:07:07,080
+presented in the header of an HTTP
+
+189
+00:07:07,080 --> 00:07:09,780
+request and we and the client presents
+
+190
+00:07:09,780 --> 00:07:11,280
+that to the to the resource server when
+
+191
+00:07:11,280 --> 00:07:13,139
+they're making their request
+
+192
+00:07:13,139 --> 00:07:14,639
+um in this particular case I'm going to
+
+193
+00:07:14,639 --> 00:07:15,419
+be
+
+194
+00:07:15,419 --> 00:07:17,759
+um calling a graph API endpoint called
+
+195
+00:07:17,759 --> 00:07:20,280
+slash me slash oauth2 permission grants
+
+196
+00:07:20,280 --> 00:07:22,740
+and you will notice that when we call
+
+197
+00:07:22,740 --> 00:07:25,860
+this we are in fact authorized this will
+
+198
+00:07:25,860 --> 00:07:27,780
+succeed if again the demo gods are kind
+
+199
+00:07:27,780 --> 00:07:29,639
+but you'll notice that we get back an
+
+200
+00:07:29,639 --> 00:07:31,680
+empty array and that's because for this
+
+201
+00:07:31,680 --> 00:07:34,500
+test user this user has not consented to
+
+202
+00:07:34,500 --> 00:07:37,259
+any applications yet here we are we're
+
+203
+00:07:37,259 --> 00:07:40,440
+using the Azure CLI it obviously works
+
+204
+00:07:40,440 --> 00:07:44,160
+um so these are the pre-authorized um
+
+205
+00:07:44,160 --> 00:07:45,900
+applications that I was referring to
+
+206
+00:07:45,900 --> 00:07:48,180
+earlier which Azure CLI is one so
+
+207
+00:07:48,180 --> 00:07:49,500
+there's nothing we can tell about the
+
+208
+00:07:49,500 --> 00:07:50,819
+relationship between the user and the
+
+209
+00:07:50,819 --> 00:07:53,039
+Azure CLI based around what's available
+
+210
+00:07:53,039 --> 00:07:56,840
+for these these public apis
+
+211
+00:07:56,880 --> 00:07:58,979
+so refresh tokens are the heart of the
+
+212
+00:07:58,979 --> 00:08:02,400
+research a refresh token is as dirt gun
+
+213
+00:08:02,400 --> 00:08:05,340
+mentioned some earlier about the idea of
+
+214
+00:08:05,340 --> 00:08:06,479
+like a ticket granting ticket in
+
+215
+00:08:06,479 --> 00:08:09,060
+Kerberos a refresh token is a token that
+
+216
+00:08:09,060 --> 00:08:11,880
+can be used to get new tokens so it's a
+
+217
+00:08:11,880 --> 00:08:13,919
+long-lived form of a credential
+
+218
+00:08:13,919 --> 00:08:15,080
+effectively
+
+219
+00:08:15,080 --> 00:08:18,120
+that typically will last for in 90 days
+
+220
+00:08:18,120 --> 00:08:20,520
+by default an Azure active directory and
+
+221
+00:08:20,520 --> 00:08:22,500
+as a result these are a very popular
+
+222
+00:08:22,500 --> 00:08:24,539
+Target for threat actors to obtain
+
+223
+00:08:24,539 --> 00:08:26,460
+because then they can have persistent
+
+224
+00:08:26,460 --> 00:08:28,500
+access to whatever that refresh token
+
+225
+00:08:28,500 --> 00:08:31,520
+and the tokens that it can be used to to
+
+226
+00:08:31,520 --> 00:08:35,179
+access right
+
+227
+00:08:35,279 --> 00:08:37,799
+and the refresh Grant flow is also very
+
+228
+00:08:37,799 --> 00:08:39,599
+quite simple effectively when the client
+
+229
+00:08:39,599 --> 00:08:42,240
+realizes hey my access token's expired I
+
+230
+00:08:42,240 --> 00:08:43,979
+need to get a new one instead of
+
+231
+00:08:43,979 --> 00:08:45,240
+bothering the user for another
+
+232
+00:08:45,240 --> 00:08:47,580
+interactive sign-in it can just say hey
+
+233
+00:08:47,580 --> 00:08:49,260
+I actually have a refresh token already
+
+234
+00:08:49,260 --> 00:08:50,700
+I'm going to go back to the
+
+235
+00:08:50,700 --> 00:08:53,519
+authorization server with my token and
+
+236
+00:08:53,519 --> 00:08:55,920
+to remind the authorization server which
+
+237
+00:08:55,920 --> 00:08:58,680
+client I am and if that succeeds because
+
+238
+00:08:58,680 --> 00:09:00,420
+the token the refresh token is valid
+
+239
+00:09:00,420 --> 00:09:02,220
+that should issue back to me a new set
+
+240
+00:09:02,220 --> 00:09:05,220
+of tokens including a new refresh token
+
+241
+00:09:05,220 --> 00:09:06,600
+as such
+
+242
+00:09:06,600 --> 00:09:07,320
+um
+
+243
+00:09:07,320 --> 00:09:09,540
+continuing to use and reuse the refresh
+
+244
+00:09:09,540 --> 00:09:11,640
+tokens allows more or less indefinite
+
+245
+00:09:11,640 --> 00:09:13,080
+access unless there's a reason for that
+
+246
+00:09:13,080 --> 00:09:17,240
+refresh token to otherwise be revoked
+
+247
+00:09:18,720 --> 00:09:20,519
+so since these are such popular targets
+
+248
+00:09:20,519 --> 00:09:22,860
+the oauth specs of which there are many
+
+249
+00:09:22,860 --> 00:09:25,680
+they Define a couple of safeguards to
+
+250
+00:09:25,680 --> 00:09:26,760
+prevent
+
+251
+00:09:26,760 --> 00:09:28,440
+um to basically limit the blast radius
+
+252
+00:09:28,440 --> 00:09:30,660
+of a stolen refresh token in general and
+
+253
+00:09:30,660 --> 00:09:33,260
+the safeguards are basically one that
+
+254
+00:09:33,260 --> 00:09:37,140
+the the new access tokens that are
+
+255
+00:09:37,140 --> 00:09:39,600
+returned when you redeem a regular
+
+256
+00:09:39,600 --> 00:09:41,459
+refresh token they should be limited to
+
+257
+00:09:41,459 --> 00:09:43,800
+the same Scopes as the original
+
+258
+00:09:43,800 --> 00:09:46,320
+authorization right if the user
+
+259
+00:09:46,320 --> 00:09:48,540
+authorizes certain levels of access and
+
+260
+00:09:48,540 --> 00:09:50,220
+you want to refresh it it should only be
+
+261
+00:09:50,220 --> 00:09:51,660
+able to Grant you the same level of
+
+262
+00:09:51,660 --> 00:09:52,980
+access as the original authorization
+
+263
+00:09:52,980 --> 00:09:55,440
+makes perfect sense
+
+264
+00:09:55,440 --> 00:09:57,420
+um as a corollary to that they say that
+
+265
+00:09:57,420 --> 00:09:59,220
+uh the the
+
+266
+00:09:59,220 --> 00:10:01,560
+um tokens issued by a refresh token
+
+267
+00:10:01,560 --> 00:10:04,440
+Grant should be issued to the same
+
+268
+00:10:04,440 --> 00:10:06,779
+client application now if you're
+
+269
+00:10:06,779 --> 00:10:08,399
+following Safeguard one usually those
+
+270
+00:10:08,399 --> 00:10:10,200
+things kind of come hand in hand but the
+
+271
+00:10:10,200 --> 00:10:12,060
+idea is that since consent is done on a
+
+272
+00:10:12,060 --> 00:10:14,220
+per client basis by ensuring that the
+
+273
+00:10:14,220 --> 00:10:16,500
+tokens issued are for the same client we
+
+274
+00:10:16,500 --> 00:10:18,120
+are trying to limit again opportunities
+
+275
+00:10:18,120 --> 00:10:20,160
+for privilege escalation or where one
+
+276
+00:10:20,160 --> 00:10:21,420
+application is allowed to do something
+
+277
+00:10:21,420 --> 00:10:23,279
+the user didn't otherwise explicitly
+
+278
+00:10:23,279 --> 00:10:25,760
+authorize
+
+279
+00:10:25,800 --> 00:10:27,660
+so what we can do here is a textbook
+
+280
+00:10:27,660 --> 00:10:29,880
+refresh token Grant we're going to take
+
+281
+00:10:29,880 --> 00:10:31,760
+the Azure CLI
+
+282
+00:10:31,760 --> 00:10:34,200
+issued access and refresh token that we
+
+283
+00:10:34,200 --> 00:10:35,940
+just did in the device code flow we're
+
+284
+00:10:35,940 --> 00:10:37,920
+then going to exchange that for a new
+
+285
+00:10:37,920 --> 00:10:39,959
+set of access and refresh tokens with
+
+286
+00:10:39,959 --> 00:10:42,300
+again the as the Azure CLI on the same
+
+287
+00:10:42,300 --> 00:10:43,920
+on the same resources which is the
+
+288
+00:10:43,920 --> 00:10:45,480
+Microsoft graph
+
+289
+00:10:45,480 --> 00:10:47,820
+and again if Wi-Fi didn't drop out
+
+290
+00:10:47,820 --> 00:10:49,380
+um we get back a new set of tokens they
+
+291
+00:10:49,380 --> 00:10:50,820
+should look almost identical to the ones
+
+292
+00:10:50,820 --> 00:10:52,980
+before except obviously time stamps are
+
+293
+00:10:52,980 --> 00:10:54,600
+updated so it's subtly different but
+
+294
+00:10:54,600 --> 00:10:56,459
+more or less we get back what we had
+
+295
+00:10:56,459 --> 00:10:59,040
+originally this is how it's supposed to
+
+296
+00:10:59,040 --> 00:11:01,279
+work
+
+297
+00:11:01,320 --> 00:11:02,519
+now
+
+298
+00:11:02,519 --> 00:11:05,880
+um Microsoft openly admits they just do
+
+299
+00:11:05,880 --> 00:11:07,500
+not follow Safeguard number one and this
+
+300
+00:11:07,500 --> 00:11:10,440
+is documented it's a pain in the butt to
+
+301
+00:11:10,440 --> 00:11:13,560
+have to have separate sets of access
+
+302
+00:11:13,560 --> 00:11:15,959
+tokens for the same client application
+
+303
+00:11:15,959 --> 00:11:17,880
+when you might maybe down the road need
+
+304
+00:11:17,880 --> 00:11:19,320
+access to a different scope than what
+
+305
+00:11:19,320 --> 00:11:20,700
+you originally requested but you did
+
+306
+00:11:20,700 --> 00:11:22,980
+otherwise have consent for so they say
+
+307
+00:11:22,980 --> 00:11:24,360
+it's fine we're not going to worry about
+
+308
+00:11:24,360 --> 00:11:29,040
+it any refresh token any refresh token
+
+309
+00:11:29,040 --> 00:11:30,240
+can be used to get back new access
+
+310
+00:11:30,240 --> 00:11:32,760
+tokens for the same client for any
+
+311
+00:11:32,760 --> 00:11:34,860
+Scopes that the client is otherwise has
+
+312
+00:11:34,860 --> 00:11:37,459
+consent for or is authorized for okay
+
+313
+00:11:37,459 --> 00:11:39,660
+fine at least this is in the
+
+314
+00:11:39,660 --> 00:11:41,579
+documentation
+
+315
+00:11:41,579 --> 00:11:45,060
+and we can demonstrate this Behavior by
+
+316
+00:11:45,060 --> 00:11:47,880
+doing another refresh Grant using again
+
+317
+00:11:47,880 --> 00:11:50,399
+the same refresh token as uh or the one
+
+318
+00:11:50,399 --> 00:11:54,060
+we just obtained but we can do so for
+
+319
+00:11:54,060 --> 00:11:56,100
+instead of the Microsoft graph we can
+
+320
+00:11:56,100 --> 00:11:58,260
+get new access tokens back that are
+
+321
+00:11:58,260 --> 00:12:01,860
+scoped to outlook.office.com so the
+
+322
+00:12:01,860 --> 00:12:03,420
+level of access that's granted by the
+
+323
+00:12:03,420 --> 00:12:05,519
+new sets of tokens are different we
+
+324
+00:12:05,519 --> 00:12:06,779
+can't call the graph with these anymore
+
+325
+00:12:06,779 --> 00:12:09,779
+but now we can call office apis instead
+
+326
+00:12:09,779 --> 00:12:12,360
+same client different Scopes different
+
+327
+00:12:12,360 --> 00:12:15,980
+resources right
+
+328
+00:12:16,380 --> 00:12:17,940
+there were a series of projects that
+
+329
+00:12:17,940 --> 00:12:20,940
+came out that sort of introduced me to
+
+330
+00:12:20,940 --> 00:12:23,820
+the this sort of research topic which
+
+331
+00:12:23,820 --> 00:12:26,579
+these uh projects demonstrated where
+
+332
+00:12:26,579 --> 00:12:29,220
+certain Microsoft applications
+
+333
+00:12:29,220 --> 00:12:32,820
+um were doing a refresh token grant for
+
+334
+00:12:32,820 --> 00:12:34,920
+new tokens but we're getting back tokens
+
+335
+00:12:34,920 --> 00:12:37,079
+that were issued to a different client
+
+336
+00:12:37,079 --> 00:12:39,839
+application than were originally issued
+
+337
+00:12:39,839 --> 00:12:41,339
+the the tokens were originally issued
+
+338
+00:12:41,339 --> 00:12:44,459
+too so this effectively breaks both of
+
+339
+00:12:44,459 --> 00:12:46,200
+the two safeguards that were defining
+
+340
+00:12:46,200 --> 00:12:47,760
+the oauth spec they could be for
+
+341
+00:12:47,760 --> 00:12:51,540
+different Scopes and that these refresh
+
+342
+00:12:51,540 --> 00:12:53,100
+tokens can be used to get back new
+
+343
+00:12:53,100 --> 00:12:55,260
+tokens for different clients and I
+
+344
+00:12:55,260 --> 00:12:56,639
+thought that's really strange and this
+
+345
+00:12:56,639 --> 00:12:59,880
+is also not documented anywhere
+
+346
+00:12:59,880 --> 00:13:02,240
+and we can demonstrate this
+
+347
+00:13:02,240 --> 00:13:04,200
+in this case what we're going to try to
+
+348
+00:13:04,200 --> 00:13:06,720
+do is instead of being the Azure CLI I
+
+349
+00:13:06,720 --> 00:13:08,519
+want to be the Microsoft Office client
+
+350
+00:13:08,519 --> 00:13:11,399
+and instead of requesting using the
+
+351
+00:13:11,399 --> 00:13:13,079
+tokens that we currently have for
+
+352
+00:13:13,079 --> 00:13:15,060
+office.com I want to go back to the
+
+353
+00:13:15,060 --> 00:13:17,399
+Microsoft graph so in a single refresh
+
+354
+00:13:17,399 --> 00:13:19,740
+token Grant request here we can get back
+
+355
+00:13:19,740 --> 00:13:22,680
+new tokens not just for
+
+356
+00:13:22,680 --> 00:13:25,500
+um uh actually Azure CLI but now we can
+
+357
+00:13:25,500 --> 00:13:27,660
+do so as the office client
+
+358
+00:13:27,660 --> 00:13:30,300
+which is going to come with its own set
+
+359
+00:13:30,300 --> 00:13:32,040
+of Scopes that are different from the
+
+360
+00:13:32,040 --> 00:13:33,839
+original token you might see where this
+
+361
+00:13:33,839 --> 00:13:36,079
+is going
+
+362
+00:13:36,120 --> 00:13:37,860
+so basically I wanted to figure out how
+
+363
+00:13:37,860 --> 00:13:39,839
+did this work why does this work and
+
+364
+00:13:39,839 --> 00:13:42,300
+which clients does it work with and then
+
+365
+00:13:42,300 --> 00:13:43,920
+lastly what kind of cool things can we
+
+366
+00:13:43,920 --> 00:13:45,420
+do with this can we abuse this in some
+
+367
+00:13:45,420 --> 00:13:48,060
+in some way as as red teamers
+
+368
+00:13:48,060 --> 00:13:51,480
+so I took um a giant list of as many
+
+369
+00:13:51,480 --> 00:13:54,720
+well-known Microsoft oauth client IDs as
+
+370
+00:13:54,720 --> 00:13:56,579
+I could find scraping GitHub and other
+
+371
+00:13:56,579 --> 00:13:58,800
+sources I then did the same for
+
+372
+00:13:58,800 --> 00:14:01,560
+well-known Microsoft resources so these
+
+373
+00:14:01,560 --> 00:14:03,060
+are things like graph.you know
+
+374
+00:14:03,060 --> 00:14:06,240
+microsoft.com legacygraph.windows.net
+
+375
+00:14:06,240 --> 00:14:09,420
+etc etc and I ended up trying to brute
+
+376
+00:14:09,420 --> 00:14:11,279
+obtain as many tokens as I possibly
+
+377
+00:14:11,279 --> 00:14:14,160
+could for all of these client resource
+
+378
+00:14:14,160 --> 00:14:17,339
+pairs right and then ultimately for each
+
+379
+00:14:17,339 --> 00:14:19,380
+client resource pair try to redeem the
+
+380
+00:14:19,380 --> 00:14:21,420
+refresh token issued to it to every
+
+381
+00:14:21,420 --> 00:14:23,279
+other combination of client refresh pair
+
+382
+00:14:23,279 --> 00:14:25,079
+effectively it's a combinatorial Brute
+
+383
+00:14:25,079 --> 00:14:26,760
+Force problem that I did over the
+
+384
+00:14:26,760 --> 00:14:28,880
+weekend
+
+385
+00:14:29,579 --> 00:14:32,339
+um so some like 12 or 14 million
+
+386
+00:14:32,339 --> 00:14:34,980
+combinations later no Azure id never
+
+387
+00:14:34,980 --> 00:14:36,720
+rate limited me and all my refresh
+
+388
+00:14:36,720 --> 00:14:38,160
+tokens continued to work for all the
+
+389
+00:14:38,160 --> 00:14:39,959
+issuances the entire time
+
+390
+00:14:39,959 --> 00:14:43,139
+I discovered a pretty glaring pattern in
+
+391
+00:14:43,139 --> 00:14:44,160
+the data that I thought was really
+
+392
+00:14:44,160 --> 00:14:46,920
+really interesting so out of the 600 odd
+
+393
+00:14:46,920 --> 00:14:48,480
+Microsoft apps that I was testing with
+
+394
+00:14:48,480 --> 00:14:51,180
+the original finding I found a cluster
+
+395
+00:14:51,180 --> 00:14:53,040
+of 15 clients that exhibited this
+
+396
+00:14:53,040 --> 00:14:55,380
+reciprocity where tokens it refreshed
+
+397
+00:14:55,380 --> 00:14:57,360
+tokens issued to them could be used to
+
+398
+00:14:57,360 --> 00:14:59,100
+obtain new tokens issued to a different
+
+399
+00:14:59,100 --> 00:15:01,019
+client
+
+400
+00:15:01,019 --> 00:15:02,459
+um and I originally set out to make a
+
+401
+00:15:02,459 --> 00:15:04,680
+bloodhound like directed graph but all
+
+402
+00:15:04,680 --> 00:15:06,899
+15 of these clients could do it had the
+
+403
+00:15:06,899 --> 00:15:08,880
+reciprocity with each other so in other
+
+404
+00:15:08,880 --> 00:15:10,500
+words it would have been a circle not a
+
+405
+00:15:10,500 --> 00:15:11,639
+directed graph so it wasn't really
+
+406
+00:15:11,639 --> 00:15:12,600
+interesting
+
+407
+00:15:12,600 --> 00:15:13,860
+um but it was pretty clear that there
+
+408
+00:15:13,860 --> 00:15:15,540
+was a special relationship between these
+
+409
+00:15:15,540 --> 00:15:16,920
+15
+
+410
+00:15:16,920 --> 00:15:19,680
+um Microsoft clients
+
+411
+00:15:19,680 --> 00:15:21,480
+um the Scopes that we got back in my
+
+412
+00:15:21,480 --> 00:15:23,040
+case all my requests were requesting the
+
+413
+00:15:23,040 --> 00:15:24,600
+dot default scope so it was whatever
+
+414
+00:15:24,600 --> 00:15:27,060
+basically aad thought the client should
+
+415
+00:15:27,060 --> 00:15:28,860
+usually have is what we got back and
+
+416
+00:15:28,860 --> 00:15:30,360
+those were in fact different for every
+
+417
+00:15:30,360 --> 00:15:31,500
+different client that we were dealing
+
+418
+00:15:31,500 --> 00:15:32,699
+with based around whatever is the
+
+419
+00:15:32,699 --> 00:15:35,160
+default for those
+
+420
+00:15:35,160 --> 00:15:37,079
+um I detested that this also works
+
+421
+00:15:37,079 --> 00:15:39,180
+across tenants so if you are in if you
+
+422
+00:15:39,180 --> 00:15:40,560
+have the same user principle and two
+
+423
+00:15:40,560 --> 00:15:42,120
+tenants like for example add it as a
+
+424
+00:15:42,120 --> 00:15:44,459
+guest a refresh token issued to client a
+
+425
+00:15:44,459 --> 00:15:46,260
+and tenant a can be used to get back
+
+426
+00:15:46,260 --> 00:15:47,940
+different sets of access tokens for
+
+427
+00:15:47,940 --> 00:15:50,040
+tenant B using client B even over a
+
+428
+00:15:50,040 --> 00:15:52,800
+tenant boundary that was pretty cool
+
+429
+00:15:52,800 --> 00:15:54,420
+um and then lastly the the thing that
+
+430
+00:15:54,420 --> 00:15:56,160
+really stood out is that in all of the
+
+431
+00:15:56,160 --> 00:15:57,779
+authorization all the responses from the
+
+432
+00:15:57,779 --> 00:15:59,339
+authorization server for each of these
+
+433
+00:15:59,339 --> 00:16:00,959
+uh requests
+
+434
+00:16:00,959 --> 00:16:02,940
+um that authorization server returned an
+
+435
+00:16:02,940 --> 00:16:04,740
+additional field that was found in no
+
+436
+00:16:04,740 --> 00:16:06,899
+other response and it was that field
+
+437
+00:16:06,899 --> 00:16:11,899
+Foci or fosey with a value of one
+
+438
+00:16:13,079 --> 00:16:17,100
+so um I did like any uh what any good
+
+439
+00:16:17,100 --> 00:16:18,300
+researcher would do I just started
+
+440
+00:16:18,300 --> 00:16:19,620
+Googling a lot
+
+441
+00:16:19,620 --> 00:16:22,620
+um and I found out by searching the
+
+442
+00:16:22,620 --> 00:16:24,420
+Microsoft documentation there was one
+
+443
+00:16:24,420 --> 00:16:26,820
+reference to Foci in total in the
+
+444
+00:16:26,820 --> 00:16:28,139
+entirety of Microsoft's documentation
+
+445
+00:16:28,139 --> 00:16:30,600
+that basically just said something
+
+446
+00:16:30,600 --> 00:16:33,120
+involving Foci is a feature that
+
+447
+00:16:33,120 --> 00:16:35,100
+supports authentication on mobile
+
+448
+00:16:35,100 --> 00:16:38,339
+operating systems but it did reveal to
+
+449
+00:16:38,339 --> 00:16:41,100
+me that this Foci is an acronym for this
+
+450
+00:16:41,100 --> 00:16:44,220
+thing called family of client IDs
+
+451
+00:16:44,220 --> 00:16:46,560
+and if we dig further into for example
+
+452
+00:16:46,560 --> 00:16:49,259
+the commit and issue Histories on GitHub
+
+453
+00:16:49,259 --> 00:16:52,320
+for various Microsoft identity sdks we
+
+454
+00:16:52,320 --> 00:16:54,480
+found really helpful descriptions from
+
+455
+00:16:54,480 --> 00:16:57,120
+Microsoft Engineers on like the feature
+
+456
+00:16:57,120 --> 00:16:58,980
+fosey and where and how those were
+
+457
+00:16:58,980 --> 00:17:01,440
+embedded into the sdks that explain the
+
+458
+00:17:01,440 --> 00:17:04,319
+functionality in effect it's describing
+
+459
+00:17:04,319 --> 00:17:05,640
+exactly what I was looking for with my
+
+460
+00:17:05,640 --> 00:17:08,520
+research it's looking for certain groups
+
+461
+00:17:08,520 --> 00:17:10,619
+of of clients a special category of
+
+462
+00:17:10,619 --> 00:17:13,799
+client who when they are issued refresh
+
+463
+00:17:13,799 --> 00:17:16,500
+tokens instead they are issued a special
+
+464
+00:17:16,500 --> 00:17:18,720
+family refresh token which can then be
+
+465
+00:17:18,720 --> 00:17:21,240
+used to exchange for new access refresh
+
+466
+00:17:21,240 --> 00:17:23,520
+token pairs for any other client in that
+
+467
+00:17:23,520 --> 00:17:26,119
+special group
+
+468
+00:17:27,419 --> 00:17:28,860
+um so these are called fan again family
+
+469
+00:17:28,860 --> 00:17:30,780
+refresh tokens is that mechanism these
+
+470
+00:17:30,780 --> 00:17:31,740
+are the special
+
+471
+00:17:31,740 --> 00:17:33,600
+um responses that the family clients get
+
+472
+00:17:33,600 --> 00:17:36,360
+when they request a refresh token
+
+473
+00:17:36,360 --> 00:17:38,340
+um only one family exists so as
+
+474
+00:17:38,340 --> 00:17:39,539
+effectively if you get any family
+
+475
+00:17:39,539 --> 00:17:41,940
+refresh token it is good for any other
+
+476
+00:17:41,940 --> 00:17:43,799
+um again client in the family
+
+477
+00:17:43,799 --> 00:17:46,620
+and when we reported this to Microsoft
+
+478
+00:17:46,620 --> 00:17:50,039
+um uh the product team's response was a
+
+479
+00:17:50,039 --> 00:17:51,480
+very actually very thorough um and
+
+480
+00:17:51,480 --> 00:17:52,740
+really kind of thoughtful of them to
+
+481
+00:17:52,740 --> 00:17:54,539
+give an explanation of what
+
+482
+00:17:54,539 --> 00:17:56,340
+um I was observing but they basically
+
+483
+00:17:56,340 --> 00:17:58,740
+said that fosey was originally meant to
+
+484
+00:17:58,740 --> 00:18:01,380
+mimic the behavior on mobile operating
+
+485
+00:18:01,380 --> 00:18:03,059
+systems and how they handle native
+
+486
+00:18:03,059 --> 00:18:04,799
+clients which is that multiple
+
+487
+00:18:04,799 --> 00:18:06,780
+applications from the same developer
+
+488
+00:18:06,780 --> 00:18:09,299
+share a token cache therefore they
+
+489
+00:18:09,299 --> 00:18:11,460
+thought fine why don't we if they each
+
+490
+00:18:11,460 --> 00:18:13,020
+each client application on my mobile
+
+491
+00:18:13,020 --> 00:18:14,340
+device has access to all the other
+
+492
+00:18:14,340 --> 00:18:17,460
+tokens issued to me as the developer why
+
+493
+00:18:17,460 --> 00:18:19,140
+am I bothering to protect the boundary
+
+494
+00:18:19,140 --> 00:18:21,120
+between these clients when it comes to
+
+495
+00:18:21,120 --> 00:18:22,620
+handling their tokens
+
+496
+00:18:22,620 --> 00:18:24,480
+I think that is questionable decision
+
+497
+00:18:24,480 --> 00:18:26,580
+wise
+
+498
+00:18:26,580 --> 00:18:28,500
+so um if you go into GitHub there's
+
+499
+00:18:28,500 --> 00:18:30,000
+going to be a CSV with all these broken
+
+500
+00:18:30,000 --> 00:18:32,520
+down since that original experiment of
+
+501
+00:18:32,520 --> 00:18:34,919
+15 findings um we are now somewhere up
+
+502
+00:18:34,919 --> 00:18:38,100
+to 30 and change but basically all of
+
+503
+00:18:38,100 --> 00:18:40,020
+these that you see on screen and
+
+504
+00:18:40,020 --> 00:18:43,260
+elsewhere are examples of clients from
+
+505
+00:18:43,260 --> 00:18:44,760
+the family
+
+506
+00:18:44,760 --> 00:18:47,340
+um that can do this exchange of our
+
+507
+00:18:47,340 --> 00:18:48,780
+issued family refresh tokens and can
+
+508
+00:18:48,780 --> 00:18:51,299
+obtain tokens for each other
+
+509
+00:18:51,299 --> 00:18:52,559
+um and one thing you'll also notice is
+
+510
+00:18:52,559 --> 00:18:54,120
+that these are all first party
+
+511
+00:18:54,120 --> 00:18:56,400
+applications meaning Microsoft is the
+
+512
+00:18:56,400 --> 00:18:58,620
+publisher for them uh they're all public
+
+513
+00:18:58,620 --> 00:19:00,960
+clients like I said earlier they don't
+
+514
+00:19:00,960 --> 00:19:02,520
+have credentials there's there's no
+
+515
+00:19:02,520 --> 00:19:04,679
+special authentication to use these
+
+516
+00:19:04,679 --> 00:19:06,059
+clients right and these are all
+
+517
+00:19:06,059 --> 00:19:08,039
+pre-consented and everyone's tenants
+
+518
+00:19:08,039 --> 00:19:09,720
+meaning these are already there they
+
+519
+00:19:09,720 --> 00:19:10,980
+work in your environment you just didn't
+
+520
+00:19:10,980 --> 00:19:12,299
+know about them and they're invisible to
+
+521
+00:19:12,299 --> 00:19:15,080
+you good times
+
+522
+00:19:15,120 --> 00:19:16,380
+so what are some of the security
+
+523
+00:19:16,380 --> 00:19:19,500
+implications of this well um if you
+
+524
+00:19:19,500 --> 00:19:21,120
+think back to what the oauth specs were
+
+525
+00:19:21,120 --> 00:19:22,679
+trying to prevent it's things like
+
+526
+00:19:22,679 --> 00:19:24,360
+privilege escalation where the client
+
+527
+00:19:24,360 --> 00:19:26,820
+can actually obtain more access to
+
+528
+00:19:26,820 --> 00:19:29,059
+resources than the user authorized right
+
+529
+00:19:29,059 --> 00:19:31,980
+but because there's this reciprocity
+
+530
+00:19:31,980 --> 00:19:33,960
+between all the family all the clients
+
+531
+00:19:33,960 --> 00:19:35,940
+in the family effectively any family
+
+532
+00:19:35,940 --> 00:19:37,919
+refresh token that can be obtained by an
+
+533
+00:19:37,919 --> 00:19:40,020
+attacker anywhere whether it's on a
+
+534
+00:19:40,020 --> 00:19:41,400
+mobile device or on a Windows device or
+
+535
+00:19:41,400 --> 00:19:43,679
+whatnot can then be used to request new
+
+536
+00:19:43,679 --> 00:19:45,539
+tokens for any other client with any
+
+537
+00:19:45,539 --> 00:19:46,740
+other scope that client has
+
+538
+00:19:46,740 --> 00:19:49,380
+authorization for so in effect a family
+
+539
+00:19:49,380 --> 00:19:53,039
+refresh token grants the union of scopes
+
+540
+00:19:53,039 --> 00:19:55,500
+of level of access to anyone who is in
+
+541
+00:19:55,500 --> 00:19:57,799
+possession of it all right
+
+542
+00:19:57,799 --> 00:20:00,780
+so to kind of visualize and help
+
+543
+00:20:00,780 --> 00:20:03,660
+understand the level of access that you
+
+544
+00:20:03,660 --> 00:20:05,640
+get from these refresh token grants
+
+545
+00:20:05,640 --> 00:20:08,160
+we're going to walk through a provesque
+
+546
+00:20:08,160 --> 00:20:09,539
+scenario and I'll show you how we can
+
+547
+00:20:09,539 --> 00:20:11,760
+kind of dump all these out
+
+548
+00:20:11,760 --> 00:20:13,260
+so here's an example that everyone
+
+549
+00:20:13,260 --> 00:20:15,080
+should be able to kind of understand
+
+550
+00:20:15,080 --> 00:20:18,480
+let's say you know like your nobelium
+
+551
+00:20:18,480 --> 00:20:20,340
+and you're really interested in Reading
+
+552
+00:20:20,340 --> 00:20:21,539
+users email
+
+553
+00:20:21,539 --> 00:20:24,900
+well let's say you happen to steal the
+
+554
+00:20:24,900 --> 00:20:26,820
+refresh token issued to the Azure CLI
+
+555
+00:20:26,820 --> 00:20:28,740
+because this might be cached on disk
+
+556
+00:20:28,740 --> 00:20:31,020
+somewhere that's easy to obtain and you
+
+557
+00:20:31,020 --> 00:20:33,059
+try to use that to read the user's email
+
+558
+00:20:33,059 --> 00:20:35,880
+again you should get back sorry you
+
+559
+00:20:35,880 --> 00:20:37,260
+don't have permission
+
+560
+00:20:37,260 --> 00:20:39,600
+why well the Azure CLI has no reason to
+
+561
+00:20:39,600 --> 00:20:41,700
+read user email it doesn't have consent
+
+562
+00:20:41,700 --> 00:20:43,559
+to do that therefore it should not be
+
+563
+00:20:43,559 --> 00:20:45,780
+able to do that cool that makes sense
+
+564
+00:20:45,780 --> 00:20:47,700
+our back is working
+
+565
+00:20:47,700 --> 00:20:49,679
+but if we then
+
+566
+00:20:49,679 --> 00:20:51,780
+um again leverage that family refresh
+
+567
+00:20:51,780 --> 00:20:54,299
+token reciprocity we use the refresh
+
+568
+00:20:54,299 --> 00:20:56,100
+token issue to the Azure CLI to get back
+
+569
+00:20:56,100 --> 00:20:58,260
+the new ones for the Microsoft Office
+
+570
+00:20:58,260 --> 00:21:00,059
+client for example like we did in a
+
+571
+00:21:00,059 --> 00:21:01,440
+previous demo and we want to go ahead
+
+572
+00:21:01,440 --> 00:21:04,260
+and use that instead you absolutely can
+
+573
+00:21:04,260 --> 00:21:06,299
+read their email using the tokens issued
+
+574
+00:21:06,299 --> 00:21:08,700
+to the Azure CLI
+
+575
+00:21:08,700 --> 00:21:09,419
+um
+
+576
+00:21:09,419 --> 00:21:12,179
+so in effect this is a form of privilege
+
+577
+00:21:12,179 --> 00:21:13,380
+escalation
+
+578
+00:21:13,380 --> 00:21:15,480
+um relative to the oauth client
+
+579
+00:21:15,480 --> 00:21:17,900
+application
+
+580
+00:21:18,120 --> 00:21:20,640
+so to have somewhat of an interesting
+
+581
+00:21:20,640 --> 00:21:22,440
+kind of live demo and again demonstrate
+
+582
+00:21:22,440 --> 00:21:23,880
+like the level of access that these
+
+583
+00:21:23,880 --> 00:21:26,100
+family refresh tokens can provide to an
+
+584
+00:21:26,100 --> 00:21:28,020
+attacker who can obtain them
+
+585
+00:21:28,020 --> 00:21:30,960
+um we're going to do some uh a little
+
+586
+00:21:30,960 --> 00:21:33,059
+experiment here in this case we're going
+
+587
+00:21:33,059 --> 00:21:34,679
+to use again just that single refresh
+
+588
+00:21:34,679 --> 00:21:36,600
+token from that one authorization we did
+
+589
+00:21:36,600 --> 00:21:39,059
+earlier today to go ahead and request in
+
+590
+00:21:39,059 --> 00:21:40,740
+this case a hundred different access
+
+591
+00:21:40,740 --> 00:21:43,620
+tokens for random client resource pairs
+
+592
+00:21:43,620 --> 00:21:46,260
+that I I believe work in the family this
+
+593
+00:21:46,260 --> 00:21:47,640
+will take a little bit of a hot minute
+
+594
+00:21:47,640 --> 00:21:49,440
+to complete but what you're seeing on
+
+595
+00:21:49,440 --> 00:21:51,059
+screen is just all the different tokens
+
+596
+00:21:51,059 --> 00:21:53,640
+that we're able to get back from our our
+
+597
+00:21:53,640 --> 00:21:55,740
+um our request here by by requesting it
+
+598
+00:21:55,740 --> 00:21:58,679
+with the refresh token and you'll notice
+
+599
+00:21:58,679 --> 00:22:00,900
+some of these are actually quite potent
+
+600
+00:22:00,900 --> 00:22:02,820
+depending on which client you request
+
+601
+00:22:02,820 --> 00:22:05,400
+right and therefore what things a bad
+
+602
+00:22:05,400 --> 00:22:08,220
+guy could do with them once they obtain
+
+603
+00:22:08,220 --> 00:22:10,580
+tokens
+
+604
+00:22:13,200 --> 00:22:15,539
+it's gonna be a little bit slow on this
+
+605
+00:22:15,539 --> 00:22:16,919
+network so I'm hoping this will wrap up
+
+606
+00:22:16,919 --> 00:22:19,340
+shortly
+
+607
+00:22:23,640 --> 00:22:24,539
+um so yeah just to kind of understand
+
+608
+00:22:24,539 --> 00:22:26,220
+what you're seeing on screen
+
+609
+00:22:26,220 --> 00:22:28,500
+um basically for ever for just from that
+
+610
+00:22:28,500 --> 00:22:30,059
+one refresh token that we had originally
+
+611
+00:22:30,059 --> 00:22:33,179
+again we're going to take a random
+
+612
+00:22:33,179 --> 00:22:35,159
+client and then one of a random
+
+613
+00:22:35,159 --> 00:22:37,740
+selection of the resources that I had on
+
+614
+00:22:37,740 --> 00:22:40,919
+my list and go ahead and get new tokens
+
+615
+00:22:40,919 --> 00:22:43,320
+for those so each of the sort of the new
+
+616
+00:22:43,320 --> 00:22:45,299
+provesque sort of benefits here or the
+
+617
+00:22:45,299 --> 00:22:46,620
+additional Scopes that you know have
+
+618
+00:22:46,620 --> 00:22:48,659
+access to get printed to the screen as
+
+619
+00:22:48,659 --> 00:22:51,419
+well as the actual access token that you
+
+620
+00:22:51,419 --> 00:22:53,720
+would need
+
+621
+00:22:55,260 --> 00:22:56,659
+mm-hmm
+
+622
+00:22:56,659 --> 00:23:00,000
+normally on a proper Network this takes
+
+623
+00:23:00,000 --> 00:23:01,799
+about 60 seconds but this is kind of a
+
+624
+00:23:01,799 --> 00:23:05,179
+bit of a slower one so my apologies
+
+625
+00:23:12,260 --> 00:23:15,179
+so while that's still running I think I
+
+626
+00:23:15,179 --> 00:23:16,380
+can actually skip ahead a little bit
+
+627
+00:23:16,380 --> 00:23:18,539
+here
+
+628
+00:23:18,539 --> 00:23:21,240
+um so on the concept of privilege
+
+629
+00:23:21,240 --> 00:23:23,280
+escalation
+
+630
+00:23:23,280 --> 00:23:25,740
+family and refresh or a family of client
+
+631
+00:23:25,740 --> 00:23:27,720
+IDs and family refresh tokens do not
+
+632
+00:23:27,720 --> 00:23:29,159
+allow
+
+633
+00:23:29,159 --> 00:23:31,320
+um privilege escalation in the context
+
+634
+00:23:31,320 --> 00:23:34,679
+of the user so whatever the user had
+
+635
+00:23:34,679 --> 00:23:36,900
+privileges to do inside the directory
+
+636
+00:23:36,900 --> 00:23:39,720
+we're not demonstrating an abuse or an
+
+637
+00:23:39,720 --> 00:23:42,120
+exceeding of those boundaries right the
+
+638
+00:23:42,120 --> 00:23:44,760
+user can't do it then having a refresh
+
+639
+00:23:44,760 --> 00:23:47,039
+token requested or issued also that make
+
+640
+00:23:47,039 --> 00:23:50,100
+they can't do that but the level of of
+
+641
+00:23:50,100 --> 00:23:51,539
+privilege is relative to that original
+
+642
+00:23:51,539 --> 00:23:54,900
+client application in an oauth context
+
+643
+00:23:54,900 --> 00:23:56,940
+and especially again compared to what
+
+644
+00:23:56,940 --> 00:23:59,220
+the actual user authorized them to do
+
+645
+00:23:59,220 --> 00:24:00,960
+they wouldn't expect that by saying I'm
+
+646
+00:24:00,960 --> 00:24:02,700
+signing in as the Azure CLI that you can
+
+647
+00:24:02,700 --> 00:24:04,620
+now read my email with it right that
+
+648
+00:24:04,620 --> 00:24:05,880
+kind of relationship is where the
+
+649
+00:24:05,880 --> 00:24:09,240
+boundary is is broken
+
+650
+00:24:09,240 --> 00:24:10,919
+um this is also I think especially true
+
+651
+00:24:10,919 --> 00:24:12,780
+for Defenders because when we think
+
+652
+00:24:12,780 --> 00:24:14,760
+about like a compromised endpoint or we
+
+653
+00:24:14,760 --> 00:24:16,380
+think that an attacker did obtain a
+
+654
+00:24:16,380 --> 00:24:17,700
+refresh token
+
+655
+00:24:17,700 --> 00:24:19,559
+in our mental models we often would
+
+656
+00:24:19,559 --> 00:24:21,900
+consider hey what's the blast radius
+
+657
+00:24:21,900 --> 00:24:23,400
+from this theft oh well it's whatever
+
+658
+00:24:23,400 --> 00:24:25,440
+the team's client could do granted back
+
+659
+00:24:25,440 --> 00:24:27,539
+into a lot but they it would have no
+
+660
+00:24:27,539 --> 00:24:29,159
+idea that oh by the way they also could
+
+661
+00:24:29,159 --> 00:24:30,780
+be used to go blow up a resource Group
+
+662
+00:24:30,780 --> 00:24:32,880
+in Azure if that user was in fact
+
+663
+00:24:32,880 --> 00:24:35,720
+authorized to do that right
+
+664
+00:24:35,720 --> 00:24:37,919
+hoping this had finished up let's find
+
+665
+00:24:37,919 --> 00:24:39,419
+out
+
+666
+00:24:39,419 --> 00:24:42,260
+hmm
+
+667
+00:24:45,120 --> 00:24:48,299
+almost there two more to go
+
+668
+00:24:48,299 --> 00:24:50,400
+huzzah
+
+669
+00:24:50,400 --> 00:24:52,200
+then we can run this
+
+670
+00:24:52,200 --> 00:24:54,539
+um so this is just using pandas to parse
+
+671
+00:24:54,539 --> 00:24:56,760
+out all the different axis tokens that
+
+672
+00:24:56,760 --> 00:24:58,380
+we get back from our various requests
+
+673
+00:24:58,380 --> 00:25:00,360
+and then for each
+
+674
+00:25:00,360 --> 00:25:02,039
+um scope that we have in one of those
+
+675
+00:25:02,039 --> 00:25:03,539
+tokens which you see on the far left
+
+676
+00:25:03,539 --> 00:25:04,799
+column
+
+677
+00:25:04,799 --> 00:25:06,840
+um they're basically laid out for you
+
+678
+00:25:06,840 --> 00:25:08,760
+such as if you're an attacker and you
+
+679
+00:25:08,760 --> 00:25:10,260
+want to know what your menu of options
+
+680
+00:25:10,260 --> 00:25:12,179
+are that you can do with this we can
+
+681
+00:25:12,179 --> 00:25:14,400
+simply say all right I want to again
+
+682
+00:25:14,400 --> 00:25:17,100
+enroll a device and in tune well scroll
+
+683
+00:25:17,100 --> 00:25:19,140
+down to you find the client that had the
+
+684
+00:25:19,140 --> 00:25:21,419
+scope that you wanted then you look for
+
+685
+00:25:21,419 --> 00:25:23,520
+whatever resource that scope goes with
+
+686
+00:25:23,520 --> 00:25:25,440
+and then you'll get your list of client
+
+687
+00:25:25,440 --> 00:25:27,179
+IDs that are valid for doing that
+
+688
+00:25:27,179 --> 00:25:28,140
+request
+
+689
+00:25:28,140 --> 00:25:29,880
+so now in a real Attack you would never
+
+690
+00:25:29,880 --> 00:25:32,220
+request 300 of these tokens but the
+
+691
+00:25:32,220 --> 00:25:34,140
+point is in in a test scenario like this
+
+692
+00:25:34,140 --> 00:25:36,240
+we can go ahead and do this enumeration
+
+693
+00:25:36,240 --> 00:25:38,159
+and now we can know in advance as a
+
+694
+00:25:38,159 --> 00:25:40,020
+lookup table if I got a family refresh
+
+695
+00:25:40,020 --> 00:25:42,360
+token from client you know client a and
+
+696
+00:25:42,360 --> 00:25:45,659
+I want scope B like mail.read these are
+
+697
+00:25:45,659 --> 00:25:46,980
+the clients and resources I would need
+
+698
+00:25:46,980 --> 00:25:51,260
+to exchange to get that access right
+
+699
+00:25:52,500 --> 00:25:53,940
+so um there are a variety of attack
+
+700
+00:25:53,940 --> 00:25:55,919
+paths to obtain these tokens these are
+
+701
+00:25:55,919 --> 00:25:57,539
+just regular tokens and all the same
+
+702
+00:25:57,539 --> 00:25:59,940
+sort of uh threat models apply in
+
+703
+00:25:59,940 --> 00:26:01,679
+regards to how you would protect them
+
+704
+00:26:01,679 --> 00:26:05,100
+so I really wasn't interested in other
+
+705
+00:26:05,100 --> 00:26:06,900
+ways we could sort of
+
+706
+00:26:06,900 --> 00:26:09,419
+um steal existing legitimately issue
+
+707
+00:26:09,419 --> 00:26:11,100
+tokens there's a lot of prior art in
+
+708
+00:26:11,100 --> 00:26:14,279
+that space it's interesting but um what
+
+709
+00:26:14,279 --> 00:26:16,140
+immediately stood out to us is how could
+
+710
+00:26:16,140 --> 00:26:19,740
+we automatically authorize a malicious
+
+711
+00:26:19,740 --> 00:26:21,539
+client application or a legit
+
+712
+00:26:21,539 --> 00:26:25,020
+application by the attacker in order to
+
+713
+00:26:25,020 --> 00:26:26,880
+get these family refresh tokens and
+
+714
+00:26:26,880 --> 00:26:28,679
+otherwise maintain the persistent access
+
+715
+00:26:28,679 --> 00:26:30,779
+with the really elevated permissions
+
+716
+00:26:30,779 --> 00:26:33,720
+that the family refresh token provides
+
+717
+00:26:33,720 --> 00:26:36,059
+so the first way that this is um a
+
+718
+00:26:36,059 --> 00:26:38,760
+pretty trivial trivially abused because
+
+719
+00:26:38,760 --> 00:26:41,100
+all of these clients are public clients
+
+720
+00:26:41,100 --> 00:26:42,779
+it means they all work for device code
+
+721
+00:26:42,779 --> 00:26:44,700
+authentication which also means they
+
+722
+00:26:44,700 --> 00:26:46,980
+work for device code phishing so this is
+
+723
+00:26:46,980 --> 00:26:51,360
+a super convenient way to find a lure
+
+724
+00:26:51,360 --> 00:26:52,980
+that is going to be very convincing to
+
+725
+00:26:52,980 --> 00:26:54,720
+the victim and then you would on the
+
+726
+00:26:54,720 --> 00:26:57,000
+back end exchange whatever refreshed
+
+727
+00:26:57,000 --> 00:26:58,559
+family refresh token you get back from
+
+728
+00:26:58,559 --> 00:27:00,600
+that request for the one that for the
+
+729
+00:27:00,600 --> 00:27:02,220
+client that actually has the Scopes that
+
+730
+00:27:02,220 --> 00:27:04,559
+you want on it so one of my favorites is
+
+731
+00:27:04,559 --> 00:27:06,179
+like um do you want to sign in with the
+
+732
+00:27:06,179 --> 00:27:08,460
+Microsoft authenticator app that sounds
+
+733
+00:27:08,460 --> 00:27:10,500
+really convincing sure that doesn't
+
+734
+00:27:10,500 --> 00:27:13,080
+sound bad continue right oh and by the
+
+735
+00:27:13,080 --> 00:27:14,340
+way I'm not going to exchanges for
+
+736
+00:27:14,340 --> 00:27:15,900
+office then go read your email with it
+
+737
+00:27:15,900 --> 00:27:17,460
+right this is the kind of bait and
+
+738
+00:27:17,460 --> 00:27:18,539
+switch you can do with these family
+
+739
+00:27:18,539 --> 00:27:20,880
+clients using device code fishing very
+
+740
+00:27:20,880 --> 00:27:22,860
+nice little quality life Improvement for
+
+741
+00:27:22,860 --> 00:27:24,240
+like a bread and butter thing and the
+
+742
+00:27:24,240 --> 00:27:27,500
+attacker toolkit right
+
+743
+00:27:28,559 --> 00:27:29,880
+um similarly
+
+744
+00:27:29,880 --> 00:27:32,039
+um the previous speaker
+
+745
+00:27:32,039 --> 00:27:34,260
+um Dirk now went into some of these
+
+746
+00:27:34,260 --> 00:27:36,600
+details but single sign-on is also an
+
+747
+00:27:36,600 --> 00:27:38,220
+excellent attack Vector for doing these
+
+748
+00:27:38,220 --> 00:27:40,320
+types of malicious malicious
+
+749
+00:27:40,320 --> 00:27:43,140
+authorizations so again you know I won't
+
+750
+00:27:43,140 --> 00:27:44,940
+retread a lot of the great details that
+
+751
+00:27:44,940 --> 00:27:47,100
+he provided but if you can get code
+
+752
+00:27:47,100 --> 00:27:49,260
+execution on a victim system on an
+
+753
+00:27:49,260 --> 00:27:51,020
+adjoin device
+
+754
+00:27:51,020 --> 00:27:54,600
+as the user right you can simply ask the
+
+755
+00:27:54,600 --> 00:27:56,940
+com service politely for one of those
+
+756
+00:27:56,940 --> 00:28:00,360
+PRT signed cookies and it used exchange
+
+757
+00:28:00,360 --> 00:28:02,100
+that for
+
+758
+00:28:02,100 --> 00:28:04,080
+um you know to sign in to some resource
+
+759
+00:28:04,080 --> 00:28:07,980
+well if we for example generated an
+
+760
+00:28:07,980 --> 00:28:10,980
+authorization URI for a family client
+
+761
+00:28:10,980 --> 00:28:14,340
+application we went to the client on the
+
+762
+00:28:14,340 --> 00:28:15,900
+victim system we got one of those
+
+763
+00:28:15,900 --> 00:28:17,820
+cookies and authorized it
+
+764
+00:28:17,820 --> 00:28:19,740
+we now get back as the attacker our
+
+765
+00:28:19,740 --> 00:28:21,600
+family refresh token for our maliciously
+
+766
+00:28:21,600 --> 00:28:24,240
+authorized application even if we lose
+
+767
+00:28:24,240 --> 00:28:25,679
+access to the device it no longer
+
+768
+00:28:25,679 --> 00:28:27,120
+matters we have that persistent access
+
+769
+00:28:27,120 --> 00:28:28,799
+right and we never needed to know the
+
+770
+00:28:28,799 --> 00:28:30,840
+user's credentials in doing so
+
+771
+00:28:30,840 --> 00:28:32,700
+there's also the very convenient side
+
+772
+00:28:32,700 --> 00:28:34,200
+effect as direct down mentioned as well
+
+773
+00:28:34,200 --> 00:28:37,260
+that the device claims are inherited
+
+774
+00:28:37,260 --> 00:28:39,900
+from tokens issued by using single
+
+775
+00:28:39,900 --> 00:28:41,460
+sign-on so not only do you have a family
+
+776
+00:28:41,460 --> 00:28:43,320
+refresh token which is itself powerful
+
+777
+00:28:43,320 --> 00:28:45,120
+you're benefiting from whatever other
+
+778
+00:28:45,120 --> 00:28:47,400
+claims that are actually carried over to
+
+779
+00:28:47,400 --> 00:28:49,919
+it from it being issued by a real age or
+
+780
+00:28:49,919 --> 00:28:52,460
+80 joint device
+
+781
+00:28:52,500 --> 00:28:54,720
+so here's a little example um we were
+
+782
+00:28:54,720 --> 00:28:56,340
+doing this using Lee christensen's
+
+783
+00:28:56,340 --> 00:28:58,380
+method which was again calling that com
+
+784
+00:28:58,380 --> 00:29:00,900
+service but in theory um any any of the
+
+785
+00:29:00,900 --> 00:29:02,520
+other avenues for calling a single
+
+786
+00:29:02,520 --> 00:29:04,140
+sign-on to do a malicious authorization
+
+787
+00:29:04,140 --> 00:29:06,299
+for the oauth client would work
+
+788
+00:29:06,299 --> 00:29:08,400
+um and we just did a little POC using
+
+789
+00:29:08,400 --> 00:29:10,020
+Cobalt strike to prove that it was
+
+790
+00:29:10,020 --> 00:29:11,279
+trivially doable on a red team
+
+791
+00:29:11,279 --> 00:29:13,440
+engagement so we just took Lee
+
+792
+00:29:13,440 --> 00:29:14,880
+christensen's
+
+793
+00:29:14,880 --> 00:29:19,260
+um uh little C uh C C sharp program we
+
+794
+00:29:19,260 --> 00:29:21,480
+did some obfuscation on it we then
+
+795
+00:29:21,480 --> 00:29:23,340
+basically encoded that reflectively
+
+796
+00:29:23,340 --> 00:29:25,080
+injected it via Cobalt strike onto our
+
+797
+00:29:25,080 --> 00:29:26,520
+victim system to complete the single
+
+798
+00:29:26,520 --> 00:29:29,279
+sign-on X filled our authorization code
+
+799
+00:29:29,279 --> 00:29:31,919
+finish the flow and then we had at least
+
+800
+00:29:31,919 --> 00:29:33,840
+90 days of access to our victim to
+
+801
+00:29:33,840 --> 00:29:35,940
+anything that the family refresh token
+
+802
+00:29:35,940 --> 00:29:38,480
+had access for
+
+803
+00:29:40,080 --> 00:29:42,539
+so um conditional access policies are
+
+804
+00:29:42,539 --> 00:29:43,919
+kind of an interesting topic in regards
+
+805
+00:29:43,919 --> 00:29:46,080
+to family refresh tokens
+
+806
+00:29:46,080 --> 00:29:48,539
+on one hand I think I was pleasantly
+
+807
+00:29:48,539 --> 00:29:50,520
+surprised during our testing to find out
+
+808
+00:29:50,520 --> 00:29:52,260
+that a lot of the restrictions Microsoft
+
+809
+00:29:52,260 --> 00:29:55,200
+places are more on the resource side
+
+810
+00:29:55,200 --> 00:29:57,059
+than the client side and that is in
+
+811
+00:29:57,059 --> 00:29:58,740
+general in general the better way to do
+
+812
+00:29:58,740 --> 00:30:01,140
+it which means you know if you want to
+
+813
+00:30:01,140 --> 00:30:04,320
+say teams can't access this resource or
+
+814
+00:30:04,320 --> 00:30:05,940
+you're otherwise playing client ID
+
+815
+00:30:05,940 --> 00:30:07,740
+whack-a-mole with denying clients
+
+816
+00:30:07,740 --> 00:30:10,260
+certain rights any other client that has
+
+817
+00:30:10,260 --> 00:30:12,779
+authorization for the same resource
+
+818
+00:30:12,779 --> 00:30:14,220
+ultimately the attacker could choose
+
+819
+00:30:14,220 --> 00:30:15,659
+instead and get around your conditional
+
+820
+00:30:15,659 --> 00:30:18,120
+access so by blocking at the resource
+
+821
+00:30:18,120 --> 00:30:18,960
+level
+
+822
+00:30:18,960 --> 00:30:21,240
+um saying you know none of these clients
+
+823
+00:30:21,240 --> 00:30:23,760
+should be able to access office.com then
+
+824
+00:30:23,760 --> 00:30:25,200
+that's generally going to put you in a
+
+825
+00:30:25,200 --> 00:30:26,340
+better spot because you're not playing
+
+826
+00:30:26,340 --> 00:30:29,220
+you're not playing whack-a-mole
+
+827
+00:30:29,220 --> 00:30:31,020
+um the downside is there currently
+
+828
+00:30:31,020 --> 00:30:32,940
+aren't any conditional access policies
+
+829
+00:30:32,940 --> 00:30:35,159
+or token issuance policies that would
+
+830
+00:30:35,159 --> 00:30:37,380
+restrict the issuance of family refresh
+
+831
+00:30:37,380 --> 00:30:39,779
+tokens although msrc and their response
+
+832
+00:30:39,779 --> 00:30:41,580
+said that Microsoft does want to pursue
+
+833
+00:30:41,580 --> 00:30:44,039
+this in the future to allow you to not
+
+834
+00:30:44,039 --> 00:30:45,179
+allow these to be used in your
+
+835
+00:30:45,179 --> 00:30:46,559
+environment because of the sort of the
+
+836
+00:30:46,559 --> 00:30:48,539
+threat model they they expose the attack
+
+837
+00:30:48,539 --> 00:30:49,500
+surface
+
+838
+00:30:49,500 --> 00:30:52,380
+but as of right now there is no uh no
+
+839
+00:30:52,380 --> 00:30:55,320
+current uh dial or switch or toggle for
+
+840
+00:30:55,320 --> 00:30:56,940
+us to play with
+
+841
+00:30:56,940 --> 00:30:59,340
+um to otherwise lock down the use of
+
+842
+00:30:59,340 --> 00:31:02,299
+these refresh tokens
+
+843
+00:31:02,520 --> 00:31:04,620
+this is especially noticeable as a
+
+844
+00:31:04,620 --> 00:31:06,960
+Defender because if you are trying to
+
+845
+00:31:06,960 --> 00:31:08,640
+look for abuse of family refresh tokens
+
+846
+00:31:08,640 --> 00:31:10,440
+in your environment you would do so
+
+847
+00:31:10,440 --> 00:31:11,880
+looking in the user sign-ins
+
+848
+00:31:11,880 --> 00:31:14,399
+non-interactive log right which is where
+
+849
+00:31:14,399 --> 00:31:16,440
+um refresh token grants are going to be
+
+850
+00:31:16,440 --> 00:31:17,700
+populated
+
+851
+00:31:17,700 --> 00:31:19,740
+but unfortunately there currently isn't
+
+852
+00:31:19,740 --> 00:31:22,860
+any information in those non-interactive
+
+853
+00:31:22,860 --> 00:31:25,399
+sign-ins that tells you anything about
+
+854
+00:31:25,399 --> 00:31:28,620
+the original client
+
+855
+00:31:28,620 --> 00:31:31,740
+or Scopes issued to the refresh token
+
+856
+00:31:31,740 --> 00:31:33,360
+that's being used to perform this
+
+857
+00:31:33,360 --> 00:31:35,880
+interactive sign in so effectively it is
+
+858
+00:31:35,880 --> 00:31:38,640
+invisible from this perspective although
+
+859
+00:31:38,640 --> 00:31:39,840
+I know from internal sources at
+
+860
+00:31:39,840 --> 00:31:42,179
+Microsoft that the ability to do this
+
+861
+00:31:42,179 --> 00:31:44,279
+Telemetry and linking does exist because
+
+862
+00:31:44,279 --> 00:31:46,380
+there are certain identifiers in
+
+863
+00:31:46,380 --> 00:31:48,240
+subsequently issued tokens that give it
+
+864
+00:31:48,240 --> 00:31:50,279
+sort of a lineage back down like a chain
+
+865
+00:31:50,279 --> 00:31:52,679
+of tokens so it's in theory possible to
+
+866
+00:31:52,679 --> 00:31:54,659
+do this and say Hey you know this
+
+867
+00:31:54,659 --> 00:31:57,720
+sign-in originated from a Fosse refresh
+
+868
+00:31:57,720 --> 00:31:59,460
+from a family refresh token specifically
+
+869
+00:31:59,460 --> 00:32:01,559
+but um again at the moment the only
+
+870
+00:32:01,559 --> 00:32:03,840
+thing we can do as Defenders is compile
+
+871
+00:32:03,840 --> 00:32:05,460
+the list of the known clients and
+
+872
+00:32:05,460 --> 00:32:08,279
+monitor for those in our logs so what I
+
+873
+00:32:08,279 --> 00:32:10,200
+showed you earlier would be very obvious
+
+874
+00:32:10,200 --> 00:32:12,480
+because you'd have a whole burst of
+
+875
+00:32:12,480 --> 00:32:13,799
+non-interactive sign-ins in a short
+
+876
+00:32:13,799 --> 00:32:16,380
+period of time all for different clients
+
+877
+00:32:16,380 --> 00:32:18,720
+that there wasn't an earlier interactive
+
+878
+00:32:18,720 --> 00:32:20,340
+sign-in for right you could basically
+
+879
+00:32:20,340 --> 00:32:22,799
+diff and try to try to match those up
+
+880
+00:32:22,799 --> 00:32:24,419
+but otherwise it's still kind of a pain
+
+881
+00:32:24,419 --> 00:32:26,960
+in the butt
+
+882
+00:32:28,200 --> 00:32:30,299
+um Microsoft also said in their response
+
+883
+00:32:30,299 --> 00:32:32,399
+and I was skeptical at first that the
+
+884
+00:32:32,399 --> 00:32:34,320
+list of family clients and uh their
+
+885
+00:32:34,320 --> 00:32:36,480
+Scopes they said they changed them often
+
+886
+00:32:36,480 --> 00:32:38,100
+and that does seem to be true because
+
+887
+00:32:38,100 --> 00:32:40,020
+even in the last couple of months um I
+
+888
+00:32:40,020 --> 00:32:41,520
+did notice they were doing some cleanup
+
+889
+00:32:41,520 --> 00:32:43,320
+work where certain
+
+890
+00:32:43,320 --> 00:32:45,120
+um resources for example that did
+
+891
+00:32:45,120 --> 00:32:47,640
+previously some family clients had
+
+892
+00:32:47,640 --> 00:32:50,580
+consent pre-consent for no longer had
+
+893
+00:32:50,580 --> 00:32:52,320
+that consent so they're obviously
+
+894
+00:32:52,320 --> 00:32:53,880
+shuffling things around in the back end
+
+895
+00:32:53,880 --> 00:32:56,399
+but because this is not documented
+
+896
+00:32:56,399 --> 00:32:59,159
+anywhere we really can't know at any
+
+897
+00:32:59,159 --> 00:33:01,140
+given point in time what level of
+
+898
+00:33:01,140 --> 00:33:03,659
+consent any basically the family has
+
+899
+00:33:03,659 --> 00:33:08,120
+which is uh you know problematic
+
+900
+00:33:08,580 --> 00:33:11,039
+and the other takeaway for Defenders is
+
+901
+00:33:11,039 --> 00:33:14,100
+that you know I think it's in in
+
+902
+00:33:14,100 --> 00:33:15,779
+ingrained into our head that we should
+
+903
+00:33:15,779 --> 00:33:17,880
+always reset user passwords when they're
+
+904
+00:33:17,880 --> 00:33:20,159
+a user account gets compromised but when
+
+905
+00:33:20,159 --> 00:33:22,940
+you're not as I think ingrained to
+
+906
+00:33:22,940 --> 00:33:25,860
+revoke refresh tokens when those
+
+907
+00:33:25,860 --> 00:33:29,220
+accounts get popped so really all the
+
+908
+00:33:29,220 --> 00:33:30,960
+time always
+
+909
+00:33:30,960 --> 00:33:33,419
+um you know we should be manually or or
+
+910
+00:33:33,419 --> 00:33:35,640
+automatically revoking these refresh
+
+911
+00:33:35,640 --> 00:33:37,919
+tokens to ensure that
+
+912
+00:33:37,919 --> 00:33:40,320
+um the attacker doesn't have continued
+
+913
+00:33:40,320 --> 00:33:42,419
+persistent access to the compromised
+
+914
+00:33:42,419 --> 00:33:45,659
+account and at least as of right now
+
+915
+00:33:45,659 --> 00:33:47,640
+um continuous access evaluation or other
+
+916
+00:33:47,640 --> 00:33:50,220
+mechanisms that are meant to
+
+917
+00:33:50,220 --> 00:33:52,080
+um automatically revoke things like
+
+918
+00:33:52,080 --> 00:33:54,240
+refresh tokens when a user changes their
+
+919
+00:33:54,240 --> 00:33:55,500
+password or some other like critical
+
+920
+00:33:55,500 --> 00:33:57,659
+event for the identity those are not
+
+921
+00:33:57,659 --> 00:33:59,159
+universally supported they really can't
+
+922
+00:33:59,159 --> 00:34:01,740
+be relied on so just this is part of
+
+923
+00:34:01,740 --> 00:34:03,240
+what we do now for every compromised
+
+924
+00:34:03,240 --> 00:34:04,679
+account you got to revoke those tokens
+
+925
+00:34:04,679 --> 00:34:06,299
+because the level of access they could
+
+926
+00:34:06,299 --> 00:34:08,879
+get by having them is is very
+
+927
+00:34:08,879 --> 00:34:10,440
+significant and it's over a quite long
+
+928
+00:34:10,440 --> 00:34:13,099
+period of time
+
+929
+00:34:13,859 --> 00:34:15,899
+so yeah to kind of wrap things up
+
+930
+00:34:15,899 --> 00:34:18,000
+refresh tokens are effectively
+
+931
+00:34:18,000 --> 00:34:19,859
+long-lived credentials that will grant
+
+932
+00:34:19,859 --> 00:34:21,659
+whomever is in possession of them with
+
+933
+00:34:21,659 --> 00:34:24,020
+long-term access to the user's resources
+
+934
+00:34:24,020 --> 00:34:26,580
+that the resources that in particular
+
+935
+00:34:26,580 --> 00:34:28,260
+are family refresh token have have
+
+936
+00:34:28,260 --> 00:34:30,000
+access to is not something the user
+
+937
+00:34:30,000 --> 00:34:32,940
+consents to explicitly and there is such
+
+938
+00:34:32,940 --> 00:34:35,159
+a wide body of different Scopes that are
+
+939
+00:34:35,159 --> 00:34:36,780
+consented pre-consented in the family
+
+940
+00:34:36,780 --> 00:34:39,239
+that the blast radius from the theft of
+
+941
+00:34:39,239 --> 00:34:42,480
+these is quite quite considerable
+
+942
+00:34:42,480 --> 00:34:43,980
+so the takeaway
+
+943
+00:34:43,980 --> 00:34:45,659
+um for us again is we need to be on top
+
+944
+00:34:45,659 --> 00:34:47,820
+of revoking refresh tokens Whenever
+
+945
+00:34:47,820 --> 00:34:49,500
+there are compromised accounts we should
+
+946
+00:34:49,500 --> 00:34:51,300
+keep an eye on these family clients and
+
+947
+00:34:51,300 --> 00:34:52,560
+how they're used in our environment so
+
+948
+00:34:52,560 --> 00:34:54,179
+we can come up with ways to monitor or
+
+949
+00:34:54,179 --> 00:34:55,980
+to block those and we need to keep
+
+950
+00:34:55,980 --> 00:34:58,380
+pressure on Microsoft to at the very
+
+951
+00:34:58,380 --> 00:35:00,660
+least document that this is a feature
+
+952
+00:35:00,660 --> 00:35:02,160
+this is how it exists this should be in
+
+953
+00:35:02,160 --> 00:35:03,960
+your threat model as security Architects
+
+954
+00:35:03,960 --> 00:35:07,080
+and ideally get out those features as
+
+955
+00:35:07,080 --> 00:35:08,580
+soon as possible that would let us
+
+956
+00:35:08,580 --> 00:35:11,700
+disable things like family of client IDs
+
+957
+00:35:11,700 --> 00:35:13,200
+from working in your environment if
+
+958
+00:35:13,200 --> 00:35:15,420
+there's no legitimate business case for
+
+959
+00:35:15,420 --> 00:35:16,920
+them
+
+960
+00:35:16,920 --> 00:35:18,900
+so that's kind of it for my Whirlwind
+
+961
+00:35:18,900 --> 00:35:20,040
+talk here trying to give a special
+
+962
+00:35:20,040 --> 00:35:22,680
+thanks to um Dr Cinema from my team who
+
+963
+00:35:22,680 --> 00:35:23,880
+was kind of inspiration for a lot of
+
+964
+00:35:23,880 --> 00:35:25,740
+This research and thank you all very
+
+965
+00:35:25,740 --> 00:35:27,470
+much for for having me
+
+966
+00:35:27,470 --> 00:35:33,629
+[Applause]
+
+967
+00:35:34,200 --> 00:35:35,940
+thank you Ryan
+
+968
+00:35:35,940 --> 00:35:37,740
+um we have time for one maybe two
+
+969
+00:35:37,740 --> 00:35:41,899
+questions are there any yes
+
+970
+00:35:42,380 --> 00:35:45,660
+and I will repeat the question
+
+971
+00:35:45,660 --> 00:35:49,140
+is it okay for you yeah
+
+972
+00:35:49,140 --> 00:35:52,800
+hey hi Ryan so uh you said that there's
+
+973
+00:35:52,800 --> 00:35:54,000
+only one family
+
+974
+00:35:54,000 --> 00:35:57,900
+so if I like an app provider can I get
+
+975
+00:35:57,900 --> 00:35:59,940
+my own family
+
+976
+00:35:59,940 --> 00:36:01,800
+um so the question was there's only one
+
+977
+00:36:01,800 --> 00:36:03,780
+family in use if you're an application
+
+978
+00:36:03,780 --> 00:36:05,520
+developer could you register your own
+
+979
+00:36:05,520 --> 00:36:06,359
+family
+
+980
+00:36:06,359 --> 00:36:09,060
+um the answer is no this appears to be a
+
+981
+00:36:09,060 --> 00:36:11,220
+Microsoft specific feature that lets
+
+982
+00:36:11,220 --> 00:36:13,260
+them do things that other Publishers
+
+983
+00:36:13,260 --> 00:36:15,180
+could not do if they were also using
+
+984
+00:36:15,180 --> 00:36:18,859
+Azure ID as their identity platform
+
+985
+00:36:19,980 --> 00:36:23,359
+any other questions
+
+986
+00:36:28,560 --> 00:36:31,160
+okay thank you Ryan thank you so much
+
+987
+00:36:31,160 --> 00:36:38,069
+[Applause]
+

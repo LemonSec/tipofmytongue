@@ -1,0 +1,2212 @@
+﻿1
+00:00:07,120 --> 00:00:10,879
+it's okay
+
+2
+00:00:08,000 --> 00:00:12,639
+hi my name is eric welcome to this
+
+3
+00:00:10,880 --> 00:00:14,719
+presentation
+
+4
+00:00:12,639 --> 00:00:18,000
+i'm a software engineer at oracle
+
+5
+00:00:14,719 --> 00:00:19,840
+working for the optimizer team in mysql
+
+6
+00:00:18,000 --> 00:00:22,080
+and i will be talking about hash joining
+
+7
+00:00:19,840 --> 00:00:26,720
+mysql which is a new feature
+
+8
+00:00:22,080 --> 00:00:29,439
+in mysql 8018
+
+9
+00:00:26,720 --> 00:00:30,720
+so the agenda for today is that i will
+
+10
+00:00:29,439 --> 00:00:32,719
+first talk about
+
+11
+00:00:30,720 --> 00:00:34,879
+how we got to the point where we were
+
+12
+00:00:32,719 --> 00:00:36,640
+able to implement hash join
+
+13
+00:00:34,880 --> 00:00:38,640
+we have done some major refactorings
+
+14
+00:00:36,640 --> 00:00:39,760
+which are now finally starting to pay
+
+15
+00:00:38,640 --> 00:00:41,360
+off
+
+16
+00:00:39,760 --> 00:00:44,320
+i will go through what hash join
+
+17
+00:00:41,360 --> 00:00:46,800
+actually is before going into details
+
+18
+00:00:44,320 --> 00:00:49,520
+about hash joining mysql8
+
+19
+00:00:46,800 --> 00:00:51,680
+what it is what kind of performance you
+
+20
+00:00:49,520 --> 00:00:53,520
+can get from it how you use it
+
+21
+00:00:51,680 --> 00:00:57,120
+and other things that can be useful to
+
+22
+00:00:53,520 --> 00:00:59,760
+know about hashjoin
+
+23
+00:00:57,120 --> 00:01:00,718
+so first on background history for the
+
+24
+00:00:59,760 --> 00:01:03,680
+longest time
+
+25
+00:01:00,719 --> 00:01:05,760
+mysql only supported variations of the
+
+26
+00:01:03,680 --> 00:01:06,479
+nested loop algorithm for executing
+
+27
+00:01:05,760 --> 00:01:08,720
+joins
+
+28
+00:01:06,479 --> 00:01:10,400
+which is of course the basic nested loop
+
+29
+00:01:08,720 --> 00:01:12,240
+nested loop with index lookup
+
+30
+00:01:10,400 --> 00:01:14,640
+and you also have the block nested loop
+
+31
+00:01:12,240 --> 00:01:17,119
+which is a nested loop with an in-memory
+
+32
+00:01:14,640 --> 00:01:19,200
+buffer for some speed up
+
+33
+00:01:17,119 --> 00:01:21,119
+and because we only supported nested
+
+34
+00:01:19,200 --> 00:01:22,799
+loop our executor
+
+35
+00:01:21,119 --> 00:01:24,880
+and optimizer for that sake has been
+
+36
+00:01:22,799 --> 00:01:27,520
+very focused around this
+
+37
+00:01:24,880 --> 00:01:28,000
+nested loop execution making it very
+
+38
+00:01:27,520 --> 00:01:30,880
+hard
+
+39
+00:01:28,000 --> 00:01:32,640
+to extend with other join algorithms
+
+40
+00:01:30,880 --> 00:01:36,399
+that may not be
+
+41
+00:01:32,640 --> 00:01:36,400
+unnecessary kind of algorithm
+
+42
+00:01:36,799 --> 00:01:40,000
+and for the last two years we have been
+
+43
+00:01:38,960 --> 00:01:43,039
+working very hard
+
+44
+00:01:40,000 --> 00:01:44,880
+on implementing a brand new executor and
+
+45
+00:01:43,040 --> 00:01:48,320
+iterator executor which is now
+
+46
+00:01:44,880 --> 00:01:48,320
+released in 8018.
+
+47
+00:01:49,280 --> 00:01:53,040
+so this new executor is based on the
+
+48
+00:01:51,200 --> 00:01:55,280
+volcano iterator model
+
+49
+00:01:53,040 --> 00:01:56,399
+which is sort of like the textbook
+
+50
+00:01:55,280 --> 00:01:59,280
+example on how to
+
+51
+00:01:56,399 --> 00:02:01,680
+implement an executor and one of the
+
+52
+00:01:59,280 --> 00:02:03,200
+basic ideas in this model is that all
+
+53
+00:02:01,680 --> 00:02:06,079
+operations should share
+
+54
+00:02:03,200 --> 00:02:07,680
+a common interface in mysql this
+
+55
+00:02:06,079 --> 00:02:11,120
+interface has two methods
+
+56
+00:02:07,680 --> 00:02:13,040
+which are init and read init initializes
+
+57
+00:02:11,120 --> 00:02:14,640
+the iterator for reading making it ready
+
+58
+00:02:13,040 --> 00:02:16,640
+for returning rows
+
+59
+00:02:14,640 --> 00:02:19,200
+and read simply returns the next row
+
+60
+00:02:16,640 --> 00:02:21,200
+from that iterator
+
+61
+00:02:19,200 --> 00:02:23,359
+another important thing is that each
+
+62
+00:02:21,200 --> 00:02:24,560
+operation is contained within one single
+
+63
+00:02:23,360 --> 00:02:26,400
+iterator
+
+64
+00:02:24,560 --> 00:02:28,319
+so that responsibility and things are
+
+65
+00:02:26,400 --> 00:02:30,239
+not scattered around
+
+66
+00:02:28,319 --> 00:02:33,119
+the code base in different places so
+
+67
+00:02:30,239 --> 00:02:35,680
+things are more more self-contained now
+
+68
+00:02:33,120 --> 00:02:36,160
+because of these two things we now have
+
+69
+00:02:35,680 --> 00:02:39,280
+a much
+
+70
+00:02:36,160 --> 00:02:42,239
+more modular executor which allows us to
+
+71
+00:02:39,280 --> 00:02:42,640
+implement new features faster and making
+
+72
+00:02:42,239 --> 00:02:45,840
+things
+
+73
+00:02:42,640 --> 00:02:47,518
+a lot easier to understand a colleague
+
+74
+00:02:45,840 --> 00:02:48,480
+of mine usually compares the old
+
+75
+00:02:47,519 --> 00:02:51,519
+executor to
+
+76
+00:02:48,480 --> 00:02:53,280
+a jigsaw puzzle where pieces can fit in
+
+77
+00:02:51,519 --> 00:02:55,280
+only one specific way
+
+78
+00:02:53,280 --> 00:02:57,040
+while the new executor is more like lego
+
+79
+00:02:55,280 --> 00:02:59,440
+bricks where you can connect them like
+
+80
+00:02:57,040 --> 00:02:59,440
+you want
+
+81
+00:03:00,640 --> 00:03:03,760
+so by having this new executor hashtag
+
+82
+00:03:03,120 --> 00:03:05,920
+was
+
+83
+00:03:03,760 --> 00:03:07,679
+just a new iterator of course there are
+
+84
+00:03:05,920 --> 00:03:09,440
+some details around it
+
+85
+00:03:07,680 --> 00:03:11,680
+and there are other features now as well
+
+86
+00:03:09,440 --> 00:03:14,000
+which stems from this new executor
+
+87
+00:03:11,680 --> 00:03:16,400
+explain analyze is one of them we have a
+
+88
+00:03:14,000 --> 00:03:18,640
+new tree based explain output
+
+89
+00:03:16,400 --> 00:03:21,599
+which is also very nice and thanks to
+
+90
+00:03:18,640 --> 00:03:21,599
+this new executor
+
+91
+00:03:21,760 --> 00:03:25,518
+so an execution tree can be visualized
+
+92
+00:03:23,680 --> 00:03:28,080
+something like this where you have
+
+93
+00:03:25,519 --> 00:03:30,239
+two table scans on the bottom the left
+
+94
+00:03:28,080 --> 00:03:32,159
+side has a filter after it
+
+95
+00:03:30,239 --> 00:03:35,760
+both of these go into a hash joint
+
+96
+00:03:32,159 --> 00:03:38,239
+iterator before ending up in a sort
+
+97
+00:03:35,760 --> 00:03:38,959
+and because all of these share the same
+
+98
+00:03:38,239 --> 00:03:40,799
+interface
+
+99
+00:03:38,959 --> 00:03:42,319
+you can easily imagine replacing the
+
+100
+00:03:40,799 --> 00:03:45,440
+hash join with
+
+101
+00:03:42,319 --> 00:03:47,839
+a nested loop for instance or any other
+
+102
+00:03:45,440 --> 00:03:47,840
+operation
+
+103
+00:03:48,720 --> 00:03:53,359
+so what is hash join hash join is a join
+
+104
+00:03:51,680 --> 00:03:57,040
+algorithm that uses hashing
+
+105
+00:03:53,360 --> 00:03:59,120
+to find matching rows between two inputs
+
+106
+00:03:57,040 --> 00:04:00,239
+it was first described in the mid 80s so
+
+107
+00:03:59,120 --> 00:04:04,640
+this is
+
+108
+00:04:00,239 --> 00:04:06,720
+a fairly old executor join algorithm
+
+109
+00:04:04,640 --> 00:04:07,839
+in order for hash join to work
+
+110
+00:04:06,720 --> 00:04:09,920
+efficiently
+
+111
+00:04:07,840 --> 00:04:11,040
+it requires at least one active join
+
+112
+00:04:09,920 --> 00:04:12,798
+condition
+
+113
+00:04:11,040 --> 00:04:15,519
+an active join condition is a condition
+
+114
+00:04:12,799 --> 00:04:17,199
+on the form column equals column
+
+115
+00:04:15,519 --> 00:04:19,040
+you can of course have multiple equi
+
+116
+00:04:17,199 --> 00:04:20,720
+join and join conditions in the same
+
+117
+00:04:19,040 --> 00:04:22,479
+query
+
+118
+00:04:20,720 --> 00:04:24,000
+and hash join usually comes in three
+
+119
+00:04:22,479 --> 00:04:26,159
+different flavors
+
+120
+00:04:24,000 --> 00:04:27,440
+you have the classic hash join you have
+
+121
+00:04:26,160 --> 00:04:29,840
+the grace hashtown
+
+122
+00:04:27,440 --> 00:04:31,600
+and you have the hybrid hash join each
+
+123
+00:04:29,840 --> 00:04:34,479
+of these builds on top of each other
+
+124
+00:04:31,600 --> 00:04:37,280
+adding a bit more complexity
+
+125
+00:04:34,479 --> 00:04:38,719
+you also have more exotic variants like
+
+126
+00:04:37,280 --> 00:04:41,440
+a distributed hash join
+
+127
+00:04:38,720 --> 00:04:42,560
+but these are kind of the three basic
+
+128
+00:04:41,440 --> 00:04:46,160
+hash join
+
+129
+00:04:42,560 --> 00:04:47,840
+flavors so i'll go i will go through
+
+130
+00:04:46,160 --> 00:04:49,600
+each of them to explain how
+
+131
+00:04:47,840 --> 00:04:52,080
+explain how they work in order for you
+
+132
+00:04:49,600 --> 00:04:55,360
+to understand how hash join works
+
+133
+00:04:52,080 --> 00:04:56,960
+in mysql
+
+134
+00:04:55,360 --> 00:04:58,720
+so for these examples we are going to
+
+135
+00:04:56,960 --> 00:05:00,560
+join together two tables which are
+
+136
+00:04:58,720 --> 00:05:02,880
+countries and persons
+
+137
+00:05:00,560 --> 00:05:05,360
+we will join them on the column country
+
+138
+00:05:02,880 --> 00:05:09,039
+id which simply describes
+
+139
+00:05:05,360 --> 00:05:09,039
+which country a person lives in
+
+140
+00:05:09,280 --> 00:05:13,440
+the classic hash join is divided into
+
+141
+00:05:11,680 --> 00:05:15,120
+two separate faces
+
+142
+00:05:13,440 --> 00:05:17,199
+they are called the build phase and the
+
+143
+00:05:15,120 --> 00:05:19,360
+probe face
+
+144
+00:05:17,199 --> 00:05:23,039
+so in the build phase one of the tables
+
+145
+00:05:19,360 --> 00:05:24,639
+are designated as the build inputs
+
+146
+00:05:23,039 --> 00:05:26,639
+of course it doesn't have to be a table
+
+147
+00:05:24,639 --> 00:05:30,080
+it can be any other inputs
+
+148
+00:05:26,639 --> 00:05:30,320
+of course the build input is loaded into
+
+149
+00:05:30,080 --> 00:05:32,960
+an
+
+150
+00:05:30,320 --> 00:05:34,080
+in-memory hash table where the hash
+
+151
+00:05:32,960 --> 00:05:36,080
+table key
+
+152
+00:05:34,080 --> 00:05:38,400
+is the part of the join condition that
+
+153
+00:05:36,080 --> 00:05:40,280
+belongs to the build input
+
+154
+00:05:38,400 --> 00:05:42,799
+in this case that's the column
+
+155
+00:05:40,280 --> 00:05:44,479
+countries.country id
+
+156
+00:05:42,800 --> 00:05:48,160
+once all the rows has been loaded to the
+
+157
+00:05:44,479 --> 00:05:50,719
+hash table the build phase is complete
+
+158
+00:05:48,160 --> 00:05:52,400
+the next phase is called the probe phase
+
+159
+00:05:50,720 --> 00:05:54,080
+and the other table is called the probe
+
+160
+00:05:52,400 --> 00:05:56,880
+table
+
+161
+00:05:54,080 --> 00:05:58,479
+for each row in the probe table you
+
+162
+00:05:56,880 --> 00:06:00,400
+create a hash table lookup key
+
+163
+00:05:58,479 --> 00:06:02,719
+using the part from the join condition
+
+164
+00:06:00,400 --> 00:06:04,400
+that belongs to the probe table
+
+165
+00:06:02,720 --> 00:06:06,479
+and for each match you can find in the
+
+166
+00:06:04,400 --> 00:06:07,359
+hash table you return a joined row to
+
+167
+00:06:06,479 --> 00:06:09,199
+the client
+
+168
+00:06:07,360 --> 00:06:11,199
+or to the output or the next step in
+
+169
+00:06:09,199 --> 00:06:13,199
+your execution tree
+
+170
+00:06:11,199 --> 00:06:14,240
+once all the tables from the probe input
+
+171
+00:06:13,199 --> 00:06:20,160
+has been read
+
+172
+00:06:14,240 --> 00:06:21,759
+the join is complete
+
+173
+00:06:20,160 --> 00:06:24,160
+so the benefit here is that you read
+
+174
+00:06:21,759 --> 00:06:26,400
+each input only once
+
+175
+00:06:24,160 --> 00:06:29,520
+but in order for that to work the build
+
+176
+00:06:26,400 --> 00:06:31,520
+table has to fit in memory of course
+
+177
+00:06:29,520 --> 00:06:33,198
+that is why we choose the smallest table
+
+178
+00:06:31,520 --> 00:06:35,520
+as the build table
+
+179
+00:06:33,199 --> 00:06:37,280
+measured in size or bytes not in number
+
+180
+00:06:35,520 --> 00:06:40,000
+of rows
+
+181
+00:06:37,280 --> 00:06:41,280
+larger inputs can also be handled like
+
+182
+00:06:40,000 --> 00:06:44,080
+block nested loopholes
+
+183
+00:06:41,280 --> 00:06:46,000
+where once the hash table goes full you
+
+184
+00:06:44,080 --> 00:06:47,039
+do the probe phase by reading the entire
+
+185
+00:06:46,000 --> 00:06:49,599
+probe input
+
+186
+00:06:47,039 --> 00:06:51,280
+you then clear the hash table continue
+
+187
+00:06:49,599 --> 00:06:53,520
+reading the build input
+
+188
+00:06:51,280 --> 00:06:55,758
+filling it up with the rows you then
+
+189
+00:06:53,520 --> 00:06:58,159
+scan the entire probe input again
+
+190
+00:06:55,759 --> 00:07:00,240
+and continue doing this until you
+
+191
+00:06:58,160 --> 00:07:02,080
+consume the entire build input
+
+192
+00:07:00,240 --> 00:07:04,720
+and the drawback here is that you end up
+
+193
+00:07:02,080 --> 00:07:06,639
+reading the probe table multiple times
+
+194
+00:07:04,720 --> 00:07:08,319
+which is we don't something we do not
+
+195
+00:07:06,639 --> 00:07:09,680
+want to do we can be more efficient than
+
+196
+00:07:08,319 --> 00:07:12,720
+that
+
+197
+00:07:09,680 --> 00:07:15,599
+so in order to handle more larger inputs
+
+198
+00:07:12,720 --> 00:07:16,560
+the grace hash join was introduced it
+
+199
+00:07:15,599 --> 00:07:19,440
+was first
+
+200
+00:07:16,560 --> 00:07:20,160
+implemented in the grace database system
+
+201
+00:07:19,440 --> 00:07:24,000
+hence the name
+
+202
+00:07:20,160 --> 00:07:26,639
+grace hashjoin the first step
+
+203
+00:07:24,000 --> 00:07:27,520
+in a grace hash join is to partition
+
+204
+00:07:26,639 --> 00:07:30,000
+each input
+
+205
+00:07:27,520 --> 00:07:31,680
+out to a set of smaller chunk files on
+
+206
+00:07:30,000 --> 00:07:34,080
+disk
+
+207
+00:07:31,680 --> 00:07:35,840
+you have equal amount of chunk files for
+
+208
+00:07:34,080 --> 00:07:38,639
+both inputs
+
+209
+00:07:35,840 --> 00:07:40,560
+and which row rich file to put a row in
+
+210
+00:07:38,639 --> 00:07:43,120
+is decided by doing a hash
+
+211
+00:07:40,560 --> 00:07:44,879
+over the part of the join condition that
+
+212
+00:07:43,120 --> 00:07:48,960
+belongs to that
+
+213
+00:07:44,879 --> 00:07:51,039
+to that input and the result is that we
+
+214
+00:07:48,960 --> 00:07:53,120
+can guarantee that matching rows
+
+215
+00:07:51,039 --> 00:07:54,878
+are located in the same pair of junk
+
+216
+00:07:53,120 --> 00:07:57,120
+files
+
+217
+00:07:54,879 --> 00:07:58,720
+so after the partitioning phase is done
+
+218
+00:07:57,120 --> 00:08:01,759
+you can do the classic
+
+219
+00:07:58,720 --> 00:08:02,720
+hashtag algorithm over each pair of junk
+
+220
+00:08:01,759 --> 00:08:04,240
+file
+
+221
+00:08:02,720 --> 00:08:06,000
+you take the first chunk file from the
+
+222
+00:08:04,240 --> 00:08:06,879
+build input and load it into the hash
+
+223
+00:08:06,000 --> 00:08:09,039
+table
+
+224
+00:08:06,879 --> 00:08:10,080
+you then can do the probe face using the
+
+225
+00:08:09,039 --> 00:08:12,400
+trunk file
+
+226
+00:08:10,080 --> 00:08:14,400
+from the probe input you clear the hash
+
+227
+00:08:12,400 --> 00:08:15,359
+table load the rows from the next trunk
+
+228
+00:08:14,400 --> 00:08:17,280
+file
+
+229
+00:08:15,360 --> 00:08:18,639
+and you continue to do this until you
+
+230
+00:08:17,280 --> 00:08:22,159
+have processed
+
+231
+00:08:18,639 --> 00:08:23,759
+all the chunk files so this is sort of
+
+232
+00:08:22,160 --> 00:08:26,400
+like a divide and conquer
+
+233
+00:08:23,759 --> 00:08:28,160
+algorithm where you take a big problem
+
+234
+00:08:26,400 --> 00:08:31,039
+and you divide it into a set of smaller
+
+235
+00:08:28,160 --> 00:08:33,599
+problems and handle them
+
+236
+00:08:31,039 --> 00:08:35,519
+each input is still read only once but
+
+237
+00:08:33,599 --> 00:08:38,399
+you have to write it out to chunk files
+
+238
+00:08:35,519 --> 00:08:40,719
+and read these chunk files back again
+
+239
+00:08:38,399 --> 00:08:41,679
+there are two things to note here one
+
+240
+00:08:40,719 --> 00:08:44,959
+thing is that
+
+241
+00:08:41,679 --> 00:08:46,719
+you compute each input only once and by
+
+242
+00:08:44,959 --> 00:08:47,760
+that you can think that each input to
+
+243
+00:08:46,720 --> 00:08:49,680
+hash join can be
+
+244
+00:08:47,760 --> 00:08:51,680
+a more complex subtree it can be another
+
+245
+00:08:49,680 --> 00:08:54,239
+join or anything
+
+246
+00:08:51,680 --> 00:08:54,880
+so by writing these outer chunk files
+
+247
+00:08:54,240 --> 00:08:57,040
+you can
+
+248
+00:08:54,880 --> 00:08:58,240
+compute the subtree only once when you
+
+249
+00:08:57,040 --> 00:09:00,480
+read the files back
+
+250
+00:08:58,240 --> 00:09:01,680
+it's pre-computed right compared to a
+
+251
+00:09:00,480 --> 00:09:03,519
+classic hash join
+
+252
+00:09:01,680 --> 00:09:04,880
+where you end up computing the probe
+
+253
+00:09:03,519 --> 00:09:08,160
+input multiple times
+
+254
+00:09:04,880 --> 00:09:09,839
+for each time you read it the other
+
+255
+00:09:08,160 --> 00:09:10,640
+thing to note is that reading from a
+
+256
+00:09:09,839 --> 00:09:12,560
+chunk file
+
+257
+00:09:10,640 --> 00:09:14,720
+is a lot cheaper than reading from a
+
+258
+00:09:12,560 --> 00:09:15,518
+table you do not have the overhead of
+
+259
+00:09:14,720 --> 00:09:16,480
+locking
+
+260
+00:09:15,519 --> 00:09:18,640
+you don't have to care about
+
+261
+00:09:16,480 --> 00:09:20,160
+transactions multiverse and concurrency
+
+262
+00:09:18,640 --> 00:09:22,080
+control etc
+
+263
+00:09:20,160 --> 00:09:23,199
+so the cost of reading from a trunk file
+
+264
+00:09:22,080 --> 00:09:26,959
+compared to table
+
+265
+00:09:23,200 --> 00:09:29,760
+is very low the drawback of the grace
+
+266
+00:09:26,959 --> 00:09:33,518
+hash join is that for small inputs
+
+267
+00:09:29,760 --> 00:09:35,120
+you end up doing unnecessary disk io
+
+268
+00:09:33,519 --> 00:09:37,680
+because you could have done everything
+
+269
+00:09:35,120 --> 00:09:39,680
+in memory right
+
+270
+00:09:37,680 --> 00:09:42,000
+that is where the hybrid hashtown comes
+
+271
+00:09:39,680 --> 00:09:42,560
+in it's a combination of both the
+
+272
+00:09:42,000 --> 00:09:45,600
+classic
+
+273
+00:09:42,560 --> 00:09:48,239
+and the grace join you start out by
+
+274
+00:09:45,600 --> 00:09:50,000
+trying to do everything in memory
+
+275
+00:09:48,240 --> 00:09:51,680
+you read as much as you can into the
+
+276
+00:09:50,000 --> 00:09:53,600
+in-memory hash table
+
+277
+00:09:51,680 --> 00:09:54,959
+and if you are able to fit all rows in
+
+278
+00:09:53,600 --> 00:09:57,440
+the hash table
+
+279
+00:09:54,959 --> 00:09:58,399
+you can do the classic hash join right
+
+280
+00:09:57,440 --> 00:10:00,720
+if at any point
+
+281
+00:09:58,399 --> 00:10:02,480
+the hash table goes full you take the
+
+282
+00:10:00,720 --> 00:10:04,880
+rest of the rows from the build input
+
+283
+00:10:02,480 --> 00:10:08,079
+and write it out to trunk files on disk
+
+284
+00:10:04,880 --> 00:10:08,079
+as in the grace hash join
+
+285
+00:10:09,040 --> 00:10:12,800
+during the probe phase you do the normal
+
+286
+00:10:11,279 --> 00:10:14,720
+probing in the hash table
+
+287
+00:10:12,800 --> 00:10:15,920
+send out all matching rows to the
+
+288
+00:10:14,720 --> 00:10:18,160
+outputs
+
+289
+00:10:15,920 --> 00:10:19,599
+but in addition if you did spill to disk
+
+290
+00:10:18,160 --> 00:10:22,399
+during the build phase
+
+291
+00:10:19,600 --> 00:10:22,880
+you also have to write all the rows out
+
+292
+00:10:22,399 --> 00:10:25,600
+to
+
+293
+00:10:22,880 --> 00:10:26,320
+trunk files that is because one of the
+
+294
+00:10:25,600 --> 00:10:28,079
+rows
+
+295
+00:10:26,320 --> 00:10:31,760
+may match one of the rows that you did
+
+296
+00:10:28,079 --> 00:10:34,479
+write out the trunk file from the build
+
+297
+00:10:31,760 --> 00:10:35,200
+so once i read the probe input once you
+
+298
+00:10:34,480 --> 00:10:37,040
+can now do
+
+299
+00:10:35,200 --> 00:10:39,120
+the classic hash join for each pair of
+
+300
+00:10:37,040 --> 00:10:41,199
+trunk files which is what you did for a
+
+301
+00:10:39,120 --> 00:10:43,920
+grace hash join
+
+302
+00:10:41,200 --> 00:10:46,079
+so once that is done your pro you have
+
+303
+00:10:43,920 --> 00:10:47,760
+completed the join
+
+304
+00:10:46,079 --> 00:10:49,120
+so this gives you sort of the best of
+
+305
+00:10:47,760 --> 00:10:51,120
+both worlds
+
+306
+00:10:49,120 --> 00:10:53,120
+you get in memory if possible if you
+
+307
+00:10:51,120 --> 00:10:53,760
+have small inputs but you also get the
+
+308
+00:10:53,120 --> 00:10:56,800
+benefit
+
+309
+00:10:53,760 --> 00:10:57,439
+of spill to disk for large inputs and
+
+310
+00:10:56,800 --> 00:11:01,839
+you also
+
+311
+00:10:57,440 --> 00:11:01,839
+still are computing each input only once
+
+312
+00:11:02,640 --> 00:11:07,040
+so this brings us to hash join in mysql
+
+313
+00:11:04,800 --> 00:11:07,040
+8.
+
+314
+00:11:07,600 --> 00:11:11,760
+hybrid hashjoin is the algorithm we
+
+315
+00:11:09,760 --> 00:11:14,240
+implemented
+
+316
+00:11:11,760 --> 00:11:15,680
+and since hashing is used so much for
+
+317
+00:11:14,240 --> 00:11:18,240
+hash join
+
+318
+00:11:15,680 --> 00:11:19,839
+we chose to use the hash function xx
+
+319
+00:11:18,240 --> 00:11:23,839
+which is a familiar
+
+320
+00:11:19,839 --> 00:11:23,839
+good quality fast hash function
+
+321
+00:11:23,920 --> 00:11:29,279
+if we decide to spill to disk we will
+
+322
+00:11:26,079 --> 00:11:31,599
+write up to 128 trunk files per input
+
+323
+00:11:29,279 --> 00:11:32,560
+out to disk which means each hashtown
+
+324
+00:11:31,600 --> 00:11:35,440
+iterator
+
+325
+00:11:32,560 --> 00:11:36,880
+will potentially write up to 256 files
+
+326
+00:11:35,440 --> 00:11:39,040
+on disk
+
+327
+00:11:36,880 --> 00:11:40,880
+and this apple limit exists because so
+
+328
+00:11:39,040 --> 00:11:44,160
+you don't risk hitting the open files
+
+329
+00:11:40,880 --> 00:11:44,160
+limit that mysql has
+
+330
+00:11:44,320 --> 00:11:47,519
+with hashjoin you have no guaranteed
+
+331
+00:11:45,920 --> 00:11:49,360
+output ordering anymore which
+
+332
+00:11:47,519 --> 00:11:52,399
+you might have been used to with the
+
+333
+00:11:49,360 --> 00:11:52,399
+nested loop algorithm
+
+334
+00:11:52,560 --> 00:11:57,760
+8018 supports inner hash join but in the
+
+335
+00:11:55,360 --> 00:12:00,079
+upcoming 8 or 20 release we also added
+
+336
+00:11:57,760 --> 00:12:04,880
+support for the rest of the join types
+
+337
+00:12:00,079 --> 00:12:04,880
+semijoin and to join and outer hash join
+
+338
+00:12:07,200 --> 00:12:11,600
+currently hashtonyu places block nested
+
+339
+00:12:09,440 --> 00:12:15,200
+loop whenever possible which is
+
+340
+00:12:11,600 --> 00:12:17,440
+in almost every every possible case
+
+341
+00:12:15,200 --> 00:12:19,920
+since hashtag replaces blockness a loop
+
+342
+00:12:17,440 --> 00:12:21,920
+you have to use the optimizer switch
+
+343
+00:12:19,920 --> 00:12:23,120
+block nested loop to enable or disable
+
+344
+00:12:21,920 --> 00:12:26,000
+hash join
+
+345
+00:12:23,120 --> 00:12:26,560
+it is enabled by default and if you want
+
+346
+00:12:26,000 --> 00:12:28,560
+to see
+
+347
+00:12:26,560 --> 00:12:30,638
+whether or not your query is using hash
+
+348
+00:12:28,560 --> 00:12:32,319
+join we recommend you to use the new
+
+349
+00:12:30,639 --> 00:12:35,839
+explain format equals 3
+
+350
+00:12:32,320 --> 00:12:37,519
+outputs that's the one explained that
+
+351
+00:12:35,839 --> 00:12:40,000
+gives you an accurate
+
+352
+00:12:37,519 --> 00:12:41,440
+representation of our iterate execution
+
+353
+00:12:40,000 --> 00:12:44,720
+tree
+
+354
+00:12:41,440 --> 00:12:46,160
+here you can see an output from explain
+
+355
+00:12:44,720 --> 00:12:47,680
+very clear you can see that we have an
+
+356
+00:12:46,160 --> 00:12:48,719
+inner hash join you can see the join
+
+357
+00:12:47,680 --> 00:12:50,638
+condition
+
+358
+00:12:48,720 --> 00:12:53,120
+you can also see which of the tables
+
+359
+00:12:50,639 --> 00:12:57,440
+that were chosen as the build input
+
+360
+00:12:53,120 --> 00:12:57,440
+in this case it's the country's table
+
+361
+00:12:58,079 --> 00:13:01,120
+and here we turn off the optimized
+
+362
+00:12:59,680 --> 00:13:02,399
+switch block nested loop
+
+363
+00:13:01,120 --> 00:13:04,959
+and you can see that the query is
+
+364
+00:13:02,399 --> 00:13:07,839
+executed using nested loop instead
+
+365
+00:13:04,959 --> 00:13:07,839
+of hash join
+
+366
+00:13:10,399 --> 00:13:14,399
+if indexes are available the optimizer
+
+367
+00:13:13,120 --> 00:13:17,040
+will tend to favor
+
+368
+00:13:14,399 --> 00:13:18,560
+nested loop with index lookups instead
+
+369
+00:13:17,040 --> 00:13:20,719
+of hash join
+
+370
+00:13:18,560 --> 00:13:21,760
+if you want to force a hash joint to be
+
+371
+00:13:20,720 --> 00:13:23,440
+used
+
+372
+00:13:21,760 --> 00:13:26,079
+you can either use the ignore index
+
+373
+00:13:23,440 --> 00:13:26,720
+syntax or use the new invisible index
+
+374
+00:13:26,079 --> 00:13:29,359
+feature
+
+375
+00:13:26,720 --> 00:13:30,800
+to turn off indexes and force the
+
+376
+00:13:29,360 --> 00:13:35,839
+optimizer to choose
+
+377
+00:13:30,800 --> 00:13:38,000
+a hashtag plan
+
+378
+00:13:35,839 --> 00:13:41,120
+oh you can use the optimizer hints as
+
+379
+00:13:38,000 --> 00:13:41,120
+well yeah you can
+
+380
+00:13:43,120 --> 00:13:46,639
+and the system variable join buffer size
+
+381
+00:13:45,199 --> 00:13:49,760
+controls how much
+
+382
+00:13:46,639 --> 00:13:51,680
+memory is available for the hash table
+
+383
+00:13:49,760 --> 00:13:53,439
+but please note that a larger buffer
+
+384
+00:13:51,680 --> 00:13:56,399
+size does not necessarily mean
+
+385
+00:13:53,440 --> 00:13:58,000
+better performance having larger hash
+
+386
+00:13:56,399 --> 00:14:00,639
+tables has this cost by
+
+387
+00:13:58,000 --> 00:14:01,360
+doing rehashing and general maintenance
+
+388
+00:14:00,639 --> 00:14:03,920
+so
+
+389
+00:14:01,360 --> 00:14:05,279
+in some cases doing things on disk may
+
+390
+00:14:03,920 --> 00:14:08,000
+be faster than
+
+391
+00:14:05,279 --> 00:14:09,519
+doing everything in memory so this is
+
+392
+00:14:08,000 --> 00:14:10,959
+where you need to benchmark your queries
+
+393
+00:14:09,519 --> 00:14:13,839
+to see
+
+394
+00:14:10,959 --> 00:14:13,839
+what fits for you
+
+395
+00:14:14,560 --> 00:14:18,319
+so i have five minutes left i think okay
+
+396
+00:14:17,519 --> 00:14:20,639
+so i will
+
+397
+00:14:18,320 --> 00:14:22,320
+give you some simple performance numbers
+
+398
+00:14:20,639 --> 00:14:24,399
+uh
+
+399
+00:14:22,320 --> 00:14:27,920
+here we have two single column tables
+
+400
+00:14:24,399 --> 00:14:32,000
+each table has around 42 000 rows
+
+401
+00:14:27,920 --> 00:14:34,399
+integer values uniformly distributed
+
+402
+00:14:32,000 --> 00:14:36,880
+and this is all mysql 8018 with default
+
+403
+00:14:34,399 --> 00:14:36,880
+settings
+
+404
+00:14:36,959 --> 00:14:40,160
+if i execute this simple drawing with
+
+405
+00:14:39,040 --> 00:14:41,599
+blocknested loop
+
+406
+00:14:40,160 --> 00:14:43,519
+we are comparing the block nested loop
+
+407
+00:14:41,600 --> 00:14:45,760
+since we are replacing it
+
+408
+00:14:43,519 --> 00:14:46,959
+the join can be executed in almost 50
+
+409
+00:14:45,760 --> 00:14:49,519
+seconds
+
+410
+00:14:46,959 --> 00:14:52,239
+with hash join however we can do the
+
+411
+00:14:49,519 --> 00:14:55,519
+same join in 0.03 seconds
+
+412
+00:14:52,240 --> 00:14:57,040
+which is an improvement of around 1600
+
+413
+00:14:55,519 --> 00:14:58,800
+times
+
+414
+00:14:57,040 --> 00:15:00,160
+the main reason for this speed up is
+
+415
+00:14:58,800 --> 00:15:02,160
+that doing
+
+416
+00:15:00,160 --> 00:15:04,399
+a hash table lookup is a constant time
+
+417
+00:15:02,160 --> 00:15:06,959
+operation versus the linear search a
+
+418
+00:15:04,399 --> 00:15:09,680
+blockedness that loop has to do
+
+419
+00:15:06,959 --> 00:15:12,239
+so this gives you very good speedups for
+
+420
+00:15:09,680 --> 00:15:14,479
+these kind of queries
+
+421
+00:15:12,240 --> 00:15:17,040
+if you add more rows let's add 32 times
+
+422
+00:15:14,480 --> 00:15:20,240
+more rows we can still execute a join
+
+423
+00:15:17,040 --> 00:15:23,120
+in 1.3 seconds using hash join which is
+
+424
+00:15:20,240 --> 00:15:25,199
+still far less than blocknested loop
+
+425
+00:15:23,120 --> 00:15:27,600
+you can add up to let's say 5 million
+
+426
+00:15:25,199 --> 00:15:28,719
+rows you can still do the join in 10.6
+
+427
+00:15:27,600 --> 00:15:30,399
+seconds
+
+428
+00:15:28,720 --> 00:15:33,199
+which is still faster than blockness at
+
+429
+00:15:30,399 --> 00:15:35,360
+loop with 42 000 rows
+
+430
+00:15:33,199 --> 00:15:36,479
+here we also get the benefit of spill to
+
+431
+00:15:35,360 --> 00:15:38,160
+disk since
+
+432
+00:15:36,480 --> 00:15:40,240
+the inputs are so large and we have a
+
+433
+00:15:38,160 --> 00:15:41,839
+low drawing buffer size which is the
+
+434
+00:15:40,240 --> 00:15:43,680
+default setting
+
+435
+00:15:41,839 --> 00:15:46,880
+in the first example tables were small
+
+436
+00:15:43,680 --> 00:15:46,880
+enough to fit in memory
+
+437
+00:15:49,759 --> 00:15:52,959
+and hash drawing can even be more
+
+438
+00:15:51,199 --> 00:15:54,160
+efficient than a nested loop index
+
+439
+00:15:52,959 --> 00:15:56,319
+lookup
+
+440
+00:15:54,160 --> 00:15:57,439
+in this case i've added an index on both
+
+441
+00:15:56,320 --> 00:16:00,160
+columns
+
+442
+00:15:57,440 --> 00:16:01,519
+so the query plan is now a nested loop
+
+443
+00:16:00,160 --> 00:16:04,480
+with index lookup
+
+444
+00:16:01,519 --> 00:16:05,680
+an execution time for this join is 12.17
+
+445
+00:16:04,480 --> 00:16:07,680
+seconds which is
+
+446
+00:16:05,680 --> 00:16:09,040
+one and a half seconds lower than hash
+
+447
+00:16:07,680 --> 00:16:10,880
+join
+
+448
+00:16:09,040 --> 00:16:13,120
+and the main reason for hashtag being
+
+449
+00:16:10,880 --> 00:16:14,079
+faster here is that probing a hash table
+
+450
+00:16:13,120 --> 00:16:16,079
+in memory
+
+451
+00:16:14,079 --> 00:16:17,199
+is faster than doing a secondary index
+
+452
+00:16:16,079 --> 00:16:20,239
+lookup
+
+453
+00:16:17,199 --> 00:16:22,479
+if you had fewer duplicate values
+
+454
+00:16:20,240 --> 00:16:25,199
+a nested loop would probably be quicker
+
+455
+00:16:22,480 --> 00:16:25,199
+than hash join
+
+456
+00:16:27,920 --> 00:16:33,040
+uh that was all i had so if
+
+457
+00:16:31,279 --> 00:16:34,720
+any questions say simon question the
+
+458
+00:16:33,040 --> 00:16:36,880
+joint buffer size the only
+
+459
+00:16:34,720 --> 00:16:38,000
+that's something that's per thread
+
+460
+00:16:36,880 --> 00:16:40,000
+depending on your own threat
+
+461
+00:16:38,000 --> 00:16:41,360
+yes that's per thread and per hashing
+
+462
+00:16:40,000 --> 00:16:44,399
+iterator
+
+463
+00:16:41,360 --> 00:16:46,240
+okay is there any control on memory
+
+464
+00:16:44,399 --> 00:16:47,920
+usage there because it might be that you
+
+465
+00:16:46,240 --> 00:16:50,480
+might prefer to
+
+466
+00:16:47,920 --> 00:16:52,079
+limit the number of concurrents hash
+
+467
+00:16:50,480 --> 00:16:52,639
+joins that are running to preserve
+
+468
+00:16:52,079 --> 00:16:54,959
+memory
+
+469
+00:16:52,639 --> 00:16:56,399
+and not suddenly jump and hit a memory
+
+470
+00:16:54,959 --> 00:16:59,199
+issue okay so the question
+
+471
+00:16:56,399 --> 00:16:59,680
+was uh the joint buffer size is per
+
+472
+00:16:59,199 --> 00:17:01,920
+thread
+
+473
+00:16:59,680 --> 00:17:02,800
+and do you have a global control of it
+
+474
+00:17:01,920 --> 00:17:04,559
+yeah
+
+475
+00:17:02,800 --> 00:17:07,119
+yes it's per thread and now we don't
+
+476
+00:17:04,559 --> 00:17:09,119
+have global control of it currently
+
+477
+00:17:07,119 --> 00:17:12,159
+so the memory usage is or the join
+
+478
+00:17:09,119 --> 00:17:15,438
+buffer size is per hash joint iterator
+
+479
+00:17:12,160 --> 00:17:18,240
+so one query may use multiple times of
+
+480
+00:17:15,439 --> 00:17:19,439
+that query is buffer size clear you
+
+481
+00:17:18,240 --> 00:17:21,280
+could do thread calls and things that
+
+482
+00:17:19,439 --> 00:17:22,799
+depends on which
+
+483
+00:17:21,280 --> 00:17:24,160
+implementation you're using and things
+
+484
+00:17:22,799 --> 00:17:25,119
+but if you're not doing that then
+
+485
+00:17:24,160 --> 00:17:27,199
+potentially
+
+486
+00:17:25,119 --> 00:17:28,319
+it's exactly the same as noun yeah but
+
+487
+00:17:27,199 --> 00:17:29,600
+the point is that you're suddenly
+
+488
+00:17:28,319 --> 00:17:31,280
+changing your behavior and all of a
+
+489
+00:17:29,600 --> 00:17:32,719
+sudden you've got 30 000 queries running
+
+490
+00:17:31,280 --> 00:17:34,320
+on the thing you totally changed to use
+
+491
+00:17:32,720 --> 00:17:36,240
+this
+
+492
+00:17:34,320 --> 00:17:37,439
+box but that's the same with blocknested
+
+493
+00:17:36,240 --> 00:17:39,120
+loop as today
+
+494
+00:17:37,440 --> 00:17:41,039
+locks in block nested loop uses the same
+
+495
+00:17:39,120 --> 00:17:43,120
+by first size let's do the same thing
+
+496
+00:17:41,039 --> 00:17:47,840
+okay so there's no change behavioral
+
+497
+00:17:43,120 --> 00:17:47,840
+change here
+
+498
+00:17:49,280 --> 00:17:51,520
+loop
+
+499
+00:17:53,360 --> 00:18:01,840
+in some cases
+
+500
+00:18:04,880 --> 00:18:08,400
+then you get a huge thing and you also
+
+501
+00:18:06,720 --> 00:18:10,320
+have a problem that you can have
+
+502
+00:18:08,400 --> 00:18:12,080
+pinterest running and all i do is use
+
+503
+00:18:10,320 --> 00:18:14,799
+this 356
+
+504
+00:18:12,080 --> 00:18:14,799
+open files
+
+505
+00:18:15,440 --> 00:18:20,720
+yeah so his comment was that with many
+
+506
+00:18:18,559 --> 00:18:22,160
+hash joins doing large joins you can get
+
+507
+00:18:20,720 --> 00:18:23,679
+a lot of files on disk
+
+508
+00:18:22,160 --> 00:18:29,840
+which can of course create some
+
+509
+00:18:23,679 --> 00:18:29,840
+contention on the disk and problems
+
+510
+00:18:32,720 --> 00:18:36,799
+why we use many files instead of one big
+
+511
+00:18:34,559 --> 00:18:36,799
+file
+
+512
+00:18:37,840 --> 00:18:43,840
+that we use many files because of
+
+513
+00:18:40,840 --> 00:18:43,840
+simplicity
+
+514
+00:18:53,520 --> 00:18:59,200
+more questions thank you
+
+515
+00:18:57,039 --> 00:19:00,559
+you should actually when you have the
+
+516
+00:18:59,200 --> 00:19:02,880
+two tables on the same side
+
+517
+00:19:00,559 --> 00:19:05,120
+adding an index can actually give you a
+
+518
+00:19:02,880 --> 00:19:07,440
+worse performance right
+
+519
+00:19:05,120 --> 00:19:08,159
+yeah in in some cases yes which is
+
+520
+00:19:07,440 --> 00:19:11,760
+probably
+
+521
+00:19:08,160 --> 00:19:14,960
+when you know the two tables had exactly
+
+522
+00:19:11,760 --> 00:19:14,960
+the same number of roles right
+
+523
+00:19:15,760 --> 00:19:20,160
+so are there guidelines or is there
+
+524
+00:19:18,160 --> 00:19:22,400
+anything on the roadmap that will
+
+525
+00:19:20,160 --> 00:19:24,559
+kind of choose the best strategy even
+
+526
+00:19:22,400 --> 00:19:26,320
+when the index is available
+
+527
+00:19:24,559 --> 00:19:28,240
+uh so you're asking if you are going to
+
+528
+00:19:26,320 --> 00:19:29,840
+change the optimizer of course we are
+
+529
+00:19:28,240 --> 00:19:31,600
+thinking about that to of course choose
+
+530
+00:19:29,840 --> 00:19:33,840
+a better plan for these
+
+531
+00:19:31,600 --> 00:19:35,600
+cases yes currently we haven't changed
+
+532
+00:19:33,840 --> 00:19:39,840
+anything but we are
+
+533
+00:19:35,600 --> 00:19:39,840
+thinking about it
+
+534
+00:19:46,799 --> 00:19:50,400
+so what we store in the hash table
+
+535
+00:19:50,880 --> 00:19:54,640
+oh in files on disk we store exactly the
+
+536
+00:19:53,679 --> 00:19:58,320
+same as we store
+
+537
+00:19:54,640 --> 00:20:00,000
+in in the hash table we store
+
+538
+00:19:58,320 --> 00:20:01,520
+whatever from the row that is needed to
+
+539
+00:20:00,000 --> 00:20:03,360
+complete the join
+
+540
+00:20:01,520 --> 00:20:05,600
+if you do select star we must store the
+
+541
+00:20:03,360 --> 00:20:08,719
+entire row if you select one column we
+
+542
+00:20:05,600 --> 00:20:08,719
+store that single column
+
+543
+00:20:15,520 --> 00:20:20,639
+yeah so so the no the trunk file is not
+
+544
+00:20:17,679 --> 00:20:23,360
+the entire table necessarily
+
+545
+00:20:20,640 --> 00:20:25,200
+and also note that this can happen of
+
+546
+00:20:23,360 --> 00:20:26,959
+course after filtering so that you don't
+
+547
+00:20:25,200 --> 00:20:29,520
+have to put the entire table down to
+
+548
+00:20:26,960 --> 00:20:29,520
+junk files
+
+549
+00:20:33,200 --> 00:20:37,039
+yes yes
+
+550
+00:20:44,240 --> 00:20:50,480
+so where did strong files go the same
+
+551
+00:20:46,480 --> 00:20:50,480
+places all temporary files in mysql go
+
+552
+00:20:52,559 --> 00:21:05,840
+thank you rick thank you
+
+553
+00:21:03,760 --> 00:21:05,840
+you
+

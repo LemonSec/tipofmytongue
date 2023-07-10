@@ -1,0 +1,2440 @@
+﻿1
+00:00:00,000 --> 00:00:02,420
+Marty
+
+2
+00:00:10,700 --> 00:00:14,100
+okay thank you so some of you may have
+
+3
+00:00:14,100 --> 00:00:16,650
+already heard about global ISIL it's the
+
+4
+00:00:16,650 --> 00:00:18,150
+new instruction selection framework
+
+5
+00:00:18,150 --> 00:00:21,510
+that's being developed in LLVM and it's
+
+6
+00:00:21,510 --> 00:00:24,180
+been spearheaded by Apple for the 64-bit
+
+7
+00:00:24,180 --> 00:00:28,770
+arm v8 target also known as 864 recently
+
+8
+00:00:28,770 --> 00:00:30,810
+other people have started contributing
+
+9
+00:00:30,810 --> 00:00:33,270
+first as there's Christoph form arm
+
+10
+00:00:33,270 --> 00:00:35,969
+there's myself from the Naro some people
+
+11
+00:00:35,969 --> 00:00:38,249
+from Intel and AMD are also sending in
+
+12
+00:00:38,249 --> 00:00:41,519
+patches so we're gonna talk a bit about
+
+13
+00:00:41,519 --> 00:00:44,460
+status at the end of the talk so right
+
+14
+00:00:44,460 --> 00:00:46,289
+now let's see what global ISIL is and
+
+15
+00:00:46,289 --> 00:00:48,659
+how it works so first of all so we're
+
+16
+00:00:48,659 --> 00:00:50,640
+all on the same page instruction
+
+17
+00:00:50,640 --> 00:00:52,379
+selection is a phase in the compilation
+
+18
+00:00:52,379 --> 00:00:55,019
+process where the code is translated
+
+19
+00:00:55,019 --> 00:00:57,210
+from the target independent intermediate
+
+20
+00:00:57,210 --> 00:00:58,920
+representation used by the middle and
+
+21
+00:00:58,920 --> 00:01:01,170
+into the Machine specific representation
+
+22
+00:01:01,170 --> 00:01:04,769
+used by the back end so in our case this
+
+23
+00:01:04,769 --> 00:01:06,950
+is the LB Mir which we all know and love
+
+24
+00:01:06,950 --> 00:01:11,159
+and machine instruction or machine ir or
+
+25
+00:01:11,159 --> 00:01:14,790
+Mir which may be a bit new to some of
+
+26
+00:01:14,790 --> 00:01:16,799
+you who've never worked in the back end
+
+27
+00:01:16,799 --> 00:01:19,290
+so we're gonna talk a bit about it so
+
+28
+00:01:19,290 --> 00:01:21,750
+this is a simple example with a function
+
+29
+00:01:21,750 --> 00:01:23,939
+that just takes two values and returns
+
+30
+00:01:23,939 --> 00:01:28,469
+their sum and like I said this is very
+
+31
+00:01:28,469 --> 00:01:30,570
+close to the machine so first things you
+
+32
+00:01:30,570 --> 00:01:34,320
+have this add WRR so this is an add
+
+33
+00:01:34,320 --> 00:01:37,170
+between two registers that's the our our
+
+34
+00:01:37,170 --> 00:01:38,700
+there's also a version for immediate
+
+35
+00:01:38,700 --> 00:01:42,299
+that's our eye and so on and the W means
+
+36
+00:01:42,299 --> 00:01:44,130
+that it works on the W registers which
+
+37
+00:01:44,130 --> 00:01:48,270
+are the 32-bit registers and our v8 so
+
+38
+00:01:48,270 --> 00:01:50,189
+that's pretty close to the machine but
+
+39
+00:01:50,189 --> 00:01:52,979
+it's far from being and just an
+
+40
+00:01:52,979 --> 00:01:55,409
+in-memory representation of assembly so
+
+41
+00:01:55,409 --> 00:01:58,289
+it's still abstract in many ways for
+
+42
+00:01:58,289 --> 00:02:01,200
+instance it's in in the SSA form so it
+
+43
+00:02:01,200 --> 00:02:03,210
+can contain free instructions it does
+
+44
+00:02:03,210 --> 00:02:05,700
+contain free instructions up until
+
+45
+00:02:05,700 --> 00:02:07,640
+register allocation
+
+46
+00:02:07,640 --> 00:02:10,860
+it also has virtual registers so if
+
+47
+00:02:10,860 --> 00:02:13,920
+you'll notice here we have these % W 0 %
+
+48
+00:02:13,920 --> 00:02:16,769
+W 1 these are physical registers but you
+
+49
+00:02:16,769 --> 00:02:18,060
+will also notice these
+
+50
+00:02:18,060 --> 00:02:21,030
+% 0 1 2 and so on which are the virtual
+
+51
+00:02:21,030 --> 00:02:23,430
+registers and these are an infinite
+
+52
+00:02:23,430 --> 00:02:25,770
+number and they're the ones that the
+
+53
+00:02:25,770 --> 00:02:27,900
+back-end mostly works with so the
+
+54
+00:02:27,900 --> 00:02:29,730
+physical registers are usually used for
+
+55
+00:02:29,730 --> 00:02:31,920
+very specific things like for if you
+
+56
+00:02:31,920 --> 00:02:33,990
+know from the API that stuff is gonna
+
+57
+00:02:33,990 --> 00:02:35,940
+it's gonna have to be in that register
+
+58
+00:02:35,940 --> 00:02:37,590
+otherwise you're gonna want to use a
+
+59
+00:02:37,590 --> 00:02:39,600
+virtual register so that's why we insert
+
+60
+00:02:39,600 --> 00:02:41,730
+these copies from the physical register
+
+61
+00:02:41,730 --> 00:02:43,980
+into the virtual registers that we know
+
+62
+00:02:43,980 --> 00:02:47,720
+how to work with and these registers
+
+63
+00:02:47,720 --> 00:02:49,100
+[Music]
+
+64
+00:02:49,100 --> 00:02:52,080
+unlike the ones in LOV Mir they don't
+
+65
+00:02:52,080 --> 00:02:53,910
+have a type but they have a register
+
+66
+00:02:53,910 --> 00:02:56,790
+class which in this case is GPR 32 so
+
+67
+00:02:56,790 --> 00:03:00,110
+our 32 bit general purpose register
+
+68
+00:03:00,110 --> 00:03:02,940
+another thing that exists in the machine
+
+69
+00:03:02,940 --> 00:03:05,910
+ir is pseudo instructions which are
+
+70
+00:03:05,910 --> 00:03:07,950
+instructions that don't correspond
+
+71
+00:03:07,950 --> 00:03:09,840
+directly to a hardware instruction
+
+72
+00:03:09,840 --> 00:03:11,850
+they're used for various purposes in the
+
+73
+00:03:11,850 --> 00:03:13,700
+back end for instance if you want to
+
+74
+00:03:13,700 --> 00:03:16,110
+have a certain sequence of instructions
+
+75
+00:03:16,110 --> 00:03:17,970
+that really have to stay in that order
+
+76
+00:03:17,970 --> 00:03:19,380
+and you don't want the scheduler to put
+
+77
+00:03:19,380 --> 00:03:21,630
+anything between them like I don't know
+
+78
+00:03:21,630 --> 00:03:23,130
+accesses to the thread-local storage
+
+79
+00:03:23,130 --> 00:03:25,170
+descriptor or something you're gonna use
+
+80
+00:03:25,170 --> 00:03:26,670
+a pseudo instruction for that and then
+
+81
+00:03:26,670 --> 00:03:28,470
+expand it later on in the backend when
+
+82
+00:03:28,470 --> 00:03:32,880
+you know it's safe to do so so that's
+
+83
+00:03:32,880 --> 00:03:36,959
+about enough about the machine I are at
+
+84
+00:03:36,959 --> 00:03:39,420
+the moment in LLVM instruction selection
+
+85
+00:03:39,420 --> 00:03:40,860
+uses yet another intermediate
+
+86
+00:03:40,860 --> 00:03:42,720
+representation known as the selection
+
+87
+00:03:42,720 --> 00:03:45,570
+dag it's a graph of nodes we're not
+
+88
+00:03:45,570 --> 00:03:47,340
+going to talk about it all you need to
+
+89
+00:03:47,340 --> 00:03:48,930
+know is that it's pretty complex and
+
+90
+00:03:48,930 --> 00:03:51,120
+it's different from both LOV Mir and the
+
+91
+00:03:51,120 --> 00:03:53,850
+Machine IR and the instruction selection
+
+92
+00:03:53,850 --> 00:03:57,180
+on it goes like in number of steps first
+
+93
+00:03:57,180 --> 00:04:00,350
+of on we built this new representation
+
+94
+00:04:00,350 --> 00:04:03,060
+then we run a series of combines which
+
+95
+00:04:03,060 --> 00:04:06,150
+means we replace certain sequences of
+
+96
+00:04:06,150 --> 00:04:08,579
+nodes with different sequence and we do
+
+97
+00:04:08,579 --> 00:04:10,590
+this to make it easier for the
+
+98
+00:04:10,590 --> 00:04:15,200
+subsequent steps to deal with the code
+
+99
+00:04:15,200 --> 00:04:18,418
+then we run type legalization which
+
+100
+00:04:18,418 --> 00:04:20,339
+means we get rid of any types that
+
+101
+00:04:20,339 --> 00:04:22,350
+aren't natively supported on the target
+
+102
+00:04:22,350 --> 00:04:24,870
+so for instance if you have a 64-bit
+
+103
+00:04:24,870 --> 00:04:27,150
+type but your target only has 32-bit
+
+104
+00:04:27,150 --> 00:04:28,740
+registers you're going to want to break
+
+105
+00:04:28,740 --> 00:04:31,589
+it up into two 32-bit values and so on
+
+106
+00:04:31,589 --> 00:04:33,629
+then we run more combines than we
+
+107
+00:04:33,629 --> 00:04:35,309
+legalize vectors then we legalize types
+
+108
+00:04:35,309 --> 00:04:37,199
+again because maybe legalizing vectors
+
+109
+00:04:37,199 --> 00:04:39,240
+introduce more illegal types then run
+
+110
+00:04:39,240 --> 00:04:42,259
+combines again then we finally legalize
+
+111
+00:04:42,259 --> 00:04:45,089
+the operations so first since if there's
+
+112
+00:04:45,089 --> 00:04:47,339
+a division operation but you don't have
+
+113
+00:04:47,339 --> 00:04:48,629
+hardware division you might want to
+
+114
+00:04:48,629 --> 00:04:51,029
+replace it with the library call stuff
+
+115
+00:04:51,029 --> 00:04:56,099
+like that then again more combines then
+
+116
+00:04:56,099 --> 00:04:57,839
+we finally select the instructions which
+
+117
+00:04:57,839 --> 00:05:00,059
+means so now we know everything in the
+
+118
+00:05:00,059 --> 00:05:02,460
+code can actually be handled by the
+
+119
+00:05:02,460 --> 00:05:04,469
+target but now we have to actually
+
+120
+00:05:04,469 --> 00:05:10,159
+replace this with actual instructions
+
+121
+00:05:10,159 --> 00:05:13,439
+and we do this with some complicated you
+
+122
+00:05:13,439 --> 00:05:15,029
+know pattern matching algorithm that is
+
+123
+00:05:15,029 --> 00:05:18,719
+not the purpose of this talk then at the
+
+124
+00:05:18,719 --> 00:05:20,580
+end we schedule the instructions which
+
+125
+00:05:20,580 --> 00:05:22,559
+at this point is really just a way to
+
+126
+00:05:22,559 --> 00:05:25,369
+linearize this graph it's not these
+
+127
+00:05:25,369 --> 00:05:27,689
+scheduling in the back end we have other
+
+128
+00:05:27,689 --> 00:05:30,209
+passes further along the deal with
+
+129
+00:05:30,209 --> 00:05:33,389
+proper scheduling and then a way at the
+
+130
+00:05:33,389 --> 00:05:37,620
+end we finally emit the NIR okay so as
+
+131
+00:05:37,620 --> 00:05:39,419
+you can imagine this has quite a number
+
+132
+00:05:39,419 --> 00:05:41,729
+of drawbacks first of all it's difficult
+
+133
+00:05:41,729 --> 00:05:43,620
+to learn because it's you know a whole
+
+134
+00:05:43,620 --> 00:05:45,209
+new representation a whole lot of steps
+
+135
+00:05:45,209 --> 00:05:47,219
+there are a lot of subtleties for each
+
+136
+00:05:47,219 --> 00:05:50,370
+target like what each series of combines
+
+137
+00:05:50,370 --> 00:05:54,719
+can do or not there are all sorts of
+
+138
+00:05:54,719 --> 00:05:57,089
+issues with that it's very difficult to
+
+139
+00:05:57,089 --> 00:05:59,819
+maintain test and debug because you
+
+140
+00:05:59,819 --> 00:06:01,740
+can't run just one of those steps at a
+
+141
+00:06:01,740 --> 00:06:03,389
+time you have to run the whole
+
+142
+00:06:03,389 --> 00:06:05,639
+instruction selection pipeline and the
+
+143
+00:06:05,639 --> 00:06:08,009
+most you can get is some debug dumps
+
+144
+00:06:08,009 --> 00:06:09,899
+after each step which is good but it's
+
+145
+00:06:09,899 --> 00:06:12,389
+not great so we want to do better there
+
+146
+00:06:12,389 --> 00:06:15,209
+it's not very flexible because every
+
+147
+00:06:15,209 --> 00:06:17,430
+target has to go through the exact same
+
+148
+00:06:17,430 --> 00:06:19,499
+steps and it only has a limited set of
+
+149
+00:06:19,499 --> 00:06:22,889
+hooks to customize the behavior and
+
+150
+00:06:22,889 --> 00:06:24,680
+because of this we have all sorts of
+
+151
+00:06:24,680 --> 00:06:28,559
+pressure on those combines to try to fit
+
+152
+00:06:28,559 --> 00:06:30,029
+the code into something that the rest of
+
+153
+00:06:30,029 --> 00:06:31,919
+the framework understands and can do a
+
+154
+00:06:31,919 --> 00:06:35,490
+good job with and we also have fix up
+
+155
+00:06:35,490 --> 00:06:37,199
+passes that run after instruction
+
+156
+00:06:37,199 --> 00:06:39,930
+selection on some targets to patch up
+
+157
+00:06:39,930 --> 00:06:41,729
+things that can't be selected properly
+
+158
+00:06:41,729 --> 00:06:44,539
+with this framework
+
+159
+00:06:44,639 --> 00:06:47,009
+another problem is that it has a lot of
+
+160
+00:06:47,009 --> 00:06:48,810
+inherent overhead because you have to
+
+161
+00:06:48,810 --> 00:06:50,370
+build a whole new representation you
+
+162
+00:06:50,370 --> 00:06:52,259
+have to run all those steps there's
+
+163
+00:06:52,259 --> 00:06:54,509
+actually so much overhead that we have
+
+164
+00:06:54,509 --> 00:06:56,280
+yet another instruction selection
+
+165
+00:06:56,280 --> 00:06:58,199
+framework which is not global I sell
+
+166
+00:06:58,199 --> 00:07:00,300
+it's fast buy cells which was introduced
+
+167
+00:07:00,300 --> 00:07:03,150
+several years ago and it only runs at
+
+168
+00:07:03,150 --> 00:07:05,520
+zero and it's basically a trade off so
+
+169
+00:07:05,520 --> 00:07:07,050
+you're gonna spend a lot less time
+
+170
+00:07:07,050 --> 00:07:09,030
+compiling but you're gonna generate
+
+171
+00:07:09,030 --> 00:07:11,580
+really naive code and it doesn't use any
+
+172
+00:07:11,580 --> 00:07:13,800
+intermediate representation it basically
+
+173
+00:07:13,800 --> 00:07:15,509
+just generates the first thing that
+
+174
+00:07:15,509 --> 00:07:17,849
+comes to its mind and when it doesn't
+
+175
+00:07:17,849 --> 00:07:19,800
+know how to handle something it falls
+
+176
+00:07:19,800 --> 00:07:22,830
+back to selection dag but other than
+
+177
+00:07:22,830 --> 00:07:26,009
+that they don't share any code or you
+
+178
+00:07:26,009 --> 00:07:30,419
+know theirs are very very little code so
+
+179
+00:07:30,419 --> 00:07:33,029
+for these reasons and others people have
+
+180
+00:07:33,029 --> 00:07:35,460
+started working on global ISIL which is
+
+181
+00:07:35,460 --> 00:07:37,020
+meant to address all these issues we
+
+182
+00:07:37,020 --> 00:07:40,199
+want it to be easier to develop easier
+
+183
+00:07:40,199 --> 00:07:43,439
+to test easier to maintain we want to
+
+184
+00:07:43,439 --> 00:07:45,150
+have the same path for both fast
+
+185
+00:07:45,150 --> 00:07:46,919
+instruction selection and high quality
+
+186
+00:07:46,919 --> 00:07:51,539
+instruction selection we want more
+
+187
+00:07:51,539 --> 00:07:55,680
+flexibility for the targets and since
+
+188
+00:07:55,680 --> 00:07:57,289
+you're probably wondering about the name
+
+189
+00:07:57,289 --> 00:07:59,699
+the previous instruction selection of
+
+190
+00:07:59,699 --> 00:08:01,319
+frameworks worked at a basic block level
+
+191
+00:08:01,319 --> 00:08:03,629
+so during instruction selection you
+
+192
+00:08:03,629 --> 00:08:05,839
+could only see the current basic block
+
+193
+00:08:05,839 --> 00:08:08,279
+with global ISIL you have access to the
+
+194
+00:08:08,279 --> 00:08:10,319
+whole function so you can see where the
+
+195
+00:08:10,319 --> 00:08:11,819
+operands come from where you're using
+
+196
+00:08:11,819 --> 00:08:13,289
+the results even if it's in the front
+
+197
+00:08:13,289 --> 00:08:17,400
+basic block so we're hoping to be able
+
+198
+00:08:17,400 --> 00:08:20,669
+to make use of that in the future so the
+
+199
+00:08:20,669 --> 00:08:21,870
+way we're going to achieve all these
+
+200
+00:08:21,870 --> 00:08:25,860
+wonderful goals is by not creating yet
+
+201
+00:08:25,860 --> 00:08:27,870
+another intermediate representation and
+
+202
+00:08:27,870 --> 00:08:30,330
+instead we're just gonna use the machine
+
+203
+00:08:30,330 --> 00:08:32,729
+ir but with a few new concepts like
+
+204
+00:08:32,729 --> 00:08:34,679
+register banks and generic instructions
+
+205
+00:08:34,679 --> 00:08:38,458
+that i'm going to talk about soon but
+
+206
+00:08:38,458 --> 00:08:42,599
+the core point here is that the meat of
+
+207
+00:08:42,599 --> 00:08:44,459
+the representation is the same which
+
+208
+00:08:44,459 --> 00:08:45,959
+allows us to structure the whole
+
+209
+00:08:45,959 --> 00:08:48,149
+instruction selection process as a
+
+210
+00:08:48,149 --> 00:08:51,300
+series of machine passes which is great
+
+211
+00:08:51,300 --> 00:08:52,890
+because we have a lot of infrastructure
+
+212
+00:08:52,890 --> 00:08:55,199
+in place for dealing with passes like we
+
+213
+00:08:55,199 --> 00:08:57,029
+can run a single pass at a time which
+
+214
+00:08:57,029 --> 00:08:58,310
+makes it easy to test
+
+215
+00:08:58,310 --> 00:09:01,370
+we can dump the IR before and after
+
+216
+00:09:01,370 --> 00:09:04,580
+machine pass we can get debug dumps for
+
+217
+00:09:04,580 --> 00:09:07,150
+a single pass at a time if we want to
+
+218
+00:09:07,150 --> 00:09:09,890
+it's also very flexible because each
+
+219
+00:09:09,890 --> 00:09:12,170
+target can now introduce any number of
+
+220
+00:09:12,170 --> 00:09:14,450
+custom passes at any point in this
+
+221
+00:09:14,450 --> 00:09:16,820
+instruction selection pipeline it can
+
+222
+00:09:16,820 --> 00:09:20,300
+also replace one of the standard passes
+
+223
+00:09:20,300 --> 00:09:22,430
+with something custom we should need a
+
+224
+00:09:22,430 --> 00:09:25,600
+different approach to do things and
+
+225
+00:09:25,600 --> 00:09:28,130
+hopefully it will be faster
+
+226
+00:09:28,130 --> 00:09:33,440
+we can't know that yet so now that we're
+
+227
+00:09:33,440 --> 00:09:34,640
+convinced that machine passes are
+
+228
+00:09:34,640 --> 00:09:38,080
+awesome let's see the standard pipeline
+
+229
+00:09:38,080 --> 00:09:41,440
+so if you recall from the previous
+
+230
+00:09:41,440 --> 00:09:44,960
+selection dag stages we're kind of doing
+
+231
+00:09:44,960 --> 00:09:46,940
+some of the same things for instance the
+
+232
+00:09:46,940 --> 00:09:49,640
+IR translator basically just builds our
+
+233
+00:09:49,640 --> 00:09:54,350
+representations so we're we're basically
+
+234
+00:09:54,350 --> 00:09:57,980
+getting our custom machine ir at this
+
+235
+00:09:57,980 --> 00:09:59,450
+point we're gonna talk about each of
+
+236
+00:09:59,450 --> 00:10:01,430
+these in detail later on then we run
+
+237
+00:10:01,430 --> 00:10:03,830
+legalization as we did before but this
+
+238
+00:10:03,830 --> 00:10:06,710
+time it's just one step we're gonna have
+
+239
+00:10:06,710 --> 00:10:08,780
+register Bank selection which is a new
+
+240
+00:10:08,780 --> 00:10:11,360
+concept it's it was introduced
+
+241
+00:10:11,360 --> 00:10:13,850
+specifically for globalized cell we're
+
+242
+00:10:13,850 --> 00:10:16,040
+gonna see why and finally we do an
+
+243
+00:10:16,040 --> 00:10:17,810
+instruction selection which as before
+
+244
+00:10:17,810 --> 00:10:20,060
+means selecting target specific
+
+245
+00:10:20,060 --> 00:10:23,450
+operation code so let's take them in
+
+246
+00:10:23,450 --> 00:10:25,910
+order the our translator is gonna take
+
+247
+00:10:25,910 --> 00:10:28,640
+as input LLVM ir and it's going to
+
+248
+00:10:28,640 --> 00:10:31,520
+output generic machine ir which means
+
+249
+00:10:31,520 --> 00:10:34,220
+that instead of those target specific op
+
+250
+00:10:34,220 --> 00:10:38,200
+codes like at WR r we're going to use
+
+251
+00:10:38,200 --> 00:10:41,630
+generic up codes like generic ad generic
+
+252
+00:10:41,630 --> 00:10:45,260
+brand generic store and so on so to get
+
+253
+00:10:45,260 --> 00:10:47,810
+a feel of this this is the same code
+
+254
+00:10:47,810 --> 00:10:49,910
+that's on the previous slide this is the
+
+255
+00:10:49,910 --> 00:10:53,000
+final machine ir that we're trying to
+
+256
+00:10:53,000 --> 00:10:55,010
+obtain and on the left side you can see
+
+257
+00:10:55,010 --> 00:10:57,200
+the generic the corresponding generic
+
+258
+00:10:57,200 --> 00:10:59,120
+machine ir this is as far as the IR
+
+259
+00:10:59,120 --> 00:11:01,100
+translator gets us and what you should
+
+260
+00:11:01,100 --> 00:11:03,589
+notice here is that as I said we have
+
+261
+00:11:03,589 --> 00:11:06,620
+the generic ad here and at this point we
+
+262
+00:11:06,620 --> 00:11:09,170
+don't care that it's adding registers we
+
+263
+00:11:09,170 --> 00:11:11,030
+don't care if it's legal to add things
+
+264
+00:11:11,030 --> 00:11:11,740
+on the start
+
+265
+00:11:11,740 --> 00:11:13,180
+we just know that the intention of the
+
+266
+00:11:13,180 --> 00:11:17,860
+code is to add two values and these
+
+267
+00:11:17,860 --> 00:11:21,070
+values don't have register classes yet
+
+268
+00:11:21,070 --> 00:11:23,350
+as you can see there's a dash here but
+
+269
+00:11:23,350 --> 00:11:25,690
+instead they have some types and these
+
+270
+00:11:25,690 --> 00:11:27,430
+are different from the types in the LLVM
+
+271
+00:11:27,430 --> 00:11:29,920
+ir they're closer to the machine and
+
+272
+00:11:29,920 --> 00:11:34,390
+basically they're scalar values on any
+
+273
+00:11:34,390 --> 00:11:37,180
+number of bits pointer values into any
+
+274
+00:11:37,180 --> 00:11:40,150
+address space and vectors with any
+
+275
+00:11:40,150 --> 00:11:46,210
+number of elements of any dimension some
+
+276
+00:11:46,210 --> 00:11:47,830
+of you may notice that at this point we
+
+277
+00:11:47,830 --> 00:11:50,770
+already have the physical registers here
+
+278
+00:11:50,770 --> 00:11:54,010
+and some of the final operation codes
+
+279
+00:11:54,010 --> 00:11:56,650
+and this is because of one very
+
+280
+00:11:56,650 --> 00:11:58,240
+important thing that the our translator
+
+281
+00:11:58,240 --> 00:12:01,510
+does which is adi lowering so at this
+
+282
+00:12:01,510 --> 00:12:03,730
+point we already know that the target
+
+283
+00:12:03,730 --> 00:12:05,860
+says that you know the parameters are
+
+284
+00:12:05,860 --> 00:12:07,900
+gonna be in w0 w1 so we're just gonna
+
+285
+00:12:07,900 --> 00:12:10,570
+put them there right from the start you
+
+286
+00:12:10,570 --> 00:12:13,000
+should note here that although it's
+
+287
+00:12:13,000 --> 00:12:17,170
+possible to have final machine ir at
+
+288
+00:12:17,170 --> 00:12:19,660
+this point it's not compulsory so the
+
+289
+00:12:19,660 --> 00:12:23,080
+target can choose to use generic op
+
+290
+00:12:23,080 --> 00:12:25,540
+codes for ABI lowering as long as it
+
+291
+00:12:25,540 --> 00:12:28,980
+preserves the intention well enough
+
+292
+00:12:29,160 --> 00:12:32,980
+right so now we have our presentation
+
+293
+00:12:32,980 --> 00:12:37,510
+we're going to legalize it and as I
+
+294
+00:12:37,510 --> 00:12:40,120
+hinted earlier the legalization in
+
+295
+00:12:40,120 --> 00:12:44,020
+global ISIL is a lot simpler than the
+
+296
+00:12:44,020 --> 00:12:45,700
+one in selection bag because of one key
+
+297
+00:12:45,700 --> 00:12:48,760
+decision which is that it's not types
+
+298
+00:12:48,760 --> 00:12:51,340
+that are legal or illegal it's the
+
+299
+00:12:51,340 --> 00:12:54,280
+combination of operation and type that
+
+300
+00:12:54,280 --> 00:12:58,540
+is legal or not and it's interesting you
+
+301
+00:12:58,540 --> 00:13:00,640
+actually had discussions about this some
+
+302
+00:13:00,640 --> 00:13:02,350
+some of you may have seen on the mailing
+
+303
+00:13:02,350 --> 00:13:06,400
+list with x86 with the AVX instruction
+
+304
+00:13:06,400 --> 00:13:10,530
+set where suddenly we have legal I 1
+
+305
+00:13:10,530 --> 00:13:14,830
+vectors but if we legalize them only for
+
+306
+00:13:14,830 --> 00:13:17,140
+the AVX instructions then we're kind of
+
+307
+00:13:17,140 --> 00:13:19,000
+breaking things and other places where
+
+308
+00:13:19,000 --> 00:13:22,090
+we don't want them to be legal so now
+
+309
+00:13:22,090 --> 00:13:22,930
+we're not gonna have that problem
+
+310
+00:13:22,930 --> 00:13:25,510
+anymore because we can say ok so we go
+
+311
+00:13:25,510 --> 00:13:30,130
+for this operation not for anything so
+
+312
+00:13:30,130 --> 00:13:31,510
+hopefully this is gonna solve a lot of
+
+313
+00:13:31,510 --> 00:13:36,100
+similar problems and at this point the
+
+314
+00:13:36,100 --> 00:13:38,050
+target you know is gonna have to say for
+
+315
+00:13:38,050 --> 00:13:40,110
+each combination of operation and type
+
+316
+00:13:40,110 --> 00:13:42,580
+what it wants to do which can mark it as
+
+317
+00:13:42,580 --> 00:13:43,990
+legal in which case the legalized er
+
+318
+00:13:43,990 --> 00:13:46,480
+does nothing or it can choose one of the
+
+319
+00:13:46,480 --> 00:13:49,210
+predefined actions like like I said
+
+320
+00:13:49,210 --> 00:13:51,340
+widening or narrowing a scalar which
+
+321
+00:13:51,340 --> 00:13:52,630
+means you know breaking it up into
+
+322
+00:13:52,630 --> 00:13:55,840
+smaller types or introducing extensions
+
+323
+00:13:55,840 --> 00:13:59,320
+to larger types for vectors you know you
+
+324
+00:13:59,320 --> 00:14:02,890
+can ignore some of the lanes or you can
+
+325
+00:14:02,890 --> 00:14:04,660
+break it up again into smaller vectors
+
+326
+00:14:04,660 --> 00:14:08,410
+and so on you can replace with library
+
+327
+00:14:08,410 --> 00:14:11,980
+calls or you can have your own target
+
+328
+00:14:11,980 --> 00:14:13,960
+specific custom C++ code that does
+
+329
+00:14:13,960 --> 00:14:16,450
+whatever it wants with that operation
+
+330
+00:14:16,450 --> 00:14:19,720
+whatever floats a boat of course you can
+
+331
+00:14:19,720 --> 00:14:21,220
+also mark it as unsupported in which
+
+332
+00:14:21,220 --> 00:14:23,350
+case instructions selection will just
+
+333
+00:14:23,350 --> 00:14:27,490
+fail so that's it about the legalized er
+
+334
+00:14:27,490 --> 00:14:30,250
+the next phase is the register Bank
+
+335
+00:14:30,250 --> 00:14:33,520
+selection which as I said before is new
+
+336
+00:14:33,520 --> 00:14:35,740
+to globalize cell and the concept of
+
+337
+00:14:35,740 --> 00:14:37,690
+register banks is also new to globalize
+
+338
+00:14:37,690 --> 00:14:40,570
+cell and the two roughly corresponds to
+
+339
+00:14:40,570 --> 00:14:42,880
+the hardware concept of register banks
+
+340
+00:14:42,880 --> 00:14:46,360
+or register files so for instance on our
+
+341
+00:14:46,360 --> 00:14:49,110
+v8 we have to register banks there's the
+
+342
+00:14:49,110 --> 00:14:51,660
+general purpose register Bank and
+
+343
+00:14:51,660 --> 00:14:53,950
+there's another one for floating-point
+
+344
+00:14:53,950 --> 00:14:57,250
+and vector values so these can have you
+
+345
+00:14:57,250 --> 00:14:58,780
+know different dimensions different
+
+346
+00:14:58,780 --> 00:15:03,850
+numbers of registers naturally copying
+
+347
+00:15:03,850 --> 00:15:05,740
+data between them may be more expensive
+
+348
+00:15:05,740 --> 00:15:10,210
+than within the same Bank and certain
+
+349
+00:15:10,210 --> 00:15:13,240
+instructions have different variants
+
+350
+00:15:13,240 --> 00:15:15,910
+depending on where their operands live
+
+351
+00:15:15,910 --> 00:15:18,700
+in which register Bank so for instance
+
+352
+00:15:18,700 --> 00:15:21,250
+you can load the value into a GPR or you
+
+353
+00:15:21,250 --> 00:15:22,900
+can load it into an FBR and they're
+
+354
+00:15:22,900 --> 00:15:25,480
+entirely different operations or you can
+
+355
+00:15:25,480 --> 00:15:32,190
+do a bitwise or on a GPR or on fpr's
+
+356
+00:15:32,190 --> 00:15:34,660
+and it's very important to get it right
+
+357
+00:15:34,660 --> 00:15:36,790
+from the start this is another pain
+
+358
+00:15:36,790 --> 00:15:39,350
+point with selection bag where
+
+359
+00:15:39,350 --> 00:15:41,990
+many times we selected the wrong
+
+360
+00:15:41,990 --> 00:15:43,880
+instruction because we didn't know where
+
+361
+00:15:43,880 --> 00:15:46,100
+the operands would live and then we
+
+362
+00:15:46,100 --> 00:15:50,810
+things could be a lot slower and or in
+
+363
+00:15:50,810 --> 00:15:52,040
+some cases like they could even be
+
+364
+00:15:52,040 --> 00:15:53,960
+incorrect because at that point you have
+
+365
+00:15:53,960 --> 00:15:56,060
+to introduce copies between register
+
+366
+00:15:56,060 --> 00:15:58,250
+banks and there are targets where it's
+
+367
+00:15:58,250 --> 00:16:00,050
+legal to copy in one direction but not
+
+368
+00:16:00,050 --> 00:16:03,200
+in the other and instruction selection
+
+369
+00:16:03,200 --> 00:16:05,630
+had no idea about that so now it's going
+
+370
+00:16:05,630 --> 00:16:06,950
+to be a first-class citizen of
+
+371
+00:16:06,950 --> 00:16:09,200
+instruction selection and hopefully we
+
+372
+00:16:09,200 --> 00:16:13,190
+can handle all those problems up front
+
+373
+00:16:13,190 --> 00:16:16,299
+[Music]
+
+374
+00:16:17,800 --> 00:16:20,780
+so assuming we have select elf and
+
+375
+00:16:20,780 --> 00:16:23,180
+another thing here is that we can decide
+
+376
+00:16:23,180 --> 00:16:24,650
+to spend as much effort on this as we
+
+377
+00:16:24,650 --> 00:16:26,750
+want I mean if forerunning goes here and
+
+378
+00:16:26,750 --> 00:16:28,010
+we don't care that much about the
+
+379
+00:16:28,010 --> 00:16:30,200
+quality you know whatever sure we're
+
+380
+00:16:30,200 --> 00:16:31,640
+gonna introduce a lot of copies as long
+
+381
+00:16:31,640 --> 00:16:35,060
+as they're illegal sure why not and at
+
+382
+00:16:35,060 --> 00:16:37,130
+this point we actually have two
+
+383
+00:16:37,130 --> 00:16:38,870
+algorithms for this we have fast and
+
+384
+00:16:38,870 --> 00:16:41,170
+greedy we can add any number of other
+
+385
+00:16:41,170 --> 00:16:44,780
+algorithms in the future it's easy now
+
+386
+00:16:44,780 --> 00:16:49,130
+because we can just replace things right
+
+387
+00:16:49,130 --> 00:16:52,280
+and finally there's instruction
+
+388
+00:16:52,280 --> 00:16:55,490
+selection so at this point we know that
+
+389
+00:16:55,490 --> 00:16:57,080
+everything is legal it corresponds to
+
+390
+00:16:57,080 --> 00:16:58,550
+something that the hardware can actually
+
+391
+00:16:58,550 --> 00:17:02,630
+handle we know where it lives in roughly
+
+392
+00:17:02,630 --> 00:17:04,339
+in which register Bank we don't know the
+
+393
+00:17:04,339 --> 00:17:07,459
+exact register yet but we don't care so
+
+394
+00:17:07,459 --> 00:17:09,890
+at this point instruction selection you
+
+395
+00:17:09,890 --> 00:17:11,599
+know just replaces with the machine
+
+396
+00:17:11,599 --> 00:17:13,970
+specific up codes so I'm the same
+
+397
+00:17:13,970 --> 00:17:16,310
+example we'll just have to replace the
+
+398
+00:17:16,310 --> 00:17:19,760
+add with the WRR because here we have
+
+399
+00:17:19,760 --> 00:17:22,339
+two registers that live in the GPRS
+
+400
+00:17:22,339 --> 00:17:25,699
+which is really nice and we again we
+
+401
+00:17:25,699 --> 00:17:30,440
+have to constrain the virtual registers
+
+402
+00:17:30,440 --> 00:17:32,540
+so that instead they instead of having
+
+403
+00:17:32,540 --> 00:17:34,670
+type and the register Bank they have a
+
+404
+00:17:34,670 --> 00:17:36,440
+register class but the rest of the back
+
+405
+00:17:36,440 --> 00:17:38,660
+end can understand so you're probably
+
+406
+00:17:38,660 --> 00:17:39,920
+wondering at this point what's the
+
+407
+00:17:39,920 --> 00:17:41,510
+difference between a register Bank and a
+
+408
+00:17:41,510 --> 00:17:44,180
+register class why do we have two and
+
+409
+00:17:44,180 --> 00:17:47,750
+the reason is that the register class is
+
+410
+00:17:47,750 --> 00:17:49,940
+much more specific than a register Bank
+
+411
+00:17:49,940 --> 00:17:51,620
+so for instance already
+
+412
+00:17:51,620 --> 00:17:53,900
+sir class can be okay general-purpose
+
+413
+00:17:53,900 --> 00:17:58,600
+registers including the stack pointer or
+
+414
+00:18:04,000 --> 00:18:06,570
+I want to handle it or can't handle it
+
+415
+00:18:06,570 --> 00:18:08,770
+or for instance on thumps some
+
+416
+00:18:08,770 --> 00:18:12,160
+instructions can only access eight of
+
+417
+00:18:12,160 --> 00:18:13,900
+the general-purpose registers so we're
+
+418
+00:18:13,900 --> 00:18:16,120
+gonna have a register class for that so
+
+419
+00:18:16,120 --> 00:18:18,220
+we know they're in the general purpose
+
+420
+00:18:18,220 --> 00:18:20,050
+register Bank but we want to be more
+
+421
+00:18:20,050 --> 00:18:21,820
+specific than that and this will be
+
+422
+00:18:21,820 --> 00:18:23,470
+important obviously for the register
+
+423
+00:18:23,470 --> 00:18:28,960
+allocator and other passes so after
+
+424
+00:18:28,960 --> 00:18:30,910
+we've done all of this we're ready to
+
+425
+00:18:30,910 --> 00:18:32,950
+you know pass it on to the backend to do
+
+426
+00:18:32,950 --> 00:18:35,440
+its magic like I said this is where
+
+427
+00:18:35,440 --> 00:18:37,150
+we're gonna do register allocation
+
+428
+00:18:37,150 --> 00:18:40,830
+scheduling target specific optimizations
+
+429
+00:18:40,830 --> 00:18:47,950
+whatever okay so now let's talk a bit
+
+430
+00:18:47,950 --> 00:18:50,040
+about the current status of all this
+
+431
+00:18:50,040 --> 00:18:52,570
+like I said there's this has been in
+
+432
+00:18:52,570 --> 00:18:55,450
+work for over a year but it's still
+
+433
+00:18:55,450 --> 00:18:57,040
+we're still considering it a prototype
+
+434
+00:18:57,040 --> 00:18:59,440
+it is built by default but it's not
+
+435
+00:18:59,440 --> 00:19:01,750
+enabled by default you have to pass a
+
+436
+00:19:01,750 --> 00:19:04,210
+certain flag like - globe by cell or if
+
+437
+00:19:04,210 --> 00:19:05,920
+you're working from clang you have to
+
+438
+00:19:05,920 --> 00:19:08,830
+tell it to pass it to the back end so we
+
+439
+00:19:08,830 --> 00:19:16,080
+use - ml LVM - global I so we also have
+
+440
+00:19:16,080 --> 00:19:19,360
+another nice flag which is global ISIL
+
+441
+00:19:19,360 --> 00:19:21,400
+abort equals zero which means if
+
+442
+00:19:21,400 --> 00:19:23,770
+instruction selection fails don't abort
+
+443
+00:19:23,770 --> 00:19:25,720
+and instead fall back to the previous
+
+444
+00:19:25,720 --> 00:19:27,580
+instructions reduction framework so this
+
+445
+00:19:27,580 --> 00:19:29,380
+is to make things more robust to allow
+
+446
+00:19:29,380 --> 00:19:32,590
+us to test things we're probably going
+
+447
+00:19:32,590 --> 00:19:36,550
+to be using this for a while even after
+
+448
+00:19:36,550 --> 00:19:39,940
+we enable by default so there's a lot of
+
+449
+00:19:39,940 --> 00:19:41,680
+work in progress
+
+450
+00:19:41,680 --> 00:19:45,190
+in global ISIL at the moment and several
+
+451
+00:19:45,190 --> 00:19:46,930
+fronts one of them is improving the
+
+452
+00:19:46,930 --> 00:19:49,750
+framework itself so one of the
+
+453
+00:19:49,750 --> 00:19:52,120
+directions here is to generate more code
+
+454
+00:19:52,120 --> 00:19:54,250
+automatically some of you are probably
+
+455
+00:19:54,250 --> 00:19:56,680
+familiar with table gen if you're not
+
+456
+00:19:56,680 --> 00:19:59,560
+it's a tool that we're using in LLVM to
+
+457
+00:19:59,560 --> 00:20:01,690
+generate code from some very simple
+
+458
+00:20:01,690 --> 00:20:03,370
+descriptions of registers or
+
+459
+00:20:03,370 --> 00:20:06,490
+instructions or whatever and these are
+
+460
+00:20:06,490 --> 00:20:08,860
+used all over the backend and this is an
+
+461
+00:20:08,860 --> 00:20:11,080
+actual example of what the definitions
+
+462
+00:20:11,080 --> 00:20:13,330
+for the register banks look like for air
+
+463
+00:20:13,330 --> 00:20:15,910
+at 64 so first days you have the GPI
+
+464
+00:20:15,910 --> 00:20:17,210
+register Bank
+
+465
+00:20:17,210 --> 00:20:20,840
+has a name and it has a registered class
+
+466
+00:20:20,840 --> 00:20:22,789
+the register class is associated with it
+
+467
+00:20:22,789 --> 00:20:26,779
+and this is one register class but the
+
+468
+00:20:26,779 --> 00:20:29,899
+nice thing is that register classes have
+
+469
+00:20:29,899 --> 00:20:32,330
+subclasses so if you're covering one
+
+470
+00:20:32,330 --> 00:20:34,039
+register class you're covering all of
+
+471
+00:20:34,039 --> 00:20:35,870
+its subclasses so what we've actually
+
+472
+00:20:35,870 --> 00:20:37,460
+said with this line is that we're
+
+473
+00:20:37,460 --> 00:20:40,370
+covering about 11 or 12 register classes
+
+474
+00:20:40,370 --> 00:20:42,799
+it looks really simple and behind we're
+
+475
+00:20:42,799 --> 00:20:44,500
+going to generate a lot of code to say
+
+476
+00:20:44,500 --> 00:20:50,390
+which tells us you know if a register in
+
+477
+00:20:50,390 --> 00:20:52,190
+this class can live on this Bank or the
+
+478
+00:20:52,190 --> 00:20:53,809
+other way around so we can generate a
+
+479
+00:20:53,809 --> 00:20:56,899
+lot of stuff from this small snippet of
+
+480
+00:20:56,899 --> 00:20:59,000
+information and for the FBR again this
+
+481
+00:20:59,000 --> 00:21:01,490
+is a lot of classes here it's like 60 or
+
+482
+00:21:01,490 --> 00:21:03,640
+something
+
+483
+00:21:03,669 --> 00:21:07,010
+another front where we're working hard
+
+484
+00:21:07,010 --> 00:21:10,850
+is targeted option so since this was
+
+485
+00:21:10,850 --> 00:21:12,950
+developed initially for it
+
+486
+00:21:12,950 --> 00:21:15,740
+Arg 64 that's naturally the one where
+
+487
+00:21:15,740 --> 00:21:18,440
+it's progress the most so it now passes
+
+488
+00:21:18,440 --> 00:21:20,809
+over 60% of the test suite without
+
+489
+00:21:20,809 --> 00:21:26,059
+falling back to selection dag there are
+
+490
+00:21:26,059 --> 00:21:28,159
+actually plans to replace fast I sell
+
+491
+00:21:28,159 --> 00:21:32,690
+for o0 this year and you know at the
+
+492
+00:21:32,690 --> 00:21:35,480
+moment it's naturally a lot faster than
+
+493
+00:21:35,480 --> 00:21:38,330
+selection dag because it's not doing as
+
+494
+00:21:38,330 --> 00:21:40,460
+much for instance all those combines
+
+495
+00:21:40,460 --> 00:21:42,649
+we're not doing that we're not selecting
+
+496
+00:21:42,649 --> 00:21:44,929
+anything too complicated at the moment
+
+497
+00:21:44,929 --> 00:21:46,549
+the instruction selection and global I
+
+498
+00:21:46,549 --> 00:21:50,149
+sell is not very intelligent it's like I
+
+499
+00:21:50,149 --> 00:21:51,890
+said we're trying to replace fight fast
+
+500
+00:21:51,890 --> 00:21:53,360
+I sell which is just generally the
+
+501
+00:21:53,360 --> 00:21:57,860
+simplest thing possible so the hope is
+
+502
+00:21:57,860 --> 00:21:59,929
+that in the end it will get within
+
+503
+00:21:59,929 --> 00:22:03,279
+within 1.1 X of fast I sell and there's
+
+504
+00:22:03,279 --> 00:22:05,870
+work going on here especially at Apple
+
+505
+00:22:05,870 --> 00:22:07,580
+and we're trying not to stop step on
+
+506
+00:22:07,580 --> 00:22:09,470
+their toes too much we're letting them
+
+507
+00:22:09,470 --> 00:22:13,190
+do their work most other people are
+
+508
+00:22:13,190 --> 00:22:15,380
+working on the other ports so like I
+
+509
+00:22:15,380 --> 00:22:17,570
+said I'm working on the arm port which
+
+510
+00:22:17,570 --> 00:22:23,600
+is the non 64-bit arm v8 so that means
+
+511
+00:22:23,600 --> 00:22:25,940
+it's 32-bit our v8 it's all the older
+
+512
+00:22:25,940 --> 00:22:29,930
+arm thump and so on
+
+513
+00:22:29,930 --> 00:22:33,500
+and they are also contributing patches
+
+514
+00:22:33,500 --> 00:22:36,410
+for their gpus and the x8 is Intel for
+
+515
+00:22:36,410 --> 00:22:40,460
+x86 nobody is in any rush with this
+
+516
+00:22:40,460 --> 00:22:42,650
+because as I said we're working a lot
+
+517
+00:22:42,650 --> 00:22:45,410
+and improving the framework itself so
+
+518
+00:22:45,410 --> 00:22:48,440
+for instance for arm I'm working a lot
+
+519
+00:22:48,440 --> 00:22:50,990
+on ABI lowering because that's target
+
+520
+00:22:50,990 --> 00:22:52,970
+specific and it's very likely to stay
+
+521
+00:22:52,970 --> 00:22:55,670
+that way so that code is I can write it
+
+522
+00:22:55,670 --> 00:22:57,920
+and it's probably gonna stay that way
+
+523
+00:22:57,920 --> 00:22:59,840
+and the other hand if I write things in
+
+524
+00:22:59,840 --> 00:23:01,370
+the instruction selector that's very
+
+525
+00:23:01,370 --> 00:23:03,200
+likely to go away it's gonna probably be
+
+526
+00:23:03,200 --> 00:23:04,430
+replaced with something generated
+
+527
+00:23:04,430 --> 00:23:06,590
+automatically by table gen so I don't
+
+528
+00:23:06,590 --> 00:23:08,030
+want to invest a lot of time and support
+
+529
+00:23:08,030 --> 00:23:10,040
+you know a lot of instructions and stuff
+
+530
+00:23:10,040 --> 00:23:13,550
+I'd rather support all as many calling
+
+531
+00:23:13,550 --> 00:23:15,200
+conventions as I can instead because
+
+532
+00:23:15,200 --> 00:23:16,970
+that's a better way of spending time at
+
+533
+00:23:16,970 --> 00:23:25,640
+this point so to summarize this is
+
+534
+00:23:25,640 --> 00:23:27,980
+happening as developers we're very
+
+535
+00:23:27,980 --> 00:23:30,830
+excited about it I think most of the
+
+536
+00:23:30,830 --> 00:23:33,020
+people working in the backend are gonna
+
+537
+00:23:33,020 --> 00:23:37,550
+be happy with many of the design choices
+
+538
+00:23:37,550 --> 00:23:42,710
+in globalize so if you're just an LVN
+
+539
+00:23:42,710 --> 00:23:45,140
+user unfortunately you're probably not
+
+540
+00:23:45,140 --> 00:23:46,610
+gonna see the effects of this anytime
+
+541
+00:23:46,610 --> 00:23:50,000
+soon I mean even if it gets enabled by
+
+542
+00:23:50,000 --> 00:23:52,610
+default this year for zero that's just
+
+543
+00:23:52,610 --> 00:23:55,070
+gonna be on air at 64 it's probably not
+
+544
+00:23:55,070 --> 00:23:58,940
+gonna be great from the start so there's
+
+545
+00:23:58,940 --> 00:24:00,410
+still a lot of work before this can
+
+546
+00:24:00,410 --> 00:24:03,740
+reach the users but as any change that
+
+547
+00:24:03,740 --> 00:24:05,570
+makes the developers happy eventually
+
+548
+00:24:05,570 --> 00:24:11,120
+the users will feel the results so for
+
+549
+00:24:11,120 --> 00:24:13,850
+reference we have box which explain how
+
+550
+00:24:13,850 --> 00:24:18,070
+how to port 20 targets and everything
+
+551
+00:24:18,070 --> 00:24:21,080
+there's also very in the presentation
+
+552
+00:24:21,080 --> 00:24:23,620
+you know about the api's and everything
+
+553
+00:24:23,620 --> 00:24:26,900
+and this was given by Apple at u.s. LLVM
+
+554
+00:24:26,900 --> 00:24:29,000
+you can watch it if you have a target
+
+555
+00:24:29,000 --> 00:24:33,290
+that you want to put this to and that's
+
+556
+00:24:33,290 --> 00:24:34,070
+about it
+
+557
+00:24:34,070 --> 00:24:39,280
+any questions go ahead
+
+558
+00:24:42,770 --> 00:24:45,180
+all right so the question was if we're
+
+559
+00:24:45,180 --> 00:24:46,950
+going to reuse the current table Jen and
+
+560
+00:24:46,950 --> 00:24:49,770
+the answer is yes so Apple is working
+
+561
+00:24:49,770 --> 00:24:51,780
+hard on this this is actually the first
+
+562
+00:24:51,780 --> 00:24:55,140
+point here we're trying to use those to
+
+563
+00:24:55,140 --> 00:24:58,140
+generate code that fits global ISO so
+
+564
+00:24:58,140 --> 00:24:59,370
+we're trying to keep the same
+
+565
+00:24:59,370 --> 00:25:01,620
+descriptions but you know do things in
+
+566
+00:25:01,620 --> 00:25:05,989
+the global ISIL framework instead oh
+
+567
+00:25:09,710 --> 00:25:12,440
+that's a lot of code and the plan is
+
+568
+00:25:12,440 --> 00:25:16,260
+it's not part of this prototype but you
+
+569
+00:25:16,260 --> 00:25:19,230
+know in the future we're hoping to reuse
+
+570
+00:25:19,230 --> 00:25:21,750
+them so that's also going to be part of
+
+571
+00:25:21,750 --> 00:26:05,040
+this whole table Jennifer yes I don't
+
+572
+00:26:05,040 --> 00:26:05,550
+know
+
+573
+00:26:05,550 --> 00:26:07,590
+so if the address space is not enough
+
+574
+00:26:07,590 --> 00:26:09,720
+then it's probably not supported right
+
+575
+00:26:09,720 --> 00:26:12,480
+now so the only thing you can specify
+
+576
+00:26:12,480 --> 00:26:14,220
+for a pointer is the address space and
+
+577
+00:26:14,220 --> 00:26:17,929
+the number of bits that it occupies so
+
+578
+00:26:17,929 --> 00:26:21,240
+if you can model it with that it works
+
+579
+00:26:21,240 --> 00:26:25,040
+if you can yeah
+
+580
+00:26:36,669 --> 00:26:39,860
+at the moment I would say there's a lot
+
+581
+00:26:39,860 --> 00:26:41,390
+of work because we're not generating
+
+582
+00:26:41,390 --> 00:26:45,220
+enough stuff automatically but hopefully
+
+583
+00:26:45,220 --> 00:26:47,179
+you know if we can replace the
+
+584
+00:26:47,179 --> 00:26:48,980
+instruction selector with one generated
+
+585
+00:26:48,980 --> 00:26:51,320
+automatically and the legalize er with
+
+586
+00:26:51,320 --> 00:26:53,120
+something generated automatically then
+
+587
+00:26:53,120 --> 00:26:55,039
+there shouldn't be much effort all you
+
+588
+00:26:55,039 --> 00:26:57,529
+have to do is port is the API lowering
+
+589
+00:26:57,529 --> 00:26:59,659
+as I said which is basically just one
+
+590
+00:26:59,659 --> 00:27:00,950
+class that you have to inherit then you
+
+591
+00:27:00,950 --> 00:27:03,610
+have to tell how to lower returns
+
+592
+00:27:03,610 --> 00:27:06,860
+arguments and calls so that's not an
+
+593
+00:27:06,860 --> 00:27:08,899
+awful lot of stuff and you have to write
+
+594
+00:27:08,899 --> 00:27:10,909
+the descriptions for the register banks
+
+595
+00:27:10,909 --> 00:27:13,370
+which again shouldn't be too much effort
+
+596
+00:27:13,370 --> 00:27:15,890
+and then of course there's a lot of work
+
+597
+00:27:15,890 --> 00:27:20,770
+with tuning it getting it to do things
+
+598
+00:27:32,559 --> 00:27:36,230
+there so stuff to be added so it's 63
+
+599
+00:27:36,230 --> 00:27:38,210
+percent of the test feeders were the
+
+600
+00:27:38,210 --> 00:27:43,070
+last numbers that were published no it
+
+601
+00:27:43,070 --> 00:27:49,570
+doesn't include self-hosting go ahead
+
+602
+00:28:04,539 --> 00:28:06,919
+all right so the question is if it's
+
+603
+00:28:06,919 --> 00:28:10,700
+built by default right yes it is so this
+
+604
+00:28:10,700 --> 00:28:12,379
+has happened quite recently I think in
+
+605
+00:28:12,379 --> 00:28:13,789
+the past couple of weeks
+
+606
+00:28:13,789 --> 00:28:16,129
+so now we're building it by default all
+
+607
+00:28:16,129 --> 00:28:17,859
+the bots are building it it's
+
+608
+00:28:17,859 --> 00:28:28,039
+interesting yeah anything else okay well
+
+609
+00:28:28,039 --> 00:28:29,240
+thank you very much
+
+610
+00:28:29,240 --> 00:28:34,539
+[Applause]
+

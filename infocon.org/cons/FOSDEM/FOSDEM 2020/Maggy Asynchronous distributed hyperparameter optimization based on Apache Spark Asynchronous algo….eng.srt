@@ -1,0 +1,2704 @@
+﻿1
+00:00:06,319 --> 00:00:10,639
+okay we'll get started
+
+2
+00:00:07,520 --> 00:00:11,040
+with the next talk moritz is gonna talk
+
+3
+00:00:10,639 --> 00:00:14,559
+about
+
+4
+00:00:11,040 --> 00:00:16,880
+the maggie software
+
+5
+00:00:14,559 --> 00:00:19,198
+yeah good morning my name is moritz i'm
+
+6
+00:00:16,880 --> 00:00:21,680
+a software engineer at logical clocks
+
+7
+00:00:19,199 --> 00:00:24,320
+a company uh developing an open source
+
+8
+00:00:21,680 --> 00:00:26,480
+platform for scale out machine learning
+
+9
+00:00:24,320 --> 00:00:28,080
+um and today i'm going to talk about
+
+10
+00:00:26,480 --> 00:00:30,240
+asynchronous hyper parameter
+
+11
+00:00:28,080 --> 00:00:32,960
+optimization on spark and on hopsworks
+
+12
+00:00:30,240 --> 00:00:35,360
+that's how the platform is called
+
+13
+00:00:32,960 --> 00:00:36,160
+to start out a bit of a controversial
+
+14
+00:00:35,360 --> 00:00:38,559
+statement
+
+15
+00:00:36,160 --> 00:00:40,078
+from last year in an essay of rich
+
+16
+00:00:38,559 --> 00:00:42,000
+sutton also known as the father of
+
+17
+00:00:40,079 --> 00:00:44,480
+reinforcement learning
+
+18
+00:00:42,000 --> 00:00:46,480
+and basically what he says is that you
+
+19
+00:00:44,480 --> 00:00:47,839
+shouldn't add human intelligence to your
+
+20
+00:00:46,480 --> 00:00:50,480
+model development
+
+21
+00:00:47,840 --> 00:00:52,239
+but instead the future of ai is our
+
+22
+00:00:50,480 --> 00:00:53,199
+methods that scale with available
+
+23
+00:00:52,239 --> 00:00:56,000
+compute
+
+24
+00:00:53,199 --> 00:00:57,039
+and two of those methods that seem to
+
+25
+00:00:56,000 --> 00:01:00,719
+scale are
+
+26
+00:00:57,039 --> 00:01:02,559
+search and learning so
+
+27
+00:01:00,719 --> 00:01:04,559
+you heard spark so a lot of people will
+
+28
+00:01:02,559 --> 00:01:06,880
+say well spark scales with available
+
+29
+00:01:04,559 --> 00:01:08,880
+compute so spark is the answer
+
+30
+00:01:06,880 --> 00:01:11,439
+but it's actually not that easy because
+
+31
+00:01:08,880 --> 00:01:12,960
+spark is a big synchronous system
+
+32
+00:01:11,439 --> 00:01:14,559
+and to make it really efficient you
+
+33
+00:01:12,960 --> 00:01:16,720
+would need asynchronism
+
+34
+00:01:14,560 --> 00:01:19,520
+and today i'm going to show you how you
+
+35
+00:01:16,720 --> 00:01:21,200
+can still do it on spark
+
+36
+00:01:19,520 --> 00:01:22,560
+if we look at distribution and deep
+
+37
+00:01:21,200 --> 00:01:24,720
+learning
+
+38
+00:01:22,560 --> 00:01:26,960
+we don't want to lose our generalization
+
+39
+00:01:24,720 --> 00:01:30,479
+error so what
+
+40
+00:01:26,960 --> 00:01:33,199
+methods do we actually have available to
+
+41
+00:01:30,479 --> 00:01:34,720
+improve the generalization error we can
+
+42
+00:01:33,200 --> 00:01:37,200
+use better regularization
+
+43
+00:01:34,720 --> 00:01:38,400
+hyper parameter optimization larger
+
+44
+00:01:37,200 --> 00:01:40,799
+training data sets
+
+45
+00:01:38,400 --> 00:01:42,560
+better models or better optimization
+
+46
+00:01:40,799 --> 00:01:44,799
+algorithms but
+
+47
+00:01:42,560 --> 00:01:45,840
+actually where we can apply distribution
+
+48
+00:01:44,799 --> 00:01:50,159
+is in these
+
+49
+00:01:45,840 --> 00:01:52,479
+three parts and when we look at it
+
+50
+00:01:50,159 --> 00:01:53,280
+we usually speak about two loops the
+
+51
+00:01:52,479 --> 00:01:56,240
+inner loop
+
+52
+00:01:53,280 --> 00:01:56,960
+which is the stochastic gradient descent
+
+53
+00:01:56,240 --> 00:02:00,158
+training
+
+54
+00:01:56,960 --> 00:02:02,798
+and we can apply distribution that
+
+55
+00:02:00,159 --> 00:02:03,840
+to that fairly efficiently and also in
+
+56
+00:02:02,799 --> 00:02:06,880
+spark
+
+57
+00:02:03,840 --> 00:02:08,239
+we can use a bunch of workers and use
+
+58
+00:02:06,880 --> 00:02:12,400
+the all reduce
+
+59
+00:02:08,239 --> 00:02:14,800
+strategy to scale the inner loop out
+
+60
+00:02:12,400 --> 00:02:15,520
+a bit more complicated is the actual the
+
+61
+00:02:14,800 --> 00:02:18,720
+outer loop
+
+62
+00:02:15,520 --> 00:02:20,879
+which we call the search loop
+
+63
+00:02:18,720 --> 00:02:22,000
+where we have to basically generate
+
+64
+00:02:20,879 --> 00:02:24,480
+trials that we think are
+
+65
+00:02:22,000 --> 00:02:26,800
+promising and we actually need to train
+
+66
+00:02:24,480 --> 00:02:28,560
+them to return a single metric
+
+67
+00:02:26,800 --> 00:02:30,160
+it behaves like a black box we don't
+
+68
+00:02:28,560 --> 00:02:32,239
+have any uh
+
+69
+00:02:30,160 --> 00:02:34,400
+gradient information available to
+
+70
+00:02:32,239 --> 00:02:35,200
+optimize this loop so we have to rely on
+
+71
+00:02:34,400 --> 00:02:37,120
+much
+
+72
+00:02:35,200 --> 00:02:39,040
+less efficient methods and make more
+
+73
+00:02:37,120 --> 00:02:43,040
+greedy methods like random search
+
+74
+00:02:39,040 --> 00:02:44,319
+or by asian optimization
+
+75
+00:02:43,040 --> 00:02:46,720
+the inner loop is what we call the
+
+76
+00:02:44,319 --> 00:02:50,238
+learning and the outer loop is
+
+77
+00:02:46,720 --> 00:02:50,720
+the search but in reality if you look at
+
+78
+00:02:50,239 --> 00:02:52,560
+it
+
+79
+00:02:50,720 --> 00:02:54,000
+if you look at your process of building
+
+80
+00:02:52,560 --> 00:02:56,959
+a machine learning model
+
+81
+00:02:54,000 --> 00:02:58,720
+um this means if you want to deploy that
+
+82
+00:02:56,959 --> 00:03:00,720
+efficiently at scale this
+
+83
+00:02:58,720 --> 00:03:02,959
+this these two loops that means
+
+84
+00:03:00,720 --> 00:03:04,879
+rewriting your training code actually a
+
+85
+00:03:02,959 --> 00:03:06,720
+lot of times because
+
+86
+00:03:04,879 --> 00:03:07,920
+usually you start out exploring and
+
+87
+00:03:06,720 --> 00:03:10,800
+designing your model on
+
+88
+00:03:07,920 --> 00:03:12,159
+maybe just a python kernel single host
+
+89
+00:03:10,800 --> 00:03:14,239
+but then when you do
+
+90
+00:03:12,159 --> 00:03:16,079
+experiments you want to scale it out
+
+91
+00:03:14,239 --> 00:03:18,080
+maybe you want to use spark and then
+
+92
+00:03:16,080 --> 00:03:20,159
+finally you want to do data parallel
+
+93
+00:03:18,080 --> 00:03:23,440
+training or model parallel training
+
+94
+00:03:20,159 --> 00:03:24,720
+on a lot of data and but the problem is
+
+95
+00:03:23,440 --> 00:03:28,079
+that
+
+96
+00:03:24,720 --> 00:03:30,720
+usually you have to be
+
+97
+00:03:28,080 --> 00:03:32,400
+iterating so you might notice something
+
+98
+00:03:30,720 --> 00:03:34,480
+in your experiment so you have to go
+
+99
+00:03:32,400 --> 00:03:37,599
+back to your single host environment
+
+100
+00:03:34,480 --> 00:03:40,798
+change a code then rewrite your codes to
+
+101
+00:03:37,599 --> 00:03:42,480
+actually fit your distribution context
+
+102
+00:03:40,799 --> 00:03:45,200
+which results in a lot of code changes
+
+103
+00:03:42,480 --> 00:03:47,040
+that you need to track and
+
+104
+00:03:45,200 --> 00:03:48,319
+keep a history of to keep your
+
+105
+00:03:47,040 --> 00:03:51,920
+experiments actually
+
+106
+00:03:48,319 --> 00:03:54,399
+reproducible and your models so
+
+107
+00:03:51,920 --> 00:03:56,000
+how we want to do it is uh with an
+
+108
+00:03:54,400 --> 00:03:58,640
+abstraction that we call the
+
+109
+00:03:56,000 --> 00:04:00,959
+oblivious training function um we're
+
+110
+00:03:58,640 --> 00:04:03,200
+trying to
+
+111
+00:04:00,959 --> 00:04:05,439
+abstract out all the dependencies so
+
+112
+00:04:03,200 --> 00:04:07,760
+that we have a single training function
+
+113
+00:04:05,439 --> 00:04:09,599
+um where we want the user to put all his
+
+114
+00:04:07,760 --> 00:04:12,840
+training code inside
+
+115
+00:04:09,599 --> 00:04:14,959
+just like on a normal single host python
+
+116
+00:04:12,840 --> 00:04:15,920
+environment and then we will do the
+
+117
+00:04:14,959 --> 00:04:18,639
+perimetry
+
+118
+00:04:15,920 --> 00:04:19,759
+type parameterization for you for
+
+119
+00:04:18,639 --> 00:04:22,720
+example with
+
+120
+00:04:19,759 --> 00:04:24,240
+model generator functions or hyper
+
+121
+00:04:22,720 --> 00:04:27,520
+parameters
+
+122
+00:04:24,240 --> 00:04:29,919
+there's different ways to do it
+
+123
+00:04:27,520 --> 00:04:31,840
+so going back to the outer loop if you
+
+124
+00:04:29,919 --> 00:04:33,599
+look at it sequentially
+
+125
+00:04:31,840 --> 00:04:35,119
+we have a learning black box we don't
+
+126
+00:04:33,600 --> 00:04:36,560
+have any gradient information which
+
+127
+00:04:35,120 --> 00:04:39,199
+returns a single
+
+128
+00:04:36,560 --> 00:04:40,840
+metric and that's the metric we want to
+
+129
+00:04:39,199 --> 00:04:45,520
+optimize the loss or
+
+130
+00:04:40,840 --> 00:04:48,799
+accuracy over some search space and
+
+131
+00:04:45,520 --> 00:04:51,599
+ideally this is not just applying to
+
+132
+00:04:48,800 --> 00:04:53,440
+black box optimization but
+
+133
+00:04:51,600 --> 00:04:56,000
+all kinds of search problems and we can
+
+134
+00:04:53,440 --> 00:04:58,240
+replace that with a global controller so
+
+135
+00:04:56,000 --> 00:05:00,320
+we can actually also use it for for
+
+136
+00:04:58,240 --> 00:05:02,320
+example ablation studies where we leave
+
+137
+00:05:00,320 --> 00:05:04,240
+out certain components of the
+
+138
+00:05:02,320 --> 00:05:05,599
+of the model to see what actually is the
+
+139
+00:05:04,240 --> 00:05:08,240
+contribution of that
+
+140
+00:05:05,600 --> 00:05:09,520
+component of the model to my final uh
+
+141
+00:05:08,240 --> 00:05:12,880
+outcome of the model or
+
+142
+00:05:09,520 --> 00:05:15,359
+final quality of the model
+
+143
+00:05:12,880 --> 00:05:18,320
+so how can we scale this actually those
+
+144
+00:05:15,360 --> 00:05:20,720
+learning black boxes are independent so
+
+145
+00:05:18,320 --> 00:05:21,759
+we can add multiple workers and run them
+
+146
+00:05:20,720 --> 00:05:23,680
+in parallel
+
+147
+00:05:21,759 --> 00:05:26,080
+but the problem is how do we actually
+
+148
+00:05:23,680 --> 00:05:27,919
+schedule the the trials on there
+
+149
+00:05:26,080 --> 00:05:29,840
+um that's why we need to add some kind
+
+150
+00:05:27,919 --> 00:05:32,159
+of cue so we won't like to
+
+151
+00:05:29,840 --> 00:05:34,239
+produce trials ahead of time and every
+
+152
+00:05:32,160 --> 00:05:35,919
+time a worker gets idle he can just take
+
+153
+00:05:34,240 --> 00:05:37,919
+a trial from the queue which is
+
+154
+00:05:35,919 --> 00:05:39,120
+some kind of hyper parameter combination
+
+155
+00:05:37,919 --> 00:05:42,880
+combination
+
+156
+00:05:39,120 --> 00:05:44,000
+and start training it um and ideally we
+
+157
+00:05:42,880 --> 00:05:46,560
+would like to keep
+
+158
+00:05:44,000 --> 00:05:48,240
+the global information over all the
+
+159
+00:05:46,560 --> 00:05:50,560
+learning curves that we are training
+
+160
+00:05:48,240 --> 00:05:52,800
+uh available in in this controller to
+
+161
+00:05:50,560 --> 00:05:55,600
+make smart decisions on which trials to
+
+162
+00:05:52,800 --> 00:05:55,600
+process next
+
+163
+00:05:55,840 --> 00:06:00,000
+so but then the question is which
+
+164
+00:05:57,759 --> 00:06:02,639
+algorithm algorithm do we actually use
+
+165
+00:06:00,000 --> 00:06:02,639
+for search
+
+166
+00:06:03,120 --> 00:06:06,479
+how do we monitor progress how do we
+
+167
+00:06:05,120 --> 00:06:10,639
+actually collect the
+
+168
+00:06:06,479 --> 00:06:12,479
+metrics and aggregate the results and
+
+169
+00:06:10,639 --> 00:06:14,319
+what about fault tolerance fault
+
+170
+00:06:12,479 --> 00:06:15,359
+tolerance if we lose one of the workers
+
+171
+00:06:14,319 --> 00:06:18,400
+we don't want to lose
+
+172
+00:06:15,360 --> 00:06:22,560
+days of experimentation progress so
+
+173
+00:06:18,400 --> 00:06:24,638
+how do we take that into into account um
+
+174
+00:06:22,560 --> 00:06:25,919
+so we said this should be managed with
+
+175
+00:06:24,639 --> 00:06:28,560
+platform support
+
+176
+00:06:25,919 --> 00:06:29,919
+and uh that's why we started the project
+
+177
+00:06:28,560 --> 00:06:32,080
+called maggie it's a
+
+178
+00:06:29,919 --> 00:06:34,000
+flexible framework to run asynchronous
+
+179
+00:06:32,080 --> 00:06:35,758
+parallel hyper parameter
+
+180
+00:06:34,000 --> 00:06:37,120
+or not the only hyper parameter
+
+181
+00:06:35,759 --> 00:06:39,360
+experiments but
+
+182
+00:06:37,120 --> 00:06:41,600
+any kind of trials for machine learning
+
+183
+00:06:39,360 --> 00:06:42,160
+and it supports a bunch of algorithms
+
+184
+00:06:41,600 --> 00:06:44,080
+like
+
+185
+00:06:42,160 --> 00:06:45,600
+asynchronous successive halving random
+
+186
+00:06:44,080 --> 00:06:48,000
+search grid search
+
+187
+00:06:45,600 --> 00:06:49,599
+leave one component out ablation by
+
+188
+00:06:48,000 --> 00:06:52,720
+using optimization and
+
+189
+00:06:49,599 --> 00:06:52,719
+we're working on more
+
+190
+00:06:53,039 --> 00:06:58,800
+so synchronous search is actually quite
+
+191
+00:06:55,199 --> 00:07:01,120
+straightforward to implement on spark
+
+192
+00:06:58,800 --> 00:07:02,400
+say you have random search you generate
+
+193
+00:07:01,120 --> 00:07:04,639
+10 trials
+
+194
+00:07:02,400 --> 00:07:06,159
+you start 10 tasks each task is going to
+
+195
+00:07:04,639 --> 00:07:09,120
+train a single trial
+
+196
+00:07:06,160 --> 00:07:10,560
+you wait until all of them finish and
+
+197
+00:07:09,120 --> 00:07:14,560
+then afterwards you might
+
+198
+00:07:10,560 --> 00:07:15,599
+generate more or you stop the experiment
+
+199
+00:07:14,560 --> 00:07:18,639
+there
+
+200
+00:07:15,599 --> 00:07:20,800
+the problem is that
+
+201
+00:07:18,639 --> 00:07:22,720
+once you add early stopping or
+
+202
+00:07:20,800 --> 00:07:24,160
+asynchronous algorithms you don't make
+
+203
+00:07:22,720 --> 00:07:26,240
+efficient use of your
+
+204
+00:07:24,160 --> 00:07:28,560
+of your resources because hyper
+
+205
+00:07:26,240 --> 00:07:31,440
+parameters greatly influence the run
+
+206
+00:07:28,560 --> 00:07:32,560
+the training time so some of the models
+
+207
+00:07:31,440 --> 00:07:35,039
+will finish early
+
+208
+00:07:32,560 --> 00:07:36,240
+some will take longer but in spark you
+
+209
+00:07:35,039 --> 00:07:38,880
+will have to wait
+
+210
+00:07:36,240 --> 00:07:40,639
+until you reach the end of your stage to
+
+211
+00:07:38,880 --> 00:07:42,960
+start actually a new stage
+
+212
+00:07:40,639 --> 00:07:44,720
+and when you do directed search for
+
+213
+00:07:42,960 --> 00:07:45,198
+example by asian optimization you would
+
+214
+00:07:44,720 --> 00:07:47,199
+need
+
+215
+00:07:45,199 --> 00:07:49,039
+to wait until all those tasks in the
+
+216
+00:07:47,199 --> 00:07:51,199
+first stage finish
+
+217
+00:07:49,039 --> 00:07:53,120
+to to update your by asian model and
+
+218
+00:07:51,199 --> 00:07:54,400
+generate new trials and we don't want
+
+219
+00:07:53,120 --> 00:07:58,160
+that
+
+220
+00:07:54,400 --> 00:08:00,878
+so and there are a bunch of more
+
+221
+00:07:58,160 --> 00:08:01,840
+uh methods i already said it early
+
+222
+00:08:00,879 --> 00:08:03,440
+stopping
+
+223
+00:08:01,840 --> 00:08:05,119
+um you can do early stopping based on
+
+224
+00:08:03,440 --> 00:08:07,120
+the single learning curve but
+
+225
+00:08:05,120 --> 00:08:09,120
+actually more efficient or more better
+
+226
+00:08:07,120 --> 00:08:10,879
+early stopping rules are
+
+227
+00:08:09,120 --> 00:08:12,639
+based on all the information you have
+
+228
+00:08:10,879 --> 00:08:14,639
+available all the learning curves
+
+229
+00:08:12,639 --> 00:08:15,680
+for example median stopping rule or you
+
+230
+00:08:14,639 --> 00:08:18,639
+can predict
+
+231
+00:08:15,680 --> 00:08:19,039
+the performance curve the final outcome
+
+232
+00:08:18,639 --> 00:08:21,120
+or
+
+233
+00:08:19,039 --> 00:08:22,479
+so-called multi-fidelity methods like
+
+234
+00:08:21,120 --> 00:08:25,039
+successive housing
+
+235
+00:08:22,479 --> 00:08:26,560
+where you give different budgets to each
+
+236
+00:08:25,039 --> 00:08:30,000
+of your trials
+
+237
+00:08:26,560 --> 00:08:30,400
+depending on how likely it is that it's
+
+238
+00:08:30,000 --> 00:08:33,360
+a good
+
+239
+00:08:30,400 --> 00:08:34,559
+trial so you try to see oh this is a
+
+240
+00:08:33,360 --> 00:08:36,719
+good trial so i want to
+
+241
+00:08:34,559 --> 00:08:37,760
+train it more epochs to be really sure
+
+242
+00:08:36,719 --> 00:08:40,080
+that it's a
+
+243
+00:08:37,760 --> 00:08:41,599
+good trial as you for example as you see
+
+244
+00:08:40,080 --> 00:08:43,120
+here this is successive halving you
+
+245
+00:08:41,599 --> 00:08:45,440
+start with eight trials
+
+246
+00:08:43,120 --> 00:08:46,880
+but you only continue with the best four
+
+247
+00:08:45,440 --> 00:08:48,720
+best half
+
+248
+00:08:46,880 --> 00:08:52,080
+with the training until the end you have
+
+249
+00:08:48,720 --> 00:08:54,560
+only one trial left
+
+250
+00:08:52,080 --> 00:08:56,640
+i already said it briefly um you can
+
+251
+00:08:54,560 --> 00:08:57,920
+also use this for ablation studies by
+
+252
+00:08:56,640 --> 00:09:00,080
+just
+
+253
+00:08:57,920 --> 00:09:01,839
+replacing the optimizer within a plater
+
+254
+00:09:00,080 --> 00:09:03,360
+who leaves out certain components of
+
+255
+00:09:01,839 --> 00:09:05,839
+your net neural network
+
+256
+00:09:03,360 --> 00:09:07,600
+at a time for example feature ablation
+
+257
+00:09:05,839 --> 00:09:08,240
+or leaving out components of your
+
+258
+00:09:07,600 --> 00:09:11,920
+network
+
+259
+00:09:08,240 --> 00:09:13,760
+like layers for example um
+
+260
+00:09:11,920 --> 00:09:15,599
+so yeah the challenge is how can we fit
+
+261
+00:09:13,760 --> 00:09:18,319
+this in the into the spark
+
+262
+00:09:15,600 --> 00:09:19,920
+plug synchronous execution model because
+
+263
+00:09:18,320 --> 00:09:23,040
+we have a mismatch between
+
+264
+00:09:19,920 --> 00:09:23,760
+what we define as a trial and the tasks
+
+265
+00:09:23,040 --> 00:09:26,560
+and stages
+
+266
+00:09:23,760 --> 00:09:26,560
+in in spark
+
+267
+00:09:27,680 --> 00:09:32,560
+and how do we do that we we actually
+
+268
+00:09:30,399 --> 00:09:35,680
+block the executors in spark
+
+269
+00:09:32,560 --> 00:09:37,599
+with long-running tasks and allow for
+
+270
+00:09:35,680 --> 00:09:41,599
+communication between the drivers
+
+271
+00:09:37,600 --> 00:09:43,040
+and end those tasks by setting up a rpc
+
+272
+00:09:41,600 --> 00:09:46,320
+framework in between
+
+273
+00:09:43,040 --> 00:09:48,160
+so this way we can
+
+274
+00:09:46,320 --> 00:09:50,000
+basically when once a task starts it
+
+275
+00:09:48,160 --> 00:09:52,560
+registers with the with the server
+
+276
+00:09:50,000 --> 00:09:53,600
+that's running on the spark driver asks
+
+277
+00:09:52,560 --> 00:09:55,839
+say
+
+278
+00:09:53,600 --> 00:09:56,640
+here i'm here i'm available to do work
+
+279
+00:09:55,839 --> 00:09:59,120
+and
+
+280
+00:09:56,640 --> 00:10:00,800
+the driver or the optimizer can send a
+
+281
+00:09:59,120 --> 00:10:03,519
+trial configuration to that
+
+282
+00:10:00,800 --> 00:10:04,160
+task which start then starts training
+
+283
+00:10:03,519 --> 00:10:07,440
+the model
+
+284
+00:10:04,160 --> 00:10:10,079
+with those parameters and
+
+285
+00:10:07,440 --> 00:10:11,120
+at the same time we can do heart beating
+
+286
+00:10:10,079 --> 00:10:13,359
+so
+
+287
+00:10:11,120 --> 00:10:15,760
+once these trials started training they
+
+288
+00:10:13,360 --> 00:10:18,720
+be they heartbeat back the
+
+289
+00:10:15,760 --> 00:10:20,560
+current training accuracy or loss so we
+
+290
+00:10:18,720 --> 00:10:22,240
+can do early global early stopping
+
+291
+00:10:20,560 --> 00:10:24,719
+decisions for example say one
+
+292
+00:10:22,240 --> 00:10:25,920
+trial is performing worse than then the
+
+293
+00:10:24,720 --> 00:10:29,440
+median of all
+
+294
+00:10:25,920 --> 00:10:31,439
+other trials at comparable parts at time
+
+295
+00:10:29,440 --> 00:10:33,200
+points in time in the in the training
+
+296
+00:10:31,440 --> 00:10:35,120
+then we say okay stop this
+
+297
+00:10:33,200 --> 00:10:38,079
+start a new one right away and this is
+
+298
+00:10:35,120 --> 00:10:38,079
+not worth my time
+
+299
+00:10:38,800 --> 00:10:44,640
+how does it look like inside of maggie
+
+300
+00:10:42,720 --> 00:10:46,720
+the first thing we do when the spark
+
+301
+00:10:44,640 --> 00:10:50,079
+driver starts is we
+
+302
+00:10:46,720 --> 00:10:52,959
+start a little rpc server and
+
+303
+00:10:50,079 --> 00:10:53,680
+basically this rpc server can receive
+
+304
+00:10:52,959 --> 00:10:56,239
+messages
+
+305
+00:10:53,680 --> 00:10:57,359
+from the clients which are started in
+
+306
+00:10:56,240 --> 00:11:00,399
+the in the spark
+
+307
+00:10:57,360 --> 00:11:02,240
+tasks and every time it receives a
+
+308
+00:11:00,399 --> 00:11:03,440
+message it puts it in a queue for the
+
+309
+00:11:02,240 --> 00:11:06,079
+optimizer
+
+310
+00:11:03,440 --> 00:11:07,120
+uh the optimizer is gonna modify some
+
+311
+00:11:06,079 --> 00:11:09,120
+shared data
+
+312
+00:11:07,120 --> 00:11:10,959
+and every time the rp the server
+
+313
+00:11:09,120 --> 00:11:12,240
+receives a heartbeat from the current
+
+314
+00:11:10,959 --> 00:11:14,239
+trial that's running
+
+315
+00:11:12,240 --> 00:11:15,760
+it will look up the shared data and see
+
+316
+00:11:14,240 --> 00:11:19,519
+is there should i stop this
+
+317
+00:11:15,760 --> 00:11:21,920
+trial or should i continue and
+
+318
+00:11:19,519 --> 00:11:23,519
+this has a few advantages because we're
+
+319
+00:11:21,920 --> 00:11:26,240
+running this on hobbs work so
+
+320
+00:11:23,519 --> 00:11:27,920
+we have a rest api available and we can
+
+321
+00:11:26,240 --> 00:11:29,200
+register this maggie server with
+
+322
+00:11:27,920 --> 00:11:32,240
+hopsworks
+
+323
+00:11:29,200 --> 00:11:35,120
+and we can start another client in
+
+324
+00:11:32,240 --> 00:11:36,560
+in the jupiter notebook that can connect
+
+325
+00:11:35,120 --> 00:11:38,880
+to the server later
+
+326
+00:11:36,560 --> 00:11:41,439
+and get us for example logs or the
+
+327
+00:11:38,880 --> 00:11:43,279
+current metrics so we get actually
+
+328
+00:11:41,440 --> 00:11:44,800
+live feedback inside the jupyter
+
+329
+00:11:43,279 --> 00:11:47,439
+notebook how my uh
+
+330
+00:11:44,800 --> 00:11:49,279
+experiment is performing at the moment
+
+331
+00:11:47,440 --> 00:11:51,519
+which is very nice because so far you
+
+332
+00:11:49,279 --> 00:11:53,920
+always had to go to the spark ui
+
+333
+00:11:51,519 --> 00:11:54,560
+open the the logs of your executors and
+
+334
+00:11:53,920 --> 00:11:57,839
+check
+
+335
+00:11:54,560 --> 00:11:57,839
+what's going on
+
+336
+00:11:57,870 --> 00:12:01,440
+[Music]
+
+337
+00:11:59,279 --> 00:12:02,560
+yes how does it look like from the user
+
+338
+00:12:01,440 --> 00:12:05,440
+api
+
+339
+00:12:02,560 --> 00:12:07,599
+it's quite straightforward you have to
+
+340
+00:12:05,440 --> 00:12:10,720
+define a search space which has
+
+341
+00:12:07,600 --> 00:12:14,079
+a few different uh
+
+342
+00:12:10,720 --> 00:12:17,920
+hyper parameter categories
+
+343
+00:12:14,079 --> 00:12:19,199
+integers doubles or categorical or
+
+344
+00:12:17,920 --> 00:12:22,000
+discrete
+
+345
+00:12:19,200 --> 00:12:23,920
+hyperparameters and then like i said we
+
+346
+00:12:22,000 --> 00:12:24,800
+want you to define one single training
+
+347
+00:12:23,920 --> 00:12:28,079
+function
+
+348
+00:12:24,800 --> 00:12:31,599
+that contains all your logic
+
+349
+00:12:28,079 --> 00:12:33,760
+for your model giving the parameters as
+
+350
+00:12:31,600 --> 00:12:35,040
+arguments to the function and the only
+
+351
+00:12:33,760 --> 00:12:37,360
+thing we need you to do
+
+352
+00:12:35,040 --> 00:12:38,399
+is adding a callback either to your
+
+353
+00:12:37,360 --> 00:12:42,079
+keras or
+
+354
+00:12:38,399 --> 00:12:43,600
+tensorboard tensorflow model
+
+355
+00:12:42,079 --> 00:12:46,160
+which creates the connection between
+
+356
+00:12:43,600 --> 00:12:49,920
+maggie and actually your your user code
+
+357
+00:12:46,160 --> 00:12:52,240
+so we you have to tell it
+
+358
+00:12:49,920 --> 00:12:53,599
+which metric to actually broadcast back
+
+359
+00:12:52,240 --> 00:12:56,720
+or heartbeat back to
+
+360
+00:12:53,600 --> 00:12:59,760
+to the maggie driver to optimize and you
+
+361
+00:12:56,720 --> 00:13:02,639
+should return the same final accuracy
+
+362
+00:12:59,760 --> 00:13:03,279
+metric and then finally last but not
+
+363
+00:13:02,639 --> 00:13:05,839
+least
+
+364
+00:13:03,279 --> 00:13:07,439
+you can log on your experiment lagom is
+
+365
+00:13:05,839 --> 00:13:08,000
+swedish and it means just the right
+
+366
+00:13:07,440 --> 00:13:10,959
+amount
+
+367
+00:13:08,000 --> 00:13:12,800
+so not too much not too little you give
+
+368
+00:13:10,959 --> 00:13:13,760
+it your search space the optimizer you
+
+369
+00:13:12,800 --> 00:13:15,760
+want to use
+
+370
+00:13:13,760 --> 00:13:19,040
+and the number of trials and there's a
+
+371
+00:13:15,760 --> 00:13:20,720
+bunch of more parameters you can set
+
+372
+00:13:19,040 --> 00:13:23,120
+you can also implement your own custom
+
+373
+00:13:20,720 --> 00:13:24,320
+optimizers it's straightforward just
+
+374
+00:13:23,120 --> 00:13:26,720
+implementing an
+
+375
+00:13:24,320 --> 00:13:28,000
+abstract class with three methods and
+
+376
+00:13:26,720 --> 00:13:30,560
+you can also do
+
+377
+00:13:28,000 --> 00:13:32,480
+your own uh early stopping components if
+
+378
+00:13:30,560 --> 00:13:35,760
+you want to
+
+379
+00:13:32,480 --> 00:13:37,200
+from the ablation api um
+
+380
+00:13:35,760 --> 00:13:39,839
+currently it supports keras the
+
+381
+00:13:37,200 --> 00:13:42,000
+sequential api because you can give
+
+382
+00:13:39,839 --> 00:13:43,040
+labels to your layers and components in
+
+383
+00:13:42,000 --> 00:13:45,839
+in your model
+
+384
+00:13:43,040 --> 00:13:47,680
+and and then you can define a with magi
+
+385
+00:13:45,839 --> 00:13:49,920
+you can define an ablation study
+
+386
+00:13:47,680 --> 00:13:51,120
+where you tell it which components of
+
+387
+00:13:49,920 --> 00:13:54,000
+your model to ablate
+
+388
+00:13:51,120 --> 00:13:55,680
+one at a time basically or which
+
+389
+00:13:54,000 --> 00:13:58,079
+features
+
+390
+00:13:55,680 --> 00:14:00,239
+and then the same thing again you define
+
+391
+00:13:58,079 --> 00:14:03,359
+a single training function to run
+
+392
+00:14:00,240 --> 00:14:06,880
+to run it with uh
+
+393
+00:14:03,360 --> 00:14:09,360
+some some results um
+
+394
+00:14:06,880 --> 00:14:10,240
+actually what you should observe here is
+
+395
+00:14:09,360 --> 00:14:12,160
+two things
+
+396
+00:14:10,240 --> 00:14:14,000
+on the left we have a model which is
+
+397
+00:14:12,160 --> 00:14:15,680
+actually quite stable so the hyper
+
+398
+00:14:14,000 --> 00:14:18,240
+parameters don't change the
+
+399
+00:14:15,680 --> 00:14:19,279
+accuracy that much of the model and as
+
+400
+00:14:18,240 --> 00:14:22,560
+we can see the
+
+401
+00:14:19,279 --> 00:14:24,720
+the asynchronous algorithm asha
+
+402
+00:14:22,560 --> 00:14:25,599
+is not that much better but actually it
+
+403
+00:14:24,720 --> 00:14:27,680
+finds his
+
+404
+00:14:25,600 --> 00:14:28,959
+its best configuration already after
+
+405
+00:14:27,680 --> 00:14:31,279
+half the time
+
+406
+00:14:28,959 --> 00:14:32,479
+and then we have like half of the time
+
+407
+00:14:31,279 --> 00:14:34,160
+of the rest of the experiment to
+
+408
+00:14:32,480 --> 00:14:36,959
+actually train the model uh
+
+409
+00:14:34,160 --> 00:14:38,639
+with more data for example and but the
+
+410
+00:14:36,959 --> 00:14:40,638
+real benefit comes in when you
+
+411
+00:14:38,639 --> 00:14:41,760
+when you have a model that's sensitive
+
+412
+00:14:40,639 --> 00:14:43,680
+to
+
+413
+00:14:41,760 --> 00:14:47,120
+hyper parameters and we've seen it a lot
+
+414
+00:14:43,680 --> 00:14:49,040
+with gans for example
+
+415
+00:14:47,120 --> 00:14:50,480
+where early stopping plays a role
+
+416
+00:14:49,040 --> 00:14:51,519
+because a lot of the models actually
+
+417
+00:14:50,480 --> 00:14:54,000
+perform really bad
+
+418
+00:14:51,519 --> 00:14:55,360
+depending on the hyper parameters and
+
+419
+00:14:54,000 --> 00:14:57,839
+with
+
+420
+00:14:55,360 --> 00:14:58,800
+maggie you can basically have a lot more
+
+421
+00:14:57,839 --> 00:15:01,199
+exploration
+
+422
+00:14:58,800 --> 00:15:03,120
+in in your search space because you can
+
+423
+00:15:01,199 --> 00:15:05,359
+perform many more trials in the same
+
+424
+00:15:03,120 --> 00:15:05,360
+time
+
+425
+00:15:06,079 --> 00:15:10,239
+i'll do a demo in a second just some
+
+426
+00:15:08,639 --> 00:15:12,160
+conclusions
+
+427
+00:15:10,240 --> 00:15:14,399
+yeah you should avoid iterative hyper
+
+428
+00:15:12,160 --> 00:15:16,880
+parameter optimization and automate
+
+429
+00:15:14,399 --> 00:15:18,079
+your experiments because yeah blackbox
+
+430
+00:15:16,880 --> 00:15:21,279
+optimization is hard
+
+431
+00:15:18,079 --> 00:15:22,959
+iterative development is slow um
+
+432
+00:15:21,279 --> 00:15:24,880
+there are actually state-of-the-art
+
+433
+00:15:22,959 --> 00:15:26,079
+algorithms that can be deployed
+
+434
+00:15:24,880 --> 00:15:28,880
+asynchronously
+
+435
+00:15:26,079 --> 00:15:30,959
+such as by asian optimization particle
+
+436
+00:15:28,880 --> 00:15:34,480
+swarm optimization
+
+437
+00:15:30,959 --> 00:15:35,359
+um asha the asynchronous successive
+
+438
+00:15:34,480 --> 00:15:37,360
+housing
+
+439
+00:15:35,360 --> 00:15:41,279
+and yeah you you can use maggie to do
+
+440
+00:15:37,360 --> 00:15:44,320
+that um
+
+441
+00:15:41,279 --> 00:15:46,639
+and it saves you resources and uh
+
+442
+00:15:44,320 --> 00:15:50,480
+helps you with the api with the ablation
+
+443
+00:15:46,639 --> 00:15:52,160
+api to better understand your models
+
+444
+00:15:50,480 --> 00:15:55,839
+especially when they're sensitive or
+
+445
+00:15:52,160 --> 00:15:55,839
+sensible to hyper parameters
+
+446
+00:15:56,160 --> 00:16:02,480
+what's next we want to develop more
+
+447
+00:15:59,360 --> 00:16:04,160
+algorithms and we
+
+448
+00:16:02,480 --> 00:16:05,600
+really want to provide distribution
+
+449
+00:16:04,160 --> 00:16:07,680
+transparency so that
+
+450
+00:16:05,600 --> 00:16:10,399
+once you define your training function
+
+451
+00:16:07,680 --> 00:16:12,800
+you do not have to rewrite it to
+
+452
+00:16:10,399 --> 00:16:14,480
+run it in different contexts if you run
+
+453
+00:16:12,800 --> 00:16:15,439
+it on your local machine or if you run
+
+454
+00:16:14,480 --> 00:16:18,639
+it
+
+455
+00:16:15,440 --> 00:16:20,959
+in on spark to scale out the experiments
+
+456
+00:16:18,639 --> 00:16:24,399
+or if you do data parallel training
+
+457
+00:16:20,959 --> 00:16:26,959
+this shouldn't matter matter then
+
+458
+00:16:24,399 --> 00:16:29,279
+a big problem in this area is actually
+
+459
+00:16:26,959 --> 00:16:31,839
+comparability and reducibility of
+
+460
+00:16:29,279 --> 00:16:35,040
+experiments
+
+461
+00:16:31,839 --> 00:16:36,079
+so maybe we can work on making
+
+462
+00:16:35,040 --> 00:16:39,120
+experiments more
+
+463
+00:16:36,079 --> 00:16:41,279
+comparable if you can run them on spark
+
+464
+00:16:39,120 --> 00:16:43,600
+clusters with a certain
+
+465
+00:16:41,279 --> 00:16:45,040
+configuration they should always
+
+466
+00:16:43,600 --> 00:16:49,040
+reproduce the same
+
+467
+00:16:45,040 --> 00:16:50,240
+outcomes and then something else we're
+
+468
+00:16:49,040 --> 00:16:52,719
+working on is implicit
+
+469
+00:16:50,240 --> 00:16:53,440
+provenance as you will see in a second
+
+470
+00:16:52,720 --> 00:16:55,040
+basically
+
+471
+00:16:53,440 --> 00:16:57,120
+because we have this training function
+
+472
+00:16:55,040 --> 00:16:58,079
+that we call for the user so it's not
+
+473
+00:16:57,120 --> 00:17:00,399
+the user anymore
+
+474
+00:16:58,079 --> 00:17:01,920
+that calls his own code and we can do a
+
+475
+00:17:00,399 --> 00:17:03,920
+lot of stuff around it
+
+476
+00:17:01,920 --> 00:17:05,199
+for example tracking artifacts that
+
+477
+00:17:03,920 --> 00:17:09,039
+you're producing
+
+478
+00:17:05,199 --> 00:17:12,079
+and tracking the code changes
+
+479
+00:17:09,039 --> 00:17:15,280
+instead of you having to actually write
+
+480
+00:17:12,079 --> 00:17:16,399
+a call to a lifecycle management tool
+
+481
+00:17:15,280 --> 00:17:19,199
+like mlflow
+
+482
+00:17:16,400 --> 00:17:19,600
+where you do mlflow.log these parameters
+
+483
+00:17:19,199 --> 00:17:22,319
+this
+
+484
+00:17:19,599 --> 00:17:23,839
+metric we can do all all of that for you
+
+485
+00:17:22,319 --> 00:17:28,079
+actually in the background
+
+486
+00:17:23,839 --> 00:17:28,079
+and we need to add support for pytorch
+
+487
+00:17:28,640 --> 00:17:37,440
+so let me do a quick demo i i started a
+
+488
+00:17:33,360 --> 00:17:40,159
+spark application with on hopsworks with
+
+489
+00:17:37,440 --> 00:17:41,200
+now just three executors a little bit of
+
+490
+00:17:40,160 --> 00:17:45,520
+memory
+
+491
+00:17:41,200 --> 00:17:48,720
+uh for each of the executors and
+
+492
+00:17:45,520 --> 00:17:50,639
+as you can see i define
+
+493
+00:17:48,720 --> 00:17:52,000
+the search space in this case it's a
+
+494
+00:17:50,640 --> 00:17:55,039
+simple amnest model
+
+495
+00:17:52,000 --> 00:17:58,240
+convolutional model so i define a kernel
+
+496
+00:17:55,039 --> 00:18:00,960
+a pooling the size of the pooling
+
+497
+00:17:58,240 --> 00:18:02,960
+for the pooling layer and you can also
+
+498
+00:18:00,960 --> 00:18:06,720
+add additional parameters one by one
+
+499
+00:18:02,960 --> 00:18:09,039
+for example the dropout rates then
+
+500
+00:18:06,720 --> 00:18:10,240
+just import the experiment module from
+
+501
+00:18:09,039 --> 00:18:13,760
+maggie
+
+502
+00:18:10,240 --> 00:18:14,640
+the keras patch and callback to provide
+
+503
+00:18:13,760 --> 00:18:17,520
+the
+
+504
+00:18:14,640 --> 00:18:17,520
+connection to
+
+505
+00:18:18,160 --> 00:18:23,520
+to maggie and broadcast back the metrics
+
+506
+00:18:21,200 --> 00:18:26,000
+and then you just have your normal
+
+507
+00:18:23,520 --> 00:18:27,440
+model specification as you do in keras
+
+508
+00:18:26,000 --> 00:18:28,240
+as you've been doing it on your local
+
+509
+00:18:27,440 --> 00:18:33,760
+machine
+
+510
+00:18:28,240 --> 00:18:36,160
+probably and you add the callbacks here
+
+511
+00:18:33,760 --> 00:18:37,919
+and once you've got that you can start
+
+512
+00:18:36,160 --> 00:18:41,120
+the experiment
+
+513
+00:18:37,919 --> 00:18:41,600
+and because we have this local client in
+
+514
+00:18:41,120 --> 00:18:44,080
+in
+
+515
+00:18:41,600 --> 00:18:46,000
+actually in jupiter running once the job
+
+516
+00:18:44,080 --> 00:18:46,799
+starts it's going to take a few seconds
+
+517
+00:18:46,000 --> 00:18:50,320
+to
+
+518
+00:18:46,799 --> 00:18:54,080
+start the executors we can
+
+519
+00:18:50,320 --> 00:18:56,000
+get the progress of tractor progress of
+
+520
+00:18:54,080 --> 00:18:58,960
+the experiment inside jupiter with
+
+521
+00:18:56,000 --> 00:19:00,320
+a nice progress bar and you can even
+
+522
+00:18:58,960 --> 00:19:02,559
+call
+
+523
+00:19:00,320 --> 00:19:04,799
+when you call print in inside your
+
+524
+00:19:02,559 --> 00:19:08,000
+training function
+
+525
+00:19:04,799 --> 00:19:09,600
+they will show up here below
+
+526
+00:19:08,000 --> 00:19:11,120
+in your jupyter notebook so it's really
+
+527
+00:19:09,600 --> 00:19:12,719
+nice to debug actually
+
+528
+00:19:11,120 --> 00:19:14,479
+because we've seen a lot of users they
+
+529
+00:19:12,720 --> 00:19:15,919
+get scared when they hear spark
+
+530
+00:19:14,480 --> 00:19:18,080
+because they know they are not going to
+
+531
+00:19:15,919 --> 00:19:19,520
+get their printouts back into their
+
+532
+00:19:18,080 --> 00:19:20,799
+jupyter notebook they have to go to the
+
+533
+00:19:19,520 --> 00:19:23,760
+spark ui
+
+534
+00:19:20,799 --> 00:19:24,480
+and um that's really cumbersome so as
+
+535
+00:19:23,760 --> 00:19:27,520
+you see
+
+536
+00:19:24,480 --> 00:19:28,720
+the model started training now uh in
+
+537
+00:19:27,520 --> 00:19:32,320
+epoch one
+
+538
+00:19:28,720 --> 00:19:35,360
+three machines yes three machines
+
+539
+00:19:32,320 --> 00:19:37,600
+and the experiments running
+
+540
+00:19:35,360 --> 00:19:38,559
+and then as i said we're working on
+
+541
+00:19:37,600 --> 00:19:40,399
+provenance so
+
+542
+00:19:38,559 --> 00:19:42,559
+we are actually tracking this experiment
+
+543
+00:19:40,400 --> 00:19:45,280
+for you as you can see i have an
+
+544
+00:19:42,559 --> 00:19:47,280
+experiment running here now
+
+545
+00:19:45,280 --> 00:19:48,720
+if you look at the finished ones before
+
+546
+00:19:47,280 --> 00:19:51,600
+you can look
+
+547
+00:19:48,720 --> 00:19:53,679
+at the hyperparameter combinations the
+
+548
+00:19:51,600 --> 00:19:58,000
+metrics they produced
+
+549
+00:19:53,679 --> 00:20:02,480
+the locks of the single trials
+
+550
+00:19:58,000 --> 00:20:02,480
+the experiment directory on hdfs
+
+551
+00:20:02,880 --> 00:20:09,039
+and for example also the notebook that
+
+552
+00:20:06,159 --> 00:20:12,559
+you used so it's versioned for you
+
+553
+00:20:09,039 --> 00:20:14,480
+to run this experiment and also the
+
+554
+00:20:12,559 --> 00:20:16,639
+conda environment with all your
+
+555
+00:20:14,480 --> 00:20:20,400
+dependencies in it
+
+556
+00:20:16,640 --> 00:20:23,760
+to reproduce the experiment um
+
+557
+00:20:20,400 --> 00:20:26,080
+and you can open tensorboard and that
+
+558
+00:20:23,760 --> 00:20:29,840
+takes a few seconds usually
+
+559
+00:20:26,080 --> 00:20:34,158
+we can maybe go back for a second no
+
+560
+00:20:29,840 --> 00:20:37,439
+there it is
+
+561
+00:20:34,159 --> 00:20:40,960
+yeah and you can
+
+562
+00:20:37,440 --> 00:20:40,960
+look at your exp
+
+563
+00:20:41,280 --> 00:20:45,360
+it's loading for in the backgrounds yeah
+
+564
+00:20:44,000 --> 00:20:46,880
+here you can see all your
+
+565
+00:20:45,360 --> 00:20:49,520
+all your trials you can look at the
+
+566
+00:20:46,880 --> 00:20:51,360
+learning curves
+
+567
+00:20:49,520 --> 00:20:53,918
+yes to get a better understanding of the
+
+568
+00:20:51,360 --> 00:20:53,918
+experiments
+
+569
+00:20:54,000 --> 00:20:59,120
+yes that's it from my side i'm open to
+
+570
+00:20:57,600 --> 00:21:01,520
+questions here some acknowledgements of
+
+571
+00:20:59,120 --> 00:21:03,000
+colleagues and contributors
+
+572
+00:21:01,520 --> 00:21:08,559
+thank you thank you
+
+573
+00:21:03,000 --> 00:21:10,480
+[Applause]
+
+574
+00:21:08,559 --> 00:21:12,158
+please taste easter i will do questions
+
+575
+00:21:10,480 --> 00:21:17,840
+so there's not a lot of noise
+
+576
+00:21:12,159 --> 00:21:17,840
+any questions for moritz
+
+577
+00:21:19,520 --> 00:21:24,320
+uh hi uh in the i think the last um
+
+578
+00:21:22,799 --> 00:21:26,000
+the second slide you mentioned these
+
+579
+00:21:24,320 --> 00:21:26,559
+parallel workers where you train the
+
+580
+00:21:26,000 --> 00:21:28,880
+data
+
+581
+00:21:26,559 --> 00:21:30,399
+at each one of the parallel workers yes
+
+582
+00:21:28,880 --> 00:21:32,240
+do you train
+
+583
+00:21:30,400 --> 00:21:34,559
+do you train part of the data at each
+
+584
+00:21:32,240 --> 00:21:36,480
+parallel worker or you train the full
+
+585
+00:21:34,559 --> 00:21:38,799
+data set at each barrel worker
+
+586
+00:21:36,480 --> 00:21:41,200
+and then you can you compare like the
+
+587
+00:21:38,799 --> 00:21:44,799
+the the overall results or somehow
+
+588
+00:21:41,200 --> 00:21:44,799
+you're aggregating the models that's
+
+589
+00:21:45,039 --> 00:21:49,760
+it's basically based on ring all reduced
+
+590
+00:21:47,520 --> 00:21:50,720
+so each of the worker trains on a subset
+
+591
+00:21:49,760 --> 00:21:53,679
+of the data
+
+592
+00:21:50,720 --> 00:21:54,159
+and after each gradient descent step uh
+
+593
+00:21:53,679 --> 00:21:56,880
+base
+
+594
+00:21:54,159 --> 00:21:58,880
+uh they said you update all these models
+
+595
+00:21:56,880 --> 00:22:02,080
+exactly so they they pass
+
+596
+00:21:58,880 --> 00:22:02,480
+the gradients to their neighbor all of
+
+597
+00:22:02,080 --> 00:22:05,199
+them
+
+598
+00:22:02,480 --> 00:22:07,120
+and aggregate the the gradients and then
+
+599
+00:22:05,200 --> 00:22:09,200
+uh continue with the next step
+
+600
+00:22:07,120 --> 00:22:11,120
+but then you still get just one model at
+
+601
+00:22:09,200 --> 00:22:13,280
+the end that is not trained at the full
+
+602
+00:22:11,120 --> 00:22:15,120
+data set it just trained at part of the
+
+603
+00:22:13,280 --> 00:22:16,080
+of the data set so how you can make sure
+
+604
+00:22:15,120 --> 00:22:18,719
+that the the
+
+605
+00:22:16,080 --> 00:22:20,240
+the end model has somehow been trained
+
+606
+00:22:18,720 --> 00:22:22,559
+on all the data set not just
+
+607
+00:22:20,240 --> 00:22:23,360
+parts of it at each parallel worker that
+
+608
+00:22:22,559 --> 00:22:25,760
+you have
+
+609
+00:22:23,360 --> 00:22:27,360
+because you you're allocating a part of
+
+610
+00:22:25,760 --> 00:22:28,158
+the training data set to each worker
+
+611
+00:22:27,360 --> 00:22:30,080
+such that
+
+612
+00:22:28,159 --> 00:22:31,600
+all the data you want to use is actually
+
+613
+00:22:30,080 --> 00:22:34,720
+allocated to some worker
+
+614
+00:22:31,600 --> 00:22:36,480
+okay that's yeah
+
+615
+00:22:34,720 --> 00:22:37,919
+data parallel training that's how it
+
+616
+00:22:36,480 --> 00:22:41,120
+works yeah
+
+617
+00:22:37,919 --> 00:22:43,039
+great and this rpc
+
+618
+00:22:41,120 --> 00:22:44,399
+function is written already integrated
+
+619
+00:22:43,039 --> 00:22:47,039
+in the maggie so
+
+620
+00:22:44,400 --> 00:22:48,960
+like the user doesn't want to bother
+
+621
+00:22:47,039 --> 00:22:50,559
+with any stuff of rpc calls between
+
+622
+00:22:48,960 --> 00:22:53,280
+anything it just comes with the
+
+623
+00:22:50,559 --> 00:22:54,960
+with the framework exactly so as you see
+
+624
+00:22:53,280 --> 00:22:56,559
+you just write your normal code inside
+
+625
+00:22:54,960 --> 00:22:59,360
+the jupyter notebook you just have to
+
+626
+00:22:56,559 --> 00:23:01,360
+import the library
+
+627
+00:22:59,360 --> 00:23:03,678
+okay so we want to hide all the
+
+628
+00:23:01,360 --> 00:23:04,479
+complexity about distribution from from
+
+629
+00:23:03,679 --> 00:23:08,400
+the user
+
+630
+00:23:04,480 --> 00:23:11,280
+yeah great thank you
+
+631
+00:23:08,400 --> 00:23:11,280
+any other questions
+
+632
+00:23:11,679 --> 00:23:23,840
+that there's one yeah
+
+633
+00:23:24,400 --> 00:23:28,720
+hi i couldn't really understand uh what
+
+634
+00:23:27,120 --> 00:23:30,719
+is the algorithm behind the
+
+635
+00:23:28,720 --> 00:23:31,919
+optimization can you choose it or it's
+
+636
+00:23:30,720 --> 00:23:35,120
+like brute force
+
+637
+00:23:31,919 --> 00:23:35,440
+no you can choose it as uh either you
+
+638
+00:23:35,120 --> 00:23:36,879
+can
+
+639
+00:23:35,440 --> 00:23:38,799
+implement your own one if you have a
+
+640
+00:23:36,880 --> 00:23:41,440
+special one in mind
+
+641
+00:23:38,799 --> 00:23:43,279
+but we provide a bunch of them out of
+
+642
+00:23:41,440 --> 00:23:47,919
+the box for example random search
+
+643
+00:23:43,279 --> 00:23:49,760
+grid search um asha which is really
+
+644
+00:23:47,919 --> 00:23:51,520
+yeah it's considered state-of-the-art at
+
+645
+00:23:49,760 --> 00:23:52,480
+the moment produced really good results
+
+646
+00:23:51,520 --> 00:23:54,720
+and it's not even
+
+647
+00:23:52,480 --> 00:23:55,600
+directed yet so it's based on random
+
+648
+00:23:54,720 --> 00:23:57,760
+randomness so
+
+649
+00:23:55,600 --> 00:23:59,039
+if you add wanna add for example a
+
+650
+00:23:57,760 --> 00:24:00,640
+bayesian model to that
+
+651
+00:23:59,039 --> 00:24:02,799
+it's probably gonna give really good
+
+652
+00:24:00,640 --> 00:24:05,440
+results yes and the second one
+
+653
+00:24:02,799 --> 00:24:07,600
+i'm not uh even though i've done a lot
+
+654
+00:24:05,440 --> 00:24:10,720
+of it models and i really use spark
+
+655
+00:24:07,600 --> 00:24:12,158
+and is spark uh let's say there's model
+
+656
+00:24:10,720 --> 00:24:14,159
+which uses gpus
+
+657
+00:24:12,159 --> 00:24:15,760
+is there some kind of support for gpus
+
+658
+00:24:14,159 --> 00:24:17,919
+or cpus so
+
+659
+00:24:15,760 --> 00:24:18,879
+if you run it on hobsworks we have our
+
+660
+00:24:17,919 --> 00:24:20,960
+own version of
+
+661
+00:24:18,880 --> 00:24:23,039
+of the yarn resource manager which
+
+662
+00:24:20,960 --> 00:24:24,000
+supports gpus as a resource and you can
+
+663
+00:24:23,039 --> 00:24:27,520
+allocate the
+
+664
+00:24:24,000 --> 00:24:29,360
+gpus to your executors so for example
+
+665
+00:24:27,520 --> 00:24:31,600
+here
+
+666
+00:24:29,360 --> 00:24:33,199
+if i had i it on this cluster i don't
+
+667
+00:24:31,600 --> 00:24:36,879
+have gpus right now but
+
+668
+00:24:33,200 --> 00:24:37,679
+uh if you have gpus you would be able to
+
+669
+00:24:36,880 --> 00:24:40,720
+say
+
+670
+00:24:37,679 --> 00:24:44,400
+um give me one gpu per executor
+
+671
+00:24:40,720 --> 00:24:46,159
+for example and yeah the whole platform
+
+672
+00:24:44,400 --> 00:24:49,120
+is open source so you can
+
+673
+00:24:46,159 --> 00:24:50,960
+go and try it out okay that's all we
+
+674
+00:24:49,120 --> 00:25:01,360
+have time for thank you very much moritz
+
+675
+00:24:50,960 --> 00:25:03,440
+thank you
+
+676
+00:25:01,360 --> 00:25:03,439
+you
+

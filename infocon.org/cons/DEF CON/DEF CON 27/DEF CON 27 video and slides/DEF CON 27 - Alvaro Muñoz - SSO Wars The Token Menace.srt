@@ -1,0 +1,1789 @@
+﻿00:00:00.100,00:00:05.506
+>>Let’s welcome these gentlemen
+to the stage. Come up. [speaker
+clapping] [audience applause]
+
+00:00:05.506,00:00:10.510
+Have a wonderful time. >>Thank
+you. [applause continues] So
+thank you all for attending. Um,
+
+00:00:12.813,00:00:17.851
+this is The Token Menace. My
+name is Alvaro Munos. He is
+Oleksandr Mirosh. We are both
+
+00:00:17.851,00:00:23.657
+Security Researchers with Micro
+Focus Fortify Team. And today we
+are going to uh, present some of
+
+00:00:23.657,00:00:27.194
+the vulnerabilities that we
+found in the net framework. Um,
+they are related with
+
+00:00:27.194,00:00:32.032
+authentication tokens so we will
+introduce them and see how they
+work in the context of delegated
+
+00:00:32.032,00:00:36.336
+authentication. And then we will
+present these two
+vulnerabilities. The first one
+
+00:00:36.336,00:00:40.607
+is an injection vulnerability
+leading to arbitrary constructor
+invocation and we will see what
+
+00:00:40.607,00:00:45.846
+we can do with, with that. It’s
+a parameterless constructor. And
+the second one is what we call
+
+00:00:45.846,00:00:51.551
+dupe key confusion. Uh, which is
+a way of bypassing XML signature
+and not just in that, in SAML
+
+00:00:51.551,00:00:57.257
+assertion and SAML tokens but
+uh, we will apply it in, for
+SAML tokens. So we will review
+
+00:00:57.257,00:01:03.030
+them in the context of the, of
+this Windows frameworks uh,
+Microsoft uh, frameworks Windows
+
+00:01:03.030,00:01:09.236
+Communication Foundation and
+Windows Identity Foundation. So
+um, delegated authentication is
+
+00:01:09.236,00:01:14.708
+nothing else that when you have
+a user accessing our resource,
+uh, that is protected but the
+
+00:01:14.708,00:01:19.746
+service provided that is hosting
+this resource is not handling
+uh, the authentication itself it
+
+00:01:19.746,00:01:24.785
+will basically redirect you to a
+third party entity or the
+identity provider, which will uh
+
+00:01:24.785,00:01:29.790
+take care of the delegation. So
+the user will go there, present
+the um, credentials and then um,
+
+00:01:32.292,00:01:36.330
+the service pro, the identity
+program will issue an
+authentication token. It can be
+
+00:01:36.330,00:01:41.868
+in the form of a SAML token, it
+can be in the form of um, I
+don’t know, a JWT token um,
+
+00:01:41.868,00:01:47.341
+maybe um, simple web token. But
+most of them have some
+attributes in common right?
+
+00:01:47.341,00:01:51.945
+Things like the, the issuer who
+is with the token, is not the
+same thing if I give you a coin
+
+00:01:51.945,00:01:56.717
+issued by myself but if you go
+to a bank, uh the audience if
+this is a token that is valid
+
+00:01:56.717,00:02:02.222
+for service A and I should not
+be acceptive by servi, uh
+service B, expiration date,
+
+00:02:02.222,00:02:06.360
+things like the claims right? So
+all the knowledge that the
+identity provider has about the
+
+00:02:06.360,00:02:11.898
+user um, that will dump into the
+authentication token and it will
+be used by the service provider
+
+00:02:11.898,00:02:16.837
+in order to take uh, both
+authentication and authorization
+um, decisions. But the most
+
+00:02:16.837,00:02:21.842
+important thing is the
+signature. If we don’t sign the
+token uh, anyone can change
+
+00:02:21.842,00:02:28.215
+anything, can basically tamper
+with the token and thus become
+anyone for the service provider.
+
+00:02:28.215,00:02:34.855
+So uh, we found that, for us,
+the most interesting um, step in
+this process was when the
+
+00:02:34.855,00:02:41.061
+service provider is accepting
+the authentication token. And
+the reason for that is that uh,
+
+00:02:41.061,00:02:45.565
+we thought about this too, uh
+potential attack vectors right?
+The first one is that there is a
+
+00:02:45.565,00:02:52.272
+bunch of attributes in this
+token that um, are meant to be
+parsed and processed before the
+
+00:02:52.272,00:02:58.278
+signature is um, verified. Like
+for example, what is the uh
+signature algorithm uh that is
+
+00:02:58.278,00:03:03.383
+going to be parsed before the
+signature is verified? So maybe
+we can uh have some injection
+
+00:03:03.383,00:03:09.723
+vulnerabilities there. And the
+second uh, the second vector is
+if we can go a step farther
+
+00:03:09.723,00:03:15.796
+maybe we can go and, and get um,
+the signature, the whole
+signature uh verification
+
+00:03:15.796,00:03:21.701
+process bypassed. If we can do
+that we can uh basically just
+become anyone for the service
+
+00:03:21.701,00:03:26.706
+provider. So we will start with
+the token parsing one. [tap tap
+tap] >>This case can be good
+
+00:03:28.975,00:03:33.980
+demonstration for token parsing
+vulnerabilities. Uh JSON web
+token or just JWT token uh is
+
+00:03:39.086,00:03:44.624
+internet standard for creation
+uh JSON based access tokens. We
+can see example of such token on
+
+00:03:44.624,00:03:49.629
+the screen. Uh it contain three
+main parts uh payload, header
+and signature. “Alg” field from
+
+00:03:52.966,00:03:58.238
+header defines what algorithm
+should be used for signature
+certifications so it will be
+
+00:03:58.238,00:04:03.176
+used before signature
+certification itself. Uh in dot
+net the couple of libraries that
+
+00:04:06.413,00:04:11.418
+uh can parse the JWT tokens uh
+we find out the system identity
+model tokens JWT library.
+
+00:04:14.955,00:04:19.960
+Process “alg” field to the
+crypto config create from name
+method. And this method doesn’t
+
+00:04:24.598,00:04:29.603
+restrict type names so we can
+call arbitrary and no-argument
+public constructor. By the way,
+
+00:04:34.107,00:04:39.112
+JWT is not only one way to to to
+do this method uh it can be
+reached during SAML token
+
+00:04:43.083,00:04:49.256
+parsing as well. For example
+algorithm attribute in signature
+method uh element from some
+
+00:04:49.256,00:04:54.261
+token will go without any
+restriction to that method as
+well. But you can ask, what we
+
+00:04:58.165,00:05:03.770
+can do with this because we
+cannot control any data but
+actually we can control some
+
+00:05:03.770,00:05:09.409
+data. First of all it’s type
+name itself, and we will show a
+bit later how we can use it.
+
+00:05:09.409,00:05:14.414
+All, also please look on the
+screen, it is example of a
+no-argument constructor from dot
+
+00:05:17.484,00:05:22.489
+net framework. In dot net a
+current http context it starts
+in static property and accessed
+
+00:05:24.491,00:05:30.363
+through our request parameters
+is done through it. If a
+no-argument constructor used
+
+00:05:30.363,00:05:35.368
+this approach it will be very
+interesting for a, for an
+attacker. But all these ideas
+
+00:05:38.271,00:05:45.145
+about abusing no-argument
+methods may look not very
+realistic so we took two servers
+
+00:05:45.145,00:05:50.684
+from Microsoft, SharePoint and
+Exchange server, and tried to
+exploit this uh problem there,
+
+00:05:50.684,00:05:55.689
+and here is our results.
+SharePoint returns different
+response if a object was created
+
+00:05:58.091,00:06:03.029
+or not. Using this we can get
+informational installed products
+and even their versions. Also we
+
+00:06:06.066,00:06:11.071
+could rise and have an exception
+that leads to a denial of
+service. Exchange server gave us
+
+00:06:14.274,00:06:20.847
+even more interesting results.
+Uh as I already mentioned we can
+control type name. And it it can
+
+00:06:20.847,00:06:26.219
+be not just simple type name but
+assembly qualified name with a
+name of assembly from which we
+
+00:06:26.219,00:06:31.224
+would like to uh load this uh
+type. Uh dot net allows a DLL
+parse to control assembly
+
+00:06:34.761,00:06:41.268
+loading by implementing own
+custom assembly resolvers that
+may be vulnerable to different
+
+00:06:41.268,00:06:46.273
+attacks. Uh also often this uh
+custom assembly resolvers are
+installed by static
+
+00:06:49.943,00:06:56.416
+constructors. And usually it’s
+not big problem to invoke them
+by instantiation of some
+
+00:06:56.416,00:07:01.354
+specific type. But actually this
+problem allows us to do this uh
+so it’s not problem. Uh here we
+
+00:07:06.126,00:07:11.131
+can see an example of such a
+gadget from a uh Exchange
+server. On first circuit snippet
+
+00:07:15.468,00:07:21.975
+we can see that how it, insta,
+it is installed by static
+constructor. On the second sni,
+
+00:07:21.975,00:07:28.281
+snippet is a assembly resolver
+itself. Assembly name doesn’t
+have any validation and to use
+
+00:07:28.281,00:07:34.487
+as part of path for data
+loading. We can use dot dot trig
+and can change uh current info
+
+00:07:34.487,00:07:39.492
+load to any one we want. Uh,
+let’s put all this together. As
+authenticated user, we can
+
+00:07:44.331,00:07:49.336
+invoke a no, no-argument public
+constructor from any data file
+on the Exchange server from a
+
+00:07:52.539,00:07:58.178
+arbitrary local folder. Of
+course attackers still need to
+find way how upload this
+
+00:07:58.178,00:08:03.717
+malicious data file to the
+server and for un-authenticated
+users we think it can be a very
+
+00:08:03.717,00:08:09.756
+tough task, but if a attacker
+has any account in target
+Exchange server it may be
+
+00:08:09.756,00:08:16.696
+significantly easier. So for our
+demo we have assumption that
+attacker is already put the,
+
+00:08:16.696,00:08:22.168
+this data file to the Windows
+stamp folder. This folder used
+for temporary files. For example
+
+00:08:22.168,00:08:27.173
+during uh, unzipping our hives
+or other, or other such cases.
+Uh so let’s look how, how it
+
+00:08:31.177,00:08:36.182
+will be in real Exchange server.
+So first of all it’s our uh
+malicious library. Here is our
+
+00:08:48.528,00:08:54.467
+gadget with two lines, uh very
+helpful. We will take “cmd”
+credit parameter I’m gonna use
+
+00:08:54.467,00:08:59.472
+it, it it’s valid for static new
+process. Uh as we’re told a
+error, we already have this data
+
+00:09:02.041,00:09:07.046
+file in Windows temp folder. Now
+we can start crafting our
+payout. Uh, we will use a SAML
+
+00:09:13.720,00:09:18.725
+token. Here is our vulnerable
+attribute. Type name. And
+assembly name is dot dot trig
+
+00:09:25.131,00:09:30.136
+that points to our library in
+Windows temp folder. Uh we will
+start calculator. And here is
+
+00:09:34.574,00:09:39.579
+the same calculator. Uh let’s
+check in process explorer that
+there are no calculator yet. And
+
+00:09:41.815,00:09:46.820
+we can send this request without
+any authentication. And we can
+see calculator. [audience
+
+00:09:57.697,00:10:01.935
+applause] We would like to
+stress here a couple things.
+First of all it does
+
+00:10:01.935,00:10:06.940
+pre-authenticated attacks. Also,
+despite that this attack rarely
+depends on available gadgets on
+
+00:10:09.442,00:10:15.915
+the target system, this problem
+is not in product on application
+like Exchange server or
+
+00:10:15.915,00:10:21.788
+SharePoint. This problem in dot
+net framework how it works with
+some attributes from authica,
+
+00:10:21.788,00:10:26.793
+authentication tokens like SAML
+and JWT. Uh let’s switch to our
+holy grail and let’s look how we
+
+00:10:29.662,00:10:34.667
+can bypass the whole
+identification. Security
+assertion, uh assertion markup
+
+00:10:38.538,00:10:43.977
+language, or just SAML is
+critical component for many uh
+delegated authentication and
+
+00:10:43.977,00:10:48.982
+single sign-on authica,
+authentication scenarios. It has
+XML base format and uses XML
+
+00:10:51.084,00:10:57.390
+signature for identity
+protection. By the way, this
+problem uh is not, is not only
+
+00:10:57.390,00:11:02.328
+in SAML but in any other places
+in dot net where as an XML
+signature is used like, uh
+
+00:11:04.864,00:11:09.869
+sign-in SOAP or WS-Security.
+Here we can see simplified SAML
+token along with identification
+
+00:11:12.705,00:11:17.710
+information it has signature
+element that should uh protect
+it from tampering. And this
+
+00:11:20.013,00:11:26.286
+element contain three main
+parts: signature value um with
+signature itself, Signedinfo
+
+00:11:26.286,00:11:31.824
+with information how this value
+should be verif, verified and
+the most interesting element for
+
+00:11:31.824,00:11:36.796
+our attack, it’s key info. It
+represents key that should be
+used for this signature
+
+00:11:36.796,00:11:41.801
+verification. Uh let’s review
+how dot net will verify
+signature, signature for such
+
+00:11:44.437,00:11:49.442
+tokens. First of all we need to
+obtain the key. Using key info
+we will extract, we may extract
+
+00:11:51.744,00:11:56.382
+key from itself or using key
+reference and fetch key from
+some specific storage. On the
+
+00:11:56.382,00:12:03.222
+second step, we will use this
+key for signature verification.
+But please note that um positive
+
+00:12:03.222,00:12:08.228
+results of this step only means
+that uh this token was signed in
+by this specific key and was not
+
+00:12:11.564,00:12:17.937
+change it. In addition to this
+we need to be sure that it was
+done by proper sign in party. So
+
+00:12:17.937,00:12:24.210
+we are taking key in, key info
+element again and try to
+identify who was signing this
+
+00:12:24.210,00:12:30.850
+token. And of course the last
+step we will check it is just
+the sign in party or not. On the
+
+00:12:30.850,00:12:36.422
+first glance it may look like
+quite good implementation but
+let’s pay attention on these two
+
+00:12:36.422,00:12:41.427
+steps. We are processing key
+info element twice. And we need
+different type of results on
+
+00:12:43.630,00:12:50.637
+these steps, security key and
+security token. So two different
+methods will be called, a result
+
+00:12:50.637,00:12:56.576
+security key and result security
+token. Uh on this diagram we can
+see general idea of our attack.
+
+00:12:56.576,00:13:02.482
+We need to craft key info in
+such a way that mentioned
+methods will produce different
+
+00:13:02.482,00:13:07.186
+results. One will be used for
+signature verification, another
+for authentication of signing
+
+00:13:07.186,00:13:13.793
+party. In this case we will be
+able to use own key for
+signature calculation but server
+
+00:13:13.793,00:13:18.798
+will still identify us as
+sign-in, as trusted sign-in
+party. Uh, in general, uh this
+
+00:13:22.869,00:13:28.841
+attack depends on implementation
+of result security key and the
+result security token. But all
+
+00:13:28.841,00:13:35.248
+cases what we checked we were
+able to achieve these results.
+Uh some cases had additional
+
+00:13:35.248,00:13:40.653
+requirements to the server or
+environment, a target server or
+environment. Uh other were
+
+00:13:40.653,00:13:46.492
+vulnerable by default. Uh here a
+couple examples of differences
+between these two methods that
+
+00:13:46.492,00:13:53.232
+can be abused. Uh first method
+may support some type of key
+identifier that is not supported
+
+00:13:53.232,00:13:58.237
+by the second. Or both methods
+can uh can process element in a
+different order. Or even they
+
+00:14:00.940,00:14:05.945
+can use different subset of
+elements from key info. Uh, now
+let’s review how this problem
+
+00:14:08.247,00:14:13.252
+looks in real applications and
+frameworks. >> So [clears
+throat] we will uh review now uh
+
+00:14:18.257,00:14:24.030
+the main Microsoft frameworks
+that actually accept SAML tokens
+or treat SAML tokens in some
+
+00:14:24.030,00:14:28.901
+way. So the, the first one is a
+WCF, Windows Communication
+Foundation that is used to build
+
+00:14:28.901,00:14:33.973
+web services. Uh for example,
+Exchange server uh or Exchange
+web, uh web services are built
+
+00:14:33.973,00:14:40.113
+using WCF. And then the other
+one that is uh probably the, the
+two principle frameworks is
+
+00:14:40.113,00:14:44.884
+Windows Identity Foundation,
+which is used by any
+application. Um I mean if you’re
+
+00:14:44.884,00:14:48.888
+a developer and you’re writing
+an application that want to
+integrate with an identity
+
+00:14:48.888,00:14:53.893
+provider, instead of um
+reinventing the wheel and uh
+write the whole, the whole code
+
+00:14:53.893,00:14:58.164
+to process authentication tokens
+and then extract claims and
+process the claims and so on,
+
+00:14:58.164,00:15:03.169
+you will use uh Windows Identity
+Foundation to do that for you,
+right? So the third case is when
+
+00:15:03.169,00:15:09.842
+you use uh WC, WIF with a custom
+uh configuration that is also
+normal in some uh development
+
+00:15:09.842,00:15:16.382
+environment and we will uh use
+the SharePoint as an example. So
+we will start with uh Windows
+
+00:15:16.382,00:15:22.622
+Communication Foundation. Now
+as, as I said it’s a Microsoft
+framework to build um, basically
+
+00:15:22.622,00:15:27.493
+web services, right? So what
+matters to us, why it’s
+important to us is that uh WCF
+
+00:15:27.493,00:15:32.298
+web services accept SAML tokens
+for authentication of the
+client. So if you are a, a
+
+00:15:32.298,00:15:35.968
+client you can present a SAML
+token instead of your user and
+password credentials for
+
+00:15:35.968,00:15:40.706
+example. So XML signature is
+also used for other things,
+other purposes, such as proof
+
+00:15:40.706,00:15:45.711
+tokens but uh, this is out of
+the scope of this talk. So uh,
+this is the uh main code in the
+
+00:15:48.281,00:15:54.587
+SAML assertion type that uh
+handles the um well that
+processes the, the SAML token
+
+00:15:54.587,00:15:59.358
+right? As you can see we have
+two methods. One is resolve
+security key and the other one
+
+00:15:59.358,00:16:04.263
+is resolve security token. Both
+of them are taken the key
+identifier parameter which is
+
+00:16:04.263,00:16:10.169
+basically the whole text within
+the key info section in, in the
+XML signature. The first one is
+
+00:16:10.169,00:16:14.807
+returning identification key
+which will be used for signature
+verification. And the other one
+
+00:16:14.807,00:16:20.646
+is returning a signing token
+that is basically representing
+the um signing party or, or the
+
+00:16:20.646,00:16:25.651
+identity provider. So, the first
+one uh will first iterate
+through all the elements in the
+
+00:16:27.820,00:16:33.860
+key info section. And for each
+of these element, I will call a
+Try Resolve Security Key that
+
+00:16:33.860,00:16:38.698
+will basically try a number of
+uh token resolvers. Like Try
+Resolve Security Key from the
+
+00:16:38.698,00:16:43.269
+token resolver then the, the
+part in clause and then if
+everything fails it will try Try
+
+00:16:43.269,00:16:49.075
+Create Key From Intrinsic Key
+Clause. So it’s first directing
+through all the key elements in
+
+00:16:49.075,00:16:53.546
+the key info section and then
+for each uh key element is
+iterating through all the
+
+00:16:53.546,00:16:59.452
+resolvers. That’s what we call
+our Breadth First. So when
+resolving the security or, or
+
+00:16:59.452,00:17:05.057
+the signing token um the
+approach is slightly different.
+So it will iterate first through
+
+00:17:05.057,00:17:09.629
+all the resolvers, and then for
+each resolver it will, it will,
+it will try all the different
+
+00:17:09.629,00:17:15.368
+key elements, or the key’s
+identifiers. So the difference
+is very small. Basically the
+
+00:17:15.368,00:17:21.674
+order in which all the possible
+combinations between keys and,
+and resolu, and resolvers are
+
+00:17:21.674,00:17:27.380
+visited is different. But seeing
+as we depend on one of them to
+be successful and return from
+
+00:17:27.380,00:17:33.085
+these methods, uh the order is
+critical. So what we uh are
+going to do to attack, or to
+
+00:17:33.085,00:17:38.658
+bypass um SAML token uh, um
+signature identification is that
+we are going to take an existing
+
+00:17:38.658,00:17:43.796
+token, or we can even create one
+token from scratch, and then we
+are going to sign it. But in
+
+00:17:43.796,00:17:48.601
+order to sign it we are going to
+use our own private RSA key. So
+we are going to generate an RSA
+
+00:17:48.601,00:17:52.738
+key pair, and we are going to
+use the private one to sign the
+token. Then uh we are going to
+
+00:17:52.738,00:17:57.743
+send both the public key for
+this RSA key pair, and also the
+uh identity provider certificate
+
+00:17:59.845,00:18:05.251
+or key identifier. So that’s
+what you can see in the key info
+section. Now, remember the uh
+
+00:18:05.251,00:18:10.089
+resolve security key will
+iterate first through all the
+keys in the key info section so
+
+00:18:10.089,00:18:15.995
+it will take the attacker RSA
+key first and then it will try
+all the different resolvers. So
+
+00:18:15.995,00:18:21.534
+for the two first resolvers it
+will fail. But the third one
+will succeed and will return the
+
+00:18:21.534,00:18:27.373
+public RSA key. Since we signed
+the token with our private RSA
+key, the signature verification
+
+00:18:27.373,00:18:32.345
+will bypass and it will be
+successful. Now uh for the
+resolution of the security
+
+00:18:32.345,00:18:37.049
+token, it will start iterating
+through all the resolvers. So it
+will take the first resolver and
+
+00:18:37.049,00:18:41.620
+this resolver will try all the
+different keys. So for the first
+one it will fail because it does
+
+00:18:41.620,00:18:47.827
+not know how to resolve uh the
+attacker RSA key. But the second
+one is the expected identity
+
+00:18:47.827,00:18:53.065
+provider certificate so that
+will succeed and then it will
+return the expected 509
+
+00:18:53.065,00:18:57.203
+certificate or whatever the
+identity provider is sending. So
+with that we will bypass the
+
+00:18:57.203,00:19:01.607
+authentication of the signing
+party and then the uh whole
+modification process will be
+
+00:19:01.607,00:19:06.612
+successful. So this is how it
+looks in, in the XML section of
+the uh XML signature. The first
+
+00:19:08.748,00:19:15.021
+element in yellow is uh the key
+that we injected and the key
+that we used to sign or re-sign
+
+00:19:15.021,00:19:20.326
+the token. In this case we are
+using an RSA key value with um,
+with the public one. Uh but we
+
+00:19:20.326,00:19:24.363
+can also use, for example,
+symmetric key or even uh other
+asymmetric keys that has
+
+00:19:24.363,00:19:29.502
+elliptic curve and so on. And
+then in green we have what,
+whatever the identity provider
+
+00:19:29.502,00:19:34.407
+is using. Normally it’s a 509
+certificate. This is a public
+certificate that we can graph
+
+00:19:34.407,00:19:39.412
+from, from them figurative uh
+metadata and point, for example,
+from any existing token. So,
+
+00:19:41.480,00:19:46.018
+let’s see that in action. What
+we are going to do is we are
+going to um access Exchange Web
+
+00:19:46.018,00:19:52.391
+Services as any arbitrary user.
+So we are going to impersonate
+any user. So um, please bear in
+
+00:19:52.391,00:19:58.597
+mind that the attacker doesn't
+need to intercept anything. He
+can craft the token from scratch
+
+00:19:58.597,00:20:02.702
+because all the information he
+needs is public. Then he will
+send that token for
+
+00:20:02.702,00:20:08.374
+authentication of, in the, um
+Exchange Web Services and then
+it can uh query the website
+
+00:20:08.374,00:20:12.878
+recess for retrieving emails, uh
+sending emails or doing
+basically whatever, anything you
+
+00:20:12.878,00:20:17.883
+can do from, from Outlook. But
+for this uh, for this um demo we
+are going to use a valid, a real
+
+00:20:21.320,00:20:26.592
+client will, we are developing
+our own client with a real uh
+token, and then the attacker
+
+00:20:26.592,00:20:32.298
+will be intercepting his own
+token so you can see the process
+of uh how the token looks like
+
+00:20:32.298,00:20:38.704
+and and what happens if we
+modify it. Ok so, this is not
+what I’m looking for. [tapping]
+
+00:20:38.704,00:20:43.709
+Ok. So this is Burp. We will be
+using Burp to intercept the
+client request. And as a client
+
+00:20:46.979,00:20:51.984
+we are using basically our own
+client that is sending or
+requesting the mail tips for the
+
+00:20:55.354,00:21:00.292
+user one. So the attacker is,
+has this user one account and uh
+is trying to access it’s mail
+
+00:21:12.104,00:21:17.109
+tips. Now if we send this
+request um we will intercept
+that with Burp, then we will
+
+00:21:20.479,00:21:25.484
+send it to repeater to modify it
+more, more easily. And if we
+switch to the XML version you
+
+00:21:30.189,00:21:34.793
+will see that, well we have
+first the, the SAML token that
+identifies the user and then
+
+00:21:34.793,00:21:40.232
+the, the body of the soap
+request. So we are going to
+replace any, every instances of
+
+00:21:40.232,00:21:47.106
+user one with administrator. In
+order to try to impersonate the
+administrator. Now if we send
+
+00:21:47.106,00:21:52.478
+this um, this request because
+the content has changed and the
+signature is no longer matching
+
+00:21:52.478,00:21:56.549
+um the server should reject this
+request, it’s no longer valid
+because it’s not signed and
+
+00:21:56.549,00:22:01.053
+we’re not supposed to have the
+private key for the identity
+provider. So we get an error and
+
+00:22:01.053,00:22:06.325
+this is expected, right? You,
+you should not be able to tamper
+any existing token. Now we can
+
+00:22:06.325,00:22:12.031
+use our uh dupe key injector uh
+Burp plug-in. Uh that is going
+to re-sign the token using an
+
+00:22:12.031,00:22:18.103
+RSA key. So as you can see here
+uh the original token has this
+um identity provider
+
+00:22:18.103,00:22:23.442
+certificate. Now if we click on
+re-sign with RSA key, it will
+basically generate an RSA key
+
+00:22:23.442,00:22:28.647
+pair, use the private one to
+re-sign the token and use the
+public one in the key info
+
+00:22:28.647,00:22:33.953
+section. So in the key info
+section now we have the expected
+identity provider certificate
+
+00:22:33.953,00:22:40.793
+prepended by the key that we
+used to re-sign the token. Now
+if we send that, we will get a
+
+00:22:40.793,00:22:46.165
+two hundred successful response.
+In this case we are uh
+requesting the mail tips for the
+
+00:22:46.165,00:22:52.705
+administrator but this is just
+an example. We can ask uh for
+any uh mailing items uh, send
+
+00:22:52.705,00:22:57.710
+uh, send emails or whatever.
+[audience applause] >>Now let’s
+rev, now let’s review another uh
+
+00:23:10.556,00:23:15.561
+dot net framework. Windows
+Identity Foundation or just uh
+WIF. Is software framework for
+
+00:23:18.297,00:23:22.901
+building identity-aware
+applications and it’s very easy
+to add a delegated
+
+00:23:22.901,00:23:28.574
+identification for your, for
+your uh application and support
+identification token from a
+
+00:23:28.574,00:23:33.579
+different uh sig, uh signature
+token services. So like uh a
+active direct, directory
+
+00:23:36.315,00:23:43.255
+configuration services uh azure
+active directory or Windows
+azure uh access control
+
+00:23:43.255,00:23:48.260
+services. Or others. WIF uses
+SAML security token handler for
+uh SAML token parsing. And it uh
+
+00:23:57.503,00:24:02.441
+uses a bit different uh way uh
+to work with key info section
+that we just saw in, in, in, in
+
+00:24:06.412,00:24:12.885
+uh the previous section. Uh
+during token parsing when he
+tries to get security key for uh
+
+00:24:12.885,00:24:18.791
+signature veri, verification it
+takes only the first element
+from key info. But for security
+
+00:24:18.791,00:24:23.796
+token it will process all
+elements um from this key info
+section. Also by default it uses
+
+00:24:27.866,00:24:32.871
+iss, issuer token resolve. That
+seems to be secure because uh
+code in both methods are very
+
+00:24:35.441,00:24:42.181
+similar. But if they, this
+method cannot resolve some key
+identifier then it will be
+
+00:24:42.181,00:24:47.186
+parsed to the next resolver.
+X509 certificate store token
+resolver. And this one has
+
+00:24:49.321,00:24:56.028
+differences in, in, in these two
+methods. Resolve security key is
+uh can work with encrypted
+
+00:24:56.028,00:25:00.966
+symmetric keys. But resolve,
+resolve security token doesn’t
+support it. Uh definitely this
+
+00:25:03.335,00:25:08.741
+can be exploited but there are a
+couple problems with this
+scenario. A server needs to
+
+00:25:08.741,00:25:15.614
+decrypt our symmetric key. To do
+this it should have a
+certificate with private key in
+
+00:25:15.614,00:25:20.619
+some specific uh certificate
+storage. By default
+configuration it’s a local
+
+00:25:20.619,00:25:25.624
+machine trusted people. Also an
+uh attacker would need to use
+public key of this certificate
+
+00:25:27.659,00:25:32.664
+for encryption. Um but note it
+just public key. In many cases
+it’s not problem. And if these
+
+00:25:34.867,00:25:41.006
+two requirements are met we are
+still able to uh perform our
+attack. We can use our symmetric
+
+00:25:41.006,00:25:47.279
+key for a signature calculation.
+After that we will encrypt it by
+public key from server
+
+00:25:47.279,00:25:53.419
+certificate and we’ll put
+encrypted uh key in on the first
+place. After that we opened
+
+00:25:53.419,00:25:58.424
+expected certificate. So on the
+server, resolve security key
+will return our symmetric key
+
+00:26:01.059,00:26:07.266
+and we will parse signature
+verification. But resolve
+security token will skip this uh
+
+00:26:07.266,00:26:12.771
+this element because it cannot
+work with it. And we’ll take the
+second one that represents
+
+00:26:12.771,00:26:17.776
+expected sign in party so we
+will be authent, authenticated
+uh sign in party. Here we can
+
+00:26:22.080,00:26:27.086
+see example of key info for such
+attack. Uh our encrypted key in
+uh cipher data, uh internal key
+
+00:26:31.790,00:26:37.362
+info in yellow section
+represents uh a server
+certificate which probably key
+
+00:26:37.362,00:26:42.367
+was used for encryption and the
+similar uh in previous uhh, our,
+our example. In green section we
+
+00:26:45.404,00:26:50.409
+have a certificate uh of trusted
+sign in party. Uh we were
+reviewing default configuration
+
+00:26:53.111,00:26:58.116
+of WIF but it uh allows a lot of
+customization so let’s look on
+one example of customized on
+
+00:27:04.857,00:27:10.462
+WIF. >>So, one of the most
+interesting targets for us was
+SharePoint. And it’s actually
+
+00:27:10.462,00:27:17.135
+using um WIF. Um Windows
+Identity Foundation. But it’s
+customizing this process, right?
+
+00:27:17.135,00:27:21.273
+Um so you can customize it in
+multiple ways like for example,
+changing the default uh
+
+00:27:21.273,00:27:26.578
+certificate restore as Oleks
+mentioned before. Or a different
+way of customizing WIF is using
+
+00:27:26.578,00:27:32.017
+a custom resolver. Um so maybe
+you have some special needs and
+you have to uh process
+
+00:27:32.017,00:27:38.056
+authentication tokens in a
+different way. So that’s exactly
+what SharePoint does and it uses
+
+00:27:38.056,00:27:44.663
+this SP issuer, issuer token
+resolver and it’s uh regular
+token resolver but the key
+
+00:27:44.663,00:27:48.967
+resolution uh supports intrinsic
+keys such as symmetric or
+asymmetric keys and token re,
+
+00:27:48.967,00:27:54.740
+and token resolution does not
+support them. So we are back in
+this scenario of uh WCF where we
+
+00:27:54.740,00:27:59.745
+don’t need, we don’t have any
+limitations about gaining access
+to public certi, public keys and
+
+00:27:59.745,00:28:05.217
+certificates from the server
+side. And we can just basically
+use our own symmetric key to
+
+00:28:05.217,00:28:10.122
+re-sign the, the token and then
+include both the symmetric key
+and the expected identity
+
+00:28:10.122,00:28:14.960
+provider certificate. Because of
+this difference in the
+resolution uh it’s method will
+
+00:28:14.960,00:28:18.430
+return a different element and
+the first one will be used for
+signature verification, the
+
+00:28:18.430,00:28:23.702
+other one will be used for
+authentication of the signing
+party. So in this case we are
+
+00:28:23.702,00:28:28.073
+using a symmetric key. We can
+also use the RSA one that we saw
+before. But in this case we are
+
+00:28:28.073,00:28:33.345
+using binary secret, that is uh
+basically the way of specifying
+a symmetric key not token. As
+
+00:28:33.345,00:28:38.483
+you can see here there is no
+encryption so there is no need
+to send the public queue for,
+
+00:28:38.483,00:28:45.123
+that was used to, for uh for
+encryption and it’s just sent in
+the row. Uh in green section we
+
+00:28:45.123,00:28:51.964
+have expected identity provider
+um certificate. So, we were
+like, wait, eh we can bypass sa,
+
+00:28:51.964,00:28:57.803
+SharePoint authentication both
+On-Premises and on Office 365
+which is pretty cool. But then
+
+00:28:57.803,00:29:02.574
+when we tried to actually uh
+break into SharePoint we
+realized that we were not able
+
+00:29:02.574,00:29:07.179
+because the SharePoint
+authentication flow is a little
+bit special. So, note the user
+
+00:29:07.179,00:29:12.184
+will get an authentication token
+from the identity provider and
+will present this authentication
+
+00:29:12.184,00:29:16.622
+token to SharePoint. SharePoint
+will validate this token by
+using the SharePoint issuer
+
+00:29:16.622,00:29:21.159
+resolver that we just saw, which
+is vulnerable. So, so far so
+good. We can bypass the
+
+00:29:21.159,00:29:26.164
+signature uh verification of
+this process but then SharePoint
+doesn’t know what to do with a
+
+00:29:26.164,00:29:31.770
+SAML token so it will exchange
+the SAML token uh in the
+SharePoint’s uh se, security
+
+00:29:31.770,00:29:36.341
+token services that which is an
+internal web service of
+SharePoint. And then it will try
+
+00:29:36.341,00:29:41.346
+to get a session token in, in
+exchange. So this uh SharePoint
+uh security token service it’s
+
+00:29:43.582,00:29:49.488
+using a different, it’s a web
+service uh using WCF by using
+WIF for processing
+
+00:29:49.488,00:29:56.328
+authentication token. So it’s
+using the default um WIF token
+resolver which uh depends on the
+
+00:29:56.328,00:29:59.965
+attacker being able to get
+access to the, uh this
+certificate. So this whole,
+
+00:29:59.965,00:30:04.102
+whole process was getting a
+little bit complicated because
+also the attacker needs to craft
+
+00:30:04.102,00:30:10.175
+the key info section in such way
+that it bypasses the signature
+verification for both um token
+
+00:30:10.175,00:30:14.713
+uh validations so it was kind of
+complex. So we found uh a
+different way of attacking
+
+00:30:14.713,00:30:20.619
+SharePoint by abusing the step
+number six which is where uh the
+session token gets into the
+
+00:30:20.619,00:30:26.024
+cache. So um, we are going to,
+what we are going to do is
+basically we’re going to
+
+00:30:26.024,00:30:31.396
+authenticate as um as the
+attacker as a, maybe a low
+privilege account. So this is a
+
+00:30:31.396,00:30:35.167
+privilege escalation, maybe a
+remote code session
+vulnerability. So we get
+
+00:30:35.167,00:30:41.506
+authenticated as the attacker
+account uh following the default
+um authentication flow. There is
+
+00:30:41.506,00:30:47.345
+no attack here, no, no dupe key
+confusion, nothing. But the
+attacker session token will get
+
+00:30:47.345,00:30:53.452
+cached. Right? Now uh what we
+are going to do is we are going
+to craft a special token and
+
+00:30:53.452,00:30:59.591
+it’s special because it contains
+some special um claims and
+attributes in the SAML token. So
+
+00:30:59.591,00:31:03.495
+first of all the issuer will be
+SharePoint instead of the
+identity provider. Second we
+
+00:31:03.495,00:31:09.601
+will be using the victim or the
+user that we get, want to
+impersonate uh attributes uh for
+
+00:31:09.601,00:31:14.806
+example the UPN, the user
+principle name claims but we
+will still use the attacker
+
+00:31:14.806,00:31:19.811
+identifier for the uh cache key.
+Right? For the, the cache um
+reference. So SharePoint will
+
+00:31:23.448,00:31:27.719
+receive our token, will validate
+using the SharePoint token
+resolver which is vulnerable. We
+
+00:31:27.719,00:31:33.492
+can bypass that. But since the
+token is issued by SharePoint,
+it will not try to exchange with
+
+00:31:33.492,00:31:38.330
+the local uh security token
+services it will just generate
+the session token from the data
+
+00:31:38.330,00:31:43.135
+in our token. So it’s going to
+create a session token for the
+victim, right? But it’s uh going
+
+00:31:43.135,00:31:49.374
+to try to uh cache the token and
+it’s going to use the key for
+the cache that we send. So
+
+00:31:49.374,00:31:54.579
+that’s, the, the attacker cache
+key. So with that we will be
+able to poison the cache and
+
+00:31:54.579,00:31:58.784
+replace the attacker session
+token with the victim session
+token. So no, now the attacker
+
+00:31:58.784,00:32:04.923
+only has to login, to, not login
+but refresh the browser, and
+then we are going to cut to uh
+
+00:32:04.923,00:32:09.628
+retrieve the victim token from
+the cache, from the attacker
+cache. So let’s see that in
+
+00:32:09.628,00:32:14.633
+action maybe, it’s more clear.
+So we’re going to login into
+SharePoint. Uh in this case we
+
+00:32:25.410,00:32:31.616
+are using ADFS to, for, as the
+identity provider but could be
+issuer active directory or any
+
+00:32:31.616,00:32:37.622
+identity provider. And we’re
+logged in as the attacker. So
+maybe I’ll load previous
+
+00:32:37.622,00:32:41.793
+account, um maybe we’ll want to
+impersonate another user or
+maybe we’ll want to become
+
+00:32:41.793,00:32:46.231
+administrator to get remote code
+execution. So we are the
+attacker, so far so good, no
+
+00:32:46.231,00:32:52.737
+attack yet. So now we are going
+to use uh we’re, we are going to
+visit this API URL that will get
+
+00:32:52.737,00:32:57.742
+us a list of existing users in
+SharePoint. So um the purpose
+here is to collect information
+
+00:33:00.178,00:33:05.183
+to craft this malicious token,
+right? So we will search for the
+attacker internal ID in this
+
+00:33:07.719,00:33:13.058
+XML. And this is um the attacker
+internal ID. We will need that
+to craft the, the malicious
+
+00:33:13.058,00:33:15.060
+token. But this is public
+information, you can just query
+the, the right API. Now we will
+
+00:33:15.060,00:33:20.065
+search for the victim internal
+ID. Very similar. And now we
+will use um SAML script
+
+00:33:24.603,00:33:29.608
+basically to craft our malicious
+token. So for the malicious
+token we are going to use all
+
+00:33:37.482,00:33:42.921
+the claims the represents the,
+the victim. So the victim
+internal ID, the victim uh email
+
+00:33:42.921,00:33:47.726
+address, but for the application
+token cache key that is a
+special claim we will be using
+
+00:33:47.726,00:33:52.731
+the, the attacker one. So now if
+we generate the token, first of
+all we will have uh our key info
+
+00:33:55.467,00:34:00.572
+section with the dupe key
+confusion so first of all the
+RSA key that we used to sign the
+
+00:34:00.572,00:34:06.011
+token and then whatever the key,
+the SharePoint identity
+provider, or ADFS in this case,
+
+00:34:06.011,00:34:11.850
+was using. And then if we scroll
+up we will see the, the claims
+in the SAML token. So for
+
+00:34:11.850,00:34:18.590
+example we have uh the user ID
+that is pointing to the victim
+so it’s the internal victim ID.
+
+00:34:18.590,00:34:24.129
+But this special application
+token cache key will be the
+attacker one. And this is the
+
+00:34:24.129,00:34:29.167
+one that will be used to
+reference the cache entry that
+is going to be um poisoned or
+
+00:34:29.167,00:34:34.172
+replaced. So we send that uh,
+all we have to do now is go back
+to the browser, refresh the
+
+00:34:37.008,00:34:42.013
+session and basically get
+authenticated as the victim. So
+remember if we impersonate that
+
+00:34:44.149,00:34:48.086
+[inaudible] this is basically
+remote code execution in
+SharePoint, ON-Premises and, and
+
+00:34:48.086,00:34:53.091
+cloud versions. [audience
+applause] Thank you. So with
+that, I have to wrap up. Uh so
+
+00:35:00.699,00:35:05.136
+first of all we are not saying
+that SAML or WS-Federation are
+insecure protocol. The, the
+
+00:35:05.136,00:35:09.908
+devil is in the implementation
+in the details. In this case dot
+net was vulnerable because it’s
+
+00:35:09.908,00:35:14.813
+actually processing the same
+user control data with two
+different methods um that has
+
+00:35:14.813,00:35:21.186
+some small inconsistency. So if
+you are a code reviewer, you may
+always want to um review these
+
+00:35:21.186,00:35:26.358
+kind of scenarios where you have
+two methods, two different
+parsers processing the same user
+
+00:35:26.358,00:35:32.430
+control, uh controlled data.
+Also we focus our research in
+dot net. Um we don’t expect this
+
+00:35:32.430,00:35:37.702
+very same flow to exist in other
+languages or, or libraries
+because it’s very specific to
+
+00:35:37.702,00:35:43.608
+dot net because of the way that
+they uh extract the key in one
+pros, in one step and then the
+
+00:35:43.608,00:35:47.212
+token in a different step. But
+there may be similar
+vulnerabilities in other
+
+00:35:47.212,00:35:52.217
+languages and libraries. Um also
+um XML signature is not only
+used for SAML assertion, and
+
+00:35:54.819,00:36:00.225
+remember this is a vulnerability
+in XML signature, it is not a
+vulnerability in SAML. So we
+
+00:36:00.225,00:36:05.697
+found different cases uh where
+dot net framework was using XML
+signature that we reported to
+
+00:36:05.697,00:36:10.602
+Microsoft and are parsed now,
+but there may be other cases
+where XML signature is used,
+
+00:36:10.602,00:36:17.042
+maybe in appli, in customer, in
+um people obligations that are
+still vulnerable. And last but
+
+00:36:17.042,00:36:20.345
+not least, Patch as soon as
+possible because the cloud
+version have been parsed but uh
+
+00:36:20.345,00:36:25.350
+ON-Premises, uh like SharePoint
+exchange or any WIF application
+are still vulnerable. And if um,
+
+00:36:27.786,00:36:33.458
+so uh go onto the um Microsoft
+security bulletin because there
+are some specific instructions
+
+00:36:33.458,00:36:37.162
+on how to upgrade. For example
+on how to Patch SharePoint.
+Right? So it’s not
+
+00:36:37.162,00:36:41.699
+straightforward and if you are
+patched in SharePoint, you have
+to update SharePoint version but
+
+00:36:41.699,00:36:46.838
+also update some library
+version. It’s not not recent. So
+with that, our, we are releasing
+
+00:36:46.838,00:36:51.543
+a Burp Plugin. Um the one that I
+showed you in the first demo. Uh
+it’s basically a plugin that
+
+00:36:51.543,00:36:56.314
+allows you to intercept SAML
+tokens, uh SAML requests and
+then re-sign them either using
+
+00:36:56.314,00:37:02.387
+an RSA key or using uh the
+public key from a certificate,
+if you can get access to that,
+
+00:37:02.387,00:37:09.127
+for the WIF um scenario. So with
+that, if you have any questions
+or, we can take them now or
+
+00:37:09.127,00:37:15.433
+maybe later. [inaudible from
+Oleks] Ah. We’ll probably start
+with paper with all the details,
+
+00:37:15.433,00:37:20.438
+it’s hosted in the blackout
+server so just go and, and take
+it from there. So. [audience
+
+00:37:23.508,00:37:28.279
+applause] No questions? Thank
+you.
+

@@ -1,0 +1,4138 @@
+﻿1
+00:00:02,670 --> 00:00:04,870
+- Hello. My name is Martin Doyhenard.
+
+2
+00:00:04,870 --> 00:00:07,500
+I'm a security researcher
+at the Onapsis Labs.
+
+3
+00:00:07,500 --> 00:00:10,080
+And today I'm going to present
+a new set of techniques
+
+4
+00:00:10,080 --> 00:00:13,280
+that can be used to obtain
+control over the response queue
+
+5
+00:00:13,280 --> 00:00:17,060
+in a persistent connection
+by exploiting different HTTP
+
+6
+00:00:17,060 --> 00:00:19,127
+desynchronization vulnerabilities.
+
+7
+00:00:20,850 --> 00:00:22,860
+The agenda for today. First,
+
+8
+00:00:22,860 --> 00:00:26,480
+I'm going to make a quick recap
+on HTTP request smuggling.
+
+9
+00:00:26,480 --> 00:00:27,623
+And even though I expect the most of you
+
+10
+00:00:27,623 --> 00:00:30,347
+already know what request smuggling is,
+
+11
+00:00:30,347 --> 00:00:32,760
+I'm still going to make
+a quick introduction.
+
+12
+00:00:32,760 --> 00:00:35,140
+And then we'll also talk about
+desynchronization variants,
+
+13
+00:00:35,140 --> 00:00:37,570
+and about one in particular
+that will be used
+
+14
+00:00:37,570 --> 00:00:40,380
+through the same, through
+the rest of the presentation
+
+15
+00:00:40,380 --> 00:00:42,393
+for both demos and examples.
+
+16
+00:00:43,960 --> 00:00:44,793
+After this introduction,
+
+17
+00:00:44,793 --> 00:00:47,200
+I'm going to explain what
+is response smuggling
+
+18
+00:00:47,200 --> 00:00:50,550
+and how to use it for
+different malicious purposes.
+
+19
+00:00:50,550 --> 00:00:53,430
+And I will show how to
+hijack responses and requests
+
+20
+00:00:53,430 --> 00:00:55,260
+from a persistent connection,
+
+21
+00:00:55,260 --> 00:00:58,433
+and how to obtain reliable
+results in real systems.
+
+22
+00:00:59,670 --> 00:01:01,240
+Next, I'm going to demonstrate how to
+
+23
+00:01:01,240 --> 00:01:03,070
+concatenate multiple responses
+
+24
+00:01:03,070 --> 00:01:04,720
+and build malicious
+payloads to take control
+
+25
+00:01:04,720 --> 00:01:07,850
+of the victim's browser.
+And also using this,
+
+26
+00:01:07,850 --> 00:01:10,520
+I will demonstrate how
+to poison the whole cache
+
+27
+00:01:10,520 --> 00:01:12,790
+of a, of an HTTP proxy,
+
+28
+00:01:12,790 --> 00:01:15,090
+by storing a crafted
+message as the response
+
+29
+00:01:15,090 --> 00:01:17,910
+of any endpoint the attacker wants.
+
+30
+00:01:17,910 --> 00:01:20,350
+Finally, I'll explain
+how to split responses
+
+31
+00:01:20,350 --> 00:01:22,720
+and inject arbitrary messages
+
+32
+00:01:22,720 --> 00:01:26,100
+that will be stored in the
+response queue and will be
+
+33
+00:01:26,100 --> 00:01:28,350
+delivered back to other
+clients by the proxy.
+
+34
+00:01:32,570 --> 00:01:36,260
+So, request smuggling is an
+attack introduced in 2005
+
+35
+00:01:36,260 --> 00:01:37,620
+by Watchfire
+
+36
+00:01:37,620 --> 00:01:40,349
+which abuses the differences
+between a front end
+
+37
+00:01:40,349 --> 00:01:42,210
+and a back end server.
+
+38
+00:01:42,210 --> 00:01:44,850
+These differences are related
+to the way the HTTP parser
+
+39
+00:01:44,850 --> 00:01:47,900
+calculates the body length of our request.
+
+40
+00:01:47,900 --> 00:01:50,690
+And this, the idea is to, the attacker
+
+41
+00:01:51,660 --> 00:01:54,690
+sends a request containing
+multiple message length headers
+
+42
+00:01:54,690 --> 00:01:58,130
+such as content-length or
+different (indistinct) encodings.
+
+43
+00:01:58,130 --> 00:02:01,210
+And if the front end calculates
+the length of the body
+
+44
+00:02:01,210 --> 00:02:04,030
+using a different header, then
+
+45
+00:02:04,030 --> 00:02:07,310
+it will be possible to split
+the request and inject the
+
+46
+00:02:07,310 --> 00:02:09,343
+prefix for the next message.
+
+47
+00:02:10,860 --> 00:02:13,080
+Let's see an example of this in which
+
+48
+00:02:13,080 --> 00:02:15,880
+two content-length headers
+are sent in the same request.
+
+49
+00:02:17,900 --> 00:02:19,500
+In this example, the proxy will only use
+
+50
+00:02:19,500 --> 00:02:20,950
+the first content-length
+
+51
+00:02:20,950 --> 00:02:24,210
+if multiple headers with
+the same name you are sent.
+
+52
+00:02:24,210 --> 00:02:26,760
+And the back end will
+instead only use the last
+
+53
+00:02:26,760 --> 00:02:28,860
+content-length to calculate the body size.
+
+54
+00:02:30,100 --> 00:02:32,170
+When the attacker sends this request,
+
+55
+00:02:32,170 --> 00:02:34,450
+the front end will forward
+the entire message,
+
+56
+00:02:34,450 --> 00:02:38,003
+as it will think that
+the body is 32 bytes.
+
+57
+00:02:39,190 --> 00:02:42,230
+However, when this message
+reaches the back end,
+
+58
+00:02:42,230 --> 00:02:43,860
+only the first five bytes of the body
+
+59
+00:02:43,860 --> 00:02:46,750
+will be considered to
+be part of the request.
+
+60
+00:02:46,750 --> 00:02:49,190
+The extra 27 bytes will be split
+
+61
+00:02:49,190 --> 00:02:51,510
+and used as the prefix of the next request
+
+62
+00:02:51,510 --> 00:02:52,810
+processed by the back end.
+
+63
+00:02:53,950 --> 00:02:57,350
+If a victim's request arrives
+after the attacker's one,
+
+64
+00:02:57,350 --> 00:02:59,940
+it will be concatenated
+to the injected prefix,
+
+65
+00:02:59,940 --> 00:03:02,870
+causing the back end to
+believe that the victim
+
+66
+00:03:02,870 --> 00:03:06,110
+issued a request to
+"DeleteMyAccount" where,
+
+67
+00:03:06,110 --> 00:03:08,953
+when instead it was issued
+to the "myAccount" endpoint.
+
+68
+00:03:10,030 --> 00:03:13,290
+And, as the session cookies
+of victim are also included,
+
+69
+00:03:13,290 --> 00:03:16,250
+the application will
+probably delete his account.
+
+70
+00:03:16,250 --> 00:03:18,680
+But also the response of
+this request will be sent
+
+71
+00:03:18,680 --> 00:03:20,010
+back to the victim.
+
+72
+00:03:20,010 --> 00:03:22,010
+And if it contained any malicious payloads
+
+73
+00:03:22,010 --> 00:03:24,550
+such as JavaScript, it will be executed
+
+74
+00:03:24,550 --> 00:03:26,150
+on the client's browser as well.
+
+75
+00:03:29,390 --> 00:03:32,470
+But these attacks were
+forgotten for many years,
+
+76
+00:03:32,470 --> 00:03:35,140
+as they were thought to be,
+
+77
+00:03:35,140 --> 00:03:38,440
+that they wouldn't be
+used in real systems.
+
+78
+00:03:38,440 --> 00:03:40,790
+But this changed in 2019,
+
+79
+00:03:40,790 --> 00:03:43,490
+when James Kettle "reborned" this idea
+
+80
+00:03:43,490 --> 00:03:46,570
+by providing a new methodology to, first,
+
+81
+00:03:46,570 --> 00:03:49,100
+detect different
+desynchronization vulnerabilities,
+
+82
+00:03:49,100 --> 00:03:51,820
+then, confirm that it is
+possible to use them to
+
+83
+00:03:51,820 --> 00:03:53,510
+smuggle our request,
+
+84
+00:03:53,510 --> 00:03:56,230
+and finally, to explore
+and exploit the different
+
+85
+00:03:56,230 --> 00:03:58,280
+features provided by the web application.
+
+86
+00:03:59,330 --> 00:04:00,760
+What's more, he was able to demonstrate
+
+87
+00:04:00,760 --> 00:04:01,753
+that these techniques could be
+
+88
+00:04:01,753 --> 00:04:03,930
+applied in many real systems,
+
+89
+00:04:03,930 --> 00:04:07,660
+and it was possible to
+collect a lot of bounties
+
+90
+00:04:07,660 --> 00:04:08,953
+from different vendors.
+
+91
+00:04:09,900 --> 00:04:13,110
+Also in 2019 and 2020,
+
+92
+00:04:13,110 --> 00:04:14,510
+many of these desynchronization variants
+
+93
+00:04:14,510 --> 00:04:16,010
+were presented by researchers.
+
+94
+00:04:17,190 --> 00:04:19,010
+These are techniques
+that can be used to force
+
+95
+00:04:19,010 --> 00:04:20,760
+the discrepancy between servers
+
+96
+00:04:20,760 --> 00:04:23,050
+by hiding messages in the headers,
+
+97
+00:04:23,050 --> 00:04:25,600
+such as the content-length,
+from a specific parser.
+
+98
+00:04:26,740 --> 00:04:28,190
+In most cases, this is done by
+
+99
+00:04:28,190 --> 00:04:30,140
+placing extra special characters,
+
+100
+00:04:30,140 --> 00:04:33,210
+such as a space or an unprintable letter.
+
+101
+00:04:33,210 --> 00:04:35,690
+And in this way, a server
+will fail to recognize
+
+102
+00:04:35,690 --> 00:04:37,410
+the header name or the value
+
+103
+00:04:37,410 --> 00:04:39,123
+as a valid content-length header.
+
+104
+00:04:43,340 --> 00:04:46,710
+But even though these flaws
+can be found in many parsers,
+
+105
+00:04:46,710 --> 00:04:48,880
+it is also possible to
+cause desynchronization
+
+106
+00:04:48,880 --> 00:04:51,410
+by using a feature that
+is provided just by
+
+107
+00:04:51,410 --> 00:04:53,343
+the HTTP protocol itself.
+
+108
+00:04:54,270 --> 00:04:56,290
+And to understand this technique, first,
+
+109
+00:04:56,290 --> 00:04:57,477
+I'll explain the difference between
+
+110
+00:04:57,477 --> 00:04:59,693
+an end-to-end and a hop-by-hop header.
+
+111
+00:05:00,860 --> 00:05:03,110
+So, end-to-end headers are
+those that are intended
+
+112
+00:05:03,110 --> 00:05:05,840
+to travel from the client
+to the back end server,
+
+113
+00:05:05,840 --> 00:05:07,973
+and forwarded by any proxy in the middle.
+
+114
+00:05:09,010 --> 00:05:11,530
+On the other hand, hop-by-hop
+headers are intended to
+
+115
+00:05:11,530 --> 00:05:14,530
+travel only to the next node
+in the communication chain.
+
+116
+00:05:14,530 --> 00:05:17,480
+And for this reason, proxies
+must not forward these headers,
+
+117
+00:05:17,480 --> 00:05:19,350
+and they should be
+removed from the request
+
+118
+00:05:19,350 --> 00:05:20,693
+before being forwarded.
+
+119
+00:05:21,870 --> 00:05:24,730
+And one of the most
+interesting hop-by-hop headers
+
+120
+00:05:24,730 --> 00:05:29,730
+defined in the HTTP RFC
+is the connection header.
+
+121
+00:05:29,900 --> 00:05:33,340
+This directive can be used
+to specify connection options
+
+122
+00:05:33,340 --> 00:05:35,510
+that could be used to
+establish and maintain
+
+123
+00:05:35,510 --> 00:05:37,910
+the connection between two nodes.
+
+124
+00:05:37,910 --> 00:05:41,140
+And these options must not
+affect other connections.
+
+125
+00:05:41,140 --> 00:05:43,747
+So again, they should not
+be forwarded by any proxy
+
+126
+00:05:43,747 --> 00:05:44,943
+receiving them.
+
+127
+00:05:46,300 --> 00:05:48,497
+Some of the known collection options are
+
+128
+00:05:48,497 --> 00:05:49,990
+"close" or "keep-alive",
+
+129
+00:05:49,990 --> 00:05:52,900
+but also the protocol
+allows the client to declare
+
+130
+00:05:52,900 --> 00:05:55,010
+any custom value he wants.
+
+131
+00:05:55,010 --> 00:05:57,560
+And also allows to use
+these connection options
+
+132
+00:05:57,560 --> 00:05:59,090
+as an extra header
+
+133
+00:05:59,090 --> 00:06:01,620
+to give the proxy or the
+servers more information
+
+134
+00:06:01,620 --> 00:06:03,963
+on how to persist the HTTP communication.
+
+135
+00:06:04,840 --> 00:06:07,230
+So let's see an example
+of a request containing
+
+136
+00:06:07,230 --> 00:06:08,383
+two connection options.
+
+137
+00:06:09,290 --> 00:06:12,750
+First, the client will declared
+them as a connection value,
+
+138
+00:06:12,750 --> 00:06:14,840
+and then, the two
+options are also declared
+
+139
+00:06:14,840 --> 00:06:16,133
+as separated headers.
+
+140
+00:06:17,170 --> 00:06:19,530
+But when a proxy forwards this request,
+
+141
+00:06:19,530 --> 00:06:23,040
+it will remove both the
+option and keep-alive header,
+
+142
+00:06:23,040 --> 00:06:25,823
+and as well as all the
+connection directives.
+
+143
+00:06:27,090 --> 00:06:30,170
+But what if instead of
+specifying some useless value
+
+144
+00:06:30,170 --> 00:06:31,340
+as a connection option,
+
+145
+00:06:31,340 --> 00:06:34,513
+we declare an end-to-end header
+such as the content-length.
+
+146
+00:06:35,470 --> 00:06:36,403
+When the proxy receives the request,
+
+147
+00:06:36,403 --> 00:06:39,570
+it will consider the bodies of 13 bytes,
+
+148
+00:06:39,570 --> 00:06:41,360
+and it will forward it.
+
+149
+00:06:41,360 --> 00:06:44,100
+But before it does, it will
+remove the content-length header
+
+150
+00:06:44,100 --> 00:06:46,593
+as it was declared as a connection option.
+
+151
+00:06:47,630 --> 00:06:49,450
+So when the back-end receives this,
+
+152
+00:06:49,450 --> 00:06:51,770
+it will think that the body is empty
+
+153
+00:06:51,770 --> 00:06:53,860
+and it was split the message.
+
+154
+00:06:53,860 --> 00:06:56,210
+This would cause that the smuggled data
+
+155
+00:06:56,210 --> 00:06:59,423
+is used as the prefix for
+the next arriving request.
+
+156
+00:07:01,210 --> 00:07:03,260
+Now this issue was reported under the
+
+157
+00:07:03,260 --> 00:07:05,334
+Google vulnerability reward program,
+
+158
+00:07:05,334 --> 00:07:08,240
+and Google fixed it,
+confirmed that it was possible
+
+159
+00:07:08,240 --> 00:07:11,503
+to use it to smuggle requests
+in older public domains.
+
+160
+00:07:16,030 --> 00:07:18,740
+Now let's see how this
+desynchronization vulnerabilities
+
+161
+00:07:18,740 --> 00:07:21,710
+can be leveraged to
+produce useful exploits
+
+162
+00:07:21,710 --> 00:07:22,883
+in web applications.
+
+163
+00:07:24,010 --> 00:07:25,640
+First, we could use request smuggling
+
+164
+00:07:25,640 --> 00:07:27,330
+to bypass front-end controls,
+
+165
+00:07:27,330 --> 00:07:29,900
+such as filters to forbidden endpoints.
+
+166
+00:07:29,900 --> 00:07:33,020
+And this can be done by
+smuggling the forbidden request,
+
+167
+00:07:33,020 --> 00:07:34,800
+which will not be seen by the proxy,
+
+168
+00:07:34,800 --> 00:07:36,650
+and will be forwarded to the backend.
+
+169
+00:07:37,520 --> 00:07:40,130
+However, this technique does
+not bypass authentication
+
+170
+00:07:40,130 --> 00:07:43,050
+for most resources, and
+in most real applications,
+
+171
+00:07:43,050 --> 00:07:46,220
+it will fail if the
+response is not received
+
+172
+00:07:46,220 --> 00:07:48,530
+by the attacker, and if the filter is not
+
+173
+00:07:48,530 --> 00:07:50,080
+placed in the vulnerable proxy.
+
+174
+00:07:51,632 --> 00:07:53,460
+Another exploitation technique is
+
+175
+00:07:53,460 --> 00:07:55,700
+hijacking the victim's request,
+
+176
+00:07:55,700 --> 00:07:58,360
+but this can only be done
+if the web application
+
+177
+00:07:58,360 --> 00:08:01,000
+offers some data storage feature.
+
+178
+00:08:01,000 --> 00:08:05,290
+That is, the attacker can
+only hijack victim information
+
+179
+00:08:05,290 --> 00:08:08,420
+if it can be stored or retrieved,
+
+180
+00:08:08,420 --> 00:08:11,590
+which is not that common
+in all applications.
+
+181
+00:08:11,590 --> 00:08:14,910
+And also these kind of
+features are offered only to,
+
+182
+00:08:14,910 --> 00:08:19,160
+or in most cases, are only
+offered to authenticated users.
+
+183
+00:08:19,160 --> 00:08:21,260
+So the attacker would need
+to have a valid account
+
+184
+00:08:21,260 --> 00:08:22,283
+or a valid session.
+
+185
+00:08:23,790 --> 00:08:26,266
+Next, we can use request
+smuggling to upgrade
+
+186
+00:08:26,266 --> 00:08:29,340
+existing vulnerabilities,
+such as cross-site scripting.
+
+187
+00:08:29,340 --> 00:08:32,480
+But in this case, the attacker
+will be able to distribute
+
+188
+00:08:32,480 --> 00:08:35,560
+the payload without having
+to interact with the victim.
+
+189
+00:08:35,560 --> 00:08:36,930
+And in this case,
+
+190
+00:08:36,930 --> 00:08:39,053
+you will not have to force the,
+
+191
+00:08:39,053 --> 00:08:42,303
+the client to trigger the
+attack in some action.
+
+192
+00:08:43,360 --> 00:08:45,360
+The same idea could be
+applied for any vulnerability
+
+193
+00:08:45,360 --> 00:08:50,250
+regrading interaction,
+such as an open redirect,
+
+194
+00:08:50,250 --> 00:08:52,110
+but to do this, or to improve
+
+195
+00:08:52,110 --> 00:08:55,670
+these kinds of vulnerabilities,
+the attacker needs first
+
+196
+00:08:55,670 --> 00:08:58,120
+to find another vulnerability, such as the
+
+197
+00:08:58,120 --> 00:08:59,530
+cross-site scripting,
+
+198
+00:08:59,530 --> 00:09:02,283
+because if not, there will
+be nothing to be upgraded.
+
+199
+00:09:03,870 --> 00:09:06,570
+And finally, the
+desynchronization vulnerabilities
+
+200
+00:09:06,570 --> 00:09:09,410
+can be used to perform
+different web cache attacks,
+
+201
+00:09:09,410 --> 00:09:11,420
+such as web cache poisoning.
+
+202
+00:09:11,420 --> 00:09:13,420
+And this can be done by
+modifying the response
+
+203
+00:09:13,420 --> 00:09:16,890
+for caching a resource,
+by playing a prefix
+
+204
+00:09:16,890 --> 00:09:18,870
+in the backend's request.
+
+205
+00:09:18,870 --> 00:09:20,930
+However, this is only possible to,
+
+206
+00:09:20,930 --> 00:09:24,610
+it's only possible to poison
+resources that were cacheable,
+
+207
+00:09:24,610 --> 00:09:29,060
+and only if the proxy ignores
+the cache-control header.
+
+208
+00:09:29,060 --> 00:09:30,330
+If this is not the case,
+
+209
+00:09:30,330 --> 00:09:32,370
+then the malicious
+response will not be stored
+
+210
+00:09:32,370 --> 00:09:34,520
+by the web cache, and
+the attack will fail.
+
+211
+00:09:36,070 --> 00:09:40,240
+Some other techniques
+might also be possible.
+
+212
+00:09:40,240 --> 00:09:41,730
+But in most cases,
+
+213
+00:09:41,730 --> 00:09:44,220
+it is required that the
+system provides some rather
+
+214
+00:09:44,220 --> 00:09:46,380
+uncommon features, or have
+other vulnerabilities,
+
+215
+00:09:46,380 --> 00:09:48,180
+so I'm not going to talk about them.
+
+216
+00:09:51,570 --> 00:09:54,810
+So... (clears throat)
+
+217
+00:09:58,760 --> 00:10:02,460
+By now, all attacks rely
+on injecting a prefix in
+
+218
+00:10:02,460 --> 00:10:04,960
+the request queue of a
+persistent connection.
+
+219
+00:10:04,960 --> 00:10:07,031
+However, exploiting these
+might not be as trivial
+
+220
+00:10:07,031 --> 00:10:08,160
+as you would like.
+
+221
+00:10:08,160 --> 00:10:11,010
+There are many (indistinct)
+to successfully take advantage
+
+222
+00:10:11,010 --> 00:10:12,270
+of these vulnerabilities.
+
+223
+00:10:12,270 --> 00:10:15,513
+So we would like to
+look for other options.
+
+224
+00:10:16,470 --> 00:10:20,430
+But what if instead of
+placing focus on the request,
+
+225
+00:10:20,430 --> 00:10:22,630
+we would look at attacks
+effecting the response queue
+
+226
+00:10:22,630 --> 00:10:23,530
+of the connection?
+
+227
+00:10:24,650 --> 00:10:26,440
+With this in mind, I
+started thinking about
+
+228
+00:10:26,440 --> 00:10:29,570
+what would happen if instead
+of injecting a prefix
+
+229
+00:10:29,570 --> 00:10:30,840
+for the next message,
+
+230
+00:10:30,840 --> 00:10:33,030
+we will smuggle a complete request
+
+231
+00:10:33,030 --> 00:10:35,910
+that will alone produce an extra response.
+
+232
+00:10:35,910 --> 00:10:38,640
+If this happens, the proxy
+will issue one request,
+
+233
+00:10:38,640 --> 00:10:41,280
+but it will receive two
+different responses from the,
+
+234
+00:10:41,280 --> 00:10:42,880
+from the backend.
+
+235
+00:10:42,880 --> 00:10:46,910
+And if a victim later sends
+another message to the proxy,
+
+236
+00:10:46,910 --> 00:10:49,150
+it will be forwarded, but in this case,
+
+237
+00:10:49,150 --> 00:10:51,350
+the remaining extra response,
+
+238
+00:10:51,350 --> 00:10:53,810
+which corresponds to
+the (indistinct) request
+
+239
+00:10:53,810 --> 00:10:55,410
+will be sent back to the victim.
+
+240
+00:10:56,700 --> 00:10:59,480
+And as the victim's response
+got desynchronized too,
+
+241
+00:10:59,480 --> 00:11:02,040
+an attacker could then
+send another request
+
+242
+00:11:02,040 --> 00:11:05,950
+to hijack the form response.
+
+243
+00:11:05,950 --> 00:11:10,250
+And if this response was
+issued after a login message,
+
+244
+00:11:10,250 --> 00:11:13,920
+for example, then the attacker
+will be able to receive
+
+245
+00:11:13,920 --> 00:11:16,850
+some sensitive information,
+such as the session cookies
+
+246
+00:11:16,850 --> 00:11:18,840
+or any other session token
+
+247
+00:11:18,840 --> 00:11:20,860
+that was intended to the victim.
+
+248
+00:11:23,840 --> 00:11:26,500
+To better understand this
+technique, let's see how
+
+249
+00:11:26,500 --> 00:11:29,031
+requests and responses are
+associated at the proxy
+
+250
+00:11:29,031 --> 00:11:30,614
+and at the backend.
+
+251
+00:11:31,977 --> 00:11:35,220
+First, both the attacker and
+the victim will send a request
+
+252
+00:11:35,220 --> 00:11:36,913
+to the front end.
+
+253
+00:11:37,920 --> 00:11:41,010
+They will be stored in the
+request queue and forwarded to
+
+254
+00:11:41,010 --> 00:11:43,360
+the backend server through
+the same connection.
+
+255
+00:11:44,860 --> 00:11:47,690
+However, when the malicious
+payload reaches the backend,
+
+256
+00:11:47,690 --> 00:11:51,270
+it will get split, producing
+two different responses.
+
+257
+00:11:51,270 --> 00:11:54,330
+And now all three responses,
+the two that were generated
+
+258
+00:11:54,330 --> 00:11:57,207
+by the attacker and the one
+generated by the victim,
+
+259
+00:11:58,330 --> 00:12:00,310
+will go back to the proxy.
+
+260
+00:12:00,310 --> 00:12:01,470
+Here, the first,
+
+261
+00:12:01,470 --> 00:12:05,230
+the first response would be
+forwarded to the attacker.
+
+262
+00:12:05,230 --> 00:12:06,820
+And the second one, which corresponds to
+
+263
+00:12:06,820 --> 00:12:10,053
+the smuggled message, would
+be forwarded to the victim.
+
+264
+00:12:11,080 --> 00:12:13,610
+However, as the proxy
+only issued two requests,
+
+265
+00:12:13,610 --> 00:12:16,060
+it will wait for a new,
+
+266
+00:12:16,060 --> 00:12:18,140
+for a new message before
+it can, before it can
+
+267
+00:12:18,140 --> 00:12:20,113
+forward the last response.
+
+268
+00:12:21,350 --> 00:12:24,660
+In this case, if the attacker
+is able to send a new message,
+
+269
+00:12:24,660 --> 00:12:27,300
+he will be obtaining,
+he will end up obtaining
+
+270
+00:12:27,300 --> 00:12:30,190
+the victim's response,
+and in that response,
+
+271
+00:12:30,190 --> 00:12:32,380
+also some sensitive information,
+
+272
+00:12:32,380 --> 00:12:35,750
+such as, as we already said, for example,
+
+273
+00:12:35,750 --> 00:12:38,530
+the session cookies that were,
+
+274
+00:12:38,530 --> 00:12:40,543
+that were created after a login request.
+
+275
+00:12:43,740 --> 00:12:47,020
+But what if instead,
+what if we tried to use
+
+276
+00:12:47,020 --> 00:12:50,030
+these techniques in real, in real systems.
+
+277
+00:12:50,030 --> 00:12:52,910
+We would find that the
+results that we obtain are,
+
+278
+00:12:52,910 --> 00:12:54,560
+are not as we expected.
+
+279
+00:12:54,560 --> 00:12:57,320
+And that their reliability
+of these attacks
+
+280
+00:12:57,320 --> 00:13:00,853
+can make us think that they
+are not as useful as it sounds.
+
+281
+00:13:02,320 --> 00:13:04,230
+So here we can see some,
+
+282
+00:13:04,230 --> 00:13:06,927
+the communication between
+the proxy and the backend.
+
+283
+00:13:06,927 --> 00:13:09,578
+And in this capture, an
+attacker was trying to
+
+284
+00:13:09,578 --> 00:13:11,857
+desynchronize the response
+queue, but each time
+
+285
+00:13:11,857 --> 00:13:13,960
+a request was sent,
+
+286
+00:13:13,960 --> 00:13:16,653
+the connection was closed by the proxy.
+
+287
+00:13:18,020 --> 00:13:19,920
+This means that the attack is failing.
+
+288
+00:13:22,225 --> 00:13:25,740
+And the reason for this is that the,
+
+289
+00:13:25,740 --> 00:13:28,750
+the proxy resets the
+connection every time it
+
+290
+00:13:28,750 --> 00:13:30,940
+receives an extra response.
+
+291
+00:13:30,940 --> 00:13:35,070
+And therefore we cannot
+send extra responses
+
+292
+00:13:35,070 --> 00:13:39,173
+before the proxy creates a new request.
+
+293
+00:13:40,580 --> 00:13:42,810
+And only after a thousand requests,
+
+294
+00:13:42,810 --> 00:13:46,070
+I was able to smuggle a single response,
+
+295
+00:13:46,070 --> 00:13:49,830
+and actually hijack a victim's message.
+
+296
+00:13:49,830 --> 00:13:53,610
+But of course, this is not the
+desired or expected result.
+
+297
+00:13:53,610 --> 00:13:55,917
+So why this is happening?
+
+298
+00:13:58,090 --> 00:13:59,730
+And to understand this,
+
+299
+00:13:59,730 --> 00:14:03,470
+first let's take a look at
+what's going on under the hood.
+
+300
+00:14:03,470 --> 00:14:07,490
+And to do so, I will explain one concept
+
+301
+00:14:07,490 --> 00:14:10,750
+that was introduced in HTTP 1.1.
+
+302
+00:14:10,750 --> 00:14:14,503
+And in which all the
+desynchronization attacks rely on.
+
+303
+00:14:15,640 --> 00:14:17,760
+First, remember that the biggest change
+
+304
+00:14:17,760 --> 00:14:19,770
+between HTTP 1.2 or 1.1
+
+305
+00:14:19,770 --> 00:14:23,352
+is the ability to persist TCP connections
+
+306
+00:14:23,352 --> 00:14:26,150
+and just send multiple
+request and response pairs
+
+307
+00:14:26,150 --> 00:14:28,320
+through the same connection.
+
+308
+00:14:28,320 --> 00:14:30,620
+This means that the client
+is not forced anymore
+
+309
+00:14:30,620 --> 00:14:33,140
+to close the connection
+after receiving a response.
+
+310
+00:14:33,140 --> 00:14:35,890
+Instead, it could use it
+to send more messages,
+
+311
+00:14:35,890 --> 00:14:38,740
+increasing the performance of the network.
+
+312
+00:14:38,740 --> 00:14:42,410
+However, this concept
+is sometimes confused
+
+313
+00:14:42,410 --> 00:14:45,190
+with another important
+feature that is provided
+
+314
+00:14:45,190 --> 00:14:46,950
+by the HTTP protocol,
+
+315
+00:14:46,950 --> 00:14:50,470
+which is the ability to
+pipeline different messages
+
+316
+00:14:50,470 --> 00:14:51,870
+through the same connection.
+
+317
+00:14:56,970 --> 00:15:00,530
+So, HTTP pipelining is what
+allows a client to send
+
+318
+00:15:00,530 --> 00:15:02,850
+multiple requests without
+having to wait for
+
+319
+00:15:02,850 --> 00:15:03,913
+previous responses.
+
+320
+00:15:05,010 --> 00:15:07,160
+This means that if a client needs to send,
+
+321
+00:15:07,160 --> 00:15:10,310
+let's say, two requests,
+to the same server.
+
+322
+00:15:10,310 --> 00:15:12,121
+This can be done at the same time,
+
+323
+00:15:12,121 --> 00:15:15,170
+concatenating them
+through the same channel.
+
+324
+00:15:15,170 --> 00:15:18,850
+And it is the job of the
+server or the, or the proxy,
+
+325
+00:15:18,850 --> 00:15:21,350
+to split them and resolve each,
+
+326
+00:15:21,350 --> 00:15:23,433
+producing the corresponding responses.
+
+327
+00:15:24,800 --> 00:15:27,010
+And as we saw in previous examples,
+
+328
+00:15:27,010 --> 00:15:31,050
+the way each request is
+matched with its response
+
+329
+00:15:31,050 --> 00:15:34,243
+depends only on the order they
+were received and forwarded.
+
+330
+00:15:35,700 --> 00:15:38,770
+The first response would
+correspond to the first request,
+
+331
+00:15:38,770 --> 00:15:41,410
+and this will be done by using the
+
+332
+00:15:41,410 --> 00:15:43,610
+first-in-first-out scheme order.
+
+333
+00:15:43,610 --> 00:15:45,400
+And that's why we will call them
+
+334
+00:15:45,400 --> 00:15:47,180
+request and response queues,
+
+335
+00:15:47,180 --> 00:15:49,513
+because they will actually work as queues.
+
+336
+00:15:50,980 --> 00:15:54,577
+There is no other way of
+matching different responses
+
+337
+00:15:54,577 --> 00:15:57,280
+and requests, such as an ID or anything.
+
+338
+00:15:57,280 --> 00:16:00,830
+So the only way to do it
+is using the order that
+
+339
+00:16:00,830 --> 00:16:03,173
+where they were issued
+and they were received.
+
+340
+00:16:06,960 --> 00:16:08,690
+But here's the catch:
+
+341
+00:16:08,690 --> 00:16:11,790
+Most proxies won't enforce pipelining,
+
+342
+00:16:11,790 --> 00:16:15,550
+meaning that if two or more
+requests from different sources
+
+343
+00:16:15,550 --> 00:16:18,420
+reach the proxy, they
+will be concatenated,
+
+344
+00:16:18,420 --> 00:16:20,280
+they won't be concatenated together,
+
+345
+00:16:20,280 --> 00:16:21,637
+and they will be,
+
+346
+00:16:21,637 --> 00:16:24,583
+they won't be forwarded
+together to the backend server.
+
+347
+00:16:25,530 --> 00:16:28,100
+Instead, they will be
+sent through different
+
+348
+00:16:28,100 --> 00:16:31,740
+free TCP connections, which
+won't affect each other.
+
+349
+00:16:31,740 --> 00:16:33,340
+And so the attacker won't be able to
+
+350
+00:16:33,340 --> 00:16:37,250
+play with the connection
+queue of the victim,
+
+351
+00:16:37,250 --> 00:16:39,193
+and this will prevent the attack.
+
+352
+00:16:40,320 --> 00:16:43,650
+But also future requests,
+or future client requests,
+
+353
+00:16:43,650 --> 00:16:46,060
+which in the server, won't go
+through the same connection
+
+354
+00:16:46,060 --> 00:16:48,400
+that the attacker used previously.
+
+355
+00:16:48,400 --> 00:16:51,470
+And this is because the
+extra response injected
+
+356
+00:16:51,470 --> 00:16:54,250
+by the attacker is received by the proxy,
+
+357
+00:16:54,250 --> 00:16:57,680
+and will be interpreted
+as a communication error.
+
+358
+00:16:57,680 --> 00:17:00,410
+This is because the
+proxy did not issue any,
+
+359
+00:17:00,410 --> 00:17:01,640
+any new requests,
+
+360
+00:17:01,640 --> 00:17:05,280
+and so it shouldn't be
+receiving any extra response.
+
+361
+00:17:05,280 --> 00:17:08,450
+If this happens, then the
+proxy will think that there is
+
+362
+00:17:08,450 --> 00:17:10,190
+a problem in the communication,
+
+363
+00:17:10,190 --> 00:17:12,083
+and will just close the connection.
+
+364
+00:17:13,230 --> 00:17:15,490
+And also, when closing this connection,
+
+365
+00:17:15,490 --> 00:17:18,620
+the extra response that was
+received will be discarded,
+
+366
+00:17:18,620 --> 00:17:21,943
+and so it won't affect
+any, any future requests.
+
+367
+00:17:24,650 --> 00:17:27,483
+So what can an attacker
+do to solve this problem?
+
+368
+00:17:28,330 --> 00:17:31,173
+First to hijack our response,
+an attacker would need to
+
+369
+00:17:31,173 --> 00:17:32,873
+smuggle two responses,
+
+370
+00:17:33,870 --> 00:17:37,460
+but they cannot be sent
+back together to the proxy,
+
+371
+00:17:37,460 --> 00:17:39,200
+because as we saw in this case,
+
+372
+00:17:39,200 --> 00:17:41,410
+the proxy will close the connection
+
+373
+00:17:41,410 --> 00:17:43,423
+because it will see an extra response.
+
+374
+00:17:44,480 --> 00:17:47,780
+So to avoid this, a new
+request must be forwarded
+
+375
+00:17:47,780 --> 00:17:50,900
+by the proxy, so when
+the response arrives,
+
+376
+00:17:50,900 --> 00:17:52,343
+the connection is persisted.
+
+377
+00:17:54,030 --> 00:17:56,900
+But these new requests
+can only be sent after
+
+378
+00:17:56,900 --> 00:17:59,870
+the first response goes back to the proxy.
+
+379
+00:17:59,870 --> 00:18:01,660
+This is because the proxy won't forward
+
+380
+00:18:01,660 --> 00:18:03,740
+any other requests through
+the same connection
+
+381
+00:18:03,740 --> 00:18:06,530
+until the request, until the request queue
+
+382
+00:18:06,530 --> 00:18:07,993
+of this connection is free.
+
+383
+00:18:09,130 --> 00:18:13,008
+So the idea will be to send
+a time-consuming request
+
+384
+00:18:13,008 --> 00:18:14,961
+as this final message,
+
+385
+00:18:14,961 --> 00:18:19,820
+and this request will take
+some time to be processed,
+
+386
+00:18:19,820 --> 00:18:22,850
+and the server would take
+some time to generate
+
+387
+00:18:22,850 --> 00:18:25,390
+a response for this request.
+
+388
+00:18:25,390 --> 00:18:28,090
+And this time will be just enough
+
+389
+00:18:28,090 --> 00:18:31,290
+for the next victim's
+message to reach the proxy
+
+390
+00:18:31,290 --> 00:18:34,503
+and reach the proxy's request queue.
+
+391
+00:18:35,390 --> 00:18:38,480
+Therefore, when the
+response is forwarded back,
+
+392
+00:18:38,480 --> 00:18:40,710
+it would be sent back to the client,
+
+393
+00:18:40,710 --> 00:18:43,610
+and the attacker will now be
+able to send a fast request
+
+394
+00:18:43,610 --> 00:18:46,480
+and hijack the extra
+response, which in this case,
+
+395
+00:18:46,480 --> 00:18:49,623
+is the response that was
+issued for the, for the victim.
+
+396
+00:18:53,448 --> 00:18:55,360
+It's not necessarily that
+this (indistinct) request
+
+397
+00:18:55,360 --> 00:18:56,480
+take a lot of time.
+
+398
+00:18:56,480 --> 00:18:58,960
+It is just about knowing that,
+
+399
+00:18:58,960 --> 00:19:00,910
+it's just about knowing this time,
+
+400
+00:19:00,910 --> 00:19:04,373
+and calculate the transmission
+time, to play with them.
+
+401
+00:19:05,370 --> 00:19:06,720
+This will allow an attacker to know
+
+402
+00:19:06,720 --> 00:19:09,870
+the best time between payloads,
+
+403
+00:19:09,870 --> 00:19:12,870
+and the best time that he has to wait
+
+404
+00:19:12,870 --> 00:19:15,083
+before sending the next attack.
+
+405
+00:19:16,180 --> 00:19:19,470
+And, under normal conditions
+using different proxies
+
+406
+00:19:19,470 --> 00:19:22,240
+and backend servers, I was able to observe
+
+407
+00:19:22,240 --> 00:19:23,940
+huge improvements. Okay?
+
+408
+00:19:23,940 --> 00:19:27,650
+So I was able to actually see
+how these requests are being
+
+409
+00:19:27,650 --> 00:19:30,243
+smuggled and the connection
+is being persisted.
+
+410
+00:19:31,510 --> 00:19:33,470
+And as you can see, the same attack
+
+411
+00:19:33,470 --> 00:19:36,000
+using a different smuggled endpoint
+
+412
+00:19:36,000 --> 00:19:39,530
+will, will give much, much better results.
+
+413
+00:19:39,530 --> 00:19:43,510
+In this case, the connection
+was persisted for 14 requests.
+
+414
+00:19:43,510 --> 00:19:46,280
+This means that the
+responses were desynchronized
+
+415
+00:19:46,280 --> 00:19:47,790
+for 14 clients.
+
+416
+00:19:48,859 --> 00:19:51,660
+And that is a really, really good number,
+
+417
+00:19:51,660 --> 00:19:54,940
+if we think that before
+we were only getting
+
+418
+00:19:54,940 --> 00:19:56,513
+one of a thousand.
+
+419
+00:20:05,880 --> 00:20:08,880
+And so, if we are able to
+inject complete requests
+
+420
+00:20:08,880 --> 00:20:11,090
+that will produce an extra response,
+
+421
+00:20:11,090 --> 00:20:14,053
+what would stop us from
+injecting multiple messages?
+
+422
+00:20:15,010 --> 00:20:16,973
+From a technical
+perspective, it's the same
+
+423
+00:20:16,973 --> 00:20:19,400
+to smuggle 1, 2, or 10 requests,
+
+424
+00:20:19,400 --> 00:20:23,670
+that would produce 1, 2,
+or 10 extra responses.
+
+425
+00:20:23,670 --> 00:20:27,170
+And this will be useful for
+other, more complex exploits,
+
+426
+00:20:27,170 --> 00:20:30,220
+but for now, we can see that
+there are some simple attacks
+
+427
+00:20:30,220 --> 00:20:33,397
+that we can, that we can perform
+
+428
+00:20:33,397 --> 00:20:36,973
+and that we can leverage
+from these techniques.
+
+429
+00:20:38,560 --> 00:20:42,770
+First, it is possible to inject
+multiple nested responses
+
+430
+00:20:42,770 --> 00:20:45,030
+to effectively distribute
+a malicious payload,
+
+431
+00:20:45,030 --> 00:20:48,250
+such as JavaScript using
+reflected cross-site scripting,
+
+432
+00:20:48,250 --> 00:20:49,670
+as we already saw.
+
+433
+00:20:49,670 --> 00:20:52,100
+If we send instead of one,
+
+434
+00:20:52,100 --> 00:20:55,230
+many different smuggled requests
+
+435
+00:20:55,230 --> 00:20:56,723
+that will produce this payload,
+
+436
+00:20:56,723 --> 00:20:59,610
+then we will be able to poison the next
+
+437
+00:21:01,120 --> 00:21:02,633
+N amount of clients.
+
+438
+00:21:04,390 --> 00:21:06,900
+Also, nested requests can be used
+
+439
+00:21:06,900 --> 00:21:09,357
+to consume resources from both the backend
+
+440
+00:21:09,357 --> 00:21:12,660
+and the front end server, and as well,
+
+441
+00:21:12,660 --> 00:21:15,300
+requests can produce multiple messages
+
+442
+00:21:15,300 --> 00:21:18,100
+that would need to be
+processed at the backend.
+
+443
+00:21:18,100 --> 00:21:20,870
+This could consume a lot of CPU time.
+
+444
+00:21:20,870 --> 00:21:24,120
+And as the responses must
+also generate, sorry,
+
+445
+00:21:24,120 --> 00:21:27,020
+and thus the responses
+must also be generated,
+
+446
+00:21:27,020 --> 00:21:30,500
+and in some case stored,
+then this could affect also
+
+447
+00:21:30,500 --> 00:21:32,523
+the memory buffer of the application.
+
+448
+00:21:35,580 --> 00:21:38,350
+But it could also
+combine nested injections
+
+449
+00:21:39,485 --> 00:21:42,363
+with classic request smuggling technique.
+
+450
+00:21:42,363 --> 00:21:45,600
+And if an application with
+a desync vulnerability
+
+451
+00:21:45,600 --> 00:21:47,650
+allows for content reflection,
+
+452
+00:21:47,650 --> 00:21:51,750
+even if this reflected
+parameter is properly encoded,
+
+453
+00:21:51,750 --> 00:21:55,080
+it is possible to also hijack
+a request from the victim,
+
+454
+00:21:55,080 --> 00:21:56,653
+instead of only a response.
+
+455
+00:21:57,730 --> 00:22:01,170
+And this will be done by
+smuggling two different messages.
+
+456
+00:22:01,170 --> 00:22:04,400
+The first one will be an HTTP
+request, as we already saw,
+
+457
+00:22:04,400 --> 00:22:09,010
+which only propose is to
+desynchronize the response queue,
+
+458
+00:22:09,010 --> 00:22:11,493
+just as we, I explained previously.
+
+459
+00:22:12,490 --> 00:22:16,018
+And next, the second smuggled request,
+
+460
+00:22:16,018 --> 00:22:19,390
+will not be completed, and will,
+
+461
+00:22:19,390 --> 00:22:23,050
+will try to reflect
+some, some data that is,
+
+462
+00:22:23,050 --> 00:22:25,350
+that is also concatenated with it.
+
+463
+00:22:25,350 --> 00:22:29,400
+This is done, as in any other
+request smuggling attack,
+
+464
+00:22:29,400 --> 00:22:32,737
+by using a content-length
+that is greater than
+
+465
+00:22:32,737 --> 00:22:35,223
+the body of the, of the request.
+
+466
+00:22:37,540 --> 00:22:39,780
+So, as always the first
+response will be sent back
+
+467
+00:22:39,780 --> 00:22:41,310
+to the attacker.
+
+468
+00:22:41,310 --> 00:22:44,657
+And this will allow that
+the new victim's request
+
+469
+00:22:44,657 --> 00:22:48,140
+arrive to the backend,
+because if not, as we saw,
+
+470
+00:22:48,140 --> 00:22:52,190
+the proxy won't forward
+the request through the,
+
+471
+00:22:52,190 --> 00:22:54,143
+through the TCP connection.
+
+472
+00:22:55,940 --> 00:22:58,830
+After this, the sleeper
+request will get resolved
+
+473
+00:22:58,830 --> 00:23:01,280
+and the response will be
+forwarded to the victim.
+
+474
+00:23:03,250 --> 00:23:06,130
+Now, if this last
+smuggled request contained
+
+475
+00:23:06,130 --> 00:23:09,383
+a large content-length,
+it would be used as the,
+
+476
+00:23:10,390 --> 00:23:12,600
+sorry, it would use the victim's request
+
+477
+00:23:12,600 --> 00:23:14,280
+as part of the body,
+
+478
+00:23:14,280 --> 00:23:16,910
+but it was still need more data.
+
+479
+00:23:16,910 --> 00:23:19,500
+And as the connection is empty,
+
+480
+00:23:19,500 --> 00:23:21,660
+and the attacker can
+now send a large request
+
+481
+00:23:21,660 --> 00:23:23,510
+that will complete the body,
+
+482
+00:23:23,510 --> 00:23:25,440
+it will cause that the response containing
+
+483
+00:23:25,440 --> 00:23:28,330
+the victim's request
+as the reflected data,
+
+484
+00:23:28,330 --> 00:23:29,780
+is sent back to the attacker.
+
+485
+00:23:30,780 --> 00:23:33,690
+So after seeing this
+work in a real system,
+
+486
+00:23:33,690 --> 00:23:37,560
+I was kind of excited, but
+then I started wondering,
+
+487
+00:23:37,560 --> 00:23:40,361
+is it possible to also
+confuse the HTTP parser
+
+488
+00:23:40,361 --> 00:23:43,200
+when responses are sent back?
+
+489
+00:23:43,200 --> 00:23:45,050
+Of course, we could
+perform the same tricks
+
+490
+00:23:45,050 --> 00:23:47,820
+as with desync variants, but for this,
+
+491
+00:23:47,820 --> 00:23:49,430
+we would need to control
+the message length headers
+
+492
+00:23:49,430 --> 00:23:51,290
+of the response.
+
+493
+00:23:51,290 --> 00:23:53,640
+And that will probably
+not going to happen.
+
+494
+00:23:53,640 --> 00:23:56,440
+And that's not something
+that's not going to happen.
+
+495
+00:23:56,440 --> 00:23:59,100
+However, I also start thinking,
+
+496
+00:23:59,100 --> 00:24:01,560
+is there a difference on
+how the length of the body
+
+497
+00:24:01,560 --> 00:24:04,590
+is calculated between the
+requests and responses?
+
+498
+00:24:04,590 --> 00:24:09,273
+And the answer, given
+by the HTTP RFC, is yes.
+
+499
+00:24:09,273 --> 00:24:12,680
+The difference is that for
+some specific responses,
+
+500
+00:24:12,680 --> 00:24:14,663
+the body must always be empty.
+
+501
+00:24:15,590 --> 00:24:19,490
+And these responses are
+some special status codes,
+
+502
+00:24:19,490 --> 00:24:23,290
+like the 204 and 304,
+
+503
+00:24:23,290 --> 00:24:28,290
+but also responses that are
+generated out of a HEAD request.
+
+504
+00:24:28,930 --> 00:24:31,890
+So what makes it so interesting,
+these kinds of responses,
+
+505
+00:24:31,890 --> 00:24:34,819
+is that not only they
+depend on the request
+
+506
+00:24:34,819 --> 00:24:39,100
+that generated them,
+but that it must always
+
+507
+00:24:39,100 --> 00:24:44,070
+be an exact replica of the
+headers in the same GET response.
+
+508
+00:24:44,070 --> 00:24:47,980
+So when a, when a HEAD
+response is generated,
+
+509
+00:24:47,980 --> 00:24:50,350
+the only difference that
+we have from a GET response
+
+510
+00:24:50,350 --> 00:24:52,177
+to the same end point will be that
+
+511
+00:24:52,177 --> 00:24:54,040
+the body will not be there,
+
+512
+00:24:54,040 --> 00:24:56,480
+but the rest of the
+headers should be the same.
+
+513
+00:24:56,480 --> 00:24:59,623
+And this includes, of
+course, the content-length.
+
+514
+00:25:01,680 --> 00:25:05,250
+Even though it is optional
+that the content-length appear,
+
+515
+00:25:05,250 --> 00:25:07,270
+it does most real applications.
+
+516
+00:25:07,270 --> 00:25:10,090
+And if it appears, the
+value will not be zero
+
+517
+00:25:10,090 --> 00:25:12,760
+if the GET response contained a body.
+
+518
+00:25:12,760 --> 00:25:15,230
+Instead, it will contain the same value,
+
+519
+00:25:15,230 --> 00:25:19,970
+and will hope that the proxy
+knows that the response
+
+520
+00:25:19,970 --> 00:25:22,200
+is special, and that it
+contains a content-length
+
+521
+00:25:22,200 --> 00:25:23,530
+that should be ignored,
+
+522
+00:25:23,530 --> 00:25:27,413
+because it's the, it's the
+response of a HEAD request.
+
+523
+00:25:28,320 --> 00:25:32,490
+But if the proxy fails to
+match that this response
+
+524
+00:25:32,490 --> 00:25:35,320
+was issued from a GET,
+from a HEAD request,
+
+525
+00:25:35,320 --> 00:25:36,993
+then what would happen?
+
+526
+00:25:37,880 --> 00:25:40,550
+And of course, the body, in this case,
+
+527
+00:25:40,550 --> 00:25:43,350
+the content-length in
+this case, will be used,
+
+528
+00:25:43,350 --> 00:25:47,020
+and it will indicate our own value because
+
+529
+00:25:47,020 --> 00:25:51,340
+the HEAD response will contain
+no body and a content-length
+
+530
+00:25:51,340 --> 00:25:54,223
+header with a different value than zero.
+
+531
+00:25:56,360 --> 00:25:59,249
+A desynchronization will cause
+that requests and responses
+
+532
+00:25:59,249 --> 00:26:01,400
+are not properly matched by the proxy.
+
+533
+00:26:01,400 --> 00:26:04,050
+It would be possible to
+use a HEAD smuggle request
+
+534
+00:26:04,050 --> 00:26:06,750
+to generate a malicious response.
+
+535
+00:26:06,750 --> 00:26:08,970
+This will contain a content-length header,
+
+536
+00:26:08,970 --> 00:26:11,120
+which in this case will
+be considered to contain
+
+537
+00:26:11,120 --> 00:26:12,520
+the actual size of the body.
+
+538
+00:26:13,750 --> 00:26:16,815
+If an attacker smuggles two
+requests to the backend,
+
+539
+00:26:16,815 --> 00:26:18,740
+the first response generating,
+
+540
+00:26:18,740 --> 00:26:22,250
+will generate the carried message, which,
+
+541
+00:26:22,250 --> 00:26:25,103
+generated by the carried
+message, will go back to him.
+
+542
+00:26:26,010 --> 00:26:29,150
+Next, another request
+will arrive to the proxy
+
+543
+00:26:29,150 --> 00:26:32,150
+and it will be forwarded to the backend.
+
+544
+00:26:32,150 --> 00:26:33,147
+Now the back end will send it,
+
+545
+00:26:33,147 --> 00:26:35,750
+will send the first response,
+
+546
+00:26:35,750 --> 00:26:38,523
+which in this case will
+be to a HEAD request.
+
+547
+00:26:39,950 --> 00:26:42,380
+When this message is
+received by the proxy,
+
+548
+00:26:42,380 --> 00:26:44,230
+it won't be forwarded right away.
+
+549
+00:26:44,230 --> 00:26:45,880
+This is because the content-length header
+
+550
+00:26:45,880 --> 00:26:47,560
+states that the body is not empty.
+
+551
+00:26:47,560 --> 00:26:49,880
+And the request matching this,
+
+552
+00:26:49,880 --> 00:26:52,377
+this response contains the GET method
+
+553
+00:26:52,377 --> 00:26:54,660
+and not the HEAD method.
+
+554
+00:26:54,660 --> 00:26:57,320
+This means that if the body,
+
+555
+00:26:57,320 --> 00:26:59,220
+if the body of the response was empty,
+
+556
+00:26:59,220 --> 00:27:02,090
+but the content-length
+states that it shouldn't be,
+
+557
+00:27:02,090 --> 00:27:06,000
+then the proxy will wait
+for more data to be used,
+
+558
+00:27:06,000 --> 00:27:08,483
+and then forward this response.
+
+559
+00:27:09,940 --> 00:27:12,520
+So when the next response
+arrives to the proxy,
+
+560
+00:27:12,520 --> 00:27:16,240
+it will be used as part of the
+body of the previous message.
+
+561
+00:27:16,240 --> 00:27:18,330
+This will now be delivered
+back to the client,
+
+562
+00:27:18,330 --> 00:27:21,143
+which is the, which
+issued the second request.
+
+563
+00:27:22,200 --> 00:27:24,850
+And also the remaining
+of their response will be
+
+564
+00:27:24,850 --> 00:27:28,020
+sent back to the next
+client issuing a request.
+
+565
+00:27:28,020 --> 00:27:30,620
+But that's only if the
+proxy thinks that this is
+
+566
+00:27:30,620 --> 00:27:33,833
+a valid HTTP message,
+which in this case, is not.
+
+567
+00:27:37,270 --> 00:27:38,680
+To understand these ideas,
+
+568
+00:27:38,680 --> 00:27:41,287
+let's see how the different HTTP messages
+
+569
+00:27:41,287 --> 00:27:42,853
+travel through the connection.
+
+570
+00:27:44,340 --> 00:27:48,610
+First the attacker would send
+its request to the proxy,
+
+571
+00:27:48,610 --> 00:27:50,893
+which will forward it
+to the backend server.
+
+572
+00:27:52,000 --> 00:27:54,340
+There, the message will
+be split into three
+
+573
+00:27:54,340 --> 00:27:57,240
+and the first response will
+be sent back to the attacker,
+
+574
+00:27:57,240 --> 00:27:58,820
+as always.
+
+575
+00:27:58,820 --> 00:28:02,200
+After this, the victim
+will issue a new request,
+
+576
+00:28:02,200 --> 00:28:06,220
+in this case, a GET request,
+but it could also be any other,
+
+577
+00:28:06,220 --> 00:28:07,673
+except for the HEAD one.
+
+578
+00:28:08,770 --> 00:28:12,280
+Their request will also be
+forwarded to the backend server.
+
+579
+00:28:12,280 --> 00:28:15,060
+And when the smuggled
+response arrives to the proxy,
+
+580
+00:28:15,060 --> 00:28:17,010
+they will be concatenated together
+
+581
+00:28:17,010 --> 00:28:18,800
+and sent back to the victim.
+
+582
+00:28:20,120 --> 00:28:22,390
+If the remaining of the split response
+
+583
+00:28:22,390 --> 00:28:24,170
+are not a valid response,
+
+584
+00:28:24,170 --> 00:28:26,656
+then the connection would be closed,
+
+585
+00:28:26,656 --> 00:28:29,920
+and the response will be
+discarded, the extra response.
+
+586
+00:28:29,920 --> 00:28:32,360
+And that is because the proxy
+would think that, again,
+
+587
+00:28:32,360 --> 00:28:33,963
+there was a communication error.
+
+588
+00:28:35,390 --> 00:28:38,485
+But why it could be useful to concatenate
+
+589
+00:28:38,485 --> 00:28:39,643
+multiple responses?
+
+590
+00:28:40,860 --> 00:28:43,790
+We were already able to
+control the response queue
+
+591
+00:28:43,790 --> 00:28:46,430
+and the responses that
+the victim were receiving.
+
+592
+00:28:46,430 --> 00:28:49,790
+So anything that we can concatenate,
+
+593
+00:28:49,790 --> 00:28:53,000
+we could also have sent
+it with a single request.
+
+594
+00:28:53,000 --> 00:28:54,523
+And is that right?
+
+595
+00:28:55,500 --> 00:28:58,500
+Well, not really. And this is because we,
+
+596
+00:28:58,500 --> 00:29:00,460
+when we concatenate two responses,
+
+597
+00:29:00,460 --> 00:29:03,550
+one of them will have its
+headers used as the body
+
+598
+00:29:03,550 --> 00:29:05,290
+of the previous message.
+
+599
+00:29:05,290 --> 00:29:10,290
+This means that if the data
+is reflected in headers, then,
+
+600
+00:29:10,340 --> 00:29:13,250
+which is something rather
+common in most applications,
+
+601
+00:29:13,250 --> 00:29:17,300
+let's think of a redirect
+or something that can
+
+602
+00:29:17,300 --> 00:29:19,450
+allow an attacker to reflect some data
+
+603
+00:29:19,450 --> 00:29:21,503
+in the headers of their response.
+
+604
+00:29:22,660 --> 00:29:25,220
+Then an attacker would
+be able to reflect these
+
+605
+00:29:25,220 --> 00:29:28,600
+in the body of the request,
+of their response, sorry.
+
+606
+00:29:28,600 --> 00:29:32,070
+And if the headers contain
+any specific content-type
+
+607
+00:29:32,070 --> 00:29:34,800
+directive, such as the text/html,
+
+608
+00:29:34,800 --> 00:29:38,520
+then this reflected content
+that was present in the,
+
+609
+00:29:38,520 --> 00:29:43,520
+in the headers will now be
+considered as HTML data.
+
+610
+00:29:44,570 --> 00:29:47,620
+And this could allow
+an attacker to inject,
+
+611
+00:29:47,620 --> 00:29:50,640
+let's say, a malicious JavaScript payload,
+
+612
+00:29:50,640 --> 00:29:54,423
+or any HTML attack that he desires.
+
+613
+00:29:55,710 --> 00:29:58,873
+And of course this will be
+executed in the client's browser.
+
+614
+00:30:00,040 --> 00:30:02,320
+And the same applies for
+any parameter reflected
+
+615
+00:30:02,320 --> 00:30:05,870
+in a non-scriptable content-length,
+content-type, sorry.
+
+616
+00:30:05,870 --> 00:30:09,590
+So if we are able to
+reflect some content in,
+
+617
+00:30:09,590 --> 00:30:12,690
+let's say, the plain text type,
+
+618
+00:30:12,690 --> 00:30:16,860
+then we can convert this to
+another content-type by using
+
+619
+00:30:16,860 --> 00:30:20,140
+different headers to, to,
+
+620
+00:30:20,140 --> 00:30:22,683
+to change the behavior
+of the authored response.
+
+621
+00:30:24,310 --> 00:30:27,210
+And of course, this effect can be combined
+
+622
+00:30:27,210 --> 00:30:29,420
+with other techniques to reflect other
+
+623
+00:30:29,420 --> 00:30:32,063
+requests and responses
+in the message body.
+
+624
+00:30:36,280 --> 00:30:38,443
+So now we will see a demo.
+
+625
+00:30:40,840 --> 00:30:42,550
+I was able to prove all these techniques
+
+626
+00:30:42,550 --> 00:30:44,890
+in three major vendors, but unfortunately,
+
+627
+00:30:44,890 --> 00:30:47,160
+they were not able to fix the issues at
+
+628
+00:30:47,160 --> 00:30:48,910
+the time of this presentation.
+
+629
+00:30:48,910 --> 00:30:53,480
+So to solve this problem, I
+deployed a small testing lab
+
+630
+00:30:53,480 --> 00:30:57,633
+using a (indistinct)
+version as the front end,
+
+631
+00:30:58,505 --> 00:31:03,505
+and the nginx last version
+as the backend server.
+
+632
+00:31:04,450 --> 00:31:07,540
+In this case, the (indistinct) HTTP parser
+
+633
+00:31:07,540 --> 00:31:10,850
+is vulnerable to the desync variant
+
+634
+00:31:10,850 --> 00:31:13,760
+that I explained previously,
+the connection desync variant,
+
+635
+00:31:13,760 --> 00:31:16,450
+so it will be possible to
+smuggle a request using the
+
+636
+00:31:16,450 --> 00:31:18,700
+connection header to
+hide the content-length.
+
+637
+00:31:20,280 --> 00:31:22,630
+First, we can see that the
+web application consists of
+
+638
+00:31:22,630 --> 00:31:27,070
+three endpoints, all with
+almost static responses.
+
+639
+00:31:27,070 --> 00:31:31,330
+The paths are /home, /helloSmuggle,
+
+640
+00:31:31,330 --> 00:31:34,373
+and also any other path we,
+
+641
+00:31:34,373 --> 00:31:37,500
+with any other string will be used to
+
+642
+00:31:37,500 --> 00:31:39,033
+redirect to the homepage.
+
+643
+00:31:40,510 --> 00:31:41,363
+Again,
+
+644
+00:31:43,240 --> 00:31:44,880
+Here, in the,
+
+645
+00:31:44,880 --> 00:31:47,800
+we can see this in the
+Burp Repeater window.
+
+646
+00:31:47,800 --> 00:31:51,350
+If I send the helloSmuggle
+request with the GET method,
+
+647
+00:31:51,350 --> 00:31:54,140
+we can see that the response
+contains a content-length,
+
+648
+00:31:54,140 --> 00:31:56,430
+written as zero, and a content-type header
+
+649
+00:31:56,430 --> 00:31:59,523
+saying that the body should be
+treated as an HTML document.
+
+650
+00:32:00,720 --> 00:32:03,830
+The same header will, with the, sorry,
+
+651
+00:32:03,830 --> 00:32:06,350
+the same healers with the
+same value are obtained
+
+652
+00:32:06,350 --> 00:32:08,610
+if a HEAD request is sent.
+
+653
+00:32:08,610 --> 00:32:12,363
+And just as expected by
+the HTTP RFC specification.
+
+654
+00:32:14,170 --> 00:32:16,920
+Also, we can see that the
+behavior of the redirect
+
+655
+00:32:16,920 --> 00:32:19,030
+feature (indistinct)
+reflecting the query string
+
+656
+00:32:19,030 --> 00:32:20,910
+in the location header.
+
+657
+00:32:20,910 --> 00:32:23,960
+This will be used to place
+the malicious JavaScript
+
+658
+00:32:23,960 --> 00:32:27,793
+and hijack the victim's browser.
+
+659
+00:32:30,400 --> 00:32:33,600
+So now, using Turbo
+Intruder, which is another
+
+660
+00:32:33,600 --> 00:32:35,680
+great contribution from James Kettle,
+
+661
+00:32:35,680 --> 00:32:38,550
+I will smuggle the concatenated response,
+
+662
+00:32:38,550 --> 00:32:40,763
+which will be sent back to the victim.
+
+663
+00:32:41,720 --> 00:32:44,160
+Also consider that this
+demo was built using
+
+664
+00:32:44,160 --> 00:32:47,280
+the same features found in
+all three mentioned vendors,
+
+665
+00:32:47,280 --> 00:32:50,780
+and so this applies to, to many,
+
+666
+00:32:50,780 --> 00:32:54,770
+to many real systems that
+can be, can be found in,
+
+667
+00:32:54,770 --> 00:32:57,043
+in almost any, any company.
+
+668
+00:32:59,700 --> 00:33:02,600
+You can see that once
+the attack is started,
+
+669
+00:33:02,600 --> 00:33:04,180
+all following victim's requests
+
+670
+00:33:04,180 --> 00:33:06,490
+obtain the malicious response.
+
+671
+00:33:06,490 --> 00:33:10,460
+And only when any request
+is sent with the browser,
+
+672
+00:33:10,460 --> 00:33:13,060
+this JavaScript will be executed,
+
+673
+00:33:13,060 --> 00:33:17,170
+and this will happen every
+time we, we request for,
+
+674
+00:33:17,170 --> 00:33:21,670
+for anything in the, in the system.
+
+675
+00:33:21,670 --> 00:33:24,100
+But finally, if the attacks stop,
+
+676
+00:33:24,100 --> 00:33:26,760
+if the attacker stops sending
+this malicious payload,
+
+677
+00:33:26,760 --> 00:33:28,700
+then the desynchronization will conclude,
+
+678
+00:33:28,700 --> 00:33:31,600
+and the user will see that the application
+
+679
+00:33:31,600 --> 00:33:32,500
+works as expected.
+
+680
+00:33:43,600 --> 00:33:45,870
+Still, this attack gets even worse
+
+681
+00:33:45,870 --> 00:33:47,583
+when a web cache is available.
+
+682
+00:33:48,700 --> 00:33:50,330
+Remember that the,
+
+683
+00:33:50,330 --> 00:33:51,760
+that request smuggling could be used
+
+684
+00:33:51,760 --> 00:33:53,080
+to poison certain endpoints
+
+685
+00:33:53,080 --> 00:33:55,470
+with other existing responses?
+
+686
+00:33:55,470 --> 00:34:00,470
+Well, with response smuggling,
+those restrictions are gone.
+
+687
+00:34:01,010 --> 00:34:04,728
+An attacker would be able to
+poison any endpoint he wants,
+
+688
+00:34:04,728 --> 00:34:08,910
+and the responses that can be used to,
+
+689
+00:34:08,910 --> 00:34:12,811
+to poison these endpoint
+just need that the,
+
+690
+00:34:12,811 --> 00:34:17,220
+that the HEAD response contains
+a cache-control header,
+
+691
+00:34:17,220 --> 00:34:20,220
+which will cause that the message
+to be stored in the cache.
+
+692
+00:34:21,750 --> 00:34:24,410
+And, as the attacker can send
+multiple pipelined requests,
+
+693
+00:34:24,410 --> 00:34:28,010
+it is possible to poison the
+cache with a single request,
+
+694
+00:34:28,010 --> 00:34:30,870
+which will be split also by the proxy.
+
+695
+00:34:30,870 --> 00:34:34,070
+And this will cause that the
+second request gets poisoned
+
+696
+00:34:34,070 --> 00:34:36,463
+with the response of the smuggled message.
+
+697
+00:34:38,110 --> 00:34:40,230
+As an example, let's see
+what happens when an attacker
+
+698
+00:34:40,230 --> 00:34:44,260
+smuggles a HEAD cache, cacheable request.
+
+699
+00:34:44,260 --> 00:34:46,750
+As you saw, the proxy will
+send the first response
+
+700
+00:34:46,750 --> 00:34:47,893
+back to the attacker.
+
+701
+00:34:48,870 --> 00:34:51,350
+Next, it will concatenate
+the HEAD request,
+
+702
+00:34:51,350 --> 00:34:55,430
+or the HEAD response with
+a cache-control header
+
+703
+00:34:55,430 --> 00:34:58,350
+that will tell the web
+cache to store this response
+
+704
+00:34:58,350 --> 00:35:00,103
+with the second smuggled response,
+
+705
+00:35:01,120 --> 00:35:03,620
+in this case, containing
+the malicious JavaScript.
+
+706
+00:35:05,020 --> 00:35:06,930
+And finally, the next request,
+
+707
+00:35:06,930 --> 00:35:09,250
+which was also issued by the attacker,
+
+708
+00:35:09,250 --> 00:35:12,760
+will be responded, this time
+with the concatenated message,
+
+709
+00:35:12,760 --> 00:35:16,050
+which will force the
+web cache to store this
+
+710
+00:35:16,050 --> 00:35:17,250
+for the future requests.
+
+711
+00:35:18,600 --> 00:35:20,723
+So, when a client request,
+
+712
+00:35:21,900 --> 00:35:24,190
+so, when a client requests
+for the same resource
+
+713
+00:35:24,190 --> 00:35:25,890
+that the attacker specified,
+
+714
+00:35:25,890 --> 00:35:28,330
+the malicious response will be sent back
+
+715
+00:35:28,330 --> 00:35:31,320
+without the need of any
+instructions, because it will be
+
+716
+00:35:31,320 --> 00:35:33,783
+stored in the cache for
+this specific resource.
+
+717
+00:35:37,820 --> 00:35:40,960
+Again, I believe it will help to see this
+
+718
+00:35:40,960 --> 00:35:42,213
+in the following diagram.
+
+719
+00:35:43,530 --> 00:35:46,540
+As I said, the attacker will
+send two pipelined requests,
+
+720
+00:35:46,540 --> 00:35:48,203
+one containing the smuggled payload,
+
+721
+00:35:48,203 --> 00:35:51,003
+and the other specifying the
+URL that will be poisoned.
+
+722
+00:35:52,010 --> 00:35:54,370
+This can be any endpoint
+that the attacker wants,
+
+723
+00:35:54,370 --> 00:35:56,643
+even non-existent endpoints will work.
+
+724
+00:35:57,580 --> 00:35:59,850
+The request will get split by the proxy
+
+725
+00:35:59,850 --> 00:36:01,810
+and forwarded to the backend server.
+
+726
+00:36:01,810 --> 00:36:04,290
+And as you can see, the
+messages are pipelined
+
+727
+00:36:04,290 --> 00:36:06,520
+from the source, so this will work,
+
+728
+00:36:06,520 --> 00:36:10,370
+even if pipelining is not
+enforced or even allowed.
+
+729
+00:36:10,370 --> 00:36:13,170
+In this case, the request
+will still be enqueued
+
+730
+00:36:13,170 --> 00:36:14,700
+in the same connection,
+
+731
+00:36:15,540 --> 00:36:19,010
+the only difference is that
+they will be sent consecutively,
+
+732
+00:36:19,010 --> 00:36:21,203
+but not concatenated.
+
+733
+00:36:23,290 --> 00:36:25,220
+Now the backend server will, again,
+
+734
+00:36:25,220 --> 00:36:28,470
+split the messages and produce
+four isolated responses
+
+735
+00:36:28,470 --> 00:36:31,833
+that will, that are
+returned back to the proxy.
+
+736
+00:36:32,750 --> 00:36:36,180
+Here, both responses will
+go back to the attacker,
+
+737
+00:36:36,180 --> 00:36:39,030
+but sorry, the,
+
+738
+00:36:39,030 --> 00:36:41,739
+yeah, both responses will
+go back to the attacker,
+
+739
+00:36:41,739 --> 00:36:44,160
+but the second one will
+be stored in the cache
+
+740
+00:36:44,160 --> 00:36:47,430
+for the endpoint indicated in
+this second pipeline request.
+
+741
+00:36:47,430 --> 00:36:51,710
+So the second request that the
+proxy was able to recognize
+
+742
+00:36:51,710 --> 00:36:55,640
+will be used to store
+the, the results of these,
+
+743
+00:36:55,640 --> 00:36:57,373
+of the response.
+
+744
+00:36:58,480 --> 00:37:00,890
+This way, when a victim issues a request
+
+745
+00:37:00,890 --> 00:37:04,820
+for the same endpoint that
+the attacker specified,
+
+746
+00:37:04,820 --> 00:37:09,000
+the proxy will find a match
+with this key the cache table,
+
+747
+00:37:09,000 --> 00:37:13,440
+and it will return the stored
+response, and in this case,
+
+748
+00:37:13,440 --> 00:37:17,570
+the malicious payload with the JavaScript
+
+749
+00:37:17,570 --> 00:37:20,000
+will be sent back to the, to the victim,
+
+750
+00:37:20,000 --> 00:37:21,350
+that the attacker injected.
+
+751
+00:37:22,880 --> 00:37:25,200
+Remember that this technique can be used
+
+752
+00:37:25,200 --> 00:37:27,260
+every time a web cache exists,
+
+753
+00:37:27,260 --> 00:37:29,940
+as there are no extra requirements.
+
+754
+00:37:29,940 --> 00:37:32,500
+Even if the cache-control
+header is not used,
+
+755
+00:37:32,500 --> 00:37:35,580
+there will be at least
+one URL that can be used
+
+756
+00:37:35,580 --> 00:37:38,440
+to start poisoning the cache
+with malicious responses.
+
+757
+00:37:38,440 --> 00:37:40,470
+And that is if the,
+
+758
+00:37:40,470 --> 00:37:43,480
+if there is a web cache
+existing in any proxy
+
+759
+00:37:43,480 --> 00:37:45,103
+of the communication chain.
+
+760
+00:37:49,589 --> 00:37:52,500
+And the same thing can
+be used to force victims
+
+761
+00:37:52,500 --> 00:37:56,190
+into storing their own
+responses in the cache.
+
+762
+00:37:56,190 --> 00:37:58,570
+And if their response contain sensitive,
+
+763
+00:37:58,570 --> 00:38:00,540
+sensitive victim's data,
+
+764
+00:38:00,540 --> 00:38:02,680
+it will be placed in the cache, and later,
+
+765
+00:38:02,680 --> 00:38:05,490
+an attacker can access it
+through the same end point
+
+766
+00:38:05,490 --> 00:38:07,450
+that the victim requests.
+
+767
+00:38:07,450 --> 00:38:09,530
+This is known as web cache deception,
+
+768
+00:38:09,530 --> 00:38:12,890
+and in this case, it can
+even be used to store
+
+769
+00:38:12,890 --> 00:38:16,250
+dynamic responses, such
+as those that are issued
+
+770
+00:38:16,250 --> 00:38:17,250
+from login requests.
+
+771
+00:38:19,190 --> 00:38:21,603
+They will contain among any other data,
+
+772
+00:38:22,900 --> 00:38:25,710
+data such as session
+cookies or any other token
+
+773
+00:38:25,710 --> 00:38:29,900
+that the victim will
+receive in his response.
+
+774
+00:38:29,900 --> 00:38:33,250
+So again, in this case,
+the attacker can use these
+
+775
+00:38:33,250 --> 00:38:38,130
+to store anything, and it
+will work as an improved
+
+776
+00:38:38,130 --> 00:38:42,480
+cache deception attack, because
+in this case, as I said,
+
+777
+00:38:42,480 --> 00:38:44,380
+the dynamic information can be stored.
+
+778
+00:38:46,470 --> 00:38:48,010
+Now for the second demo,
+
+779
+00:38:48,010 --> 00:38:51,080
+I will use the same lab
+in the previous example,
+
+780
+00:38:51,080 --> 00:38:55,203
+but this time with a new
+endpoint, that can be cacheable.
+
+781
+00:38:55,203 --> 00:38:58,468
+In this case, it will also
+be called "cacheable".
+
+782
+00:38:58,468 --> 00:39:02,051
+And this will be
+available in the homepage.
+
+783
+00:39:03,568 --> 00:39:05,970
+As you can see, this is
+also a static resource,
+
+784
+00:39:05,970 --> 00:39:08,030
+but in this case, the cache-control header
+
+785
+00:39:08,030 --> 00:39:11,090
+is used to indicate that
+the response to this request
+
+786
+00:39:11,090 --> 00:39:12,790
+should be stored by the web cache.
+
+787
+00:39:13,800 --> 00:39:15,410
+In this attack, I will attempt to poison
+
+788
+00:39:15,410 --> 00:39:18,720
+the /helloSmuggler endpoint
+to return a malicious script
+
+789
+00:39:18,720 --> 00:39:22,050
+using the same redirect
+URL to inject the payload
+
+790
+00:39:22,050 --> 00:39:24,043
+in the body of the HEAD response,
+
+791
+00:39:25,210 --> 00:39:27,960
+as we already saw in the previous example.
+
+792
+00:39:27,960 --> 00:39:31,060
+However, this time, the
+HEAD response will contain
+
+793
+00:39:31,060 --> 00:39:34,130
+the cache directive and will
+cause that this response
+
+794
+00:39:34,130 --> 00:39:37,990
+gets stored for any endpoint
+that the attacker wants.
+
+795
+00:39:37,990 --> 00:39:40,920
+The same connection desync
+vulnerability will be leveraged
+
+796
+00:39:40,920 --> 00:39:43,100
+to smuggle the response,
+
+797
+00:39:43,100 --> 00:39:46,440
+and also our request for
+the poisoned endpoint
+
+798
+00:39:46,440 --> 00:39:49,550
+will be placed pipelined
+after the malicious one.
+
+799
+00:39:49,550 --> 00:39:52,597
+So the second request that
+we are seeing, or this,
+
+800
+00:39:52,597 --> 00:39:54,980
+the last request that we
+are seeing is actually
+
+801
+00:39:54,980 --> 00:39:57,403
+the request that will be poisoned.
+
+802
+00:39:59,300 --> 00:40:01,430
+When these, once this request is sent,
+
+803
+00:40:01,430 --> 00:40:04,090
+the /helloSmuggler
+endpoint will get poisoned
+
+804
+00:40:04,090 --> 00:40:06,610
+and all following requests
+will receive the response
+
+805
+00:40:06,610 --> 00:40:09,160
+containing the JavaScript
+injected by the attacker.
+
+806
+00:40:10,100 --> 00:40:13,260
+This will cause that their
+browser executes an eval function
+
+807
+00:40:13,260 --> 00:40:17,830
+to open an error message, and
+the same effect can be caused
+
+808
+00:40:17,830 --> 00:40:20,080
+on any end point the attacker wants.
+
+809
+00:40:20,080 --> 00:40:23,710
+So the same test is performed
+against the /home path,
+
+810
+00:40:23,710 --> 00:40:25,770
+and again, the URL gets poisoned,
+
+811
+00:40:25,770 --> 00:40:29,150
+and every time a victim
+requests this resource,
+
+812
+00:40:29,150 --> 00:40:33,120
+the JavaScript will be retrieved
+and it will be executed,
+
+813
+00:40:33,120 --> 00:40:36,440
+opening an alert box, and
+showing that the attacker,
+
+814
+00:40:36,440 --> 00:40:38,430
+that the attack was successful.
+
+815
+00:40:38,430 --> 00:40:40,290
+Finally, the last exploitation technique
+
+816
+00:40:40,290 --> 00:40:43,670
+involves using the remaining
+bytes of the split response
+
+817
+00:40:43,670 --> 00:40:46,670
+as another extra message
+that will also be placed
+
+818
+00:40:46,670 --> 00:40:47,770
+in the response queue.
+
+819
+00:40:48,723 --> 00:40:52,430
+Exploiting these behaviors
+will be almost the same as
+
+820
+00:40:52,430 --> 00:40:55,190
+exploiting HTTP response
+split vulnerabilities,
+
+821
+00:40:55,190 --> 00:40:58,440
+such as those obtained from
+line break header injections,
+
+822
+00:40:58,440 --> 00:41:01,200
+and in those cases, an attacker
+would split our response
+
+823
+00:41:01,200 --> 00:41:03,740
+using some reflection in the header name
+
+824
+00:41:03,740 --> 00:41:05,170
+or in the header value,
+
+825
+00:41:05,170 --> 00:41:08,630
+which will allow the attacker
+to place extra line breaks,
+
+826
+00:41:08,630 --> 00:41:10,680
+to control the boundaries of the headers.
+
+827
+00:41:11,710 --> 00:41:14,080
+In this case, the idea
+will be to use the HEAD,
+
+828
+00:41:14,080 --> 00:41:18,070
+the HEAD message to split the response,
+
+829
+00:41:18,070 --> 00:41:20,530
+which contains reflected data in this body
+
+830
+00:41:20,530 --> 00:41:21,580
+and in these headers.
+
+831
+00:41:22,780 --> 00:41:25,260
+In this reflected data,
+it must be possible
+
+832
+00:41:25,260 --> 00:41:27,940
+to include line break characters to build
+
+833
+00:41:27,940 --> 00:41:29,693
+a valid HTP response.
+
+834
+00:41:30,853 --> 00:41:33,900
+This behavior is not that rare in,
+
+835
+00:41:33,900 --> 00:41:36,400
+in reflected data is inside the body,
+
+836
+00:41:36,400 --> 00:41:39,510
+as there is vulnerability
+associated with this feature.
+
+837
+00:41:39,510 --> 00:41:41,700
+This is not true for line
+breaks for reflection
+
+838
+00:41:41,700 --> 00:41:42,680
+in the headers.
+
+839
+00:41:43,690 --> 00:41:47,180
+So that's why it's so rare
+to find them in the wild,
+
+840
+00:41:47,180 --> 00:41:49,500
+and that's why it's so rare to find
+
+841
+00:41:49,500 --> 00:41:53,160
+HTTP response split vulnerabilities.
+
+842
+00:41:53,160 --> 00:41:55,980
+So again, the first non-standard response
+
+843
+00:41:55,980 --> 00:41:59,790
+will go back to the attacker,
+as seen in previous examples.
+
+844
+00:41:59,790 --> 00:42:02,200
+And then the following
+request arriving to the proxy
+
+845
+00:42:02,200 --> 00:42:05,390
+will be forwarded through
+the same connection.
+
+846
+00:42:06,976 --> 00:42:10,200
+The backend will send back
+both smuggled responses,
+
+847
+00:42:10,200 --> 00:42:12,580
+and they will be
+concatenated at the proxy,
+
+848
+00:42:12,580 --> 00:42:15,420
+which will forward the
+first message to the client,
+
+849
+00:42:15,420 --> 00:42:17,053
+which issued the last request.
+
+850
+00:42:18,020 --> 00:42:20,930
+And then, as in the case, as in this case,
+
+851
+00:42:20,930 --> 00:42:23,357
+the remaining bytes are
+also a valid response,
+
+852
+00:42:23,357 --> 00:42:25,350
+a valid HTTP response.
+
+853
+00:42:25,350 --> 00:42:27,610
+They will be forwarded
+back to the next client
+
+854
+00:42:27,610 --> 00:42:29,670
+which sends a request to the proxy.
+
+855
+00:42:29,670 --> 00:42:31,960
+And this case, if the attacker was able to
+
+856
+00:42:31,960 --> 00:42:34,520
+reflect the line break,
+it would be possible
+
+857
+00:42:34,520 --> 00:42:36,490
+to set any arbitrary response,
+
+858
+00:42:36,490 --> 00:42:38,800
+controlling both the headers
+
+859
+00:42:38,800 --> 00:42:40,393
+and the body of the message.
+
+860
+00:42:42,260 --> 00:42:44,930
+However, this attack is
+not that easy to perform,
+
+861
+00:42:44,930 --> 00:42:47,120
+because it requires that the proxy either
+
+862
+00:42:47,120 --> 00:42:50,950
+stores the response, or that the pipeline,
+
+863
+00:42:50,950 --> 00:42:53,650
+or pipelining is allowed,
+and even enforced,
+
+864
+00:42:53,650 --> 00:42:55,420
+if no web cache is available.
+
+865
+00:42:55,420 --> 00:43:00,420
+So that's why it's hard to,
+to exploit this kind of,
+
+866
+00:43:00,540 --> 00:43:03,270
+of attacks, or this kind of techniques,
+
+867
+00:43:03,270 --> 00:43:06,420
+and why is not that
+easy to actually exploit
+
+868
+00:43:06,420 --> 00:43:09,880
+HTTP response splitting vulnerabilities.
+
+869
+00:43:11,740 --> 00:43:14,530
+So, some conclusions to finish.
+
+870
+00:43:14,530 --> 00:43:17,780
+First, we can say that
+the response smuggling,
+
+871
+00:43:17,780 --> 00:43:19,310
+that response smuggling does not rely
+
+872
+00:43:19,310 --> 00:43:22,680
+on extra vulnerabilities or
+special conditions to work.
+
+873
+00:43:22,680 --> 00:43:24,610
+This is because most of the requirements
+
+874
+00:43:24,610 --> 00:43:27,010
+for the explained techniques
+rely on the features
+
+875
+00:43:27,010 --> 00:43:29,590
+that the HTTP protocol offers.
+
+876
+00:43:29,590 --> 00:43:31,740
+What's more, almost no exploration,
+
+877
+00:43:31,740 --> 00:43:34,590
+no exploration phase is required,
+
+878
+00:43:34,590 --> 00:43:37,650
+and attacks presented
+in this talk can work
+
+879
+00:43:37,650 --> 00:43:40,380
+only with few static endpoints,
+
+880
+00:43:40,380 --> 00:43:43,903
+such as the one we, I
+showed me the, in the demo.
+
+881
+00:43:45,960 --> 00:43:49,640
+Also, using response smuggling
+
+882
+00:43:49,640 --> 00:43:51,530
+will allow an attacker to hijack both
+
+883
+00:43:51,530 --> 00:43:54,250
+requests and responses, in all cases,
+
+884
+00:43:54,250 --> 00:43:57,150
+fully compromising the
+confidentiality of the application.
+
+885
+00:43:58,180 --> 00:44:01,073
+Next, using nested injections,
+
+886
+00:44:02,690 --> 00:44:04,423
+and arbitrary cache poison,
+
+887
+00:44:05,420 --> 00:44:07,780
+it will be possible to (indistinct) users
+
+888
+00:44:07,780 --> 00:44:10,130
+taking valid responses
+from the web application,
+
+889
+00:44:10,130 --> 00:44:12,520
+either by affecting the
+resources of the server,
+
+890
+00:44:12,520 --> 00:44:17,283
+or by storing malicious payloads,
+replacing valid endpoints.
+
+891
+00:44:18,450 --> 00:44:21,670
+What's more, response
+concatenation and scripting,
+
+892
+00:44:21,670 --> 00:44:23,730
+as well as classic request
+smuggling can be used
+
+893
+00:44:23,730 --> 00:44:26,800
+to modify or control a
+request or response queue
+
+894
+00:44:26,800 --> 00:44:28,660
+of a persistent connection.
+
+895
+00:44:28,660 --> 00:44:30,660
+This completely compromises the integrity
+
+896
+00:44:30,660 --> 00:44:35,030
+of the connection queue, and
+the web application itself.
+
+897
+00:44:35,030 --> 00:44:37,430
+And also client process can be controlled
+
+898
+00:44:37,430 --> 00:44:39,970
+using arbitrary JavaScript
+when response injection
+
+899
+00:44:39,970 --> 00:44:43,563
+is possible, or when the web
+cache of a proxy is enabled.
+
+900
+00:44:45,420 --> 00:44:48,680
+And finally, with a detailed analysis
+
+901
+00:44:48,680 --> 00:44:50,240
+of the transmission and processing time,
+
+902
+00:44:50,240 --> 00:44:53,870
+is it possible to increase
+the reliability of the attack
+
+903
+00:44:53,870 --> 00:44:58,193
+and obtain these results with
+a few malicious requests.
+
+904
+00:44:59,200 --> 00:45:01,960
+So all this should be
+enough for vendors to
+
+905
+00:45:01,960 --> 00:45:04,110
+once and for all understand that
+
+906
+00:45:04,110 --> 00:45:06,770
+a desynchronization
+vulnerability just by itself
+
+907
+00:45:06,770 --> 00:45:10,140
+should be seen as one of the
+most critical vulnerabilities
+
+908
+00:45:10,140 --> 00:45:12,103
+or the most critical web vulnerabilities,
+
+909
+00:45:12,103 --> 00:45:13,313
+that a system can have.
+
+910
+00:45:16,450 --> 00:45:19,700
+Now, I will answer any
+questions that you might have,
+
+911
+00:45:19,700 --> 00:45:21,640
+and you can also send me any question
+
+912
+00:45:21,640 --> 00:45:23,020
+or doubt that you have,
+
+913
+00:45:23,020 --> 00:45:26,280
+or if you would like to
+talk about the subject,
+
+914
+00:45:26,280 --> 00:45:27,930
+you can do it through my email
+
+915
+00:45:27,930 --> 00:45:30,050
+or through my Twitter account.
+
+916
+00:45:30,050 --> 00:45:30,883
+Thank you.
+

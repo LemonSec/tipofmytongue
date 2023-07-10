@@ -1,0 +1,2863 @@
+﻿1
+00:00:03,440 --> 00:00:04,683
+- Hello, DEF CON.
+
+2
+00:00:04,683 --> 00:00:07,833
+Welcome to our talk, DNS section.
+
+3
+00:00:09,850 --> 00:00:13,210
+Today will be an
+interesting talk about DNS
+
+4
+00:00:13,210 --> 00:00:16,473
+and the workings of the
+internet and cryptography.
+
+5
+00:00:17,330 --> 00:00:20,860
+So what this talk is about,
+
+6
+00:00:20,860 --> 00:00:23,510
+is about an email privacy breach
+
+7
+00:00:23,510 --> 00:00:26,990
+in the largest French cloud provider,
+
+8
+00:00:26,990 --> 00:00:30,780
+which is all sort of first
+practical attack on NSEC,
+
+9
+00:00:30,780 --> 00:00:32,063
+DNSSEC zone walking.
+
+10
+00:00:33,270 --> 00:00:34,960
+And finally, some cautionary tale
+
+11
+00:00:34,960 --> 00:00:37,763
+about the use of hash functions.
+
+12
+00:00:39,850 --> 00:00:41,290
+Why this matters?
+
+13
+00:00:41,290 --> 00:00:43,210
+Is because DNS is everywhere,
+
+14
+00:00:43,210 --> 00:00:45,210
+it's part of the internet,
+
+15
+00:00:45,210 --> 00:00:46,270
+it's heavily used,
+
+16
+00:00:46,270 --> 00:00:47,370
+it's very important,
+
+17
+00:00:47,370 --> 00:00:50,900
+and there are tons of
+potentially very valuable,
+
+18
+00:00:50,900 --> 00:00:53,683
+interesting data all over the place.
+
+19
+00:00:55,070 --> 00:00:57,590
+The other reason why it
+matters is that zone walking
+
+20
+00:00:57,590 --> 00:01:02,590
+has not been demonstrated in
+the wild to this extent before,
+
+21
+00:01:02,640 --> 00:01:03,570
+and this is the first time
+
+22
+00:01:03,570 --> 00:01:05,410
+that we actually recover very valuable,
+
+23
+00:01:05,410 --> 00:01:06,823
+interesting data from it.
+
+24
+00:01:09,320 --> 00:01:10,490
+Who we are?
+
+25
+00:01:10,490 --> 00:01:12,760
+Well, this is Hadrien.
+
+26
+00:01:13,980 --> 00:01:15,570
+- Hello.
+
+27
+00:01:15,570 --> 00:01:16,500
+- And I'm Remi,
+
+28
+00:01:16,500 --> 00:01:20,370
+We are from Ecole Normale
+Superieure PSL university
+
+29
+00:01:20,370 --> 00:01:24,300
+in Paris, France in the
+beautiful place itself.
+
+30
+00:01:24,300 --> 00:01:27,570
+And this is not the first
+time that we talk at DEF CON,
+
+31
+00:01:27,570 --> 00:01:30,930
+this has been done in collaboration
+
+32
+00:01:30,930 --> 00:01:33,623
+with Amaury Barral and David Naccache.
+
+33
+00:01:34,710 --> 00:01:36,440
+So without further ado,
+
+34
+00:01:36,440 --> 00:01:39,963
+let's start with the
+first part of our talk.
+
+35
+00:01:45,370 --> 00:01:49,060
+So to understand DNS is very important
+
+36
+00:01:49,060 --> 00:01:50,150
+to understand our talk.
+
+37
+00:01:50,150 --> 00:01:51,900
+We're gonna start with that.
+
+38
+00:01:51,900 --> 00:01:54,350
+The basic question that
+you ask with DNS is,
+
+39
+00:01:54,350 --> 00:01:56,998
+who's behind our website?
+
+40
+00:01:56,998 --> 00:02:01,230
+Such as skytalks-vidz.com for instance.
+
+41
+00:02:01,230 --> 00:02:03,890
+So DNS, the Domain Name System,
+
+42
+00:02:03,890 --> 00:02:06,700
+is a system to name remote resources,
+
+43
+00:02:06,700 --> 00:02:08,360
+to give you access to them,
+
+44
+00:02:08,360 --> 00:02:12,400
+and it does that by holding
+a distributed database,
+
+45
+00:02:12,400 --> 00:02:17,400
+a system that contains Record
+Resources and domain names
+
+46
+00:02:17,460 --> 00:02:22,180
+and that allows resolvers to
+figure out the translation
+
+47
+00:02:22,180 --> 00:02:25,103
+between a domain name and an IP address.
+
+48
+00:02:26,840 --> 00:02:31,540
+The DNS tree itself is
+subdivided into sub trees
+
+49
+00:02:31,540 --> 00:02:32,580
+that are called zones
+
+50
+00:02:32,580 --> 00:02:35,200
+and that are administrated
+by different people,
+
+51
+00:02:35,200 --> 00:02:39,183
+different entities, whose role
+it is to keep it up to date.
+
+52
+00:02:40,230 --> 00:02:44,840
+So when you want to say, build a website,
+
+53
+00:02:44,840 --> 00:02:46,220
+create a new website.
+
+54
+00:02:46,220 --> 00:02:49,340
+Well, you actually need to
+go through several steps.
+
+55
+00:02:49,340 --> 00:02:51,590
+Once you have a device
+and you have a server
+
+56
+00:02:51,590 --> 00:02:53,351
+and you have a website running on it,
+
+57
+00:02:53,351 --> 00:02:56,960
+you need to add your device,
+
+58
+00:02:56,960 --> 00:03:00,510
+your IP address to a DNS server.
+
+59
+00:03:00,510 --> 00:03:01,343
+And to do that,
+
+60
+00:03:01,343 --> 00:03:05,860
+you call registrar and
+you run a DNS server
+
+61
+00:03:05,860 --> 00:03:09,460
+that advertises your IP in connection
+
+62
+00:03:09,460 --> 00:03:12,303
+to the domain name that
+you are interested into,
+
+63
+00:03:13,210 --> 00:03:15,900
+and you have to maintain
+all of this of course.
+
+64
+00:03:15,900 --> 00:03:19,250
+Most people do not want
+to go to such trouble
+
+65
+00:03:19,250 --> 00:03:21,490
+to get their website running and therefore
+
+66
+00:03:21,490 --> 00:03:24,653
+they just pay someone
+to do the job for them,
+
+67
+00:03:25,960 --> 00:03:29,450
+including getting all
+this working together.
+
+68
+00:03:29,450 --> 00:03:32,910
+This is the spirit behind cloud hosting,
+
+69
+00:03:32,910 --> 00:03:37,810
+which does provide the device,
+the hosting, the maintenance,
+
+70
+00:03:37,810 --> 00:03:42,233
+and also the DNS registration
+and DNS publication.
+
+71
+00:03:43,660 --> 00:03:47,673
+And this is the main thing
+we are going to talk about.
+
+72
+00:03:52,243 --> 00:03:54,940
+- Our target today is the OVHcloud,
+
+73
+00:03:54,940 --> 00:03:57,350
+they are the largest French cloud provider
+
+74
+00:03:57,350 --> 00:03:59,739
+by far and second in Europe,
+
+75
+00:03:59,739 --> 00:04:03,723
+and they sell all kind of
+cloud related services.
+
+76
+00:04:05,867 --> 00:04:08,750
+Particularly, to sell domain names,
+
+77
+00:04:08,750 --> 00:04:13,440
+and a basic plan for domain
+names include: email redirects.
+
+78
+00:04:13,440 --> 00:04:16,300
+Namely, it means you don't
+get the full email account,
+
+79
+00:04:16,300 --> 00:04:20,700
+but you kind of redirect like
+contact@yourOVHcloud domain
+
+80
+00:04:20,700 --> 00:04:23,240
+to your usual Gmail account.
+
+81
+00:04:23,240 --> 00:04:27,283
+And as a side note, they do
+host WikiLeaks since 2010.
+
+82
+00:04:29,610 --> 00:04:34,610
+So let's create a email redirect
+on the example domain here,
+
+83
+00:04:35,230 --> 00:04:39,780
+dnssection.ovh which we have
+just bought for the occasion.
+
+84
+00:04:39,780 --> 00:04:41,810
+So in the admin panel,
+
+85
+00:04:41,810 --> 00:04:44,370
+we just add the redirect called
+
+86
+00:04:44,370 --> 00:04:49,370
+test@dnssection.ovh to target@yopmail.com
+
+87
+00:04:49,720 --> 00:04:51,133
+and click confirm.
+
+88
+00:04:52,520 --> 00:04:54,850
+And if we go look at the DNS zone,
+
+89
+00:04:54,850 --> 00:04:57,465
+which we can also find in the admin panel,
+
+90
+00:04:57,465 --> 00:05:00,077
+then we realize there is a new DNS
+
+91
+00:05:00,077 --> 00:05:01,650
+(indistinct) called Intel.
+
+92
+00:05:01,650 --> 00:05:04,800
+If we zoom of this, then we can see
+
+93
+00:05:04,800 --> 00:05:08,550
+that for test@dnssection.ovh,
+
+94
+00:05:08,550 --> 00:05:11,930
+and you have a TXT record
+with your target email,
+
+95
+00:05:11,930 --> 00:05:13,803
+so target@yopmail.com.
+
+96
+00:05:14,850 --> 00:05:18,310
+So this means that anyone
+
+97
+00:05:18,310 --> 00:05:23,210
+into wall can just query
+test@dnssection.ovh
+
+98
+00:05:23,210 --> 00:05:26,023
+and get to target of your email redirect.
+
+99
+00:05:26,910 --> 00:05:30,120
+Obviously it's not easy
+to get to a whole database
+
+100
+00:05:30,120 --> 00:05:32,370
+because you cannot ask the DNS server
+
+101
+00:05:32,370 --> 00:05:35,997
+solve a whole list of sub
+domains of@dnssection.ovh.
+
+102
+00:05:44,605 --> 00:05:45,910
+- So why does it matter?
+
+103
+00:05:45,910 --> 00:05:47,280
+Why do we care?
+
+104
+00:05:47,280 --> 00:05:50,270
+Well, assume for a
+moment that we do manage
+
+105
+00:05:50,270 --> 00:05:55,120
+to find a way to access
+this redirection database,
+
+106
+00:05:55,120 --> 00:05:57,360
+it does contain a lot of
+interesting information,
+
+107
+00:05:57,360 --> 00:06:00,730
+it's actually essentially
+client information
+
+108
+00:06:00,730 --> 00:06:03,920
+for the users of this
+cloud hosting service.
+
+109
+00:06:03,920 --> 00:06:07,800
+It includes emails of
+course, but also names
+
+110
+00:06:07,800 --> 00:06:09,740
+and potentially more information,
+
+111
+00:06:09,740 --> 00:06:11,960
+billing information for instance,
+
+112
+00:06:11,960 --> 00:06:13,960
+with which we can be creative,
+
+113
+00:06:13,960 --> 00:06:16,110
+we can actually start wondering, okay,
+
+114
+00:06:16,110 --> 00:06:17,650
+what can we do with this information?
+
+115
+00:06:17,650 --> 00:06:21,960
+Well, we can perhaps spam,
+we can try password dumps,
+
+116
+00:06:21,960 --> 00:06:25,490
+we can perform social
+engineering on the basis
+
+117
+00:06:25,490 --> 00:06:26,323
+of this information,
+
+118
+00:06:26,323 --> 00:06:29,450
+we can perhaps find
+interesting information
+
+119
+00:06:29,450 --> 00:06:31,620
+on the businesses that
+they hold and so forth.
+
+120
+00:06:31,620 --> 00:06:33,890
+So there's really a lot of ideas
+
+121
+00:06:33,890 --> 00:06:36,410
+about what we can do with this information
+
+122
+00:06:36,410 --> 00:06:39,963
+and we will show you that in
+the latest part of this talk.
+
+123
+00:06:42,800 --> 00:06:47,750
+So well, let's try the
+naive way, Sudo bruteforce,
+
+124
+00:06:47,750 --> 00:06:51,050
+to recover all the information using
+
+125
+00:06:51,050 --> 00:06:53,530
+just a DNS query directly
+
+126
+00:06:53,530 --> 00:06:57,110
+on the hosts that we're interested in.
+
+127
+00:06:57,110 --> 00:06:58,650
+So the way we would do that,
+
+128
+00:06:58,650 --> 00:07:03,263
+is we get lists of OVH-handled domains,
+
+129
+00:07:04,310 --> 00:07:06,870
+we select those that we
+are most interested in,
+
+130
+00:07:06,870 --> 00:07:11,820
+get the sublist and lists and
+we DNS query these domains.
+
+131
+00:07:11,820 --> 00:07:14,020
+Works rather well for the domains
+
+132
+00:07:14,020 --> 00:07:16,263
+that are hosted by OVH.
+
+133
+00:07:17,440 --> 00:07:18,790
+And in doing so,
+
+134
+00:07:18,790 --> 00:07:21,430
+We have two ways essentially to get
+
+135
+00:07:21,430 --> 00:07:23,670
+an interesting redirect email,
+
+136
+00:07:23,670 --> 00:07:27,290
+either we look for the
+public email addresses,
+
+137
+00:07:27,290 --> 00:07:30,160
+the ones that are
+displayed on the website,
+
+138
+00:07:30,160 --> 00:07:31,510
+and we try to see whether
+
+139
+00:07:31,510 --> 00:07:33,740
+they redirect to something interesting.
+
+140
+00:07:33,740 --> 00:07:35,440
+This is one way.
+
+141
+00:07:35,440 --> 00:07:38,103
+The other way is we don't really know
+
+142
+00:07:38,103 --> 00:07:40,170
+what the real address is
+
+143
+00:07:40,170 --> 00:07:42,510
+or whether they are
+redirects to begin with,
+
+144
+00:07:42,510 --> 00:07:44,970
+so well, we try addresses,
+
+145
+00:07:44,970 --> 00:07:49,970
+we think are likely to exist
+such as abuse@the domain,
+
+146
+00:07:50,120 --> 00:07:54,420
+admin@, contact@ the domain.
+
+147
+00:07:54,420 --> 00:07:55,323
+And in doing so,
+
+148
+00:07:56,310 --> 00:07:58,400
+if we get a response,
+
+149
+00:07:58,400 --> 00:08:00,450
+we get not only the existence
+
+150
+00:08:00,450 --> 00:08:03,200
+of this particular email
+address that we just guessed,
+
+151
+00:08:03,200 --> 00:08:08,130
+but also the corresponding
+targets, email redirect,
+
+152
+00:08:08,130 --> 00:08:11,020
+which does not appear
+either on the website
+
+153
+00:08:11,020 --> 00:08:13,733
+or in that case as well.
+
+154
+00:08:16,170 --> 00:08:17,860
+Of course, if you just try to do this,
+
+155
+00:08:17,860 --> 00:08:19,700
+you're gonna run to trouble
+
+156
+00:08:19,700 --> 00:08:24,400
+because it's very likely
+that it is not stealthy
+
+157
+00:08:24,400 --> 00:08:29,097
+to just query massively random DNS servers
+
+158
+00:08:30,200 --> 00:08:32,320
+with random email addresses.
+
+159
+00:08:32,320 --> 00:08:33,570
+So in practice,
+
+160
+00:08:33,570 --> 00:08:34,720
+if you want to do this,
+
+161
+00:08:34,720 --> 00:08:37,750
+you better be clever
+and avoid rate limiting
+
+162
+00:08:37,750 --> 00:08:40,210
+by using several clients.
+
+163
+00:08:40,210 --> 00:08:43,680
+But just for the sake
+of demonstrations here,
+
+164
+00:08:43,680 --> 00:08:46,070
+we cannot do this from a single host.
+
+165
+00:08:46,070 --> 00:08:49,590
+We using very simple, low tech devices,
+
+166
+00:08:49,590 --> 00:08:54,590
+including bash and dig
+and just the file system.
+
+167
+00:08:55,510 --> 00:08:58,730
+So really we just run a faster script
+
+168
+00:08:58,730 --> 00:09:01,290
+that queries the DNS server
+
+169
+00:09:01,290 --> 00:09:04,720
+to get a lot of interesting
+information about the domains,
+
+170
+00:09:04,720 --> 00:09:09,320
+and then we dig.txt records,
+
+171
+00:09:09,320 --> 00:09:12,700
+the one that contains
+the redirect in our case.
+
+172
+00:09:12,700 --> 00:09:14,663
+So well, there's demo for that.
+
+173
+00:09:21,080 --> 00:09:23,980
+Okay, so let's look at this in action.
+
+174
+00:09:23,980 --> 00:09:27,853
+You have here, the bash
+script we just showed you,
+
+175
+00:09:31,150 --> 00:09:35,493
+and we are going to run
+this very script right now.
+
+176
+00:09:38,800 --> 00:09:41,920
+It will show addresses
+we just blurred them
+
+177
+00:09:41,920 --> 00:09:44,460
+for privacy reasons.
+
+178
+00:09:44,460 --> 00:09:45,410
+So on the left,
+
+179
+00:09:45,410 --> 00:09:48,150
+you have the addresses that we query
+
+180
+00:09:48,150 --> 00:09:52,000
+and we recovered a TXT
+records on the right
+
+181
+00:09:52,000 --> 00:09:54,705
+with the redirection email.
+
+182
+00:09:54,705 --> 00:09:57,290
+This video is real time,
+
+183
+00:09:57,290 --> 00:10:00,730
+so it shows you that this is quite fast,
+
+184
+00:10:00,730 --> 00:10:02,933
+in fact, quite efficient.
+
+185
+00:10:03,770 --> 00:10:06,370
+And we do this from a single host here,
+
+186
+00:10:06,370 --> 00:10:09,377
+but of course you can
+parallelize these efforts
+
+187
+00:10:09,377 --> 00:10:12,393
+by calling several
+addresses at the same time.
+
+188
+00:10:18,990 --> 00:10:19,990
+So what do we get?
+
+189
+00:10:19,990 --> 00:10:22,010
+It does work.
+
+190
+00:10:22,010 --> 00:10:22,843
+It does work.
+
+191
+00:10:22,843 --> 00:10:24,060
+We do get information.
+
+192
+00:10:24,060 --> 00:10:26,480
+So if we, if we consider a subset
+
+193
+00:10:26,480 --> 00:10:30,590
+of about 14,000 potentially
+vulnerable domains
+
+194
+00:10:30,590 --> 00:10:33,680
+into a frTLD,
+
+195
+00:10:33,680 --> 00:10:38,440
+what we get is about
+15,000 email redirects
+
+196
+00:10:38,440 --> 00:10:42,200
+of which about 10,000
+unique email addresses,
+
+197
+00:10:42,200 --> 00:10:44,200
+something we didn't have before.
+
+198
+00:10:44,200 --> 00:10:46,040
+So this is extremely interesting,
+
+199
+00:10:46,040 --> 00:10:47,830
+but you might say, well,
+
+200
+00:10:47,830 --> 00:10:52,530
+we used public emails or
+easily guessable emails
+
+201
+00:10:52,530 --> 00:10:56,080
+and we found private redirection emails.
+
+202
+00:10:56,080 --> 00:10:58,456
+So well, I mean, it's interesting,
+
+203
+00:10:58,456 --> 00:11:00,610
+but what are we not seeing?
+
+204
+00:11:00,610 --> 00:11:03,450
+What are we missing from the picture?
+
+205
+00:11:03,450 --> 00:11:06,943
+And that's where DNS section
+comes into play, really.
+
+206
+00:11:12,860 --> 00:11:14,840
+So what we are gonna do,
+
+207
+00:11:14,840 --> 00:11:17,640
+is we are going to use DNSSEC,
+
+208
+00:11:17,640 --> 00:11:22,060
+DNSSEC is in itself a
+very interesting topic
+
+209
+00:11:22,060 --> 00:11:23,010
+and a very large one.
+
+210
+00:11:23,010 --> 00:11:25,040
+If we want to go into details,
+
+211
+00:11:25,040 --> 00:11:27,840
+we might as well do a
+talk entirely on the topic
+
+212
+00:11:27,840 --> 00:11:30,280
+and perhaps even several talks.
+
+213
+00:11:30,280 --> 00:11:32,380
+So very short summary
+
+214
+00:11:32,380 --> 00:11:34,020
+What you should know about it is that,
+
+215
+00:11:34,020 --> 00:11:37,460
+DNS itself is insecure
+if you use it like it
+
+216
+00:11:37,460 --> 00:11:40,147
+just like this, so you need extensions,
+
+217
+00:11:40,147 --> 00:11:43,293
+which are provided for
+most of them by DNSSEC.
+
+218
+00:11:44,170 --> 00:11:47,680
+Every modern good
+implementation of a DNS server
+
+219
+00:11:47,680 --> 00:11:52,450
+does have support for
+DNSSEC and so do Resolvers.
+
+220
+00:11:52,450 --> 00:11:54,260
+Essentially what DNS does,
+
+221
+00:11:54,260 --> 00:11:58,315
+is it provides a root of trust
+and a tree derivation scheme
+
+222
+00:11:58,315 --> 00:12:00,060
+that use public-key cryptography,
+
+223
+00:12:00,060 --> 00:12:03,040
+digital signatures to ensure authenticity.
+
+224
+00:12:03,040 --> 00:12:05,100
+So you know you you're really talking
+
+225
+00:12:05,100 --> 00:12:07,690
+to the servers you think
+you are talking to,
+
+226
+00:12:07,690 --> 00:12:09,800
+and that the information provided there
+
+227
+00:12:09,800 --> 00:12:14,093
+is at least the one that
+it commits to sending.
+
+228
+00:12:15,230 --> 00:12:17,730
+So it requires cryptography elements
+
+229
+00:12:17,730 --> 00:12:22,210
+and it requires sometimes
+some lockpicking skills
+
+230
+00:12:22,210 --> 00:12:27,210
+as perhaps the recent enough
+incident depicted here shows
+
+231
+00:12:27,578 --> 00:12:28,990
+if you know what I'm talking about.
+
+232
+00:12:28,990 --> 00:12:31,690
+If not, look into what happens
+
+233
+00:12:31,690 --> 00:12:34,823
+in a key rollover of a session of DNSSEC.
+
+234
+00:12:36,360 --> 00:12:38,440
+So we can look at this,
+
+235
+00:12:38,440 --> 00:12:41,080
+we can look at the information sent to us
+
+236
+00:12:41,080 --> 00:12:43,923
+by a DNSSEC compatible server.
+
+237
+00:12:50,190 --> 00:12:53,454
+- One tool that we can
+use to recover information
+
+238
+00:12:53,454 --> 00:12:56,473
+about DNSSEC, is DNSVIZ.
+
+239
+00:12:57,740 --> 00:13:02,683
+It is available in your
+favorite browser @dnsviz.net.
+
+240
+00:13:05,600 --> 00:13:09,900
+So here, we're apply it to dnssection.ovh,
+
+241
+00:13:09,900 --> 00:13:11,680
+which is the website we use
+
+242
+00:13:11,680 --> 00:13:14,443
+for demonstration
+proposals during this talk.
+
+243
+00:13:15,520 --> 00:13:18,643
+It has been slowed down
+so I can comment on it.
+
+244
+00:13:19,498 --> 00:13:22,063
+It is actually much faster than this.
+
+245
+00:13:27,120 --> 00:13:30,030
+It queries all the interesting information
+
+246
+00:13:30,030 --> 00:13:32,260
+about the DNS records here,
+
+247
+00:13:32,260 --> 00:13:35,773
+and we can see the full chain
+of trust for the domain.
+
+248
+00:13:37,400 --> 00:13:39,590
+So in particular,
+
+249
+00:13:39,590 --> 00:13:42,542
+we can see all the crypto
+graphic information,
+
+250
+00:13:42,542 --> 00:13:46,080
+algorithm in use, and we can also see
+
+251
+00:13:46,080 --> 00:13:51,080
+some of the common, super code
+that appear in the DNS zone.
+
+252
+00:13:51,425 --> 00:13:52,258
+SOA,
+
+253
+00:13:52,258 --> 00:13:53,780
+TXT,
+
+254
+00:13:53,780 --> 00:13:54,680
+MX,
+
+255
+00:13:54,680 --> 00:13:55,576
+NS
+
+256
+00:13:55,576 --> 00:13:56,683
+and A records.
+
+257
+00:13:58,730 --> 00:14:02,400
+You can also see which
+algorithm have been used.
+
+258
+00:14:02,400 --> 00:14:06,150
+In this particular case, dnssection.ovh
+
+259
+00:14:06,150 --> 00:14:11,090
+users DNSSEC with algorithm 8(RSA/SHA-256)
+
+260
+00:14:12,941 --> 00:14:13,941
+with NSEC3.
+
+261
+00:14:19,060 --> 00:14:22,697
+And you can go up to
+the OVH and above zones
+
+262
+00:14:22,697 --> 00:14:25,830
+and see how things are abbreviated
+
+263
+00:14:25,830 --> 00:14:27,470
+for the (indistinct) trust.
+
+264
+00:14:27,470 --> 00:14:30,300
+Here, you can see that OVH switching
+
+265
+00:14:30,300 --> 00:14:33,920
+from algorithm eight to algorithm 13.
+
+266
+00:14:33,920 --> 00:14:36,693
+one of the 2020 goals for ethnic.
+
+267
+00:14:39,120 --> 00:14:44,120
+DNSVIZ also checks for
+errors Hyatt ondevcon.org.
+
+268
+00:14:44,330 --> 00:14:47,759
+You will be surprised unless of course,
+
+269
+00:14:47,759 --> 00:14:48,592
+we're going to have,
+
+270
+00:14:48,592 --> 00:14:51,733
+watch our talk in advance
+and have already fixed it.
+
+271
+00:15:03,032 --> 00:15:07,480
+Let us dive in a fundamental
+obstacle of DNSSEC.
+
+272
+00:15:07,480 --> 00:15:11,170
+So issue with negative responses.
+
+273
+00:15:11,170 --> 00:15:13,130
+For positive responses is quite easy,
+
+274
+00:15:13,130 --> 00:15:14,570
+if you want to authenticate,
+
+275
+00:15:14,570 --> 00:15:18,963
+is actually record
+"example.com is at IP 1.2.3.4",
+
+276
+00:15:20,190 --> 00:15:23,040
+is exist, sending it's quite easy,
+
+277
+00:15:23,040 --> 00:15:25,890
+you just affix your signature to it,
+
+278
+00:15:25,890 --> 00:15:27,500
+but if you want to authenticate,
+
+279
+00:15:27,500 --> 00:15:30,940
+that's always no record
+for bad.example.com.
+
+280
+00:15:30,940 --> 00:15:32,680
+This is much trickier,
+
+281
+00:15:32,680 --> 00:15:34,457
+you obviously cannot put every
+
+282
+00:15:34,457 --> 00:15:37,673
+negative possibility
+(indistinct) in the zone.
+
+283
+00:15:38,767 --> 00:15:41,003
+This is where NSEC comes to the rescue.
+
+284
+00:15:43,530 --> 00:15:45,950
+NSEC is much more secure and complicated
+
+285
+00:15:45,950 --> 00:15:48,630
+that what I'm going to explain here,
+
+286
+00:15:48,630 --> 00:15:50,480
+but all you need to understand
+
+287
+00:15:50,480 --> 00:15:54,450
+is the principle depicted in this slide.
+
+288
+00:15:54,450 --> 00:15:59,450
+So basically NSEC signs intervals
+where there is no domain.
+
+289
+00:16:01,470 --> 00:16:03,680
+For example, it could
+sign there is no domain
+
+290
+00:16:03,680 --> 00:16:08,630
+between apple.example.com
+and carrot.example.com
+
+291
+00:16:08,630 --> 00:16:11,910
+in lexicographical order and therefore,
+
+292
+00:16:11,910 --> 00:16:15,770
+it means that bad.example.com cannot exist
+
+293
+00:16:15,770 --> 00:16:17,803
+because B is between A and C.
+
+294
+00:16:21,149 --> 00:16:23,177
+It does create a big issue,
+
+295
+00:16:24,060 --> 00:16:29,060
+so that you can enumerate
+all records in the DNS zone.
+
+296
+00:16:29,410 --> 00:16:31,020
+How to do that is quite easy,
+
+297
+00:16:31,020 --> 00:16:32,939
+just pick a random name,
+
+298
+00:16:32,939 --> 00:16:36,940
+for example, fgfrd.example.com
+
+299
+00:16:36,940 --> 00:16:39,713
+and query the DNS server for it.
+
+300
+00:16:39,713 --> 00:16:43,360
+And obviously fgfrd does not exist
+
+301
+00:16:43,360 --> 00:16:44,350
+it's a random name,
+
+302
+00:16:44,350 --> 00:16:48,600
+so it will enter as the
+interval associated with it
+
+303
+00:16:48,600 --> 00:16:50,572
+and so here it tells you
+
+304
+00:16:50,572 --> 00:16:53,230
+that there is nothing
+between carrot.example.com
+
+305
+00:16:53,230 --> 00:16:56,040
+and good.example.com.
+
+306
+00:16:56,040 --> 00:16:56,873
+So we good.
+
+307
+00:16:56,873 --> 00:17:00,670
+We have just found two sub
+domains of example.com.
+
+308
+00:17:00,670 --> 00:17:03,180
+We just repeat with the successor of good,
+
+309
+00:17:03,180 --> 00:17:08,010
+here, good A, get another
+name another interval and loop
+
+310
+00:17:08,010 --> 00:17:12,173
+until we found every
+positive record interval.
+
+311
+00:17:13,550 --> 00:17:16,620
+So it means that it is a trivially doable
+
+312
+00:17:16,620 --> 00:17:20,360
+for an attacker to get
+to the whole DNS zone
+
+313
+00:17:20,360 --> 00:17:23,183
+of an NSEC enabled domain.
+
+314
+00:17:27,370 --> 00:17:28,717
+- So now you might be thinking, okay,
+
+315
+00:17:28,717 --> 00:17:29,840
+that's what we're gonna do,
+
+316
+00:17:29,840 --> 00:17:32,790
+we're just gonna use NSEC zone walking,
+
+317
+00:17:32,790 --> 00:17:34,630
+Nope, that's not what we're gonna do
+
+318
+00:17:36,100 --> 00:17:39,340
+because NSEC'S zone walking doesn't work.
+
+319
+00:17:39,340 --> 00:17:42,180
+It doesn't work anymore in the real world
+
+320
+00:17:42,180 --> 00:17:47,180
+for the simple reason that no
+one uses NSEC at all anymore.
+
+321
+00:17:47,320 --> 00:17:49,010
+Yes, you can be sad about this,
+
+322
+00:17:49,010 --> 00:17:50,210
+is not what we gonna do.
+
+323
+00:17:50,210 --> 00:17:52,610
+We're gonna do something more clever,
+
+324
+00:17:52,610 --> 00:17:53,770
+although not very different,
+
+325
+00:17:53,770 --> 00:17:55,420
+so that's why we talked about it.
+
+326
+00:17:58,310 --> 00:18:00,510
+What we gonna do is
+zone walking with NSEC3.
+
+327
+00:18:01,560 --> 00:18:05,040
+NSEC3, has been designed and implemented
+
+328
+00:18:05,040 --> 00:18:07,540
+and deployed for the very reason
+
+329
+00:18:07,540 --> 00:18:11,300
+of providing resistance
+against zone enumeration,
+
+330
+00:18:11,300 --> 00:18:13,480
+the way we just described for NSEC,
+
+331
+00:18:13,480 --> 00:18:14,883
+so it's a patch on NSEC.
+
+332
+00:18:16,150 --> 00:18:17,820
+In a nutshell, what it does,
+
+333
+00:18:17,820 --> 00:18:20,940
+is instead of having the
+records in plain text,
+
+334
+00:18:20,940 --> 00:18:24,720
+they hash them using several repetition
+
+335
+00:18:24,720 --> 00:18:29,260
+of the SHA1 algorithm, usually
+with salt or without salt.
+
+336
+00:18:29,260 --> 00:18:32,400
+So the idea is it should hide the contents
+
+337
+00:18:32,400 --> 00:18:34,780
+of the DNS records
+
+338
+00:18:36,350 --> 00:18:38,170
+and assuming you cannot do anything
+
+339
+00:18:38,170 --> 00:18:39,590
+with hash values well,
+
+340
+00:18:39,590 --> 00:18:42,660
+you don't get access to
+them, you cannot enumerate.
+
+341
+00:18:42,660 --> 00:18:45,510
+Truth is you can still
+dump the hash itself,
+
+342
+00:18:45,510 --> 00:18:47,870
+so you can still do zone walking,
+
+343
+00:18:47,870 --> 00:18:50,740
+you can still extract the hashes,
+
+344
+00:18:50,740 --> 00:18:52,730
+it still kind of works,
+
+345
+00:18:52,730 --> 00:18:56,600
+and NSEC3 is really what is deployed today
+
+346
+00:18:56,600 --> 00:18:57,690
+in the real world.
+
+347
+00:18:57,690 --> 00:19:00,483
+So that's what we are going to attack.
+
+348
+00:19:05,650 --> 00:19:09,340
+- Let me just explain the
+assumption behind NSEC3.
+
+349
+00:19:09,340 --> 00:19:13,820
+Is that, reversing even
+partially the hash is difficult
+
+350
+00:19:13,820 --> 00:19:16,627
+well, practice turns
+out, is not (indistinct),
+
+351
+00:19:17,670 --> 00:19:20,010
+you've probably heard
+about many people trying
+
+352
+00:19:20,010 --> 00:19:21,270
+to break hashes,
+
+353
+00:19:21,270 --> 00:19:24,490
+especially for passwords
+and picking hashes
+
+354
+00:19:24,490 --> 00:19:27,290
+is even like basically
+how you mine Bitcoin.
+
+355
+00:19:27,290 --> 00:19:32,290
+So I think I hearing a loss
+in the Bitcoin mining farm
+
+356
+00:19:33,240 --> 00:19:38,240
+when to hear that SHA1
+cannot be a reformed.
+
+357
+00:19:39,940 --> 00:19:44,440
+So in practice for DNSSEC,
+
+358
+00:19:44,440 --> 00:19:46,680
+you can find off the shelf
+
+359
+00:19:46,680 --> 00:19:50,423
+repeatedly available tools
+to crack NSEC3 hashes.
+
+360
+00:19:51,620 --> 00:19:54,160
+However, to the best of our knowledge,
+
+361
+00:19:54,160 --> 00:19:58,053
+it has never been used
+to dig valuable data.
+
+362
+00:19:59,190 --> 00:20:02,350
+They only use that for the same demo,
+
+363
+00:20:02,350 --> 00:20:07,350
+which is finding the list of
+some domains of.com or.org,
+
+364
+00:20:07,828 --> 00:20:09,220
+but most of the time,
+
+365
+00:20:09,220 --> 00:20:13,530
+the list of valuable domains
+is a bit of fun using Google,
+
+366
+00:20:13,530 --> 00:20:15,827
+or your favorite search engine.
+
+367
+00:20:21,030 --> 00:20:25,810
+- Okay, so let's show you
+the NSEC (indistinct) tool,
+
+368
+00:20:25,810 --> 00:20:29,793
+which is used to get hashes
+from the domain zone.
+
+369
+00:20:31,238 --> 00:20:34,370
+This is actually a correction of script.
+
+370
+00:20:34,370 --> 00:20:38,710
+Here we call the script,
+collect of (indistinct)
+
+371
+00:20:38,710 --> 00:20:41,723
+on our dnssection.ovh domain.
+
+372
+00:20:46,910 --> 00:20:50,920
+It starts by getting the NSEC3 parameters,
+
+373
+00:20:50,920 --> 00:20:55,553
+which are the salt and the
+number of SHA1 iteration.
+
+374
+00:20:57,360 --> 00:21:02,360
+Then it is going to call
+Hyatt and (indistinct) domains
+
+375
+00:21:02,440 --> 00:21:04,410
+to find the intervals
+
+376
+00:21:04,410 --> 00:21:07,173
+as we have explained
+in the previous slides.
+
+377
+00:21:12,170 --> 00:21:15,540
+This video has been slowed down a lot,
+
+378
+00:21:15,540 --> 00:21:18,350
+in practice we have a good network,
+
+379
+00:21:18,350 --> 00:21:20,223
+this is actually really fast,
+
+380
+00:21:21,470 --> 00:21:24,613
+you even get a progress bar on the tool.
+
+381
+00:21:26,080 --> 00:21:29,060
+Here the zone is quite small,
+
+382
+00:21:29,060 --> 00:21:31,623
+so we get all the hashes very quickly.
+
+383
+00:21:32,710 --> 00:21:36,080
+If you want to dump a TLD zone, I mean,
+
+384
+00:21:36,080 --> 00:21:37,860
+top level domain zone.
+
+385
+00:21:37,860 --> 00:21:42,860
+So charles.org, then it
+takes much, much more time.
+
+386
+00:21:47,200 --> 00:21:50,550
+Another tool, NSEC pre map also exists
+
+387
+00:21:50,550 --> 00:21:54,800
+and has advanced features
+such as parallel queries
+
+388
+00:21:54,800 --> 00:21:57,620
+and automatic confession for hashcat
+
+389
+00:21:57,620 --> 00:21:58,893
+and Johnson HIPAA.
+
+390
+00:21:59,950 --> 00:22:03,810
+Unfortunately it has been
+written in Python two,
+
+391
+00:22:03,810 --> 00:22:07,450
+which is in the process of going extinct,
+
+392
+00:22:07,450 --> 00:22:11,610
+so use whichever tool you
+feel more comfortable with.
+
+393
+00:22:15,070 --> 00:22:16,551
+- Well, so we have just done
+
+394
+00:22:16,551 --> 00:22:18,251
+all the versions of dnssection.ovh
+
+395
+00:22:20,103 --> 00:22:21,550
+What do we do now?
+
+396
+00:22:21,550 --> 00:22:24,143
+Well, we bring out for GPU rig,
+
+397
+00:22:25,480 --> 00:22:27,940
+unfortunately we don't
+have a holiday center.
+
+398
+00:22:27,940 --> 00:22:30,193
+We only have a nice day sloppy,
+
+399
+00:22:31,133 --> 00:22:33,160
+100 if you don't know thing about GPUs,
+
+400
+00:22:33,160 --> 00:22:35,553
+let's just say, this is not a potato GPU.
+
+401
+00:22:39,584 --> 00:22:44,334
+So most of you have heard
+about a hashcat before this is.
+
+402
+00:22:45,950 --> 00:22:50,720
+So let us just feed the
+output of NSEC3 to hashcat
+
+403
+00:22:50,720 --> 00:22:53,600
+and try different kind of attacks
+
+404
+00:22:53,600 --> 00:22:56,463
+such as dictionary attacks
+and we toss attacks.
+
+405
+00:22:59,690 --> 00:23:03,123
+- Here we show you a
+little demo of hashcat,
+
+406
+00:23:04,390 --> 00:23:07,490
+in this case, this is a simple bruteforce
+
+407
+00:23:07,490 --> 00:23:10,581
+of all lower case alphanumeric emails
+
+408
+00:23:10,581 --> 00:23:13,550
+of exactly five characters,
+
+409
+00:23:13,550 --> 00:23:15,513
+as we can see under common line.
+
+410
+00:23:20,530 --> 00:23:24,430
+First, hashcat displays some information
+
+411
+00:23:24,430 --> 00:23:28,970
+about the GPU and compiles the open GL
+
+412
+00:23:28,970 --> 00:23:32,193
+NSEC3 canal tailored for your GPU,
+
+413
+00:23:33,930 --> 00:23:37,853
+then it start the hash cracking process.
+
+414
+00:23:39,260 --> 00:23:40,400
+In this case,
+
+415
+00:23:40,400 --> 00:23:44,883
+we only hung it on a small
+subset of our findings.
+
+416
+00:23:45,970 --> 00:23:50,183
+So video has been speed up
+to avoid audience boredom.
+
+417
+00:23:51,650 --> 00:23:55,980
+You can see a few hashes
+being reversed on the screen.
+
+418
+00:23:55,980 --> 00:24:00,453
+Again, we blurred the
+result for privacy reasons.
+
+419
+00:24:05,250 --> 00:24:08,733
+As a side note, we have
+found a bug in hashcat.
+
+420
+00:24:09,660 --> 00:24:11,853
+Dots were not handled correctly.
+
+421
+00:24:13,400 --> 00:24:17,150
+Many emails contain dots in the left path
+
+422
+00:24:17,150 --> 00:24:20,653
+so this proved to be a
+serious concern for us.
+
+423
+00:24:21,740 --> 00:24:26,150
+We made a dirty fix for
+ourselves and the hashcat team
+
+424
+00:24:26,150 --> 00:24:28,980
+has since fixed it properly.
+
+425
+00:24:28,980 --> 00:24:29,813
+Thanks a lot.
+
+426
+00:24:33,700 --> 00:24:38,450
+- Let us consider about
+16,000 interesting DNSSEC
+
+427
+00:24:38,450 --> 00:24:40,010
+hashed record.
+
+428
+00:24:40,010 --> 00:24:44,310
+While using our GPU we
+were able to enhance
+
+429
+00:24:44,310 --> 00:24:46,090
+as much as 88% of them,
+
+430
+00:24:46,090 --> 00:24:48,113
+so that's quite a good result.
+
+431
+00:24:49,020 --> 00:24:52,340
+Let's see a little
+breakdown of our results.
+
+432
+00:24:52,340 --> 00:24:56,230
+So in 3/4 of the cases we
+were able to reverse the hush
+
+433
+00:24:56,230 --> 00:25:00,460
+and we did find an
+interesting email redirection.
+
+434
+00:25:00,460 --> 00:25:02,597
+In 14% we did reverse the hash
+
+435
+00:25:02,597 --> 00:25:06,429
+but it was something else
+such as an FBF record,
+
+436
+00:25:06,429 --> 00:25:09,210
+and in the remaining 12% well,
+
+437
+00:25:09,210 --> 00:25:13,136
+we were not able to the hush thing.
+
+438
+00:25:13,136 --> 00:25:17,790
+The remaining one mostly
+domain key records,
+
+439
+00:25:17,790 --> 00:25:21,183
+which are not distinguishable
+for email redirection.
+
+440
+00:25:23,700 --> 00:25:27,130
+A little disclaimer, we are
+not here to doxx people,
+
+441
+00:25:27,130 --> 00:25:31,250
+so obviously, all people
+names and domain names
+
+442
+00:25:31,250 --> 00:25:34,083
+in the following example
+have been modified.
+
+443
+00:25:38,440 --> 00:25:40,833
+Let's look at few statistics.
+
+444
+00:25:41,950 --> 00:25:45,940
+So first we can just classify
+
+445
+00:25:45,940 --> 00:25:47,888
+the target for redirection
+
+446
+00:25:47,888 --> 00:25:51,270
+by the email providers they use.
+
+447
+00:25:51,270 --> 00:25:53,680
+I think you can guess which email provider
+
+448
+00:25:53,680 --> 00:25:58,680
+is used by most webmasters and
+this is obviously gmail.com.
+
+449
+00:26:00,980 --> 00:26:05,123
+And then, if you look at
+the left part of the email,
+
+450
+00:26:06,120 --> 00:26:09,070
+it does leak the name
+for people quite often,
+
+451
+00:26:09,070 --> 00:26:12,480
+because well, most emails
+
+452
+00:26:12,480 --> 00:26:17,480
+are your name@something.your (indistinct).
+
+453
+00:26:17,710 --> 00:26:19,960
+So it happens that in practice,
+
+454
+00:26:19,960 --> 00:26:22,470
+the name of a person is, found
+
+455
+00:26:24,240 --> 00:26:27,723
+is the email in about half time.
+
+456
+00:26:28,560 --> 00:26:31,230
+However, it doesn't mean that we found
+
+457
+00:26:31,230 --> 00:26:34,370
+some private information on some website,
+
+458
+00:26:34,370 --> 00:26:37,510
+where people have been saying
+that they do own the website.
+
+459
+00:26:37,510 --> 00:26:41,000
+So we tried to find out how often,
+
+460
+00:26:41,000 --> 00:26:45,080
+we could not find the name
+in the target redirection
+
+461
+00:26:45,080 --> 00:26:48,760
+on the website while this
+isn't about 2/3 of the time.
+
+462
+00:26:48,760 --> 00:26:52,849
+So in 2/3 of the time when we have a name
+
+463
+00:26:52,849 --> 00:26:57,030
+the target of redirect,
+then this was not something
+
+464
+00:26:57,030 --> 00:26:59,370
+we could have easily found on website.
+
+465
+00:26:59,370 --> 00:27:02,513
+So we have leaked some
+private information.
+
+466
+00:27:03,873 --> 00:27:07,150
+A little more complicated is how often
+
+467
+00:27:07,150 --> 00:27:11,560
+this email would not
+appear in a Google search
+
+468
+00:27:11,560 --> 00:27:14,670
+and important this is
+about half of the time.
+
+469
+00:27:14,670 --> 00:27:18,090
+So this means that a lot of emails
+
+470
+00:27:18,090 --> 00:27:20,940
+that are not publicly available
+
+471
+00:27:20,940 --> 00:27:22,190
+and we did again,
+
+472
+00:27:22,190 --> 00:27:24,470
+find a lot of private info using zone
+
+473
+00:27:26,670 --> 00:27:31,253
+Last thing was a little
+more difficult to identify,
+
+474
+00:27:32,410 --> 00:27:34,830
+and this is about business connection,
+
+475
+00:27:34,830 --> 00:27:37,933
+conflict of interest or fake competitors,
+
+476
+00:27:39,260 --> 00:27:42,710
+and then, using a redirection we found
+
+477
+00:27:42,710 --> 00:27:45,090
+while we were able to find such things
+
+478
+00:27:45,090 --> 00:27:47,253
+in about 1/4 of the cases.
+
+479
+00:27:49,290 --> 00:27:52,623
+A little homework for you
+that we have not tried
+
+480
+00:27:52,623 --> 00:27:57,623
+is hand by phone emails for
+the haveibeenpwned database
+
+481
+00:27:58,100 --> 00:28:01,463
+and find how many of them
+do have an entry in it?
+
+482
+00:28:04,170 --> 00:28:08,890
+What if we tried to doxx,
+scam an adult website?
+
+483
+00:28:08,890 --> 00:28:11,523
+Well, first please don't
+tell my wife about it.
+
+484
+00:28:12,450 --> 00:28:16,350
+Well, we did try to find some names,
+
+485
+00:28:16,350 --> 00:28:17,620
+some business connection,
+
+486
+00:28:17,620 --> 00:28:20,740
+but they are very clever
+and it's actually a fail,
+
+487
+00:28:20,740 --> 00:28:23,810
+say email never disclose user name,
+
+488
+00:28:23,810 --> 00:28:25,930
+but we still have an email,
+
+489
+00:28:25,930 --> 00:28:28,423
+so who's the scammer
+and who's the scammee?
+
+490
+00:28:31,090 --> 00:28:32,540
+And you think is most serious,
+
+491
+00:28:32,540 --> 00:28:35,356
+well, we did find some
+famous people emails,
+
+492
+00:28:35,356 --> 00:28:38,643
+like politicians, and showbiz people,
+
+493
+00:28:39,570 --> 00:28:41,763
+which are there on Wikipedia page.
+
+494
+00:28:43,010 --> 00:28:46,670
+We also found a few in email of activists
+
+495
+00:28:46,670 --> 00:28:48,920
+and on a much lighter note,
+
+496
+00:28:48,920 --> 00:28:51,570
+we did find a lawyer
+website with a redirect
+
+497
+00:28:51,570 --> 00:28:56,570
+to guess what, my
+littlepony.hisbirthdate@gmail.com
+
+498
+00:28:58,500 --> 00:29:01,970
+And also we found 50 people
+who had added redirects
+
+499
+00:29:01,970 --> 00:29:05,530
+for the noreply@, at our domain.
+
+500
+00:29:05,530 --> 00:29:07,467
+Why would they do that?
+
+501
+00:29:09,587 --> 00:29:12,203
+Caveat, this is actually
+some manual analysis.
+
+502
+00:29:13,130 --> 00:29:15,310
+We went for hundreds of website,
+
+503
+00:29:15,310 --> 00:29:17,970
+fishing for the names and emails,
+
+504
+00:29:17,970 --> 00:29:19,197
+typically this means going through
+
+505
+00:29:19,197 --> 00:29:21,550
+the contact page, googling the names,
+
+506
+00:29:21,550 --> 00:29:24,050
+googling the emails and
+dealing with apps and stuff
+
+507
+00:29:24,050 --> 00:29:26,710
+such as Adobe flash website,
+
+508
+00:29:26,710 --> 00:29:30,061
+which are like really
+difficult to navigate for.
+
+509
+00:29:30,061 --> 00:29:32,000
+So this is all best effort,
+
+510
+00:29:32,000 --> 00:29:34,603
+and we might have missed some big data.
+
+511
+00:29:40,040 --> 00:29:43,380
+- So, okay, we find a lot
+of interesting information,
+
+512
+00:29:43,380 --> 00:29:46,740
+some of it apparently does not
+appear either on the website
+
+513
+00:29:46,740 --> 00:29:51,620
+or in Google and very
+likely wise information
+
+514
+00:29:51,620 --> 00:29:54,640
+that was not meant to be made public.
+
+515
+00:29:54,640 --> 00:29:57,500
+So we thought it was an interesting issue,
+
+516
+00:29:57,500 --> 00:29:59,503
+we tried to bring it up to OVHcloud.
+
+517
+00:30:00,460 --> 00:30:02,420
+So we called the hotline,
+
+518
+00:30:02,420 --> 00:30:06,020
+and we're gonna tell you
+about the disclosure process.
+
+519
+00:30:06,020 --> 00:30:08,180
+So we called the hotline
+and we said, okay,
+
+520
+00:30:08,180 --> 00:30:10,228
+we think we have a problem
+
+521
+00:30:10,228 --> 00:30:13,770
+with your handling of private data.
+
+522
+00:30:13,770 --> 00:30:16,657
+They say, send an email to abuse@.
+
+523
+00:30:17,530 --> 00:30:19,940
+Okay, so we write the email
+
+524
+00:30:19,940 --> 00:30:21,750
+and we included technical details
+
+525
+00:30:21,750 --> 00:30:24,732
+some of which we just
+shared with you right now,
+
+526
+00:30:24,732 --> 00:30:27,483
+and we never got a reply.
+
+527
+00:30:28,680 --> 00:30:31,712
+So we were a bit puzzled,
+
+528
+00:30:31,712 --> 00:30:34,210
+perhaps we did not
+understand what they meant
+
+529
+00:30:34,210 --> 00:30:38,030
+by send an email so we called them again
+
+530
+00:30:38,030 --> 00:30:39,930
+and calling them, again they say, yes,
+
+531
+00:30:39,930 --> 00:30:42,070
+do send an email to abuse@,
+
+532
+00:30:42,070 --> 00:30:42,903
+you did the right thing,
+
+533
+00:30:42,903 --> 00:30:44,540
+just do it again, perhaps they missed it.
+
+534
+00:30:44,540 --> 00:30:45,930
+So, okay, well,
+
+535
+00:30:45,930 --> 00:30:50,573
+we write a second to mail
+and we never got a reply.
+
+536
+00:30:52,940 --> 00:30:55,560
+So at that point, what we tried
+
+537
+00:30:55,560 --> 00:30:58,710
+is to contact people working there,
+
+538
+00:30:58,710 --> 00:31:00,360
+tried to bring the right person
+
+539
+00:31:00,360 --> 00:31:04,230
+and to try it and get them to
+forward our email internally,
+
+540
+00:31:04,230 --> 00:31:05,563
+to the right people.
+
+541
+00:31:07,230 --> 00:31:09,870
+Well to this day, we are
+still waiting for response.
+
+542
+00:31:09,870 --> 00:31:13,233
+So (indistinct) if you are
+looking at us, we tried.
+
+543
+00:31:16,970 --> 00:31:19,090
+Okay, so if you want to fix it,
+
+544
+00:31:19,090 --> 00:31:20,550
+what should you do?
+
+545
+00:31:20,550 --> 00:31:23,460
+If you do not want to be targeted
+
+546
+00:31:23,460 --> 00:31:27,210
+by the kind of enumeration
+and privacy disclosure
+
+547
+00:31:27,210 --> 00:31:28,873
+that we just described?
+
+548
+00:31:29,840 --> 00:31:33,040
+Turns out that this
+has been a goal of NSEC
+
+549
+00:31:33,040 --> 00:31:35,159
+for many years now,
+
+550
+00:31:35,159 --> 00:31:37,960
+this was the reason why NSEC3 was proposed
+
+551
+00:31:37,960 --> 00:31:40,953
+and obviously NSEC3 failed.
+
+552
+00:31:42,220 --> 00:31:45,680
+But the real, the correct answer to this
+
+553
+00:31:45,680 --> 00:31:47,570
+is use public-key cryptography.
+
+554
+00:31:47,570 --> 00:31:51,340
+It's been described in two RFCs,
+
+555
+00:31:51,340 --> 00:31:53,130
+how to do this with DNSSEC in a way
+
+556
+00:31:53,130 --> 00:31:55,866
+that's compatible with the NSEC,
+
+557
+00:31:55,866 --> 00:32:00,400
+and there are two leading
+implementations of this idea.
+
+558
+00:32:00,400 --> 00:32:05,074
+One is NSEC5, which is
+already six years old now,
+
+559
+00:32:05,074 --> 00:32:08,080
+and the other is to use NSEC3
+
+560
+00:32:08,080 --> 00:32:12,840
+but replace the hash by
+a public-key signature,
+
+561
+00:32:12,840 --> 00:32:13,940
+the digital signature.
+
+562
+00:32:15,060 --> 00:32:19,210
+The problem is NSEC5
+was met with skepticism
+
+563
+00:32:19,210 --> 00:32:22,594
+in the first draft and the
+draft has not been finalized
+
+564
+00:32:22,594 --> 00:32:24,580
+and it has not been standardized
+
+565
+00:32:24,580 --> 00:32:26,330
+and it brings latency into the game
+
+566
+00:32:27,320 --> 00:32:30,600
+but most importantly, NSEC
+has a bad track record.
+
+567
+00:32:30,600 --> 00:32:33,730
+That is already the fifth iteration of it,
+
+568
+00:32:33,730 --> 00:32:37,727
+and you have not heard of
+NSEC2 or NSEC4 in the store
+
+569
+00:32:37,727 --> 00:32:39,980
+and you might wonder why.
+
+570
+00:32:39,980 --> 00:32:42,720
+Well, perhaps they never
+got to see the light
+
+571
+00:32:42,720 --> 00:32:44,123
+for good reasons.
+
+572
+00:32:45,208 --> 00:32:49,790
+The alternative is NSEC3,
+NSEC3 with digital signatures.
+
+573
+00:32:49,790 --> 00:32:54,350
+And today that means ECDSA algorithm 13,
+
+574
+00:32:54,350 --> 00:32:59,350
+indeed DNSSEC documentation,
+
+575
+00:32:59,450 --> 00:33:02,180
+mainly because, it is the only one
+
+576
+00:33:02,180 --> 00:33:03,900
+that can be used in this list
+
+577
+00:33:05,460 --> 00:33:08,780
+because it signs fast and the signatures
+
+578
+00:33:08,780 --> 00:33:12,113
+are small enough that it is
+actually practical to use,
+
+579
+00:33:13,490 --> 00:33:17,210
+but it's on the fixed curve
+with a fixed hash function,
+
+580
+00:33:17,210 --> 00:33:21,170
+and it's a bit of an old
+logarithm, to be honest,
+
+581
+00:33:21,170 --> 00:33:24,240
+which makes amongst other issues,
+
+582
+00:33:24,240 --> 00:33:26,370
+resolvers carry the burden.
+
+583
+00:33:26,370 --> 00:33:28,090
+The fact that resolvers now have
+
+584
+00:33:28,090 --> 00:33:29,890
+to perform signature verification,
+
+585
+00:33:29,890 --> 00:33:32,673
+which is actually quite slow.
+
+586
+00:33:33,610 --> 00:33:36,610
+It also requires very
+careful implementation
+
+587
+00:33:36,610 --> 00:33:38,760
+and handling of algorithms and keys
+
+588
+00:33:38,760 --> 00:33:41,260
+because you see ECDSAs famously brittle
+
+589
+00:33:42,200 --> 00:33:46,240
+and experience in the
+matter shows dot DNS servers
+
+590
+00:33:46,240 --> 00:33:49,323
+are well, historically bad at it.
+
+591
+00:33:50,310 --> 00:33:52,680
+We gave you a reference on the slides
+
+592
+00:33:52,680 --> 00:33:55,070
+that you can look into about the handling
+
+593
+00:33:55,070 --> 00:33:58,053
+of RSA keys in the past.
+
+594
+00:34:00,450 --> 00:34:04,353
+- Remi has just explained
+you how to fix DNSSEC,
+
+595
+00:34:05,260 --> 00:34:08,950
+but most people do not want
+to handle their DNS zone
+
+596
+00:34:08,950 --> 00:34:12,680
+by themselves and thus use cloud hosting.
+
+597
+00:34:12,680 --> 00:34:16,180
+So assume for a second that you're
+
+598
+00:34:16,180 --> 00:34:18,890
+an OVHcloud customer and you are using
+
+599
+00:34:18,890 --> 00:34:21,160
+the redirection videos.
+
+600
+00:34:21,160 --> 00:34:23,523
+How can you protect yourself right now?
+
+601
+00:34:24,580 --> 00:34:27,990
+Well, we have two different
+things to protect.
+
+602
+00:34:27,990 --> 00:34:31,560
+First, the target of
+the email redirection,
+
+603
+00:34:31,560 --> 00:34:34,230
+an easy way to hide
+(indistinct) target email
+
+604
+00:34:34,230 --> 00:34:36,343
+is to use double redirects.
+
+605
+00:34:38,090 --> 00:34:42,837
+Let me explain, first
+redirect test@dnssection.ovh
+
+606
+00:34:44,839 --> 00:34:49,839
+to test.dnssection@gmail.com
+in the OVHcloud admin panel.
+
+607
+00:34:52,310 --> 00:34:54,850
+Then, in your Gmail interface,
+
+608
+00:34:54,850 --> 00:34:59,200
+redirect test.dnssection@gmail.com
+
+609
+00:34:59,200 --> 00:35:02,480
+to your personal email address.
+
+610
+00:35:02,480 --> 00:35:04,520
+An attacker will only be able to see
+
+611
+00:35:04,520 --> 00:35:09,063
+the first redirect and thus
+will not learn anything useful.
+
+612
+00:35:10,570 --> 00:35:14,700
+Second, you want to protect
+your domain email list,
+
+613
+00:35:14,700 --> 00:35:16,713
+this is actually quite trickier.
+
+614
+00:35:18,350 --> 00:35:22,000
+What about disabling DNSSEC entirely
+
+615
+00:35:22,000 --> 00:35:26,010
+while that is the reason DNSSEC exists,
+
+616
+00:35:26,010 --> 00:35:27,980
+and the hoping for security properties
+
+617
+00:35:27,980 --> 00:35:31,090
+of DNSSEC might not be worth it,
+
+618
+00:35:31,090 --> 00:35:33,280
+or you may also have services
+
+619
+00:35:33,280 --> 00:35:35,743
+for which DNSSEC use is a must.
+
+620
+00:35:36,830 --> 00:35:39,540
+Another possibility to protect the list
+
+621
+00:35:39,540 --> 00:35:43,050
+would be to use long
+and unpredictable emails
+
+622
+00:35:43,050 --> 00:35:46,660
+so the hash is almost
+impossible to reverse.
+
+623
+00:35:46,660 --> 00:35:51,100
+For online website this works quite well
+
+624
+00:35:51,100 --> 00:35:53,960
+so web server does not care much.
+
+625
+00:35:53,960 --> 00:35:57,830
+However, a long and
+nonhuman friendly email
+
+626
+00:35:57,830 --> 00:36:00,369
+is not going to make a
+good first impression
+
+627
+00:36:00,369 --> 00:36:01,913
+on your business card.
+
+628
+00:36:03,520 --> 00:36:07,140
+If your domain email list
+is especially sensitive,
+
+629
+00:36:07,140 --> 00:36:08,780
+the best way out is probably
+
+630
+00:36:08,780 --> 00:36:13,620
+to stop using vulnerable
+OVHcloud redirection for now.
+
+631
+00:36:13,620 --> 00:36:17,813
+Apply to an OVHcloud plan
+with real email addresses.
+
+632
+00:36:20,800 --> 00:36:24,620
+- So, well, that brings us to
+a conclusion for this talk,
+
+633
+00:36:24,620 --> 00:36:26,440
+which will be rather fast
+
+634
+00:36:26,440 --> 00:36:30,940
+because you heard most of
+what we had to say already.
+
+635
+00:36:30,940 --> 00:36:32,520
+The lessons remember,
+
+636
+00:36:32,520 --> 00:36:36,830
+do not store private
+information in your DNS zone
+
+637
+00:36:36,830 --> 00:36:39,090
+if you do not have to,
+
+638
+00:36:39,090 --> 00:36:43,110
+this is likely to leak unless well,
+
+639
+00:36:43,110 --> 00:36:45,213
+countermeasures are widely deployed.
+
+640
+00:36:46,547 --> 00:36:49,240
+DNSSEC, NSEC3 attacks exist,
+
+641
+00:36:49,240 --> 00:36:51,710
+they are practical and
+they can reveal information
+
+642
+00:36:51,710 --> 00:36:56,340
+that was not obtained in any
+other way that we know of.
+
+643
+00:36:56,340 --> 00:37:01,340
+So try to push you local
+representative for a DNS server
+
+644
+00:37:01,560 --> 00:37:06,560
+to adopt modern counter measures
+against zone enumeration,
+
+645
+00:37:07,610 --> 00:37:11,140
+NSEC5 is not yet final,
+try to push for it,
+
+646
+00:37:11,140 --> 00:37:14,479
+and adoption of ECDSA as a signature
+
+647
+00:37:14,479 --> 00:37:17,930
+for zone enumeration is also on the way,
+
+648
+00:37:17,930 --> 00:37:20,500
+but you know, it's taking time.
+
+649
+00:37:20,500 --> 00:37:22,130
+So try and get that.
+
+650
+00:37:22,130 --> 00:37:23,980
+That's all we had to say,
+
+651
+00:37:23,980 --> 00:37:27,500
+and I do have a look as the
+proof of concept website
+
+652
+00:37:27,500 --> 00:37:29,913
+that we put up for you to play with.
+
+653
+00:37:31,588 --> 00:37:35,570
+Thank you again, have a great
+day and try this at home,
+
+654
+00:37:36,440 --> 00:37:38,240
+very carefully of course.
+
+655
+00:37:38,240 --> 00:37:39,073
+Bye bye.
+

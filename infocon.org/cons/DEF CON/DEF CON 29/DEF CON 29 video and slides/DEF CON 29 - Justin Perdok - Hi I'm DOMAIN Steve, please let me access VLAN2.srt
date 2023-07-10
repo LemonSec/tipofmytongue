@@ -1,0 +1,3823 @@
+﻿1
+00:00:00,750 --> 00:00:02,437
+- Hi, and welcome to my talk,
+
+2
+00:00:02,437 --> 00:00:05,730
+"Hi! I'm DOMAIN\Steve,
+please let me access VLAN2."
+
+3
+00:00:05,730 --> 00:00:07,880
+It's about tricking firewall
+user identity capabilities
+
+4
+00:00:07,880 --> 00:00:09,300
+into applying security policies
+
+5
+00:00:09,300 --> 00:00:11,823
+to arbitrary IPs on the network.
+
+6
+00:00:13,340 --> 00:00:14,852
+My name is Justin Perdok.
+
+7
+00:00:14,852 --> 00:00:17,210
+I am a pen tester at Orange Cyberdefence.
+
+8
+00:00:17,210 --> 00:00:18,810
+I enjoy drinking craft
+beers and long boarding
+
+9
+00:00:18,810 --> 00:00:20,880
+in my free time, and as
+you might've imagined,
+
+10
+00:00:20,880 --> 00:00:23,080
+I'm into hacking stuff,
+but also automating stuff.
+
+11
+00:00:23,080 --> 00:00:24,810
+And if you want, every want to reach me,
+
+12
+00:00:24,810 --> 00:00:26,400
+you can then contact me on Twitter.
+
+13
+00:00:26,400 --> 00:00:28,510
+So today, we're gonna talk
+about a feature in firewalls
+
+14
+00:00:28,510 --> 00:00:32,040
+that allowed me to apply
+security policies to my IP.
+
+15
+00:00:32,040 --> 00:00:33,800
+To start off, we're gonna
+talk about an assessment
+
+16
+00:00:33,800 --> 00:00:34,880
+where I initially discovered this
+
+17
+00:00:34,880 --> 00:00:36,830
+as if it was a thing that firewalls do.
+
+18
+00:00:37,760 --> 00:00:39,230
+Then, I'm gonna shortly cover
+
+19
+00:00:39,230 --> 00:00:41,820
+how a traditional network
+segmentation is implemented
+
+20
+00:00:41,820 --> 00:00:44,600
+and how the tool is
+implemented from the vendor.
+
+21
+00:00:44,600 --> 00:00:46,800
+Then, I'm gonna cover how I built a tool
+
+22
+00:00:46,800 --> 00:00:49,440
+that allowed me to
+respond to these requests
+
+23
+00:00:49,440 --> 00:00:50,870
+and that I was able to pwn through
+
+24
+00:00:50,870 --> 00:00:52,570
+different firewall vendors.
+
+25
+00:00:52,570 --> 00:00:54,820
+Lastly, we're going to
+close off the talk by
+
+26
+00:00:54,820 --> 00:00:57,320
+speaking about the
+National Security Research
+
+27
+00:00:57,320 --> 00:01:00,050
+as concluding takeaways
+from this research.
+
+28
+00:01:00,050 --> 00:01:01,110
+So to start off,
+
+29
+00:01:01,110 --> 00:01:04,090
+let's tell you about a day
+in the life of a pen tester.
+
+30
+00:01:04,090 --> 00:01:06,790
+I was at a student project
+during college times
+
+31
+00:01:06,790 --> 00:01:08,600
+working on getting towards,
+
+32
+00:01:08,600 --> 00:01:10,563
+working towards getting the
+domain access within a network.
+
+33
+00:01:10,563 --> 00:01:12,870
+And I will do my thing.
+
+34
+00:01:12,870 --> 00:01:15,210
+And at some point we wanted
+to move around some files
+
+35
+00:01:15,210 --> 00:01:17,993
+between a host and our
+workstation within the network.
+
+36
+00:01:19,010 --> 00:01:20,520
+So, the easiest way to do this,
+
+37
+00:01:20,520 --> 00:01:22,049
+I thought was to spin up an SMB server
+
+38
+00:01:22,049 --> 00:01:24,290
+using Impacket's implementation.
+
+39
+00:01:24,290 --> 00:01:26,390
+While doing so, out of nowhere,
+
+40
+00:01:26,390 --> 00:01:28,190
+someone tried to authenticate to me.
+
+41
+00:01:29,420 --> 00:01:32,570
+The username included something
+like palo_alto_userid,
+
+42
+00:01:32,570 --> 00:01:34,930
+and while he was authenticating to me,
+
+43
+00:01:34,930 --> 00:01:37,370
+the Impacket SMB server threw some errors
+
+44
+00:01:37,370 --> 00:01:40,653
+referring to an unsupported
+DCERPC opnum code two.
+
+45
+00:01:41,860 --> 00:01:44,410
+And besides that, this
+wasn't like a one-off thing.
+
+46
+00:01:44,410 --> 00:01:46,960
+The user kept authenticating
+to me over and over and over.
+
+47
+00:01:46,960 --> 00:01:49,520
+So, you know, usually when this happens,
+
+48
+00:01:49,520 --> 00:01:51,610
+you start to relay the credentials.
+
+49
+00:01:51,610 --> 00:01:53,750
+You know, luckily for me,
+
+50
+00:01:53,750 --> 00:01:55,330
+when I looked at my BloodHound data,
+
+51
+00:01:55,330 --> 00:01:57,980
+this was also a domain
+admin. So, you know,
+
+52
+00:01:57,980 --> 00:02:00,830
+you relay stuff, you pwn
+some hosts, gets credentials,
+
+53
+00:02:00,830 --> 00:02:01,780
+you know, do your thing,
+
+54
+00:02:01,780 --> 00:02:04,150
+and before you know it,
+the job's done, right?
+
+55
+00:02:04,150 --> 00:02:06,375
+Well, yes, but actually no,
+
+56
+00:02:06,375 --> 00:02:07,470
+I want to figure out
+
+57
+00:02:07,470 --> 00:02:08,810
+what it was actually doing under the hood.
+
+58
+00:02:08,810 --> 00:02:10,390
+So I started Googling a bit around
+
+59
+00:02:10,390 --> 00:02:12,090
+using the username as a reference,
+
+60
+00:02:12,090 --> 00:02:15,150
+and I figured out it was a
+feature that allowed firewalls
+
+61
+00:02:15,150 --> 00:02:17,610
+to probe clients on the
+network and gather information
+
+62
+00:02:17,610 --> 00:02:19,320
+about logged on users.
+
+63
+00:02:19,320 --> 00:02:21,210
+So I verified this with the client
+
+64
+00:02:21,210 --> 00:02:22,807
+if they used this
+feature, and they told me
+
+65
+00:02:22,807 --> 00:02:24,830
+"Yes, we do. We used to apply
+
+66
+00:02:24,830 --> 00:02:26,200
+script policies in the network".
+
+67
+00:02:26,200 --> 00:02:27,467
+Googling around a bit more,
+
+68
+00:02:27,467 --> 00:02:30,230
+I figured out most of the
+articles that described
+
+69
+00:02:30,230 --> 00:02:32,640
+this feature, from
+offensive side of things,
+
+70
+00:02:32,640 --> 00:02:35,660
+mostly talked about that it's SMB-based
+
+71
+00:02:35,660 --> 00:02:38,020
+and that it authenticates you.
+
+72
+00:02:38,020 --> 00:02:39,810
+They didn't look at it
+any further, you know,
+
+73
+00:02:39,810 --> 00:02:42,610
+how would we potentially
+return information for example?
+
+74
+00:02:43,790 --> 00:02:45,660
+So I started to look into it a bit more.
+
+75
+00:02:45,660 --> 00:02:48,740
+First off, I started to
+look at a packet capture
+
+76
+00:02:48,740 --> 00:02:51,350
+of one of the process authenticated to me,
+
+77
+00:02:51,350 --> 00:02:52,750
+what I saw is that the client
+
+78
+00:02:52,750 --> 00:02:55,370
+probing me was connected to the IPC share.
+
+79
+00:02:55,370 --> 00:02:57,350
+From there, it requested their file
+
+80
+00:02:57,350 --> 00:02:59,253
+called the wkssvc file.
+
+81
+00:03:00,320 --> 00:03:04,990
+Then executed a function called
+NetWkstaEnumUsers function,
+
+82
+00:03:04,990 --> 00:03:06,363
+which at the time I presumed was
+
+83
+00:03:06,363 --> 00:03:08,660
+a request to collect
+information from users.
+
+84
+00:03:08,660 --> 00:03:10,670
+To fully understand what's
+actually going on here,
+
+85
+00:03:10,670 --> 00:03:12,370
+I want to take a step back and talk about
+
+86
+00:03:12,370 --> 00:03:14,810
+how named pipes are
+implemented within Windows.
+
+87
+00:03:14,810 --> 00:03:16,040
+So in Windows there are these
+
+88
+00:03:16,040 --> 00:03:18,403
+three default and mysterious
+shares, the C$ share,
+
+89
+00:03:20,480 --> 00:03:23,210
+this share basically gives
+rights to the entire disk.
+
+90
+00:03:23,210 --> 00:03:25,360
+And depending on how many
+disks you have in your system,
+
+91
+00:03:25,360 --> 00:03:27,200
+you would have multiples of these shares,
+
+92
+00:03:27,200 --> 00:03:30,253
+corresponding with drive letter
+associated with the drive.
+
+93
+00:03:31,260 --> 00:03:34,100
+Besides that, there's
+also the ADMIN$ share.
+
+94
+00:03:34,100 --> 00:03:35,790
+ADMIN$ share basically gives access to
+
+95
+00:03:35,790 --> 00:03:38,190
+where the windows folder is located
+
+96
+00:03:38,190 --> 00:03:40,160
+within the installation disk.
+
+97
+00:03:40,160 --> 00:03:41,420
+And besides that,
+
+98
+00:03:41,420 --> 00:03:45,053
+there's also a special
+share called the IPC$ share.
+
+99
+00:03:45,940 --> 00:03:48,303
+IPC stands for interprocess communication.
+
+100
+00:03:49,230 --> 00:03:51,380
+The share itself does
+not give access to files,
+
+101
+00:03:51,380 --> 00:03:54,220
+but actually give access to
+processes running on the system.
+
+102
+00:03:54,220 --> 00:03:56,840
+It gives access to these
+processes by exposing them through
+
+103
+00:03:56,840 --> 00:03:59,700
+named pipes. So let's
+look at an example here.
+
+104
+00:03:59,700 --> 00:04:03,030
+Here we have Bob, Bob the named pipe,
+
+105
+00:04:03,030 --> 00:04:05,710
+and it's giving access
+to thebuilder.exe by
+
+106
+00:04:05,710 --> 00:04:08,090
+exposing it only IPC share.
+
+107
+00:04:08,090 --> 00:04:10,100
+This means if you want
+to read and write data
+
+108
+00:04:10,100 --> 00:04:12,800
+to thebuilder.exe you would
+do this by talking to Bob.
+
+109
+00:04:14,333 --> 00:04:15,480
+You can also ask Bob to activate
+
+110
+00:04:15,480 --> 00:04:17,530
+specific functions on the thebuilder.exe,
+
+111
+00:04:18,443 --> 00:04:21,320
+executing a function this
+way is often referred to as
+
+112
+00:04:21,320 --> 00:04:23,630
+distributed computing environment
+
+113
+00:04:23,630 --> 00:04:27,880
+slash RC remote procedure
+calls or DCE/RPC for short.
+
+114
+00:04:27,880 --> 00:04:29,830
+So we just learned
+throughout this process,
+
+115
+00:04:29,830 --> 00:04:32,800
+what firewalls do to connect
+to you on the IPC$ share and
+
+116
+00:04:32,800 --> 00:04:35,570
+try to collect information
+about logged on users.
+
+117
+00:04:35,570 --> 00:04:36,770
+This pretty much is the same thing
+
+118
+00:04:36,770 --> 00:04:39,068
+what I saw on the
+assessment and something was
+
+119
+00:04:39,068 --> 00:04:43,163
+authenticated to me and tried
+to enumerate logged on users.
+
+120
+00:04:44,120 --> 00:04:47,340
+So to understand why this
+process was instrument to attack,
+
+121
+00:04:47,340 --> 00:04:49,430
+we're first gonna take a step back
+
+122
+00:04:49,430 --> 00:04:51,303
+and look at traditional segmentation.
+
+123
+00:04:52,140 --> 00:04:54,780
+We'll cover how this tradition implemented
+
+124
+00:04:55,620 --> 00:04:58,540
+and then why this gets hard
+and complicated over time.
+
+125
+00:04:58,540 --> 00:04:59,420
+Then we'll also show
+how a network intrusion
+
+126
+00:04:59,420 --> 00:05:01,943
+could help with this.
+
+127
+00:05:03,210 --> 00:05:04,550
+You would like to know that this won't be
+
+128
+00:05:04,550 --> 00:05:08,390
+a comprehensive guide on VLANs
+themselves or networking.
+
+129
+00:05:08,390 --> 00:05:09,500
+It would just be enough to get
+
+130
+00:05:09,500 --> 00:05:11,560
+a basic understanding of how VLANs works.
+
+131
+00:05:11,560 --> 00:05:14,345
+So here's an example for a new network,
+
+132
+00:05:14,345 --> 00:05:15,853
+presumably for a new company,
+
+133
+00:05:15,853 --> 00:05:18,570
+here, everything is
+connected to the same switch.
+
+134
+00:05:18,570 --> 00:05:19,940
+Everything can talk to each other
+
+135
+00:05:19,940 --> 00:05:21,340
+because it's a flat network.
+
+136
+00:05:22,500 --> 00:05:24,930
+Then the company hires a pen tester,
+
+137
+00:05:24,930 --> 00:05:27,120
+he comes along and provides an assessment.
+
+138
+00:05:27,120 --> 00:05:28,320
+You know, he pwns some hosts
+
+139
+00:05:28,320 --> 00:05:29,900
+and presumably when writing the report,
+
+140
+00:05:29,900 --> 00:05:32,640
+he would recommend, among other things,
+
+141
+00:05:32,640 --> 00:05:34,990
+to implement some form
+of network segmentation.
+
+142
+00:05:36,390 --> 00:05:38,041
+So the client starts to think about this
+
+143
+00:05:38,041 --> 00:05:42,130
+and they get the idea to
+implement some form of zones.
+
+144
+00:05:42,130 --> 00:05:43,830
+This, example, a blue client zone
+
+145
+00:05:43,830 --> 00:05:45,980
+and an a yellow server zone.
+
+146
+00:05:45,980 --> 00:05:49,700
+The idea here is to not
+allow traffic to flow freely
+
+147
+00:05:49,700 --> 00:05:51,690
+between these zones
+unrestricted by default.
+
+148
+00:05:51,690 --> 00:05:53,970
+To do this, the client
+would presumably use VLAN.
+
+149
+00:05:53,970 --> 00:05:56,440
+So, you know, how would this VLAN work?
+
+150
+00:05:56,440 --> 00:05:58,800
+So let's take these
+four ports, for example,
+
+151
+00:05:58,800 --> 00:05:59,930
+there's four ports configured
+
+152
+00:05:59,930 --> 00:06:01,380
+with two different colors,
+
+153
+00:06:01,380 --> 00:06:03,210
+blue color, and a yellow color.
+
+154
+00:06:03,210 --> 00:06:05,030
+Basically what this does the blue color
+
+155
+00:06:05,030 --> 00:06:07,870
+represents VLAN2 two and a yellow color
+
+156
+00:06:07,870 --> 00:06:08,913
+represents VLAN1.
+
+157
+00:06:09,760 --> 00:06:12,280
+Whenever devices is
+connected to a blue port,
+
+158
+00:06:12,280 --> 00:06:15,540
+it will only allow traffic
+to flow to other ports,
+
+159
+00:06:15,540 --> 00:06:17,350
+which are also blue.
+
+160
+00:06:17,350 --> 00:06:20,710
+Meaning if we were to
+connect four physical devices
+
+161
+00:06:20,710 --> 00:06:21,860
+to the same switch,
+
+162
+00:06:21,860 --> 00:06:23,800
+they will only be able to
+see and talk to each other
+
+163
+00:06:23,800 --> 00:06:25,960
+with the corresponding color.
+
+164
+00:06:25,960 --> 00:06:27,080
+Configuring ports this way
+
+165
+00:06:27,080 --> 00:06:29,210
+is also referred to ONTAP ports.
+
+166
+00:06:29,210 --> 00:06:31,800
+But, you know, a switch
+doesn't actually use colors.
+
+167
+00:06:31,800 --> 00:06:32,850
+It's a network protocol.
+
+168
+00:06:32,850 --> 00:06:35,550
+So how does it do, how does
+it do this under the hood?
+
+169
+00:06:36,810 --> 00:06:38,680
+Well. Whenever a ethernet frame
+
+170
+00:06:38,680 --> 00:06:40,190
+passes through a switch port,
+
+171
+00:06:40,190 --> 00:06:42,580
+which is configured
+for a specific VLAN ID,
+
+172
+00:06:42,580 --> 00:06:45,880
+it will edit this ethernet frame
+to include an extra header,
+
+173
+00:06:45,880 --> 00:06:49,723
+the 802.1Q header, also
+referring to VLAN ID header.
+
+174
+00:06:51,170 --> 00:06:53,370
+Which means, whenever the
+ethernet frame passes through
+
+175
+00:06:53,370 --> 00:06:56,343
+the corresponding VLAN ID is
+added to the ethernet frame.
+
+176
+00:06:57,180 --> 00:07:00,920
+Then the switch will ensure
+only traffic with a specific,
+
+177
+00:07:00,920 --> 00:07:03,670
+specific VLAN ID is able
+to reach other ports
+
+178
+00:07:03,670 --> 00:07:05,743
+which have this corresponding VLAN ID.
+
+179
+00:07:07,000 --> 00:07:09,810
+This isn't all the switch can do though.
+
+180
+00:07:09,810 --> 00:07:11,800
+This switch can also be configured
+
+181
+00:07:11,800 --> 00:07:14,183
+using different IO ports
+called stack ports.
+
+182
+00:07:17,050 --> 00:07:20,420
+So let's take, another
+example with two switches.
+
+183
+00:07:20,420 --> 00:07:21,760
+Here, we have the same VLAN ID
+
+184
+00:07:21,760 --> 00:07:23,750
+as the blue one and the yellow one.
+
+185
+00:07:23,750 --> 00:07:26,520
+And let's say we have a
+device connected to Switch 1
+
+186
+00:07:26,520 --> 00:07:28,730
+on the blue VLAN and wanted
+to talk to the device
+
+187
+00:07:28,730 --> 00:07:31,110
+on Switch 2, also the blue VLAN.
+
+188
+00:07:31,110 --> 00:07:32,980
+To do this, what we would do is we would
+
+189
+00:07:32,980 --> 00:07:35,410
+configure two ports on
+corresponding switches
+
+190
+00:07:35,410 --> 00:07:36,243
+as stack ports.
+
+191
+00:07:36,243 --> 00:07:38,030
+What it does is will allow the traffic
+
+192
+00:07:38,030 --> 00:07:40,550
+from the corresponding VLAN
+to flow within the switches,
+
+193
+00:07:40,550 --> 00:07:43,520
+but it won't allow the blue
+VLAN to reach the yellow VLAN
+
+194
+00:07:43,520 --> 00:07:45,410
+even though it passes over the same port.
+
+195
+00:07:45,410 --> 00:07:47,260
+Having all of these devices
+segmented from each other
+
+196
+00:07:47,260 --> 00:07:49,230
+is great for security, but
+not too much for productivity.
+
+197
+00:07:49,230 --> 00:07:51,670
+You can use this device such as a firewall
+
+198
+00:07:51,670 --> 00:07:53,860
+to allow a segmented access within zones.
+
+199
+00:07:53,860 --> 00:07:55,590
+For example, you could tell the firewall
+
+200
+00:07:55,590 --> 00:07:57,380
+to allow clients from the blue zone
+
+201
+00:07:57,380 --> 00:07:58,850
+to reach a service in the yellow zone,
+
+202
+00:07:58,850 --> 00:08:00,023
+using a specific port.
+
+203
+00:08:01,350 --> 00:08:03,670
+This is the very basic concept
+of network segmentation
+
+204
+00:08:03,670 --> 00:08:04,857
+using VLANs.
+
+205
+00:08:04,857 --> 00:08:06,320
+And it's pretty easy to understand
+
+206
+00:08:06,320 --> 00:08:08,020
+within such a small scale network.
+
+207
+00:08:09,120 --> 00:08:11,870
+But, you know, companies
+usually don't have one VLAN
+
+208
+00:08:11,870 --> 00:08:13,930
+or two, they have multiple.
+
+209
+00:08:13,930 --> 00:08:18,760
+And, you know, after some basic
+rules it's initially set up,
+
+210
+00:08:18,760 --> 00:08:20,380
+they grow over time.
+
+211
+00:08:20,380 --> 00:08:22,820
+And before you know it, there
+is a whole bunch of rules.
+
+212
+00:08:22,820 --> 00:08:24,380
+Nobody knows what's going on anymore.
+
+213
+00:08:24,380 --> 00:08:26,620
+Everything is a fire and
+everybody's screaming.
+
+214
+00:08:26,620 --> 00:08:28,090
+So, you know, this is where
+
+215
+00:08:28,090 --> 00:08:29,880
+the alternative solution comes in.
+
+216
+00:08:29,880 --> 00:08:32,800
+One of these solutions,
+being a Palo Alto User ID,
+
+217
+00:08:32,800 --> 00:08:35,363
+a firewall SSO solution is what I call it.
+
+218
+00:08:36,320 --> 00:08:37,366
+Basically what it does.
+
+219
+00:08:37,366 --> 00:08:40,583
+Palo Alto User ID creates
+a user IP mapping.
+
+220
+00:08:40,583 --> 00:08:44,500
+And then the user IP mapping
+is able to allow you to see
+
+221
+00:08:44,500 --> 00:08:46,027
+with visibility within
+the network, you know,
+
+222
+00:08:46,027 --> 00:08:47,920
+which user's doing what,
+
+223
+00:08:47,920 --> 00:08:50,903
+and allows you to create firewall
+rules for specific users.
+
+224
+00:08:51,810 --> 00:08:53,690
+The Palo Alto User ID can be configured
+
+225
+00:08:53,690 --> 00:08:55,770
+to collect information
+from multiple sources.
+
+226
+00:08:55,770 --> 00:08:58,370
+For example, active directory,
+authentication logs,
+
+227
+00:08:58,370 --> 00:09:00,150
+syslog servers,
+
+228
+00:09:00,150 --> 00:09:02,080
+and the one in which we're
+gonna talk about today,
+
+229
+00:09:02,080 --> 00:09:02,913
+client probing.
+
+230
+00:09:04,070 --> 00:09:05,650
+So, by using it as its own feature,
+
+231
+00:09:05,650 --> 00:09:06,740
+instead of having to rely
+
+232
+00:09:06,740 --> 00:09:09,030
+on traditional ways of segmentation,
+
+233
+00:09:09,030 --> 00:09:12,020
+you could say a specific
+user in a blue VLAN
+
+234
+00:09:12,020 --> 00:09:14,033
+is allowed to access specific server
+
+235
+00:09:14,033 --> 00:09:15,653
+within the yellow VLAN.
+
+236
+00:09:16,570 --> 00:09:19,280
+Even though there are other
+users within the blue VLAN,
+
+237
+00:09:19,280 --> 00:09:21,660
+they are not able to access
+the server in the yellow VLAN
+
+238
+00:09:21,660 --> 00:09:24,000
+because the almighty firewall
+figures out who is logged on.
+
+239
+00:09:24,000 --> 00:09:27,580
+With only one client, then they
+are gonna dynamically assign
+
+240
+00:09:27,580 --> 00:09:29,570
+a firewall to the specific IP.
+
+241
+00:09:29,570 --> 00:09:30,750
+So after finding out this was a thing,
+
+242
+00:09:30,750 --> 00:09:31,770
+I had two trains of thought,
+
+243
+00:09:31,770 --> 00:09:33,360
+the sysadmin in me was like,
+
+244
+00:09:33,360 --> 00:09:34,660
+you know, this is awesome.
+
+245
+00:09:35,700 --> 00:09:38,230
+The other thought in me was my hacker,
+
+246
+00:09:38,230 --> 00:09:39,147
+talking in the back of my mind, you know.
+
+247
+00:09:39,147 --> 00:09:42,600
+"Now, wait, what? We're
+going to trust clients
+
+248
+00:09:42,600 --> 00:09:44,690
+to return truthful responses and base
+
+249
+00:09:44,690 --> 00:09:46,267
+our segmentation around that."
+
+250
+00:09:47,150 --> 00:09:48,220
+Seems like a bad idea.
+
+251
+00:09:48,220 --> 00:09:50,170
+So to explain why I
+thought it was a bad idea,
+
+252
+00:09:50,170 --> 00:09:53,283
+let's use an analogy to
+explain my thought process.
+
+253
+00:09:54,560 --> 00:09:55,393
+So in this analogy,
+
+254
+00:09:55,393 --> 00:09:58,830
+I'm staying in a hotel and this
+hotel has a VIP membership,
+
+255
+00:09:58,830 --> 00:10:00,040
+which allows you to buy into it
+
+256
+00:10:00,040 --> 00:10:02,650
+and gain access privileges
+within the hotel.
+
+257
+00:10:02,650 --> 00:10:05,100
+You know, being a cheapskate
+that I am, a Dutch boy,
+
+258
+00:10:05,100 --> 00:10:07,723
+I didn't decide to buy
+into this VIP system.
+
+259
+00:10:09,410 --> 00:10:11,570
+So, you know, naturally the
+first thing when you do,
+
+260
+00:10:11,570 --> 00:10:13,810
+when you arrive at a hotel,
+you visit the bar, right?
+
+261
+00:10:13,810 --> 00:10:15,220
+So when arriving at the bar,
+
+262
+00:10:15,220 --> 00:10:17,330
+I noticed there are two fridges of beer,
+
+263
+00:10:17,330 --> 00:10:19,550
+one fridge with beer, which I would call,
+
+264
+00:10:19,550 --> 00:10:22,670
+less desirable beers and one
+fridge with the good ones.
+
+265
+00:10:22,670 --> 00:10:24,790
+The only problem here is that
+the fridge with the good ones
+
+266
+00:10:24,790 --> 00:10:27,640
+has a meme, has a sign on it,
+which has VIP members only.
+
+267
+00:10:29,010 --> 00:10:31,140
+So. Even though it's says VIP only,
+
+268
+00:10:31,140 --> 00:10:32,810
+I still want one of the good ones.
+
+269
+00:10:32,810 --> 00:10:35,430
+So I walk up to the bartender and ask if
+
+270
+00:10:35,430 --> 00:10:37,480
+and asked if I can access the VIP fridge.
+
+271
+00:10:38,920 --> 00:10:41,020
+The bartender is then
+gonna look at his rule book
+
+272
+00:10:41,020 --> 00:10:41,957
+and he sees now only VIP members
+
+273
+00:10:41,957 --> 00:10:45,350
+are allowed to access this fridge
+
+274
+00:10:45,350 --> 00:10:47,970
+then he's gonna look at this
+digital hotel room system
+
+275
+00:10:47,970 --> 00:10:50,340
+and sees that he doesn't
+know who's currently
+
+276
+00:10:50,340 --> 00:10:51,443
+residing in my room.
+
+277
+00:10:52,480 --> 00:10:55,430
+He's then gonna ask me,
+you know, who are you?
+
+278
+00:10:55,430 --> 00:10:58,740
+So being a law abiding citizen that I am,
+
+279
+00:10:58,740 --> 00:11:00,490
+I would truthfully response his answer
+
+280
+00:11:00,490 --> 00:11:01,940
+and tell him that I'm Justin.
+
+281
+00:11:03,180 --> 00:11:05,430
+The bartender is then gonna
+look as rule book again
+
+282
+00:11:05,430 --> 00:11:07,750
+and look at the member of the
+VIP members and, of course,
+
+283
+00:11:07,750 --> 00:11:08,940
+you know, because I'm not on the list
+
+284
+00:11:08,940 --> 00:11:10,340
+he's gonna tell me no, you're not allowed
+
+285
+00:11:10,340 --> 00:11:11,440
+to access this fridge.
+
+286
+00:11:12,375 --> 00:11:14,290
+But you now, instead of giving up,
+
+287
+00:11:14,290 --> 00:11:15,890
+I want one of the good beers.
+
+288
+00:11:15,890 --> 00:11:16,913
+I started looking around
+the room and I see
+
+289
+00:11:16,913 --> 00:11:19,560
+there's a guy over there
+in the corner named Steve
+
+290
+00:11:19,560 --> 00:11:21,350
+drinking one of the good beers.
+
+291
+00:11:21,350 --> 00:11:22,750
+So I get this genius idea, you know,
+
+292
+00:11:22,750 --> 00:11:24,480
+instead of saying who I am,
+
+293
+00:11:24,480 --> 00:11:26,253
+let's lie about who I actually am.
+
+294
+00:11:27,770 --> 00:11:29,370
+So I walk up to the bartender, again,
+
+295
+00:11:29,370 --> 00:11:31,240
+asking to access the fridge.
+
+296
+00:11:31,240 --> 00:11:33,723
+This time I'm using
+different hotel room number.
+
+297
+00:11:34,940 --> 00:11:37,790
+The bartender is again gonna
+look at this rule book,
+
+298
+00:11:37,790 --> 00:11:40,103
+says VIP members are allowed
+to access the fridge.
+
+299
+00:11:40,103 --> 00:11:42,500
+He then is going to look at
+his digital hotel room system.
+
+300
+00:11:42,500 --> 00:11:43,960
+And sees he doesn't know who's currently
+
+301
+00:11:43,960 --> 00:11:45,350
+residing in this room.
+
+302
+00:11:45,350 --> 00:11:48,160
+So he's gonna ask me,
+you know, who are you?
+
+303
+00:11:48,160 --> 00:11:49,770
+This time instead of saying, I'm Justin,
+
+304
+00:11:49,770 --> 00:11:52,570
+I'm gonna lie and tell them
+that I am, my name is Steve.
+
+305
+00:11:53,530 --> 00:11:54,950
+He's then gonna take this information,
+
+306
+00:11:54,950 --> 00:11:56,610
+look at this rule book and sees, you know,
+
+307
+00:11:56,610 --> 00:11:58,500
+hey, Steve is a VIP member.
+
+308
+00:11:58,500 --> 00:12:00,300
+Of course you can access the fridge.
+
+309
+00:12:01,730 --> 00:12:04,380
+So, you know, seems like
+a plausible attack, right?
+
+310
+00:12:04,380 --> 00:12:07,480
+The user id entity feature
+might not expect us to return
+
+311
+00:12:07,480 --> 00:12:08,860
+false information.
+
+312
+00:12:08,860 --> 00:12:11,100
+And this would potentially
+allow us to access things
+
+313
+00:12:11,100 --> 00:12:12,150
+we aren't allowed to.
+
+314
+00:12:13,500 --> 00:12:15,980
+As for figuring out who
+you want to impersonate,
+
+315
+00:12:15,980 --> 00:12:18,560
+instead of looking at the
+bar, you would, could look at,
+
+316
+00:12:18,560 --> 00:12:21,573
+you know, active directory
+data collected using Bloodhound
+
+317
+00:12:21,573 --> 00:12:23,660
+and figure out there is a specific group
+
+318
+00:12:23,660 --> 00:12:24,493
+within an active directory,
+
+319
+00:12:24,493 --> 00:12:26,223
+which references firewall ACLs.
+
+320
+00:12:27,390 --> 00:12:28,660
+The idea of an attack scenario here
+
+321
+00:12:28,660 --> 00:12:30,130
+is basically the same as an app,
+
+322
+00:12:30,130 --> 00:12:32,530
+web application. We
+might have it, you know.
+
+323
+00:12:32,530 --> 00:12:35,050
+Whenever a web application
+just trust client input
+
+324
+00:12:35,050 --> 00:12:36,000
+without validating it,
+
+325
+00:12:36,000 --> 00:12:38,733
+you're usually able to break
+things within the web app.
+
+326
+00:12:40,240 --> 00:12:43,426
+But the thing is we can
+not know this for certain
+
+327
+00:12:43,426 --> 00:12:46,200
+that user ID system
+might try to revalidate
+
+328
+00:12:46,200 --> 00:12:49,800
+or correspond the information
+collected from user probing
+
+329
+00:12:49,800 --> 00:12:51,610
+with other sources,
+
+330
+00:12:51,610 --> 00:12:54,650
+such as active directory
+authentication logs,
+
+331
+00:12:54,650 --> 00:12:56,210
+but we can try to figure it out
+
+332
+00:12:56,210 --> 00:12:59,330
+by looking how the solution
+is supposed to be implemented.
+
+333
+00:12:59,330 --> 00:13:02,700
+So let's set up what we know
+for certain, the firewall ACL.
+
+334
+00:13:02,700 --> 00:13:05,200
+Besides traditional VLAN
+and IP-based filtering,
+
+335
+00:13:05,200 --> 00:13:08,910
+you can also assign extra
+source option within this ACL.
+
+336
+00:13:08,910 --> 00:13:11,210
+This extra source option
+being either a user
+
+337
+00:13:11,210 --> 00:13:12,420
+or an active directory group.
+
+338
+00:13:12,420 --> 00:13:14,780
+In this case, the firewall only allows
+
+339
+00:13:14,780 --> 00:13:16,850
+members of the VIP group
+
+340
+00:13:16,850 --> 00:13:19,450
+to access specific fridge
+equipment on another VLAN.
+
+341
+00:13:21,060 --> 00:13:22,490
+When implementing client probing,
+
+342
+00:13:22,490 --> 00:13:25,440
+you can either use, SMB or WMI.
+
+343
+00:13:25,440 --> 00:13:29,090
+The firewall itself only
+allows probing on WMI,
+
+344
+00:13:29,090 --> 00:13:31,780
+but there's also an agent,
+which allows for both.
+
+345
+00:13:31,780 --> 00:13:36,400
+Since our presumed protect
+methods relies on SMB,
+
+346
+00:13:36,400 --> 00:13:38,810
+we're going to talk only
+about the client today.
+
+347
+00:13:38,810 --> 00:13:40,970
+The agent itself needs to be
+installed somewhere on a system
+
+348
+00:13:40,970 --> 00:13:42,160
+within the network.
+
+349
+00:13:42,160 --> 00:13:44,380
+From its place it needs to be
+able to access the sources,
+
+350
+00:13:44,380 --> 00:13:46,080
+which we try to collect data from.
+
+351
+00:13:47,270 --> 00:13:48,320
+So in our test case,
+
+352
+00:13:48,320 --> 00:13:50,950
+we're gonna use some fair
+simple network design.
+
+353
+00:13:50,950 --> 00:13:53,780
+Everything here is, is connected
+to the same VLAN except,
+
+354
+00:13:53,780 --> 00:13:55,683
+except for the segmented fridge.
+
+355
+00:13:56,620 --> 00:13:59,100
+This, of course, is not a
+typical corporate network design,
+
+356
+00:13:59,100 --> 00:14:02,130
+but it will do for our
+demonstration purposes.
+
+357
+00:14:02,130 --> 00:14:04,515
+The Palo Alto User ID is then
+installed somewhere within
+
+358
+00:14:04,515 --> 00:14:05,610
+the VLAN1,
+
+359
+00:14:05,610 --> 00:14:08,010
+since there is gonna be
+able to access the clients
+
+360
+00:14:08,010 --> 00:14:10,540
+and as well as ex-factory
+domain controller,
+
+361
+00:14:10,540 --> 00:14:12,900
+even though it's called the User-ID Agent,
+
+362
+00:14:12,900 --> 00:14:15,860
+it's not installed on
+every host within network.
+
+363
+00:14:15,860 --> 00:14:17,723
+It needs to be installed on a host,
+
+364
+00:14:17,723 --> 00:14:20,510
+which is then able to connect
+with different sources.
+
+365
+00:14:20,510 --> 00:14:23,600
+You can, however, use multiple
+agents, if you want to,
+
+366
+00:14:23,600 --> 00:14:25,600
+but doing that depends
+on your network design
+
+367
+00:14:25,600 --> 00:14:27,400
+and the limitations of the software.
+
+368
+00:14:28,910 --> 00:14:31,330
+Now that we understand our network design,
+
+369
+00:14:31,330 --> 00:14:33,630
+let's look at how you
+would install the agent.
+
+370
+00:14:35,400 --> 00:14:38,545
+When installing the Palo
+Alto USER ID agent software
+
+371
+00:14:38,545 --> 00:14:41,270
+you are prompted to use a service account.
+
+372
+00:14:41,270 --> 00:14:44,158
+If we were to able a flat
+standard active directory user
+
+373
+00:14:44,158 --> 00:14:47,170
+as the service account,
+it would error out.
+
+374
+00:14:47,170 --> 00:14:49,160
+Because the minimum needed rights
+
+375
+00:14:49,160 --> 00:14:52,350
+are already logged on as a
+service user rights assignment.
+
+376
+00:14:52,350 --> 00:14:54,630
+Then depending on the collecting
+methods you want to use,
+
+377
+00:14:54,630 --> 00:14:57,103
+you would then add additional
+rights to this account.
+
+378
+00:14:59,050 --> 00:15:01,400
+When running the Vendor documentation
+
+379
+00:15:01,400 --> 00:15:03,960
+they actually properly
+explain how to implement
+
+380
+00:15:03,960 --> 00:15:06,933
+least privileges except they
+sadly don't do for SMB-based
+
+381
+00:15:06,933 --> 00:15:09,170
+client probing.
+
+382
+00:15:09,170 --> 00:15:11,080
+Meaning that, you know, when
+this stuff's implemented,
+
+383
+00:15:11,080 --> 00:15:13,830
+you and I both know that this is usually
+
+384
+00:15:13,830 --> 00:15:16,230
+over-privileged with either local admin
+
+385
+00:15:16,230 --> 00:15:17,500
+or in the cases that I saw,
+
+386
+00:15:17,500 --> 00:15:19,486
+even the domain admin privileges.
+
+387
+00:15:19,486 --> 00:15:21,390
+In the case that you're
+using SMB-based probing,
+
+388
+00:15:21,390 --> 00:15:23,860
+the overall security does
+heavily depends on all the
+
+389
+00:15:23,860 --> 00:15:25,810
+factors within the network. For example,
+
+390
+00:15:25,810 --> 00:15:28,870
+a network access control or a
+general system hardening that
+
+391
+00:15:28,870 --> 00:15:30,203
+will prevent SMB relaying.
+
+392
+00:15:31,600 --> 00:15:33,730
+I know Palo Alto even knows this.
+
+393
+00:15:33,730 --> 00:15:35,340
+Within multiple places
+in the documentation
+
+394
+00:15:35,340 --> 00:15:37,040
+where it addresses client probing,
+
+395
+00:15:37,040 --> 00:15:38,653
+they advise you to not use this.
+
+396
+00:15:41,060 --> 00:15:43,110
+Anyhow, after having set
+up the appropriate rights
+
+397
+00:15:43,110 --> 00:15:45,820
+for the user, you can start
+to configure the agent.
+
+398
+00:15:45,820 --> 00:15:48,653
+When doing so you would
+fairly easily figure out
+
+399
+00:15:48,653 --> 00:15:50,470
+that you don't need to do much.
+
+400
+00:15:50,470 --> 00:15:53,299
+Both the server collection
+method and client probing
+
+401
+00:15:53,299 --> 00:15:56,627
+is enabled by default on both WMI and SMB.
+
+402
+00:15:57,479 --> 00:15:58,960
+Yo know, and I think this
+is important one to note,
+
+403
+00:15:58,960 --> 00:16:00,610
+because you know, Palo Alto by default
+
+404
+00:16:00,610 --> 00:16:01,940
+recommends against doing this,
+
+405
+00:16:01,940 --> 00:16:04,550
+but it's enabled by
+default within the agent.
+
+406
+00:16:04,550 --> 00:16:07,760
+So if an administrator, wants
+to use the same defaults,
+
+407
+00:16:07,760 --> 00:16:09,310
+he might unknowingly implement a system,
+
+408
+00:16:09,310 --> 00:16:12,313
+that's going to spread hashes
+everywhere in the network.
+
+409
+00:16:14,578 --> 00:16:15,600
+And the other thing that you need to do
+
+410
+00:16:15,600 --> 00:16:17,650
+before the client starts,
+you know, collecting sources
+
+411
+00:16:17,650 --> 00:16:19,830
+for my server or start probing clients
+
+412
+00:16:19,830 --> 00:16:21,450
+is add a network service source.
+
+413
+00:16:21,450 --> 00:16:23,230
+In this example, a domain folder.
+
+414
+00:16:23,230 --> 00:16:25,670
+This is all that is required
+to start, to make the agent
+
+415
+00:16:25,670 --> 00:16:27,290
+start probing and collecting resources,
+
+416
+00:16:27,290 --> 00:16:29,260
+but it has another function
+I would like to cover
+
+417
+00:16:29,260 --> 00:16:30,093
+called caching.
+
+418
+00:16:31,440 --> 00:16:34,620
+So whenever the agent
+identifies a user to IP match,
+
+419
+00:16:34,620 --> 00:16:36,737
+it will not only forward
+this information to firewall,
+
+420
+00:16:36,737 --> 00:16:40,170
+but also source locally for
+a specific amount of time.
+
+421
+00:16:40,170 --> 00:16:42,023
+But if all this time is 45 minutes.
+
+422
+00:16:43,370 --> 00:16:45,710
+However, this caching time out
+
+423
+00:16:45,710 --> 00:16:47,840
+does not correlate to
+the probing in default.
+
+424
+00:16:47,840 --> 00:16:50,850
+Meaning even if the collected information
+
+425
+00:16:50,850 --> 00:16:54,640
+was done by probing and it's
+been cached for 45 minutes,
+
+426
+00:16:54,640 --> 00:16:56,550
+the system will still probe the clients,
+
+427
+00:16:56,550 --> 00:16:58,363
+regardless of this caching timeout.
+
+428
+00:17:00,260 --> 00:17:02,320
+Now that we've taken
+off the confirmation of
+
+429
+00:17:02,320 --> 00:17:04,670
+the client itself, we
+can look at the firewall.
+
+430
+00:17:05,910 --> 00:17:07,880
+So the first thing we do is
+just simply add the agent
+
+431
+00:17:07,880 --> 00:17:09,110
+to the firewall.
+
+432
+00:17:09,110 --> 00:17:11,500
+This will enable the firewall
+to talk to agent whenever a
+
+433
+00:17:11,500 --> 00:17:14,257
+specific ACL triggers the events
+to collect information from
+
+434
+00:17:14,257 --> 00:17:15,440
+the user.
+
+435
+00:17:15,440 --> 00:17:16,273
+Then what you would do
+
+436
+00:17:16,273 --> 00:17:18,540
+is you would enable
+user identification ACL
+
+437
+00:17:18,540 --> 00:17:21,060
+on zone where you would
+want to configure this.
+
+438
+00:17:21,060 --> 00:17:22,370
+And then, to allow the firewall to know
+
+439
+00:17:22,370 --> 00:17:24,850
+about users in your server,
+in your environment,
+
+440
+00:17:24,850 --> 00:17:27,370
+you would add a LDAP profile.
+
+441
+00:17:27,370 --> 00:17:29,230
+This LDAP profile is basically
+going to link, you know,
+
+442
+00:17:29,230 --> 00:17:32,630
+the resources from active
+directory to the firewall.
+
+443
+00:17:32,630 --> 00:17:33,880
+Then from this point onwards,
+
+444
+00:17:33,880 --> 00:17:36,220
+you're able to create
+firewall rules using users
+
+445
+00:17:36,220 --> 00:17:37,410
+as a source.
+
+446
+00:17:37,410 --> 00:17:39,170
+But if you want to also use groups,
+
+447
+00:17:39,170 --> 00:17:40,920
+you need to do one additional step.
+
+448
+00:17:41,950 --> 00:17:43,890
+This step being a group mapping.
+
+449
+00:17:43,890 --> 00:17:45,690
+Basically what this does
+is going to take the groups
+
+450
+00:17:45,690 --> 00:17:47,740
+using your active directory environment
+
+451
+00:17:47,740 --> 00:17:49,490
+and cache these members
+on the firewall itself.
+
+452
+00:17:49,490 --> 00:17:51,430
+So it doesn't need to perform
+an LDAP query every time,
+
+453
+00:17:51,430 --> 00:17:53,523
+you know, a user matches in ACL.
+
+454
+00:17:55,590 --> 00:17:57,150
+Then from this point forward,
+
+455
+00:17:57,150 --> 00:17:59,660
+and whenever you get an ACL and firewall
+
+456
+00:17:59,660 --> 00:18:02,200
+and generate some traffic
+matching this rule,
+
+457
+00:18:02,200 --> 00:18:05,404
+the firewall will send
+over a request to the agent
+
+458
+00:18:05,404 --> 00:18:06,680
+asking, you know, who's logged on.
+
+459
+00:18:06,680 --> 00:18:08,490
+And if it doesn't, the agent doesn't know,
+
+460
+00:18:08,490 --> 00:18:10,325
+it'll stop probing us.
+
+461
+00:18:10,325 --> 00:18:12,010
+In this example, we could
+see an Ubuntu client
+
+462
+00:18:12,010 --> 00:18:14,280
+performing a ping towards the fridge,
+
+463
+00:18:14,280 --> 00:18:16,500
+and you could see the
+agent starts probing us.
+
+464
+00:18:16,500 --> 00:18:17,610
+So as you now know,
+
+465
+00:18:17,610 --> 00:18:18,590
+instead of three components
+
+466
+00:18:18,590 --> 00:18:21,150
+there are actually four
+components in this flow.
+
+467
+00:18:21,150 --> 00:18:22,440
+There's the client, VLAN1,
+
+468
+00:18:22,440 --> 00:18:24,230
+there's User-ID agent,
+
+469
+00:18:24,230 --> 00:18:27,570
+the firewall and the fridge,
+which we want to access.
+
+470
+00:18:27,570 --> 00:18:28,450
+So irregardless of what we do,
+
+471
+00:18:28,450 --> 00:18:30,480
+the agent's going to collect information
+
+472
+00:18:30,480 --> 00:18:33,590
+from the active directory
+and store this information
+
+473
+00:18:33,590 --> 00:18:35,590
+to build out this User-ID mapping cache.
+
+474
+00:18:36,610 --> 00:18:38,907
+Then we come along and
+ask the firewall to access
+
+475
+00:18:38,907 --> 00:18:41,821
+the specific fridge in
+the segment of VLAN.
+
+476
+00:18:41,821 --> 00:18:43,930
+The firewall is then gonna
+block our traffic and tell us,
+
+477
+00:18:43,930 --> 00:18:45,710
+you know, hold up, I
+need to know who you are
+
+478
+00:18:45,710 --> 00:18:48,660
+because you know, there's
+a user ACL mapping.
+
+479
+00:18:48,660 --> 00:18:51,010
+The firewall is then gonna
+send over this information
+
+480
+00:18:51,010 --> 00:18:52,887
+request to the agent,
+
+481
+00:18:52,887 --> 00:18:54,800
+the agent is then gonna look at his cache
+
+482
+00:18:54,800 --> 00:18:56,540
+to see if he knows who we currently are.
+
+483
+00:18:56,540 --> 00:18:59,670
+And because he doesn't know
+he's gonna send over a bubbling
+
+484
+00:18:59,670 --> 00:19:01,963
+request to us, asking, who are you?
+
+485
+00:19:03,000 --> 00:19:04,040
+The only issue being, right now,
+
+486
+00:19:04,040 --> 00:19:06,260
+is that we currently don't support this.
+
+487
+00:19:06,260 --> 00:19:07,670
+So whenever a request comes in,
+
+488
+00:19:07,670 --> 00:19:12,670
+we throw an error like
+"Lolwut? unsupported DCE/RPC".
+
+489
+00:19:14,240 --> 00:19:15,850
+So at this point, I thought, you know,
+
+490
+00:19:15,850 --> 00:19:18,143
+maybe if I implement NetWkstaUserEnum,
+
+491
+00:19:19,230 --> 00:19:21,870
+nobody will be able to tell I'm Spiderman,
+
+492
+00:19:21,870 --> 00:19:23,640
+but before going off a
+building or something,
+
+493
+00:19:23,640 --> 00:19:24,540
+I would first like to know
+
+494
+00:19:24,540 --> 00:19:26,770
+what is actually happening under the hood.
+
+495
+00:19:26,770 --> 00:19:29,180
+So we're going to look at some
+Microsoft documentation and
+
+496
+00:19:29,180 --> 00:19:30,480
+we'll figure it out from there.
+
+497
+00:19:30,480 --> 00:19:32,220
+So again, if you look at a packet capture
+
+498
+00:19:32,220 --> 00:19:33,530
+we would see that the probing request,
+
+499
+00:19:33,530 --> 00:19:37,528
+tried to access a named
+pipe called wkssvc.
+
+500
+00:19:37,528 --> 00:19:38,530
+With a bit of Googling around
+
+501
+00:19:38,530 --> 00:19:40,450
+you could easily figure out
+that this actually called
+
+502
+00:19:40,450 --> 00:19:44,290
+the Workstation Service Remote Protocol.
+
+503
+00:19:44,290 --> 00:19:47,240
+Luckily for us am actually
+had this huge, handy PDF
+
+504
+00:19:47,240 --> 00:19:49,430
+which fully explains everything
+within this named pipe.
+
+505
+00:19:49,430 --> 00:19:51,583
+So when I actually want to
+build something around this
+
+506
+00:19:51,583 --> 00:19:52,870
+I was kinda looking up against, you know,
+
+507
+00:19:52,870 --> 00:19:54,620
+building this from scratch.
+
+508
+00:19:54,620 --> 00:19:58,050
+So after asking around
+internally on our meta post
+
+509
+00:19:58,050 --> 00:20:00,823
+I was redirected back to Impacket,
+
+510
+00:20:01,960 --> 00:20:03,490
+which in hindsight was actually, you know,
+
+511
+00:20:03,490 --> 00:20:05,240
+pretty obvious because of ref,
+
+512
+00:20:05,240 --> 00:20:07,640
+the readme references the, you
+know, the specific name pipe
+
+513
+00:20:07,640 --> 00:20:08,920
+we want to implement.
+
+514
+00:20:08,920 --> 00:20:10,230
+When it came down to
+actually implementing the
+
+515
+00:20:10,230 --> 00:20:13,049
+NetrWkstaUserEnum function, most of them,
+
+516
+00:20:13,049 --> 00:20:15,163
+most of the work was already done for me.
+
+517
+00:20:16,200 --> 00:20:18,814
+All this works. For the
+function to properly function
+
+518
+00:20:18,814 --> 00:20:23,323
+were already implemented in
+Impacket as Python classes.
+
+519
+00:20:24,280 --> 00:20:26,240
+Here on the left, you can
+see a simplified version
+
+520
+00:20:26,240 --> 00:20:28,570
+of the requests as Microsoft describes it.
+
+521
+00:20:28,570 --> 00:20:29,403
+And on the right,
+
+522
+00:20:29,403 --> 00:20:31,740
+you can see the class within
+the Impacket solution.
+
+523
+00:20:32,970 --> 00:20:34,700
+So all I have to do is
+just figure out, you know,
+
+524
+00:20:34,700 --> 00:20:36,020
+how I would implement some code,
+
+525
+00:20:36,020 --> 00:20:38,310
+which is gonna trigger
+and return information,
+
+526
+00:20:38,310 --> 00:20:39,173
+how I want it to.
+
+527
+00:20:40,620 --> 00:20:42,350
+But before I start extending Impacket
+
+528
+00:20:42,350 --> 00:20:45,150
+I want an easy way to verify
+from the code I was doing.
+
+529
+00:20:45,150 --> 00:20:47,080
+So with a bit of Googling,
+I found this function
+
+530
+00:20:47,080 --> 00:20:49,400
+called NetLoggedOn, which
+is Powershell function,
+
+531
+00:20:49,400 --> 00:20:51,230
+written by @harmj0y.
+
+532
+00:20:51,230 --> 00:20:53,150
+This function, basically
+does the same thing
+
+533
+00:20:53,150 --> 00:20:54,280
+as the firewall will do.
+
+534
+00:20:54,280 --> 00:20:55,560
+So this allows us to start, test our code,
+
+535
+00:20:55,560 --> 00:20:57,883
+without having to rely on a firewall.
+
+536
+00:21:00,340 --> 00:21:02,190
+With the firewall
+temporarily out of the way,
+
+537
+00:21:02,190 --> 00:21:04,840
+I could start implementing
+things with netpacket.
+
+538
+00:21:04,840 --> 00:21:07,720
+I won't bore you with every
+single line code I added,
+
+539
+00:21:07,720 --> 00:21:09,340
+but I would like to
+share a couple of things
+
+540
+00:21:09,340 --> 00:21:10,970
+that I found out, which might be handy
+
+541
+00:21:10,970 --> 00:21:13,440
+if you ever want to
+implement something similar.
+
+542
+00:21:13,440 --> 00:21:16,000
+So the first thing is whenever, currently,
+
+543
+00:21:16,000 --> 00:21:18,910
+whenever Impacket receives
+a probing request,
+
+544
+00:21:18,910 --> 00:21:20,980
+it has no idea how to handle this.
+
+545
+00:21:20,980 --> 00:21:22,373
+So in order for Impacket to support this,
+
+546
+00:21:22,373 --> 00:21:25,490
+what we would do is we
+would edit a dictionary
+
+547
+00:21:25,490 --> 00:21:26,660
+within the class.
+
+548
+00:21:26,660 --> 00:21:28,990
+which basically going to link
+this opnum code to a method
+
+549
+00:21:28,990 --> 00:21:30,640
+which you would define later.
+
+550
+00:21:30,640 --> 00:21:33,290
+This way, whenever Impacket
+receives a specific opnum code,
+
+551
+00:21:33,290 --> 00:21:35,873
+it knows which method
+should handle this request.
+
+552
+00:21:38,290 --> 00:21:40,410
+The next one's you shouldn't add arguments
+
+553
+00:21:40,410 --> 00:21:41,890
+on the SMB server clause itself.
+
+554
+00:21:41,890 --> 00:21:44,763
+If you want to supply it with
+CLR argument information,
+
+555
+00:21:45,710 --> 00:21:47,950
+to supply this information
+to the method feature
+
+556
+00:21:47,950 --> 00:21:48,810
+you're going to use,
+
+557
+00:21:48,810 --> 00:21:51,040
+is you would define a function,
+
+558
+00:21:51,040 --> 00:21:53,510
+which is gonna update
+a configuration file.
+
+559
+00:21:53,510 --> 00:21:55,110
+After doing this, within
+the clause itself,
+
+560
+00:21:55,110 --> 00:21:57,250
+you can use a dictionary
+to get the information back
+
+561
+00:21:57,250 --> 00:21:59,323
+you initially supplied on CLI arguments.
+
+562
+00:22:00,617 --> 00:22:01,610
+As you can see here,
+
+563
+00:22:01,610 --> 00:22:05,150
+the values that initially
+added the CLI agreements are
+
+564
+00:22:05,150 --> 00:22:08,150
+here used to return the actual
+information upon our request.
+
+565
+00:22:10,350 --> 00:22:13,040
+So let's actually look
+at this is an action.
+
+566
+00:22:13,040 --> 00:22:14,830
+Here, on the top we could
+see a Powershell session,
+
+567
+00:22:14,830 --> 00:22:17,550
+with the Get-NetLoggedon
+user function loaded.
+
+568
+00:22:17,550 --> 00:22:18,383
+And on the bottom,
+
+569
+00:22:18,383 --> 00:22:20,707
+we can see a Ubuntu client with our
+
+570
+00:22:20,707 --> 00:22:23,403
+modified version of Impacket.
+
+571
+00:22:24,660 --> 00:22:27,550
+Whenever we send off a
+Get-NetLoggedon request
+
+572
+00:22:27,550 --> 00:22:29,600
+to the Ubuntu client you
+can see the information
+
+573
+00:22:29,600 --> 00:22:30,990
+which we supplied on the SMB server
+
+574
+00:22:30,990 --> 00:22:33,410
+is now returned to the request.
+
+575
+00:22:33,410 --> 00:22:35,340
+Meaning that we're currently
+able to fully respond
+
+576
+00:22:35,340 --> 00:22:37,033
+to these probing requests.
+
+577
+00:22:39,150 --> 00:22:42,450
+So the issue being that we
+currently didn't support it
+
+578
+00:22:42,450 --> 00:22:45,623
+is now gone. So we're returning
+the spoof user information,
+
+579
+00:22:47,130 --> 00:22:48,846
+the agent is then gonna
+take this information
+
+580
+00:22:48,846 --> 00:22:51,313
+and enter his cache.
+
+581
+00:22:51,313 --> 00:22:55,292
+And then afterwards, port
+forward this to the firewall.
+
+582
+00:22:55,292 --> 00:22:58,210
+The firewall is then going
+to use the information
+
+583
+00:22:58,210 --> 00:22:59,960
+and either to give us access to the fridge
+
+584
+00:22:59,960 --> 00:23:02,930
+or not, depending on the
+information we supply.
+
+585
+00:23:02,930 --> 00:23:03,830
+You know, which is great.
+
+586
+00:23:03,830 --> 00:23:05,760
+Everything is in place for this attack.
+
+587
+00:23:05,760 --> 00:23:08,210
+So let's take this and
+apply it to the real thing.
+
+588
+00:23:08,210 --> 00:23:10,963
+So you can see a firewall
+configured with a user ACL.
+
+589
+00:23:14,680 --> 00:23:18,310
+Here it says that only
+VIP members within VLAN1
+
+590
+00:23:18,310 --> 00:23:20,460
+are able to access the
+fridge within VLAN2.
+
+591
+00:23:22,890 --> 00:23:23,930
+Then, here on the right.
+
+592
+00:23:23,930 --> 00:23:25,370
+You can see the Active Directory console
+
+593
+00:23:25,370 --> 00:23:26,853
+with the specific user group.
+
+594
+00:23:29,480 --> 00:23:31,140
+On the left. You can see
+you an Ubuntu client,
+
+595
+00:23:31,140 --> 00:23:32,990
+which we'll gonna cover more shortly.
+
+596
+00:23:34,880 --> 00:23:36,550
+If you open the VIP members group,
+
+597
+00:23:36,550 --> 00:23:39,483
+we can see that the user, Steve,
+is a member of this group.
+
+598
+00:23:42,440 --> 00:23:44,770
+Then, if you look at the
+palo_alto_userid agent,
+
+599
+00:23:44,770 --> 00:23:47,220
+here, we could see current
+user IP mapping cache.
+
+600
+00:23:49,330 --> 00:23:50,870
+To show you that I'm not cheating.
+
+601
+00:23:50,870 --> 00:23:51,703
+Here on the left.
+
+602
+00:23:51,703 --> 00:23:54,473
+We can see that the Ubuntu
+client has one IP address.
+
+603
+00:23:58,060 --> 00:23:59,640
+And this currently isn't listed
+
+604
+00:23:59,640 --> 00:24:01,290
+within the IP-User Mapping Cache.
+
+605
+00:24:03,680 --> 00:24:05,560
+Then it will start to
+generate some network traffic
+
+606
+00:24:05,560 --> 00:24:06,773
+matching firewall rule.
+
+607
+00:24:09,450 --> 00:24:10,830
+You would see we are now able to access
+
+608
+00:24:10,830 --> 00:24:11,923
+this specific fridge.
+
+609
+00:24:22,930 --> 00:24:24,200
+Here we can see the agent again.
+
+610
+00:24:24,200 --> 00:24:26,940
+And this guy currently receives
+a request from a firewall
+
+611
+00:24:26,940 --> 00:24:29,860
+to get information about
+us. The agent doesn't know,
+
+612
+00:24:29,860 --> 00:24:31,783
+So it's adding us to the probing queue.
+
+613
+00:24:33,650 --> 00:24:36,060
+Meaning if we were to
+start our own SMB server,
+
+614
+00:24:36,060 --> 00:24:38,210
+which is able to respond
+to these requests,
+
+615
+00:24:40,550 --> 00:24:42,900
+we can now return our
+spoofed user information.
+
+616
+00:24:48,690 --> 00:24:51,130
+Start the agent, we just
+have to wait a while
+
+617
+00:24:51,130 --> 00:24:53,130
+for it to start probing us.
+
+618
+00:24:54,927 --> 00:24:56,493
+And when it eventually does.
+
+619
+00:24:58,850 --> 00:25:00,270
+You can see they would just return
+
+620
+00:25:00,270 --> 00:25:02,170
+domains\steve as our logged on user.
+
+621
+00:25:06,325 --> 00:25:07,801
+You can see that then this information
+
+622
+00:25:07,801 --> 00:25:10,670
+is added through the
+user IP mapping cache.
+
+623
+00:25:10,670 --> 00:25:12,250
+And on the bottom-left,
+you could see our ping,
+
+624
+00:25:12,250 --> 00:25:14,753
+currently being allowed
+to access the fridge.
+
+625
+00:25:15,620 --> 00:25:17,080
+So we switch over to our browser again.
+
+626
+00:25:17,080 --> 00:25:18,730
+Here, we can see all the
+beers we want to access.
+
+627
+00:25:18,730 --> 00:25:19,750
+You know, great to see this.
+
+628
+00:25:19,750 --> 00:25:22,050
+We just succeeded in
+bypassing a firewall ACL.
+
+629
+00:25:23,170 --> 00:25:25,050
+So if you want to play
+around with this stuff,
+
+630
+00:25:25,050 --> 00:25:25,920
+it goes in GitHub.
+
+631
+00:25:25,920 --> 00:25:28,620
+You know the QR codes on
+screen so scan it in a phone.
+
+632
+00:25:30,093 --> 00:25:32,780
+You know, I after just pawning
+one of the firewall vendors,
+
+633
+00:25:32,780 --> 00:25:34,710
+I started looking around a
+bit more because, you know,
+
+634
+00:25:34,710 --> 00:25:37,080
+it might, there might be more out there.
+
+635
+00:25:37,080 --> 00:25:38,210
+So after Googling around,
+
+636
+00:25:38,210 --> 00:25:40,840
+I did figure out that most
+firewall vendors have some form
+
+637
+00:25:40,840 --> 00:25:43,220
+of user to IP mapping function,
+
+638
+00:25:43,220 --> 00:25:46,560
+but not all of them use SMB
+as their probing method.
+
+639
+00:25:46,560 --> 00:25:50,110
+Though, I did find one called
+SonicWall and they referenced
+
+640
+00:25:50,110 --> 00:25:51,310
+something called NetAPI.
+
+641
+00:25:52,750 --> 00:25:53,730
+So as I looking into it.
+
+642
+00:25:53,730 --> 00:25:56,390
+You know, NetAPI is something
+called SSO solution.
+
+643
+00:25:56,390 --> 00:25:59,620
+It's basically much the
+same as Palo Alto User ID.
+
+644
+00:25:59,620 --> 00:26:01,070
+It's a configurable agent,
+
+645
+00:26:01,070 --> 00:26:02,850
+which is installed somewhere
+on the network, you know,
+
+646
+00:26:02,850 --> 00:26:05,070
+and it starts collecting
+information on active directory
+
+647
+00:26:05,070 --> 00:26:06,903
+or, you know, client probing.
+
+648
+00:26:08,650 --> 00:26:11,030
+The only main difference being
+is that the documentation
+
+649
+00:26:11,030 --> 00:26:12,267
+of something called (indistinct).
+
+650
+00:26:14,030 --> 00:26:17,220
+Depending on what documentation
+you happen to be opening
+
+651
+00:26:17,220 --> 00:26:19,360
+your are either told to
+use these privileges,
+
+652
+00:26:19,360 --> 00:26:22,100
+or you're told to just
+use administrative rights.
+
+653
+00:26:22,100 --> 00:26:23,780
+Apart from that there's
+not much else going on
+
+654
+00:26:23,780 --> 00:26:25,853
+so we can just jump right into the demo.
+
+655
+00:26:27,410 --> 00:26:29,440
+Here, we can see the SonicWall SSO Age.
+
+656
+00:26:29,440 --> 00:26:32,290
+Being configured, you start
+probing clients using NetAPI.
+
+657
+00:26:34,570 --> 00:26:35,920
+And if we switch over to firewall,
+
+658
+00:26:35,920 --> 00:26:37,720
+we can see that clearly
+there's a rule which says,
+
+659
+00:26:37,720 --> 00:26:39,333
+if we wants to access Google,
+
+660
+00:26:47,660 --> 00:26:49,220
+we need to be a specific user
+
+661
+00:26:49,220 --> 00:26:50,883
+in this case being administrator.
+
+662
+00:26:54,720 --> 00:26:56,370
+Then, if we start to
+generate some traffic,
+
+663
+00:26:56,370 --> 00:26:57,670
+you can see we currently aren't allowed
+
+664
+00:26:57,670 --> 00:26:59,243
+to access this resource.
+
+665
+00:27:01,106 --> 00:27:03,640
+If we look at our SMB implementation.
+
+666
+00:27:03,640 --> 00:27:06,520
+You can see that we supplied
+the username administrator
+
+667
+00:27:14,740 --> 00:27:15,993
+and corresponding domain.
+
+668
+00:27:27,270 --> 00:27:28,490
+And after starting this server
+
+669
+00:27:28,490 --> 00:27:29,550
+we just have to wait a while
+
+670
+00:27:29,550 --> 00:27:31,250
+for the agent to start probing us.
+
+671
+00:27:41,475 --> 00:27:42,690
+And when it does, you can now see
+
+672
+00:27:42,690 --> 00:27:44,230
+by returning the correct information,
+
+673
+00:27:44,230 --> 00:27:47,373
+we're able to allow access
+through this firewall ACL.
+
+674
+00:27:48,540 --> 00:27:50,620
+So I just showed you how to
+pwn two different vendors
+
+675
+00:27:50,620 --> 00:27:53,640
+using no arbitrary
+exposed user information,
+
+676
+00:27:53,640 --> 00:27:56,910
+but there is this caveat I
+neglected to mention this far,
+
+677
+00:27:56,910 --> 00:27:58,830
+and this caveat basically
+covers, you know,
+
+678
+00:27:58,830 --> 00:28:02,113
+how as the guests access work
+within Impacket in Windows.
+
+679
+00:28:03,610 --> 00:28:06,820
+So, whenever SMB, Impacket
+SMB server is started
+
+680
+00:28:06,820 --> 00:28:09,010
+without any form of authentication.
+
+681
+00:28:09,010 --> 00:28:11,210
+Whenever authentication fails,
+
+682
+00:28:11,210 --> 00:28:13,660
+it will fall back to an
+SMB guest access session,
+
+683
+00:28:14,710 --> 00:28:16,800
+meaning that our probe requests thus far
+
+684
+00:28:16,800 --> 00:28:18,770
+have made use of an SMB session with,
+
+685
+00:28:18,770 --> 00:28:20,043
+as guest access enabled.
+
+686
+00:28:21,520 --> 00:28:23,370
+The issue being here, is that
+it shouldn't be possible,
+
+687
+00:28:23,370 --> 00:28:26,020
+by default, in a recent
+version of Microsoft Windows.
+
+688
+00:28:27,000 --> 00:28:28,790
+By default there should be
+no access in registry key,
+
+689
+00:28:28,790 --> 00:28:32,770
+which will prevent the client
+from accepting SMB server
+
+690
+00:28:32,770 --> 00:28:34,980
+session with guests access enabled.
+
+691
+00:28:34,980 --> 00:28:35,813
+But you know, up to this point,
+
+692
+00:28:35,813 --> 00:28:37,633
+we haven't had any problems with this.
+
+693
+00:28:38,770 --> 00:28:40,380
+So as it turns out.
+
+694
+00:28:40,380 --> 00:28:41,920
+Even though Microsoft
+says this registry key
+
+695
+00:28:41,920 --> 00:28:43,370
+should exist by default,
+
+696
+00:28:43,370 --> 00:28:45,040
+within a specific version of Windows,
+
+697
+00:28:45,040 --> 00:28:47,833
+it usually doesn't exist
+within Windows 10 clients.
+
+698
+00:28:48,760 --> 00:28:51,360
+However, it does on Server 2019.
+
+699
+00:28:51,360 --> 00:28:53,280
+Meaning if you were to install this agent
+
+700
+00:28:53,280 --> 00:28:56,970
+on a Server 2019 server,
+this exploit won't work.
+
+701
+00:28:56,970 --> 00:28:58,640
+If it's installed on a Windows 10 client,
+
+702
+00:28:58,640 --> 00:29:01,880
+I will recommend you to check
+if this register key exists.
+
+703
+00:29:01,880 --> 00:29:03,623
+If not, enable it.
+
+704
+00:29:05,890 --> 00:29:07,400
+So let's go over to disclosures.
+
+705
+00:29:07,400 --> 00:29:09,530
+I started my first
+disclosure with Palo Alto
+
+706
+00:29:09,530 --> 00:29:11,090
+and shared two findings.
+
+707
+00:29:11,090 --> 00:29:13,970
+The agent SMB hash disclosure
+and the actual bypassing
+
+708
+00:29:13,970 --> 00:29:14,803
+firewall ACLs.
+
+709
+00:29:14,803 --> 00:29:17,220
+I wasn't informed
+NetBIOS-based client probing
+
+710
+00:29:17,220 --> 00:29:20,363
+will be dropped from further
+version of Palo Alto User ID.
+
+711
+00:29:21,440 --> 00:29:23,570
+Though, at some time I was
+informed that this issue
+
+712
+00:29:23,570 --> 00:29:25,250
+would not warrant a CVE
+
+713
+00:29:25,250 --> 00:29:26,480
+because this was an issue with the
+
+714
+00:29:26,480 --> 00:29:28,680
+Microsoft protocol
+itself and not Palo Alto.
+
+715
+00:29:31,170 --> 00:29:33,150
+Then after that, after being told that,
+
+716
+00:29:33,150 --> 00:29:35,400
+I was added to the hall of fame.
+
+717
+00:29:35,400 --> 00:29:36,480
+I currently don't know the status
+
+718
+00:29:36,480 --> 00:29:38,560
+of the dropping of NetBIOS.
+
+719
+00:29:38,560 --> 00:29:41,230
+The latest response of the
+vendor was that the fix
+
+720
+00:29:41,230 --> 00:29:42,500
+is already present in the product
+
+721
+00:29:42,500 --> 00:29:44,700
+because the client
+doesn't need to use this.
+
+722
+00:29:47,320 --> 00:29:49,490
+Then we can call for the
+disclosure of SonicWall.
+
+723
+00:29:49,490 --> 00:29:52,740
+I started this disclosure
+at the same time.
+
+724
+00:29:52,740 --> 00:29:54,470
+And then after some while they informed me
+
+725
+00:29:54,470 --> 00:29:56,470
+that the issue was actually a duplicate.
+
+726
+00:29:57,350 --> 00:30:00,300
+Besides that they told me
+that they would add a warning
+
+727
+00:30:00,300 --> 00:30:02,771
+whenever the user administrator was used.
+
+728
+00:30:02,771 --> 00:30:04,670
+So on one hand, I thought
+it was a dumb thing
+
+729
+00:30:04,670 --> 00:30:06,970
+because we're just gonna
+take this whole if statement,
+
+730
+00:30:06,970 --> 00:30:09,760
+smack it on the issue
+there and call it a day.
+
+731
+00:30:09,760 --> 00:30:13,440
+So naturally I shared my
+concerns with the vendor
+
+732
+00:30:13,440 --> 00:30:14,830
+and I asked them, you know,
+
+733
+00:30:14,830 --> 00:30:18,240
+which of my vulnerabilities
+were a duplicate
+
+734
+00:30:18,240 --> 00:30:19,540
+from the other researcher.
+
+735
+00:30:20,760 --> 00:30:23,030
+After sometime I received an email,
+
+736
+00:30:23,030 --> 00:30:24,350
+which informed me that they released
+
+737
+00:30:24,350 --> 00:30:26,493
+associates CVE number for the issues.
+
+738
+00:30:28,520 --> 00:30:30,560
+So looking at the
+disclosure of the vendor,
+
+739
+00:30:30,560 --> 00:30:33,020
+I figured out who the
+other researcher was,
+
+740
+00:30:33,020 --> 00:30:34,870
+Sedric Louissant.
+
+741
+00:30:34,870 --> 00:30:36,680
+I then sent him a message
+asking, basically,
+
+742
+00:30:36,680 --> 00:30:38,880
+you know, what did he
+disclose to SonicWall?
+
+743
+00:30:39,980 --> 00:30:40,980
+Well, then as I talked to him,
+
+744
+00:30:40,980 --> 00:30:45,250
+I figured out that he didn't
+perform any ACL bypasses
+
+745
+00:30:45,250 --> 00:30:48,370
+he disclosed SMB hash disclosure part.
+
+746
+00:30:48,370 --> 00:30:51,110
+Meaning that SonicWall just
+took a vote for findings
+
+747
+00:30:51,110 --> 00:30:53,060
+tacked mine onto his and call it a day.
+
+748
+00:30:54,410 --> 00:30:55,670
+Anyhow, regardless of that,
+
+749
+00:30:55,670 --> 00:30:58,110
+I still wanted to figure
+out if there were any
+
+750
+00:30:58,110 --> 00:30:59,180
+auto fixes they implemented,
+
+751
+00:30:59,180 --> 00:31:00,420
+besides actual if statements,
+
+752
+00:31:00,420 --> 00:31:02,420
+which is gonna check user administrator.
+
+753
+00:31:03,800 --> 00:31:05,940
+So I installed the agent and, you know,
+
+754
+00:31:05,940 --> 00:31:08,060
+I did find out a couple of things.
+
+755
+00:31:08,060 --> 00:31:09,533
+The if statement is there.
+
+756
+00:31:10,530 --> 00:31:13,760
+It only does actually
+check if the username
+
+757
+00:31:13,760 --> 00:31:17,050
+is called administrator,
+it doesn't actually check
+
+758
+00:31:17,050 --> 00:31:18,520
+the effective rights of the user.
+
+759
+00:31:18,520 --> 00:31:20,350
+Meaning, if you were to
+create a user and gave it
+
+760
+00:31:20,350 --> 00:31:23,100
+domain admin rights it will
+not prompt this warning.
+
+761
+00:31:23,100 --> 00:31:25,700
+Besides that, this warning only prompts
+
+762
+00:31:25,700 --> 00:31:27,160
+when you configure the service account
+
+763
+00:31:27,160 --> 00:31:30,210
+in a later stage, not during
+the initial installation,
+
+764
+00:31:30,210 --> 00:31:31,560
+when this is initially set.
+
+765
+00:31:33,760 --> 00:31:36,050
+They also changed the
+default probing method.
+
+766
+00:31:36,050 --> 00:31:38,870
+Before the disclosures this was NetAPI.
+
+767
+00:31:38,870 --> 00:31:40,720
+Afterwards, they changed this to WMI.
+
+768
+00:31:41,990 --> 00:31:44,240
+They also updated the documentation.
+
+769
+00:31:44,240 --> 00:31:46,470
+They do now reference that you should use
+
+770
+00:31:46,470 --> 00:31:49,660
+a local administrator when
+you want to use NetAPI-based
+
+771
+00:31:49,660 --> 00:31:50,493
+probing.
+
+772
+00:31:53,070 --> 00:31:55,270
+So, you know, what's
+next for this research.
+
+773
+00:31:56,150 --> 00:31:57,900
+There's potentially $Vendor3.
+
+774
+00:31:57,900 --> 00:31:59,863
+I expected them to also be vulnerable.
+
+775
+00:32:00,740 --> 00:32:02,630
+Their implementation is slightly different
+
+776
+00:32:02,630 --> 00:32:04,860
+than we talked about today,
+but I think they're vulnerable.
+
+777
+00:32:04,860 --> 00:32:07,460
+So I already started a
+disclosure process with them.
+
+778
+00:32:08,720 --> 00:32:10,930
+Besides that I did notice
+there were a couple of vendors
+
+779
+00:32:10,930 --> 00:32:13,653
+which used in winreg named pipe.
+
+780
+00:32:15,520 --> 00:32:17,907
+This winreg named pipe
+references to a Windows registry.
+
+781
+00:32:17,907 --> 00:32:20,150
+And basically before my
+check within the registry to
+
+782
+00:32:20,150 --> 00:32:21,523
+enumerate a lot on users.
+
+783
+00:32:22,370 --> 00:32:23,910
+It would require some further research,
+
+784
+00:32:23,910 --> 00:32:25,310
+but I think this is also vulnerable
+
+785
+00:32:25,310 --> 00:32:27,610
+to the same thing which
+we talked about today.
+
+786
+00:32:29,820 --> 00:32:32,030
+Also, there was a lot of vendors,
+
+787
+00:32:32,030 --> 00:32:35,170
+which was WMI to form probing requests.
+
+788
+00:32:35,170 --> 00:32:38,280
+Currently, there are no
+open source implementation
+
+789
+00:32:38,280 --> 00:32:41,050
+of setting up a, your own WMI server.
+
+790
+00:32:41,050 --> 00:32:43,710
+So if we're able to implement
+this within some product
+
+791
+00:32:43,710 --> 00:32:45,370
+or some ops, or tools,
+
+792
+00:32:45,370 --> 00:32:48,033
+we might be able to break a
+lot of a firewall vendors.
+
+793
+00:32:48,930 --> 00:32:50,650
+Apart from implementing a new protocols
+
+794
+00:32:50,650 --> 00:32:51,830
+and that kind of stuff.
+
+795
+00:32:51,830 --> 00:32:54,440
+We might also be able to
+abuse the caching function
+
+796
+00:32:54,440 --> 00:32:55,810
+of the agents.
+
+797
+00:32:55,810 --> 00:32:57,810
+You know, let's imagine
+you have someone working
+
+798
+00:32:57,810 --> 00:33:01,560
+within the corporation, it's
+five o'clock to leave for home.
+
+799
+00:33:01,560 --> 00:33:03,340
+We might be able to reuse his IP,
+
+800
+00:33:03,340 --> 00:33:04,830
+statically assign it to ours.
+
+801
+00:33:04,830 --> 00:33:07,740
+And hopefully the IP
+address still hasn't used to
+
+802
+00:33:07,740 --> 00:33:08,723
+IP mapping cache.
+
+803
+00:33:10,778 --> 00:33:11,880
+Other than that, you know,
+
+804
+00:33:11,880 --> 00:33:13,290
+we talked about firewalls today,
+
+805
+00:33:13,290 --> 00:33:15,380
+but there might be
+other products out there
+
+806
+00:33:15,380 --> 00:33:16,830
+which uses similar technique.
+
+807
+00:33:17,670 --> 00:33:19,600
+You know, even though they,
+
+808
+00:33:19,600 --> 00:33:23,540
+I would think they wouldn't
+use SMB for probing with WMI.
+
+809
+00:33:23,540 --> 00:33:26,520
+It wouldn't surprise me if they
+were to support an SMB-based
+
+810
+00:33:26,520 --> 00:33:27,910
+probing method.
+
+811
+00:33:27,910 --> 00:33:30,360
+And I'll use the same idea
+we talked about today.
+
+812
+00:33:31,240 --> 00:33:33,310
+You might be able to trick
+the vendor or product
+
+813
+00:33:33,310 --> 00:33:34,460
+into doing something unexpected,
+
+814
+00:33:34,460 --> 00:33:36,210
+by returning arbitrary information.
+
+815
+00:33:38,080 --> 00:33:40,120
+So the conclusion and takeaways.
+
+816
+00:33:40,120 --> 00:33:41,160
+Now the first one,
+
+817
+00:33:41,160 --> 00:33:44,500
+why I think client probing
+is generally a bad idea,
+
+818
+00:33:44,500 --> 00:33:46,100
+besides the whole port spoofing and
+
+819
+00:33:46,100 --> 00:33:49,940
+hash disclosure part of
+doing a probing based on SMB.
+
+820
+00:33:49,940 --> 00:33:52,720
+I think that generally,
+client probing is a bad idea.
+
+821
+00:33:52,720 --> 00:33:54,890
+You know, regardless of the protocol used,
+
+822
+00:33:54,890 --> 00:33:56,800
+you're never sure that the
+end point you're talking to
+
+823
+00:33:56,800 --> 00:33:59,203
+is returning arbitrary
+or spoof information.
+
+824
+00:34:00,470 --> 00:34:03,490
+And, you know, basing a logic product
+
+825
+00:34:03,490 --> 00:34:05,930
+for production applying
+security rules around that
+
+826
+00:34:05,930 --> 00:34:07,967
+is, in my brain, a bad idea.
+
+827
+00:34:07,967 --> 00:34:09,300
+Finishing up today.
+
+828
+00:34:09,300 --> 00:34:10,847
+This can now be exploited by
+
+829
+00:34:10,847 --> 00:34:13,340
+the Impacket implementation build.
+
+830
+00:34:13,340 --> 00:34:14,300
+But it wouldn't surprise me
+
+831
+00:34:14,300 --> 00:34:16,570
+if you were to kill the existing
+named pipe within Windows,
+
+832
+00:34:16,570 --> 00:34:17,880
+and spin up your own
+
+833
+00:34:17,880 --> 00:34:21,460
+you would be able to exploit
+this natively within Windows.
+
+834
+00:34:21,460 --> 00:34:23,680
+Another big one being
+it's just because a vendor
+
+835
+00:34:23,680 --> 00:34:25,170
+supports a specific feature.
+
+836
+00:34:25,170 --> 00:34:28,820
+This feature does not mean
+it's secure, secure by default.
+
+837
+00:34:28,820 --> 00:34:30,550
+In both cases, defendants
+we looked at today
+
+838
+00:34:30,550 --> 00:34:31,720
+supported a method,
+
+839
+00:34:31,720 --> 00:34:33,720
+which is generally known to be insecure.
+
+840
+00:34:34,620 --> 00:34:38,033
+In both of the cases, you know,
+it was enabled by default.
+
+841
+00:34:39,000 --> 00:34:41,450
+You, as a person, really need
+to practice due diligence
+
+842
+00:34:41,450 --> 00:34:44,210
+when it comes to looking
+at these extra features.
+
+843
+00:34:44,210 --> 00:34:46,800
+You know, you need to look
+at it how to implement it
+
+844
+00:34:46,800 --> 00:34:48,710
+and ask yourself, you know,
+the what-if questions.
+
+845
+00:34:48,710 --> 00:34:50,680
+What if we're able to respond
+to these requests, you know?
+
+846
+00:34:50,680 --> 00:34:52,210
+Is it actually safe?
+
+847
+00:34:52,210 --> 00:34:53,770
+And you know, and slip a smart idea
+
+848
+00:34:53,770 --> 00:34:55,370
+to bate our rules around this.
+
+849
+00:34:55,370 --> 00:34:57,180
+So thanks for listening to me rambling
+
+850
+00:34:57,180 --> 00:34:58,910
+about firewalls for forty-five minutes.
+
+851
+00:34:58,910 --> 00:35:00,070
+If you think I got something wrong,
+
+852
+00:35:00,070 --> 00:35:01,950
+please reach out to me on Twitter.
+
+853
+00:35:01,950 --> 00:35:03,570
+If you want to play around
+with this stuff yourself,
+
+854
+00:35:03,570 --> 00:35:05,430
+the code is on GitHub.
+
+855
+00:35:05,430 --> 00:35:07,330
+That's all for me. Have a nice DefCon.
+

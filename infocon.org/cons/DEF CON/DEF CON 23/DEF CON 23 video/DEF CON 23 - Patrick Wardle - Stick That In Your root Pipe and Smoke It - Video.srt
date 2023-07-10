@@ -1,0 +1,2267 @@
+﻿00:00:00.000 --> 00:00:07.708
+Mahalo. Welcome to my talk. My
+name is Patrick, I have worked
+
+00:00:07.708 --> 00:00:13.080
+at a bunch of Acronymed places,
+I am currently the Director of
+
+00:00:13.080 --> 00:00:16.817
+R&D at SYNAQ. So SNYAQ does
+crowd-sourced vulnerability
+
+00:00:16.817 --> 00:00:20.387
+discovery with vetted security
+researchers. Basically anyone
+
+00:00:20.387 --> 00:00:25.759
+can sign up to find bugs in our
+customers websites, mobile apps,
+
+00:00:25.759 --> 00:00:28.962
+IOT devices and even networks.
+Our customer service isnt
+
+00:00:28.962 --> 00:00:31.465
+that good, so we end up paying
+out a lot of money to our
+
+00:00:31.465 --> 00:00:33.901
+researchers, which I think is
+pretty cool. So this is
+
+00:00:33.901 --> 00:00:36.870
+something that's of interest to
+you, check it out at SYNAQ.com
+
+00:00:36.870 --> 00:00:40.741
+or chat with me after the talk.
+All right so what is this talk
+
+00:00:40.741 --> 00:00:44.544
+going to cover, a brief overview
+of XPC, were then going to
+
+00:00:44.544 --> 00:00:47.114
+talk about a privileged
+escalation bug that was named
+
+00:00:47.114 --> 00:00:49.983
+Root Pipe. We are going to talk
+about malware that was then
+
+00:00:49.983 --> 00:00:53.253
+discovered, that actually
+proceeded the public disclosure
+
+00:00:53.253 --> 00:00:56.857
+of the bug, so it was exploiting
+it as a zero day. Then were
+
+00:00:56.857 --> 00:01:00.193
+going to talk about Apples
+initial patch, how they blotched
+
+00:01:00.193 --> 00:01:03.430
+that patch, how I was able to
+bypass that to re-exploit the
+
+00:01:03.430 --> 00:01:05.766
+vulnerability on a completely
+patched system. And then briefly
+
+00:01:05.766 --> 00:01:09.169
+talk about Apples final
+patch, which seems to squash the
+
+00:01:09.169 --> 00:01:13.774
+bug. Usually credits are given
+at the end, but there are a lot
+
+00:01:13.774 --> 00:01:17.477
+of really good SOX researchers
+who ive learned a lot and are
+
+00:01:17.477 --> 00:01:20.814
+kind of partially responsible
+for this talk. So first is Ian
+
+00:01:20.814 --> 00:01:24.518
+beer he works at Google project
+zero, he has given a lot of
+
+00:01:24.518 --> 00:01:28.989
+talks on XPC found a lot of
+really cool bugs. So pretty much
+
+00:01:28.989 --> 00:01:35.362
+everything Ive learned about
+XPC is from Ian. Neil actually
+
+00:01:35.362 --> 00:01:38.498
+found Root Pipe so a lot of
+credit goes to him as well 
+
+00:01:38.498 --> 00:01:42.035
+and then Pedro he did some
+initial analysis on Apples
+
+00:01:42.035 --> 00:01:46.139
+original patch which got me
+inspired - and finally the book
+
+00:01:46.139 --> 00:01:48.875
+that taught me most of what I
+know about OSX internals was
+
+00:01:48.875 --> 00:01:55.082
+written by Johnathan levven so I
+highly recommend this book. So
+
+00:01:55.082 --> 00:01:58.585
+before diving in, since were
+in Vegas. I think to define any
+
+00:01:58.585 --> 00:02:02.422
+possibly ambiguous terms so in
+the context of this
+
+00:02:02.422 --> 00:02:06.493
+presentation. Talking about
+implants, Im talking
+
+00:02:06.493 --> 00:02:09.429
+malicious persistent code.
+Talking about hooking, Im
+
+00:02:09.429 --> 00:02:12.165
+talking about intercepting
+function calls, installing a
+
+00:02:12.165 --> 00:02:16.870
+hook or detour. A trojan is a
+malicious program, something
+
+00:02:16.870 --> 00:02:21.608
+that is malicious but pretends
+to be benign. An injection is
+
+00:02:21.608 --> 00:02:26.747
+about getting code into a remote
+process. Finally a backdoor in
+
+00:02:26.747 --> 00:02:30.550
+the context of this presentation
+is code that provides undetected
+
+00:02:30.550 --> 00:02:34.054
+remote control of the computer.
+Alright, with those out of the
+
+00:02:34.054 --> 00:02:37.457
+way. I want to start with a
+brief overview of XPC, which is
+
+00:02:37.457 --> 00:02:41.161
+a modern interprocess
+communication mechanism on OXX.
+
+00:02:41.161 --> 00:02:44.598
+Since root pipe is an XPC
+related vulnerability, I think
+
+00:02:44.598 --> 00:02:49.703
+its important to understand
+what XPC and how it works. So
+
+00:02:49.703 --> 00:02:53.306
+XPC as I mentioned, is an IPC
+mechanism with 2 goals;
+
+00:02:53.306 --> 00:02:57.511
+privileged separation and
+stability or fault tolerance. So
+
+00:02:57.511 --> 00:03:02.282
+basically each XPC component is
+its own unique process, this
+
+00:03:02.282 --> 00:03:06.686
+allows more fine grain controls,
+because each process can have
+
+00:03:06.686 --> 00:03:10.257
+its own unique sandbox, which
+gives it real fine level control
+
+00:03:10.257 --> 00:03:14.394
+over what access it can have. In
+terms of stability or fault
+
+00:03:14.394 --> 00:03:18.865
+tolerance, again since each XPC
+component is separate process,
+
+00:03:18.865 --> 00:03:22.736
+if that process crashes or has a
+bug that wont necessarily impact
+
+00:03:22.736 --> 00:03:25.772
+the main application or other
+XPC component. The Operating
+
+00:03:25.772 --> 00:03:30.677
+System can just restart that
+component automatically. XPC is
+
+00:03:30.677 --> 00:03:33.847
+used extensively by Apple in
+both frame works and
+
+00:03:33.847 --> 00:03:36.983
+applications so you can just
+grab the file system looking for
+
+00:03:36.983 --> 00:03:40.487
+XPC components. Terms of frame
+work for example we can see
+
+00:03:40.487 --> 00:03:44.057
+webkit, webkit is obviously used
+by browsers such as Safari and
+
+00:03:44.057 --> 00:03:47.627
+does things like rendering and
+plugin hosting. Makes sense to
+
+00:03:47.627 --> 00:03:51.098
+put these in separate processes,
+separate XPC components because
+
+00:03:51.098 --> 00:03:56.136
+if you think ability a ton to
+have render bugs, exploits so if
+
+00:03:56.136 --> 00:03:59.973
+this is in a separate really
+tightly locked down sandbox
+
+00:03:59.973 --> 00:04:02.909
+process execution, even if the
+attacker gets arbitrary code
+
+00:04:02.909 --> 00:04:05.979
+execution, they're not going to
+be able to do anything useful
+
+00:04:05.979 --> 00:04:08.949
+like persist malware or do some
+command and control. They're not
+
+00:04:08.949 --> 00:04:12.886
+going to have to break out of
+the sand box. Also in terms of
+
+00:04:12.886 --> 00:04:16.556
+stability if a plug in crashes,
+if the plug in hosting is a
+
+00:04:16.556 --> 00:04:18.859
+separate process, its not
+going to impact the main
+
+00:04:18.859 --> 00:04:21.161
+browser, might just say hey
+plugin was unable to load, but
+
+00:04:21.161 --> 00:04:24.397
+its not going to crash the
+Safari. Another example of
+
+00:04:24.397 --> 00:04:28.301
+applications, again iPhoto has a
+bunch of XPC components, again
+
+00:04:28.301 --> 00:04:31.938
+related to rendering and
+converters. This make as lot of
+
+00:04:31.938 --> 00:04:35.308
+sense from a security point of
+view and stability point of view
+
+00:04:35.308 --> 00:04:38.245
+if iPhoto is doing some
+rendering or doing some
+
+00:04:38.245 --> 00:04:42.282
+converting thats not going to
+crash the main iPhoto
+
+00:04:42.282 --> 00:04:47.087
+application. Heres a more
+detailed example, allows us to
+
+00:04:47.087 --> 00:04:51.491
+dig into XPC a little more. Say
+we have an example application
+
+00:04:51.491 --> 00:04:54.261
+that does 3 things; it downloads
+zip files from the internet,
+
+00:04:54.261 --> 00:04:57.697
+unzips them, and then displays
+the images that are in the zip
+
+00:04:57.697 --> 00:05:00.567
+file. Normally we would write
+this as a single standalone
+
+00:05:00.567 --> 00:05:03.236
+binary that does all 3 tasks.
+What we can do though, is
+
+00:05:03.236 --> 00:05:07.841
+convert this to XPC basically
+break out its logical component.
+
+00:05:07.841 --> 00:05:12.445
+So here can you see we have a
+download XPC component, and then
+
+00:05:12.445 --> 00:05:17.083
+an unzip XPC service, which will
+also be a separate process. So
+
+00:05:17.083 --> 00:05:20.287
+as I mention each process can
+have its own set of privileges
+
+00:05:20.287 --> 00:05:23.857
+so for the download sure this
+has to talk the network, but
+
+00:05:23.857 --> 00:05:26.393
+theres no reason this has to
+talk to the file system. So we
+
+00:05:26.393 --> 00:05:29.729
+can put a sandbox constraint
+that says, this process is not
+
+00:05:29.729 --> 00:05:32.999
+allow to talk to file system. We
+can lock down the unzip XPC
+
+00:05:32.999 --> 00:05:36.336
+service even more saying it
+should not talk to the network
+
+00:05:36.336 --> 00:05:39.539
+or the file system. So this
+means if an attacker is able to
+
+00:05:39.539 --> 00:05:42.275
+find a vulnerability in the
+unzip component and they get
+
+00:05:42.275 --> 00:05:45.011
+arbitrary code execution, can't
+really do anything useful. They
+
+00:05:45.011 --> 00:05:48.648
+can't talk out the network, they
+then have to break out of the
+
+00:05:48.648 --> 00:05:51.818
+sandbox before they do anything
+useful. So it just adds an extra
+
+00:05:51.818 --> 00:05:55.956
+layer of stability. Also again
+in terms of stability fault
+
+00:05:55.956 --> 00:05:58.992
+tolerance, if any of these
+components have a bug and crash,
+
+00:05:58.992 --> 00:06:01.962
+its not going to impact the main
+UI of the application. Can say
+
+00:06:01.962 --> 00:06:05.065
+hey unzip fail, but its not
+going to be taken down. So
+
+00:06:05.065 --> 00:06:12.505
+conceptually how does this all
+work? Basically you have a
+
+00:06:12.505 --> 00:06:16.509
+client component, in this
+example the XPC application; it
+
+00:06:16.509 --> 00:06:20.413
+sends message requests to the
+XPC components or the XPC
+
+00:06:20.413 --> 00:06:24.818
+servers. These XPC servers or
+services will list infer
+
+00:06:24.818 --> 00:06:27.654
+messages, optionally
+authenticate clients that
+
+00:06:27.654 --> 00:06:31.258
+connect to them and then process
+or handle their requests. Now
+
+00:06:31.258 --> 00:06:34.828
+this should sound similar to
+something more familiar, kind of
+
+00:06:34.828 --> 00:06:37.163
+the client server networking
+model. Theres a ton of
+
+00:06:37.163 --> 00:06:39.499
+parallels where you have clients
+talking to servers
+
+00:06:39.499 --> 00:06:43.670
+authentication and all that
+stuff, so very similar. Message
+
+00:06:43.670 --> 00:06:47.540
+handling is process by the
+operating system. Some of
+
+00:06:47.540 --> 00:06:51.711
+Ians talks go into great
+details of XPC as mock messages.
+
+00:06:51.711 --> 00:06:54.614
+The operating system takes care
+of everything but from the
+
+00:06:54.614 --> 00:06:57.817
+application layer you send the
+message and get to end point. So
+
+00:06:57.817 --> 00:07:02.188
+its pretty easy to make an
+application and XPC component.
+
+00:07:02.188 --> 00:07:08.194
+If you have an application in X
+Code being Apple ID, you can
+
+00:07:13.900 --> 00:07:17.537
+just add a new target, and for
+your target type you select XPC
+
+00:07:17.537 --> 00:07:21.675
+service. This will create the
+required files with some play
+
+00:07:21.675 --> 00:07:25.111
+code and when you click build it
+will be automatically be
+
+00:07:25.111 --> 00:07:29.582
+packaged into your application,
+really easy to deploy. One thing
+
+00:07:29.582 --> 00:07:33.253
+to mention we can see a bundle
+identifier this is a string that
+
+00:07:33.253 --> 00:07:36.122
+is used by the client the
+application to find the XPC
+
+00:07:36.122 --> 00:07:39.893
+service at run time. Again we
+create parallels to the client
+
+00:07:39.893 --> 00:07:43.229
+server networking model this is
+like the URL of the server or
+
+00:07:43.229 --> 00:07:47.167
+DNS NAME, again this allowing
+the client and operating system
+
+00:07:47.167 --> 00:07:51.438
+PC server that the client wants
+to connect to and talk to. So
+
+00:07:51.438 --> 00:07:54.240
+how does the XPC service listen
+for client connections? Well
+
+00:07:54.240 --> 00:07:58.478
+theres a few things so first
+it creates this NSXPC listener
+
+00:07:58.478 --> 00:08:01.848
+object, accepts its delegate
+which is just a call back object
+
+00:08:01.848 --> 00:08:06.186
+and then invokes resume. This
+delegate object has to confirm
+
+00:08:06.186 --> 00:08:10.090
+to the NSXPC listener delegate
+protocol and implement a method
+
+00:08:10.090 --> 00:08:13.426
+called listener should accept
+new connection. This
+
+00:08:13.426 --> 00:08:16.930
+authentication method is called
+automatically anytime a client
+
+00:08:16.930 --> 00:08:20.934
+connects and allows the XPC
+server to examine it and
+
+00:08:20.934 --> 00:08:24.804
+validate and allow the client.
+Again, this is all kind of
+
+00:08:24.804 --> 00:08:30.243
+similar to a server socket doing
+a bind, listen, accept. So now
+
+00:08:30.243 --> 00:08:33.580
+with this all set up and running
+XPC clients can connect to the
+
+00:08:33.580 --> 00:08:38.418
+XPC server. Of course the server
+or service should expose some
+
+00:08:38.418 --> 00:08:42.522
+useful functionality. So here
+for example, going back to our
+
+00:08:42.522 --> 00:08:46.292
+downloader application, this is
+the download image method. So
+
+00:08:46.292 --> 00:08:49.496
+once this is implemented the XPC
+application will be able to
+
+00:08:49.496 --> 00:08:54.100
+connect to XPC service and
+invoke this remote method. Again
+
+00:08:54.100 --> 00:08:58.138
+if there is a bug or a crash in
+this method it will not affect
+
+00:08:58.138 --> 00:09:03.676
+the application. So back to XPC
+application client. To use this
+
+00:09:03.676 --> 00:09:10.583
+service. It needs to connect
+obviously and invoke the remote
+
+00:09:10.583 --> 00:09:16.256
+methods. Connect via the NSXPC
+connection and takes that idea I
+
+00:09:16.256 --> 00:09:22.729
+mention so pass it is XPC server
+that it wants to connect to.
+
+00:09:22.729 --> 00:09:28.668
+This will return an NSXPC
+then what you do is call the
+
+00:09:28.668 --> 00:09:32.639
+NXXPC connection object. This
+returns an exported proxy
+
+00:09:32.639 --> 00:09:37.510
+object. So this is basically the
+servers remote object that
+
+00:09:37.510 --> 00:09:42.682
+venders client. Now the client
+has basically a local copy of
+
+00:09:42.682 --> 00:09:46.186
+the remote object and invoke
+message directly on that object
+
+00:09:46.186 --> 00:09:50.790
+as if it was a local object.
+Executed in the remote and so
+
+00:09:50.790 --> 00:09:57.430
+that's boring part and XPC
+basics. Lets dive into root pipe
+
+00:09:57.430 --> 00:10:01.801
+is an XPC privilege bug. Now
+what makes root pipe so
+
+00:10:01.801 --> 00:10:07.173
+interesting at least to me is
+not just the bug but timeline.
+
+00:10:07.173 --> 00:10:10.743
+So we can see that the bug was
+discover in by Neil in October
+
+00:10:10.743 --> 00:10:14.581
+of last year where he
+responsibly disclosed it to
+
+00:10:14.581 --> 00:10:19.118
+Apple. I tested the code, which
+is Snow Leopard and found that
+
+00:10:19.118 --> 00:10:22.555
+those operating system were
+still vulnerable -- I did not
+
+00:10:22.555 --> 00:10:25.859
+have older version but it was
+introduced in original release
+
+00:10:25.859 --> 00:10:31.865
+of OSX in 2001. So -- some other
+details we'll see some malware
+
+00:10:35.802 --> 00:10:43.743
+that exploited this bug and talk
+about Apple passion attempts. So
+
+00:10:43.743 --> 00:10:46.880
+let's start by looking at the
+vulnerablity. So there is this
+
+00:10:46.880 --> 00:10:52.719
+private XPC called right config,
+it can create files. Exposes are
+
+00:10:52.719 --> 00:10:58.958
+emote method name right con fig
+dispatch created files. Nothing
+
+00:10:58.958 --> 00:11:05.098
+too special. The problem is or
+was any user even guest can
+
+00:11:05.098 --> 00:11:11.671
+connect to this right config XPC
+server and creates files. And
+
+00:11:11.671 --> 00:11:15.575
+the user can specify the path,
+the content, and the attributes.
+
+00:11:15.575 --> 00:11:20.113
+This is really not good. So for
+example we can create a copy of
+
+00:11:20.113 --> 00:11:24.651
+the shell and sets the SUIB and
+since that shell is going to be
+
+00:11:24.651 --> 00:11:30.690
+created as root simply executing
+will give us root privilege. It
+
+00:11:30.690 --> 00:11:35.528
+doesn't get much easier than
+this. So now let's detail
+
+00:11:35.528 --> 00:11:38.431
+exactly how we can connect to
+this right XPC service and
+
+00:11:38.431 --> 00:11:41.301
+invoke this method, so kind of
+go into the details of what
+
+00:11:41.301 --> 00:11:44.971
+happens under the hood when we
+perform this. So while we that
+
+00:11:44.971 --> 00:11:50.944
+you can directly to that remote
+to right config which has to
+
+00:11:50.944 --> 00:11:56.215
+method that allows anyone to get
+a file there is a client code
+
+00:11:56.215 --> 00:12:00.887
+with an Apple private frame
+work. That we can utilize is
+
+00:12:00.887 --> 00:12:03.890
+just another layer of
+abstraction but easier to talk
+
+00:12:03.890 --> 00:12:08.928
+to promote. So step one we need
+to get access to right config
+
+00:12:08.928 --> 00:12:14.133
+object as it name suggest this
+is a client objective to talk to
+
+00:12:14.133 --> 00:12:17.971
+the right config XPC service. So
+specifically we call the right
+
+00:12:17.971 --> 00:12:22.442
+config client share client class
+method and this will return a
+
+00:12:22.442 --> 00:12:26.846
+single instance. So now with
+this client object we can
+
+00:12:26.846 --> 00:12:30.450
+connect to the remote right
+config XPC service we do this
+
+00:12:30.450 --> 00:12:34.654
+via the right configs client.
+Authenticate using authenticate,
+
+00:12:34.654 --> 00:12:37.457
+authentication using sink method
+if you look at the disassembly
+
+00:12:37.457 --> 00:12:40.460
+for this method, you can see
+some of the low level XPC
+
+00:12:40.460 --> 00:12:45.832
+functions we talk about so you
+can net work name. Under the
+
+00:12:45.832 --> 00:12:50.737
+hood makes this connection to
+the remote. Now as I mention
+
+00:12:50.737 --> 00:12:54.841
+when you make initial connection
+to XPC server is going to
+
+00:12:54.841 --> 00:13:00.847
+authenticate you first. Which is
+with this bug that allow guess
+
+00:13:03.316 --> 00:13:05.985
+user that for this
+authentication object is if you
+
+00:13:05.985 --> 00:13:10.256
+have a kneel object and you
+execute methods on this this
+
+00:13:10.256 --> 00:13:13.226
+doesn't throw a null pointer
+just kinds of goes off. Older
+
+00:13:13.226 --> 00:13:19.465
+versions did not allow kneel to
+pass this this perimeter and
+
+00:13:19.465 --> 00:13:22.568
+have to be admin to create an
+authentication. Older versions
+
+00:13:22.568 --> 00:13:30.543
+of OSX were more secure. So now
+we authenticated we wanted to
+
+00:13:30.543 --> 00:13:34.447
+invoke the remote method to
+create that file. You need to
+
+00:13:34.447 --> 00:13:39.252
+get a proxy object from the
+server side of the connection.
+
+00:13:39.252 --> 00:13:45.391
+Then you can invoke methods on
+it like a local object. So the
+
+00:13:45.391 --> 00:13:48.628
+right config client has a remote
+proxy method, which gives a
+
+00:13:48.628 --> 00:13:54.634
+dispatcher object, then we can
+pass to the remote object. We
+
+00:13:57.570 --> 00:14:05.111
+don't get the remote object
+directly. We get a local
+
+00:14:05.111 --> 00:14:09.082
+dispatcher object. All right so
+luckily you ask the dispatcher
+
+00:14:09.082 --> 00:14:13.553
+object to create a file with
+content method under the hood a
+
+00:14:13.553 --> 00:14:16.689
+little more goes on, that local
+dispatch object as we see. Is
+
+00:14:16.689 --> 00:14:22.495
+then going to the remote proxy
+objects and pass that methods.
+
+00:14:22.495 --> 00:14:28.501
+We call the remote method we
+want the local vulnerable method
+
+00:14:32.872 --> 00:14:37.677
+itll transfer over the remote
+object and create attacker file.
+
+00:14:37.677 --> 00:14:40.680
+So putting these steps all
+together we can create a shell
+
+00:14:40.680 --> 00:14:44.650
+or any other file as root with
+any attributes or anything else
+
+00:14:44.650 --> 00:14:50.223
+we want. Our first we can an
+instant and we authenticate
+
+00:14:50.223 --> 00:14:56.329
+which again anyone can do even
+guest users. We then get this
+
+00:14:56.329 --> 00:15:02.969
+local dispatch object we invoke
+the remote that allows to create
+
+00:15:02.969 --> 00:15:06.305
+the file. Now if we execute
+this, we can monitor what goes
+
+00:15:06.305 --> 00:15:09.242
+on, at least at the file level
+for what goes on at least the
+
+00:15:09.242 --> 00:15:13.579
+file running a tool FS users. We
+can see the application which is
+
+00:15:13.579 --> 00:15:17.049
+called root pipe. It makes a
+copy of the shell we use KSH
+
+00:15:17.049 --> 00:15:20.620
+that allows itself to be run as
+root. If we look we can see
+
+00:15:20.620 --> 00:15:26.626
+right config XPC component that
+has vulnerability, we can see it
+
+00:15:30.897 --> 00:15:38.604
+creating a copy of that file and
+showing it so it has the SUI ID.
+
+00:15:38.604 --> 00:15:42.975
+So older versions just briefly
+mention they do require you to
+
+00:15:42.975 --> 00:15:45.945
+be an administrator. The default
+user so again this is a
+
+00:15:45.945 --> 00:15:48.748
+privilege escalation, because
+allows an attacker to get root
+
+00:15:48.748 --> 00:15:53.886
+privilege without having to
+specify the username and
+
+00:15:53.886 --> 00:15:59.892
+password. Neil found the bug in
+October and reported to Apple.
+
+00:16:02.962 --> 00:16:10.570
+There was some malware before
+Neils discovery. So SSL CMD
+
+00:16:10.570 --> 00:16:15.174
+is OSX persistent back door, was
+submitted to virus total in
+
+00:16:15.174 --> 00:16:21.380
+ought of 2014. Few months later
+they came out with a report. I
+
+00:16:21.380 --> 00:16:26.419
+guess they did some back end
+analysis on this file,
+
+00:16:26.419 --> 00:16:32.959
+determined it was a new piece of
+APT related OSS malware. As I
+
+00:16:32.959 --> 00:16:37.496
+mention, back door provides
+ability to create a shell,
+
+00:16:37.496 --> 00:16:40.700
+stream capture ,and key log
+which will be important in a
+
+00:16:40.700 --> 00:16:45.204
+sec. There were no report of
+Escalation. I don't think they
+
+00:16:45.204 --> 00:16:50.309
+were withholding I think they're
+analysis completely missed it.
+
+00:16:50.309 --> 00:16:55.214
+That's my opinion. So after
+Apple patched the vulnerability,
+
+00:16:55.214 --> 00:16:59.151
+Neil wrote a blog detailing the
+bug. And someone went back and
+
+00:16:59.151 --> 00:17:02.255
+doing some analysis found out
+that this malware appeared the
+
+00:17:02.255 --> 00:17:08.561
+same bug and we don't see a lot
+of OSX malware and we dont
+
+00:17:08.561 --> 00:17:10.863
+see a lot of OSX malware that
+actually has 0 to 8 privileged
+
+00:17:10.863 --> 00:17:14.433
+escalation vulnerabilities built
+in. So why was malware
+
+00:17:14.433 --> 00:17:18.905
+attempting to escalate its
+privileges, so on OSX user mode
+
+00:17:18.905 --> 00:17:23.843
+code can capture key process if
+the access for assistive devices
+
+00:17:23.843 --> 00:17:26.846
+is enabled. Now you can enable
+this via the UI under system
+
+00:17:26.846 --> 00:17:30.249
+preferences, but you have to be
+root. So a normal user if you
+
+00:17:30.249 --> 00:17:34.153
+click on the check box it is
+going to throw up a prompt and
+
+00:17:34.153 --> 00:17:37.523
+youre going to have put in
+your username and password so
+
+00:17:37.523 --> 00:17:40.259
+you can as I mention. You can do
+this via the UI, and if you
+
+00:17:40.259 --> 00:17:44.597
+monitor what this does under the
+hood, it creates a file named
+
+00:17:44.597 --> 00:17:48.701
+accessibility API enabled in bar
+dot Db, that contains a single
+
+00:17:48.701 --> 00:17:52.204
+character A. this is just a
+marker file -- that the
+
+00:17:52.204 --> 00:17:56.108
+operating system checks if that
+file is there it says user mode
+
+00:17:56.108 --> 00:17:59.178
+code can do key logging, it can
+intercept or capture key
+
+00:17:59.178 --> 00:18:03.316
+processing. So if you look at
+the disassembly for the malware
+
+00:18:03.316 --> 00:18:08.087
+we can see it is creating this
+file so in other words is using
+
+00:18:08.087 --> 00:18:13.359
+the root pipe as a 0 day to
+create this file to key capture
+
+00:18:13.359 --> 00:18:17.229
+and keylogging kind of cool. All
+right so I mention again. Neil
+
+00:18:17.229 --> 00:18:21.133
+reporting this bug to Apple in
+October. Took him about 6 months
+
+00:18:21.133 --> 00:18:27.340
+they did release a new patch so
+I think they may finally got it
+
+00:18:27.340 --> 00:18:33.446
+right but is rocky road to get
+there. So the first thing Apple
+
+00:18:33.446 --> 00:18:37.550
+did which I think some what of a
+fail, think decided not to back
+
+00:18:37.550 --> 00:18:43.823
+their patch they basically said
+its too much work. However PEDRO
+
+00:18:43.823 --> 00:18:50.096
+released a DYLD for monitor for
+connection attempt and basically
+
+00:18:50.096 --> 00:18:57.269
+ignore untrusted clients. I
+think is funny or sad that
+
+00:18:57.269 --> 00:19:02.875
+researchers can help secure more
+than the vendor. Anyway so Apple
+
+00:19:02.875 --> 00:19:08.080
+did patch so let's look what
+that patch did. So basically
+
+00:19:08.080 --> 00:19:12.118
+they left the right config
+completely intact. They left
+
+00:19:12.118 --> 00:19:17.556
+that function that can create
+files completely intact.
+
+00:19:17.556 --> 00:19:20.459
+Basically what they did or what
+they said we are only going to
+
+00:19:20.459 --> 00:19:24.263
+let Apple processes talk to
+this. Its like they added
+
+00:19:24.263 --> 00:19:28.134
+security at the door. If you
+want the talk to me create a
+
+00:19:28.134 --> 00:19:32.405
+file I'm going to check your
+badge, your ID if you are not
+
+00:19:32.405 --> 00:19:36.509
+Apple, GTFO. In the diagram you
+can see if untrusted or hacker
+
+00:19:36.509 --> 00:19:39.979
+tries to connect to this XPC
+service, its going to block it
+
+00:19:39.979 --> 00:19:44.250
+now not let them in. But if
+Apple process tries to connect,
+
+00:19:44.250 --> 00:19:47.853
+security guard will say, sure
+can you create whatever file you
+
+00:19:47.853 --> 00:19:53.626
+want. So when a client connects
+to XPC server the listener
+
+00:19:53.626 --> 00:19:57.897
+should accept new connection to
+invoke. This allows the server
+
+00:19:57.897 --> 00:20:05.371
+examine the client so what the
+patch did check that the client
+
+00:20:05.371 --> 00:20:11.010
+has new entitlement right config
+and we'll talk about entitlement
+
+00:20:11.010 --> 00:20:13.512
+in a second but let's take a
+closer look at this
+
+00:20:13.512 --> 00:20:17.516
+authentication. It grabs the
+clients authentication token,
+
+00:20:17.516 --> 00:20:22.988
+this is something that it
+generates when you try to
+
+00:20:22.988 --> 00:20:27.193
+connect to remote XPC service
+and as far as I know you cannot
+
+00:20:27.193 --> 00:20:30.863
+spoof it. It checks the client
+has that entitlement Apple
+
+00:20:30.863 --> 00:20:35.768
+private and if it doesnt have
+this entitlement it doesn't let
+
+00:20:35.768 --> 00:20:39.405
+it in so you can think of this
+as security guard checking
+
+00:20:39.405 --> 00:20:44.310
+badges at the club and you are
+not an Apple employee you do not
+
+00:20:44.310 --> 00:20:47.747
+have the right entitlement
+they're not going to let you in.
+
+00:20:47.747 --> 00:20:52.651
+Basically they're embedded blogs
+that are in the code signature
+
+00:20:52.651 --> 00:20:56.789
+of an application they confer
+capabilities or permissions so
+
+00:20:56.789 --> 00:20:59.692
+its a way to kind of tag an
+Apple indication and give it
+
+00:20:59.692 --> 00:21:03.729
+special permission, specifying
+what employer they are. When a
+
+00:21:03.729 --> 00:21:07.700
+security guard checks it
+determine whether they are
+
+00:21:07.700 --> 00:21:13.139
+denied. So apples patch
+looked weak. So I had a long
+
+00:21:13.139 --> 00:21:17.576
+flight home from infiltrate, I
+always wanted do something cool
+
+00:21:17.576 --> 00:21:20.579
+on an airplane. Besides
+obviously hacking the airplane
+
+00:21:20.579 --> 00:21:26.018
+so I took a little closer look
+at Apple patch and it tuns out
+
+00:21:26.018 --> 00:21:31.490
+it us insufficient. This a brief
+video. Basically see I execute
+
+00:21:31.490 --> 00:21:36.829
+the OS command. I look for a
+file named Phoenix, if not on
+
+00:21:36.829 --> 00:21:40.199
+the root file system, I try to
+create it, Im not root so it
+
+00:21:40.199 --> 00:21:43.269
+tells me to take a hike and then
+I use a small python script that
+
+00:21:43.269 --> 00:21:47.439
+does a few things, says its
+done. I re list this file I can
+
+00:21:47.439 --> 00:21:51.577
+see now it has been created in
+the root directory, we can see
+
+00:21:51.577 --> 00:21:56.582
+that is owned by root. Makes
+sense that XPC server is owned
+
+00:21:56.582 --> 00:22:01.587
+by root as well and any content
+I want it in the file can be put
+
+00:22:01.587 --> 00:22:06.025
+in this file. This was on a
+fully patched system This after
+
+00:22:06.025 --> 00:22:08.727
+Apple released their initial
+patch. So I want to walk through
+
+00:22:08.727 --> 00:22:14.133
+how I was able to by pass what
+fail when what worked. My goal
+
+00:22:14.133 --> 00:22:18.704
+was simple since the XPC service
+and function was left untouched
+
+00:22:18.704 --> 00:22:22.007
+I just wanted to be allow to
+talk to it to authenticate. And
+
+00:22:22.007 --> 00:22:25.878
+since authentication was based
+100% on the binary connecting.
+
+00:22:25.878 --> 00:22:30.683
+If the binary is trusted, any
+code within that binary is
+
+00:22:30.683 --> 00:22:35.454
+trusted as well. So you can
+inject malicious code, load a
+
+00:22:35.454 --> 00:22:39.491
+malicious plugin anything like
+that. The operating system only
+
+00:22:39.491 --> 00:22:43.862
+was checking that the main
+binary was entitled. So this is
+
+00:22:43.862 --> 00:22:49.501
+what I tried. I first tried to
+create my own entitlement. I
+
+00:22:49.501 --> 00:22:54.573
+first tried to infect signed
+trusted entitled binaries, tried
+
+00:22:54.573 --> 00:22:58.544
+to do some process injection,
+hijacking entitled binaries and
+
+00:22:58.544 --> 00:23:01.347
+trying to load malicious
+plugins. So we'll look at each
+
+00:23:01.347 --> 00:23:06.552
+of these closer. So I try to add
+the COM dot Apple dot private
+
+00:23:06.552 --> 00:23:10.789
+dot admin dot right config
+entitlement to my own binary.
+
+00:23:10.789 --> 00:23:14.159
+Again this is what the security
+guard at the door is checking.
+
+00:23:14.159 --> 00:23:17.096
+If you have this entitlement,
+you will be able to talk to XPC
+
+00:23:17.096 --> 00:23:25.004
+service. So I was like, let me
+try to put this Apple private
+
+00:23:25.004 --> 00:23:30.009
+and let me compile binary but as
+I soon executed, the OS told me
+
+00:23:30.009 --> 00:23:34.313
+to GTFO. Basically said, hey you
+claim to have this Apple
+
+00:23:34.313 --> 00:23:40.853
+entitlement but I cant verify
+you so I'm not sure exactly how
+
+00:23:40.853 --> 00:23:44.523
+this verification works but
+imagine it can probably detect
+
+00:23:44.523 --> 00:23:49.461
+that I'm not a verifiable Apple
+binary so it can kick me out.
+
+00:23:49.461 --> 00:23:55.968
+This is a fake ID, therefore you
+cannot have Apple entitlement.
+
+00:23:55.968 --> 00:23:59.605
+So I cannot fake the entitlement
+I have to abuse a legitimately
+
+00:23:59.605 --> 00:24:05.444
+entitled binary. So these
+entitlements are like an extra
+
+00:24:05.444 --> 00:24:08.414
+layer more fine grained mission
+control that can be slapped on
+
+00:24:08.414 --> 00:24:11.283
+certain binaries. So what I did
+is wrote a small python script
+
+00:24:11.283 --> 00:24:14.553
+that can enumerate all the
+binaries on the operating system
+
+00:24:14.553 --> 00:24:19.024
+and give me a list of which ones
+were entitled, this gave me
+
+00:24:19.024 --> 00:24:22.061
+about 50 or so. These are the
+trusted binaries are that
+
+00:24:22.061 --> 00:24:24.997
+allowed to connect to the remote
+XPC service. So my goal was to
+
+00:24:24.997 --> 00:24:29.335
+try to coerce any of these to
+load my arbitrary malicious code
+
+00:24:29.335 --> 00:24:34.740
+load if any of these
+processes I can then reconnect
+
+00:24:34.740 --> 00:24:38.243
+and retrigger the
+vulnerability so the first
+
+00:24:38.243 --> 00:24:41.480
+thing I tried to do is simply
+infect an entitle binary. The
+
+00:24:41.480 --> 00:24:47.319
+mock o loader verifies that
+digital signatures are in tact.
+
+00:24:47.319 --> 00:24:51.123
+So here we can see me trying to
+infect the directory application
+
+00:24:51.123 --> 00:24:54.860
+which is entitled and that's
+allow to talk to XPC component
+
+00:24:54.860 --> 00:24:58.697
+but you can see when I executed
+the loader said, hey the digital
+
+00:24:58.697 --> 00:25:02.735
+signature is no longer valid and
+kills the process. But on OSX
+
+00:25:02.735 --> 00:25:08.440
+you can unsign binaries and they
+can still execute. When you
+
+00:25:08.440 --> 00:25:11.510
+unsign a binary it removes the
+entitlement as well, because the
+
+00:25:11.510 --> 00:25:18.250
+entitlements are part of that
+digital signature. I then try to
+
+00:25:18.250 --> 00:25:21.854
+coerce the loader to load them
+DYLD into a malicious entitle
+
+00:25:21.854 --> 00:25:27.860
+process. For example, DYLD
+insert library to load or any at
+
+00:25:33.699 --> 00:25:39.271
+load time. This is kind of LD
+preload. But it turns out that
+
+00:25:39.271 --> 00:25:42.341
+environment and variables are
+ignored for entitle binaries.
+
+00:25:46.211 --> 00:25:50.182
+DYLD and calls a method thats
+called prune environment
+
+00:25:50.182 --> 00:25:53.819
+variables and the Apple comment
+says for restricted binaries
+
+00:25:53.819 --> 00:25:58.791
+delete all DYLD and LD library
+path environment variables. So
+
+00:25:58.791 --> 00:26:01.894
+what is in a restricted binary.
+When is entitle binary so the
+
+00:26:01.894 --> 00:26:04.663
+basically the mock oh loader
+will strip away and ignore any
+
+00:26:04.663 --> 00:26:09.635
+environment variables, and since
+were targeting entitled
+
+00:26:09.635 --> 00:26:16.909
+binaries because we need that
+entitlement to connect to XPC
+
+00:26:16.909 --> 00:26:21.747
+service, we ignore this so it
+doesn't work either. So then try
+
+00:26:21.747 --> 00:26:25.717
+DYLD hijacking. Kind of neat
+attack I talked about yesterday
+
+00:26:25.717 --> 00:26:30.823
+at DEFCON. Well this conference
+and you can, if you find a
+
+00:26:30.823 --> 00:26:34.793
+vulnerable application you can
+coerce it to load a malicious
+
+00:26:34.793 --> 00:26:37.796
+DYLD even if the DYLD is
+unsigned. And I guess a
+
+00:26:37.796 --> 00:26:41.800
+limitation of this attack is you
+need to find a vulnerable
+
+00:26:41.800 --> 00:26:44.436
+application or you can only
+exploit vulnerable applications
+
+00:26:44.436 --> 00:26:48.373
+you cannot hijack arbitrary
+applications. So I wrote a tool
+
+00:26:48.373 --> 00:26:51.043
+that could look for all binaries
+on the file system that were
+
+00:26:51.043 --> 00:26:55.647
+vulnerable to a DYLD hijack, but
+none of the binaries that were
+
+00:26:55.647 --> 00:26:59.084
+vulnerable had the entitlement.
+This didnt work either. I
+
+00:26:59.084 --> 00:27:02.521
+then tried run time code
+injection to inject malicious
+
+00:27:02.521 --> 00:27:06.325
+code into an entitled process
+that was already running. So the
+
+00:27:06.325 --> 00:27:09.661
+way you do code injection on OSX
+is pretty simple, takes about 5
+
+00:27:09.661 --> 00:27:15.501
+steps. You first get a task for
+a pit. Like access to the remote
+
+00:27:15.501 --> 00:27:20.072
+process. Once you have this, you
+can inject shell code. You can
+
+00:27:20.072 --> 00:27:24.877
+create remote threats. In order
+to get access to this remote
+
+00:27:24.877 --> 00:27:29.281
+process. Even if its running as
+the same user you need to be
+
+00:27:29.281 --> 00:27:32.618
+root. Apple says if you are
+doing any kind of code injection
+
+00:27:32.618 --> 00:27:35.387
+you have to be root. From a
+security point of view my
+
+00:27:35.387 --> 00:27:39.458
+opinion makes complete sense.
+Since we dont have root, this
+
+00:27:39.458 --> 00:27:44.229
+also doesn't work. I then tried
+to find an entitled application
+
+00:27:44.229 --> 00:27:47.966
+that can load plug ins. And then
+once I'm loaded in this trusted
+
+00:27:47.966 --> 00:27:53.972
+entitle binary and I can connect
+to XPC service. So here we have
+
+00:27:58.477 --> 00:28:04.416
+directory utility. It is
+entitled and it appears to
+
+00:28:04.416 --> 00:28:11.123
+support plugins. We can see
+internal folder that is named
+
+00:28:11.123 --> 00:28:16.662
+plugins so I was intrigued. So I
+disassembled directory utility
+
+00:28:16.662 --> 00:28:20.465
+binary, you can see it invokes a
+method named load plugins in
+
+00:28:20.465 --> 00:28:25.237
+directory. If we run a file
+monitoring tool again FS usage
+
+00:28:25.237 --> 00:28:28.674
+monitors file IO. We can see
+when you execute the directory
+
+00:28:28.674 --> 00:28:32.945
+utility it does it goes through
+all plugs and yes loads and
+
+00:28:32.945 --> 00:28:38.951
+execute them into memory. Seems
+promising. Now since directory
+
+00:28:44.323 --> 00:28:47.426
+utilities is a system
+application, its owned by
+
+00:28:47.426 --> 00:28:51.530
+root you have to authenticate to
+even install a plugin, but let's
+
+00:28:51.530 --> 00:28:55.601
+forget this fact for a minute.
+If I found some way to copy in
+
+00:28:55.601 --> 00:28:59.037
+or install a plugin, would
+directory utility load my plug
+
+00:28:59.037 --> 00:29:02.007
+in? Maybe directory utility is
+doing some extra checks so I
+
+00:29:02.007 --> 00:29:05.544
+manually authenticated,
+installed it and when I executed
+
+00:29:05.544 --> 00:29:10.148
+you can see that directory
+utility found my plug in and
+
+00:29:10.148 --> 00:29:14.753
+even though it was unsigned it
+loaded and exhausted. So we are
+
+00:29:14.753 --> 00:29:18.991
+kind of closer. We can get this
+entitled binary to load unsigned
+
+00:29:18.991 --> 00:29:22.794
+malicious code that can talk to
+the XPC service, but since we
+
+00:29:22.794 --> 00:29:25.163
+need to be root to install the
+plug in this really not any
+
+00:29:25.163 --> 00:29:31.336
+closer at all. But if we can get
+directory utility to no be owned
+
+00:29:31.336 --> 00:29:36.475
+by root we can then copy and
+install the plugin and re
+
+00:29:36.475 --> 00:29:42.414
+exploit. So turns out we can
+change the ownership and install
+
+00:29:42.414 --> 00:29:46.285
+a malicious plugin game over. So
+this is how I bypass Apples
+
+00:29:46.285 --> 00:29:50.389
+initial patch. 3 easy steps.
+First you copy the directory
+
+00:29:50.389 --> 00:29:55.093
+utility into the TEMP directory.
+On OSX when you copy a file to
+
+00:29:55.093 --> 00:29:57.763
+the temp directory its
+permission to get changed to
+
+00:29:57.763 --> 00:30:02.000
+current user so it gets changed
+from root to me. So this means
+
+00:30:02.000 --> 00:30:04.936
+now I can put plugins into
+its application bundle
+
+00:30:04.936 --> 00:30:08.140
+because now I own the
+application. So we drop a plugin
+
+00:30:08.140 --> 00:30:11.910
+there and simply execute
+directory utility. This loads
+
+00:30:11.910 --> 00:30:16.581
+the malicious plugin even if
+unsigned and make the XPC
+
+00:30:16.581 --> 00:30:20.318
+request to the remote service.
+Again the security guard at the
+
+00:30:20.318 --> 00:30:25.991
+front door hey I'm not allowing
+anyone to come in and re exploit
+
+00:30:25.991 --> 00:30:31.329
+this. Who are you with? I'm with
+directory utility so it goes and
+
+00:30:31.329 --> 00:30:33.932
+checks directory utility and
+says yes you are executing
+
+00:30:33.932 --> 00:30:37.069
+within directory utility, okay
+directory utility is an Apple
+
+00:30:37.069 --> 00:30:40.806
+application, and it contains the
+correct entitlement. So go
+
+00:30:40.806 --> 00:30:43.341
+ahead, youre able to do that.
+education cutting with -- okay,
+
+00:30:43.341 --> 00:30:46.378
+directory until -- so go ahead
+you're able to do that so that
+
+00:30:46.378 --> 00:30:48.914
+means we can trigger the exploit
+once again. So heres the
+
+00:30:48.914 --> 00:30:51.717
+python code for it, super basic.
+I wish all escalations were this
+
+00:30:51.717 --> 00:30:54.986
+easy. Basically 3 simple steps,
+you can see python code, we copy
+
+00:30:54.986 --> 00:30:56.988
+the directory utility
+application to the temp
+
+00:30:56.988 --> 00:31:00.525
+directory. This makes it owned
+by us, we copy in the malicious
+
+00:31:00.525 --> 00:31:02.861
+plugin and again we're not
+modifying the digital signature
+
+00:31:02.861 --> 00:31:06.631
+we are just planting a plugin in
+its plugin directory and then we
+
+00:31:06.631 --> 00:31:11.236
+execute it. This will give us
+root. So I reported this bug to
+
+00:31:11.236 --> 00:31:18.844
+Apple they fixed it in OSX
+10.10.4 CDE 2015 3673. When I
+
+00:31:18.844 --> 00:31:22.314
+posted the video showing that I
+was able to bypass that. This
+
+00:31:22.314 --> 00:31:26.818
+inspired the original founder of
+Root Pipe look as well and he
+
+00:31:26.818 --> 00:31:33.225
+actually found the same issue.
+So he shares the CDE with me
+
+00:31:33.225 --> 00:31:37.028
+which is kind of cool. So heres
+some control flow graphs. We can
+
+00:31:37.028 --> 00:31:43.268
+see in the original version of
+OSX 10.10. This is the listener
+
+00:31:43.268 --> 00:31:46.037
+should accept new connection
+function, this is what is
+
+00:31:46.037 --> 00:31:49.274
+authenticating clients so we can
+see the very beginning theres
+
+00:31:49.274 --> 00:31:52.010
+no authentication. This is the
+control flow graph there is no
+
+00:31:52.010 --> 00:31:56.414
+checks being done. Basically
+anybody is allowed to talk to
+
+00:31:56.414 --> 00:32:03.121
+XPC server and 10.10.3. They
+added similar checks. As we just
+
+00:32:03.121 --> 00:32:06.658
+showed these were insufficient
+and finally you can see. The
+
+00:32:06.658 --> 00:32:12.697
+complexity of their checks got
+way more as well see, I think
+
+00:32:12.697 --> 00:32:16.334
+they got it right. But this is,
+kinda shows how hard it is to
+
+00:32:16.334 --> 00:32:19.738
+get things right. I would of
+hope Apple wouldve got the
+
+00:32:19.738 --> 00:32:22.541
+initial patch right. They
+didnt, but you know security
+
+00:32:22.541 --> 00:32:27.012
+is hard, I don't want to pick on
+them too much. Looking at Apple
+
+00:32:27.012 --> 00:32:29.181
+most recent patch we can see it
+does a few things. We can
+
+00:32:29.181 --> 00:32:32.551
+reverse engineer it to figure
+out what its doing. They add
+
+00:32:32.551 --> 00:32:36.955
+extra private entitlements, I
+think this gives them more fine
+
+00:32:36.955 --> 00:32:39.558
+grain control over whos
+allowed to connect. Most
+
+00:32:39.558 --> 00:32:43.495
+importantly they say the binary
+thats connecting has to live
+
+00:32:43.495 --> 00:32:47.899
+in either system or /user. Now
+these are both own by root so
+
+00:32:47.899 --> 00:32:51.002
+our attack generically is
+forwarded. we cant copy out
+
+00:32:51.002 --> 00:32:54.472
+these applications, we also
+can't put plugins or malicious
+
+00:32:54.472 --> 00:32:58.977
+code in any of these directories
+because these are owned by root.
+
+00:32:58.977 --> 00:33:02.347
+We don't have root. So I don't
+see any immediate issues with
+
+00:33:02.347 --> 00:33:06.585
+the patch. But as PEDRO says,
+there isstill the issue that the
+
+00:33:06.585 --> 00:33:11.289
+fix seems kind of brittle. As
+Pedro says the problem of their
+
+00:33:11.289 --> 00:33:13.925
+fix, is there are at least 50
+plus binaries, which are
+
+00:33:13.925 --> 00:33:17.762
+entitled and allowed to talk to
+the XPC service. So a single
+
+00:33:17.762 --> 00:33:21.166
+exploit in any of these binaries
+and the system is owned again
+
+00:33:21.166 --> 00:33:24.803
+because there is no fundamental
+fix inside right config. So I
+
+00:33:24.803 --> 00:33:27.372
+really would not be too
+surprised if someone found a way
+
+00:33:27.372 --> 00:33:32.444
+to exploit this. Alright so we
+see OSX contained a trivial
+
+00:33:32.444 --> 00:33:35.780
+privileged escalation that
+perhaps was introduced in the
+
+00:33:35.780 --> 00:33:40.318
+very inception in OSX in 2001.
+We saw malware that exploited
+
+00:33:40.318 --> 00:33:44.322
+this as 0 day vulnerability and
+Apples initial patch in my
+
+00:33:44.322 --> 00:33:49.728
+opinion was it was crap. These
+things scare me I love my Mac
+
+00:33:49.728 --> 00:33:55.700
+but I don't want to get hacked.
+So I want to talk about free
+
+00:33:55.700 --> 00:34:00.138
+security tools that I run. So my
+side hobby, I run a small OSX
+
+00:34:00.138 --> 00:34:03.241
+security website. I have a nice
+little malware collection
+
+00:34:03.241 --> 00:34:06.945
+including the one I mentioned
+today SSL dot CMD that exploits
+
+00:34:06.945 --> 00:34:10.282
+this vulnerability or exploited
+this vulnerability as a 0 day. I
+
+00:34:10.282 --> 00:34:13.418
+found it hard to find a good
+collection of OSX malware.
+
+00:34:13.418 --> 00:34:19.424
+People that have these samples
+don't like to share. So I try to
+
+00:34:22.761 --> 00:34:26.231
+have a collection that anyone
+can download and play with. So I
+
+00:34:26.231 --> 00:34:29.534
+want to share them with you guys
+today. So the first tool I wrote
+
+00:34:29.534 --> 00:34:32.270
+is called knock, knock, simple
+goal. When I say knock,
+
+00:34:32.270 --> 00:34:35.874
+knock It should dell me who's
+there. Basically tells you all
+
+00:34:35.874 --> 00:34:38.677
+software that's persistently
+installed on your computer that
+
+00:34:38.677 --> 00:34:41.713
+will automatically get executed
+when you restart your computer
+
+00:34:41.713 --> 00:34:46.751
+or log in. Exactly the same to
+autoruns on Windows but in my
+
+00:34:46.751 --> 00:34:50.922
+opinion looks a little better.
+My favorite feature is the virus
+
+00:34:50.922 --> 00:34:54.392
+integration. The tool doesnt
+actually tell you if something
+
+00:34:54.392 --> 00:34:56.828
+is malware or not. Its
+malware agnostic It just shows
+
+00:34:56.828 --> 00:34:59.998
+you what software is persisting,
+which is good if some new
+
+00:34:59.998 --> 00:35:03.401
+malware comes and persists.
+Which all OSX malware Ive
+
+00:35:03.401 --> 00:35:06.705
+seen does, it will be able to
+show it you as well. But with
+
+00:35:06.705 --> 00:35:08.974
+the virus total integration this
+is kind of nice, because for
+
+00:35:08.974 --> 00:35:13.678
+known malware, it can detect and
+flag this. You can also submit
+
+00:35:13.678 --> 00:35:19.150
+files. Kind of cool. Now the
+only limitation in my opinion to
+
+00:35:19.150 --> 00:35:21.753
+knock knock is that its
+reactive it doesn't provide
+
+00:35:21.753 --> 00:35:25.223
+realtime protection. So I wrote
+another tool that can provide
+
+00:35:25.223 --> 00:35:28.159
+that. So I wrote block,
+block Knock Knock
+
+00:35:28.159 --> 00:35:30.328
+tells you whos there and
+Block, Block tells you
+
+00:35:30.328 --> 00:35:34.099
+when some one is moving in.
+Basically it provides realtime
+
+00:35:34.099 --> 00:35:37.535
+run time protection. Monitoring
+known persistance locations. You
+
+00:35:37.535 --> 00:35:41.139
+can think of it as a firewall
+for autorun locations. So any
+
+00:35:41.139 --> 00:35:45.844
+time something persist itself or
+installs itself, itll pop up
+
+00:35:45.844 --> 00:35:47.846
+and youll get a little
+warning you can either confirm
+
+00:35:47.846 --> 00:35:50.215
+or deny. I released this
+January, but its been kinda
+
+00:35:50.215 --> 00:35:53.985
+cool. As new OSX malware samples
+are released I have been able to
+
+00:35:53.985 --> 00:35:57.155
+test them and they have all been
+generically detected by this
+
+00:35:57.155 --> 00:36:00.058
+tool. So we can see hacking
+implants persistent OSX implant.
+
+00:36:00.058 --> 00:36:03.261
+This means if you have already
+been running block block and
+
+00:36:03.261 --> 00:36:07.198
+hacking team tried to target it,
+you would of gotten a pop up.
+
+00:36:07.198 --> 00:36:10.201
+Now my mom and dad are going to
+click allow. Another piece of
+
+00:36:10.201 --> 00:36:15.907
+malware that was released a few
+days ago. A few days later there
+
+00:36:15.907 --> 00:36:22.447
+was a malware that was
+exploiting it. This is an
+
+00:36:22.447 --> 00:36:28.987
+example of why its not good
+to irresponsibly disclose bugs,
+
+00:36:28.987 --> 00:36:35.527
+the malware authors were just
+like adware writers, so as
+
+00:36:35.527 --> 00:36:41.766
+security researchers when we
+release 0 days there is negative
+
+00:36:41.766 --> 00:36:45.036
+to that, and in this case there
+are now adware authors that are
+
+00:36:45.036 --> 00:36:49.407
+targeting innocent Mac users
+with this privilege escalation
+
+00:36:49.407 --> 00:36:53.445
+vulnerability that Apple is
+working on. So again if you are
+
+00:36:53.445 --> 00:36:56.047
+running block block even though
+it would not detect the exploit,
+
+00:36:56.047 --> 00:36:58.283
+its not designed to detect
+the exploit you would be
+
+00:36:58.283 --> 00:37:01.986
+protected, because when the
+malware goes to persist you get
+
+00:37:01.986 --> 00:37:04.956
+a nice little pop up. The last
+one we were going to talk
+
+00:37:04.956 --> 00:37:08.593
+about another one at Blackhat is
+called task explorer. This is
+
+00:37:08.593 --> 00:37:12.764
+similar to process explorer on
+windows. In my opinion it is a
+
+00:37:12.764 --> 00:37:16.334
+better activity monitor for
+security conscious users. You
+
+00:37:16.334 --> 00:37:20.472
+can see all the processes that
+are running that are not Apple,
+
+00:37:20.472 --> 00:37:23.708
+that are not signed. You can
+quickly filter those out. It
+
+00:37:23.708 --> 00:37:25.743
+shows you the signing
+information, so you can see if
+
+00:37:25.743 --> 00:37:28.613
+things are unsigned Virus total
+integration, and then at the
+
+00:37:28.613 --> 00:37:34.385
+bottom you can see the loaded
+DYLDs. So I actually use this
+
+00:37:34.385 --> 00:37:38.123
+tool to help my find this
+vulnerability, because what I
+
+00:37:38.123 --> 00:37:43.328
+did was I ran it and looked at
+the plugins that were loaded by
+
+00:37:43.328 --> 00:37:47.432
+directory utility and then when
+I planted my malicious plugin it
+
+00:37:47.432 --> 00:37:51.903
+was loaded. So lets wrap all
+this up. So first my humble
+
+00:37:51.903 --> 00:37:56.741
+opinion I think OSX security is
+lame. There is a lot public 0
+
+00:37:56.741 --> 00:38:00.478
+days, Apple, they can be
+bypassed and a lot of
+
+00:38:00.478 --> 00:38:04.582
+exploitable bugs that are out
+there. Since Root Pipe was kind
+
+00:38:04.582 --> 00:38:09.787
+of in the inception of OSX that
+bothers me. So its a great idea
+
+00:38:09.787 --> 00:38:14.125
+to audit all things, I think as
+security researches thats a
+
+00:38:14.125 --> 00:38:18.796
+way we can help Apple, or at
+least make our Apple computers
+
+00:38:18.796 --> 00:38:22.200
+secure. So its a great idea
+to audit these XPC interfaces,
+
+00:38:22.200 --> 00:38:25.503
+Apple thought that this since
+this is a private interface
+
+00:38:25.503 --> 00:38:28.673
+maybe no one will look at it but
+as soon as some one started to
+
+00:38:28.673 --> 00:38:32.510
+poking around there was a
+trivial exploitable bug that was
+
+00:38:32.510 --> 00:38:35.480
+found. Its also a good idea
+to really thoroughly analyze OSX
+
+00:38:35.480 --> 00:38:39.817
+malware. I believe they missed
+it, but again we should be doing
+
+00:38:39.817 --> 00:38:47.392
+a little bit of a thorough job.
+And finally when a security
+
+00:38:47.392 --> 00:38:51.863
+vendor releases a patch I think
+its good to audit the patch. So
+
+00:38:51.863 --> 00:38:55.066
+again I think we have some
+responsible to audit these
+
+00:38:55.066 --> 00:39:01.072
+things. Because we cant count
+on the vendor at this point. All
+
+00:39:04.742 --> 00:39:10.748
+right so thanks for your time,
+these slides should be up
+
+00:39:15.420 --> 00:39:21.426
+shortly to download. Also check
+out SYNAQ dot come. We have five
+
+00:39:27.065 --> 00:39:34.639
+minutes, are there any
+questions? Yes, sir? So the
+
+00:39:34.639 --> 00:39:40.645
+malware used it to enable key
+log in. I thought I could of
+
+00:39:44.315 --> 00:39:50.321
+used it far better to do more --
+things but I think they used it
+
+00:39:57.695 --> 00:40:03.701
+for what they needed. Use it
+only to enable key log in. Yes?
+
+00:40:09.307 --> 00:40:13.578
+So the question was, the DOD I
+think it was is NSA used to
+
+00:40:13.578 --> 00:40:19.517
+release documents how secure
+your mac and they have not done
+
+00:40:19.517 --> 00:40:23.388
+this for the number of years.
+Im not sure, I would like to
+
+00:40:23.388 --> 00:40:30.061
+see that too. They had good
+suggestions I don't know why
+
+00:40:30.061 --> 00:40:36.067
+I'll e-mail. I don think they
+talk to me anymore. But they
+
+00:40:38.469 --> 00:40:40.638
+just heard so that maybe we'll
+get an answer anyways. All
+
+00:40:40.638 --> 00:40:48.146
+right, well thank you guys, I
+really appreciate attending.
+
+00:40:48.146 --> 00:40:50.214
+E-mail me or chat to me if you
+have any other questions.
+
+00:40:50.214 --> 00:40:55.386
+Applause.
+

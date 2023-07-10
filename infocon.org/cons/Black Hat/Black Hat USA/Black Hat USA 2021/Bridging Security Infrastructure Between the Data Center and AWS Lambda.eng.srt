@@ -1,0 +1,3172 @@
+﻿1
+00:00:01,130 --> 00:00:13,040
+[Music]
+
+2
+00:00:13,040 --> 00:00:14,960
+hi and welcome to the presentation
+
+3
+00:00:14,960 --> 00:00:16,960
+bridging security infrastructure between
+
+4
+00:00:16,960 --> 00:00:20,240
+the data center and aws lambda
+
+5
+00:00:20,240 --> 00:00:22,640
+as you all know serverless is all the
+
+6
+00:00:22,640 --> 00:00:25,199
+rage but creating secure infrastructure
+
+7
+00:00:25,199 --> 00:00:27,279
+that integrates serverless technology
+
+8
+00:00:27,279 --> 00:00:29,519
+with existing data center services
+
+9
+00:00:29,519 --> 00:00:30,960
+remains a challenge
+
+10
+00:00:30,960 --> 00:00:32,800
+and we'll talk today about how to
+
+11
+00:00:32,800 --> 00:00:35,040
+overcome these
+
+12
+00:00:35,040 --> 00:00:37,760
+so to give an overview first we'll talk
+
+13
+00:00:37,760 --> 00:00:40,239
+about background and context and the
+
+14
+00:00:40,239 --> 00:00:43,040
+goals we want to achieve in this talk
+
+15
+00:00:43,040 --> 00:00:44,719
+and then about the two solutions we
+
+16
+00:00:44,719 --> 00:00:45,760
+implemented
+
+17
+00:00:45,760 --> 00:00:48,800
+so the first one is going to be how we
+
+18
+00:00:48,800 --> 00:00:51,920
+made uh enable lambda to call into the
+
+19
+00:00:51,920 --> 00:00:53,520
+envoy service mesh
+
+20
+00:00:53,520 --> 00:00:56,239
+and the second one is how we keep
+
+21
+00:00:56,239 --> 00:00:58,800
+application secrets in sync between the
+
+22
+00:00:58,800 --> 00:01:01,600
+data center and lambda
+
+23
+00:01:01,600 --> 00:01:04,879
+we'll close with some key learnings
+
+24
+00:01:04,879 --> 00:01:06,799
+briefly about myself i'm michael
+
+25
+00:01:06,799 --> 00:01:10,080
+weisbacher i work on the infrastructure
+
+26
+00:01:10,080 --> 00:01:13,040
+security team at square in new york i've
+
+27
+00:01:13,040 --> 00:01:15,680
+been there for three years and i work on
+
+28
+00:01:15,680 --> 00:01:16,400
+a
+
+29
+00:01:16,400 --> 00:01:18,880
+sub team that is working on
+
+30
+00:01:18,880 --> 00:01:21,360
+cryptographic identity and secrets
+
+31
+00:01:21,360 --> 00:01:24,159
+management and before that i was doing
+
+32
+00:01:24,159 --> 00:01:26,880
+security research and getting a phd at
+
+33
+00:01:26,880 --> 00:01:30,158
+northeastern university
+
+34
+00:01:30,799 --> 00:01:31,759
+so
+
+35
+00:01:31,759 --> 00:01:34,400
+some background
+
+36
+00:01:34,880 --> 00:01:36,720
+let's first talk about the benefits of
+
+37
+00:01:36,720 --> 00:01:39,759
+serverless and lambda specifically
+
+38
+00:01:39,759 --> 00:01:42,000
+it lets developers focus their attention
+
+39
+00:01:42,000 --> 00:01:44,399
+on business logic and not worry about
+
+40
+00:01:44,399 --> 00:01:46,640
+infrastructure too much it is handled by
+
+41
+00:01:46,640 --> 00:01:48,560
+aws magic
+
+42
+00:01:48,560 --> 00:01:51,200
+also it's fast landos have very fast
+
+43
+00:01:51,200 --> 00:01:53,280
+response times but
+
+44
+00:01:53,280 --> 00:01:55,200
+they're not only fast they are also very
+
+45
+00:01:55,200 --> 00:01:58,240
+scalable and an underappreciated feature
+
+46
+00:01:58,240 --> 00:02:00,479
+here is scaling down
+
+47
+00:02:00,479 --> 00:02:02,320
+workloads that are not needed anymore
+
+48
+00:02:02,320 --> 00:02:05,200
+will be automatically deallocated
+
+49
+00:02:05,200 --> 00:02:07,040
+there is no need to maintain idle
+
+50
+00:02:07,040 --> 00:02:09,199
+servers
+
+51
+00:02:09,199 --> 00:02:11,440
+what is also great is how well connected
+
+52
+00:02:11,440 --> 00:02:14,319
+lambda is with the ews ecosystem it is
+
+53
+00:02:14,319 --> 00:02:16,800
+possible to trigger a lambda via an as
+
+54
+00:02:16,800 --> 00:02:22,680
+freewrite in email or many other options
+
+55
+00:02:23,840 --> 00:02:26,080
+so the big question is of course how
+
+56
+00:02:26,080 --> 00:02:28,160
+does it all work
+
+57
+00:02:28,160 --> 00:02:29,760
+these functions are called without
+
+58
+00:02:29,760 --> 00:02:31,519
+assigned infrastructure
+
+59
+00:02:31,519 --> 00:02:34,160
+lambdas are running on small vms on
+
+60
+00:02:34,160 --> 00:02:35,680
+amazon linux
+
+61
+00:02:35,680 --> 00:02:38,239
+they use firecracker vm
+
+62
+00:02:38,239 --> 00:02:40,400
+and they land the sandbox to achieve
+
+63
+00:02:40,400 --> 00:02:42,560
+speed and scalability
+
+64
+00:02:42,560 --> 00:02:44,480
+when invoked for the first time a lander
+
+65
+00:02:44,480 --> 00:02:47,120
+performs a cold start
+
+66
+00:02:47,120 --> 00:02:48,840
+these take a bit longer to allocate
+
+67
+00:02:48,840 --> 00:02:50,959
+infrastructure but once this happens
+
+68
+00:02:50,959 --> 00:02:53,440
+additional implications can reuse state
+
+69
+00:02:53,440 --> 00:02:55,920
+from previously invoked lambdas and when
+
+70
+00:02:55,920 --> 00:02:57,920
+orlando stops being invoked for a while
+
+71
+00:02:57,920 --> 00:02:59,519
+infrastructure is automatically
+
+72
+00:02:59,519 --> 00:03:02,159
+unassigned
+
+73
+00:03:03,599 --> 00:03:06,080
+i showed you the good size of lambda but
+
+74
+00:03:06,080 --> 00:03:07,920
+what we learned quickly is what makes
+
+75
+00:03:07,920 --> 00:03:09,599
+land attractive also makes it
+
+76
+00:03:09,599 --> 00:03:13,440
+incompatible with dc infrastructure
+
+77
+00:03:13,440 --> 00:03:15,200
+there are several reasons
+
+78
+00:03:15,200 --> 00:03:17,200
+lambda workloads are short-lived as
+
+79
+00:03:17,200 --> 00:03:19,040
+opposed to long-lived workloads in the
+
+80
+00:03:19,040 --> 00:03:20,400
+dc
+
+81
+00:03:20,400 --> 00:03:22,480
+the deploy process here is different
+
+82
+00:03:22,480 --> 00:03:25,760
+infrastructure is assigned ad-hoc
+
+83
+00:03:25,760 --> 00:03:28,159
+much differently than any dc where
+
+84
+00:03:28,159 --> 00:03:31,200
+server nodes are assigned ahead of time
+
+85
+00:03:31,200 --> 00:03:34,000
+also speed and scalability are core
+
+86
+00:03:34,000 --> 00:03:35,680
+features of lambda
+
+87
+00:03:35,680 --> 00:03:37,440
+after a cold start and lambda is
+
+88
+00:03:37,440 --> 00:03:41,040
+expected to respond near instantaneously
+
+89
+00:03:41,040 --> 00:03:42,959
+security infrastructure can't slow down
+
+90
+00:03:42,959 --> 00:03:46,560
+or block the hot path of responding also
+
+91
+00:03:46,560 --> 00:03:49,040
+infrastructure is not highly available
+
+92
+00:03:49,040 --> 00:03:52,959
+with jeopardizes property
+
+93
+00:03:54,400 --> 00:03:56,080
+and now about the goals we want to
+
+94
+00:03:56,080 --> 00:03:58,400
+achieve
+
+95
+00:03:59,680 --> 00:04:00,799
+to
+
+96
+00:04:00,799 --> 00:04:02,319
+achieve higher flexibility and
+
+97
+00:04:02,319 --> 00:04:04,640
+scalability square has been moving to
+
+98
+00:04:04,640 --> 00:04:06,799
+the cloud
+
+99
+00:04:06,799 --> 00:04:08,799
+lambda plays a role in that but lambda
+
+100
+00:04:08,799 --> 00:04:11,040
+can't be an isolated island
+
+101
+00:04:11,040 --> 00:04:13,040
+what we needed is for lambdas to be
+
+102
+00:04:13,040 --> 00:04:15,599
+treated the same as other workloads
+
+103
+00:04:15,599 --> 00:04:18,000
+in the dc we have a kubernetes-like
+
+104
+00:04:18,000 --> 00:04:21,199
+platform and in aws we have kubernetes
+
+105
+00:04:21,199 --> 00:04:25,440
+running on top of aws eks
+
+106
+00:04:25,440 --> 00:04:27,120
+we connect these environments with an
+
+107
+00:04:27,120 --> 00:04:29,040
+envoy service mesh to
+
+108
+00:04:29,040 --> 00:04:31,440
+connect services to each other
+
+109
+00:04:31,440 --> 00:04:33,440
+what we want out of lambda are two
+
+110
+00:04:33,440 --> 00:04:35,040
+things
+
+111
+00:04:35,040 --> 00:04:36,720
+one they should be able to communicate
+
+112
+00:04:36,720 --> 00:04:39,120
+securely with any application connected
+
+113
+00:04:39,120 --> 00:04:40,479
+to the mesh
+
+114
+00:04:40,479 --> 00:04:42,639
+and also we want to access application
+
+115
+00:04:42,639 --> 00:04:45,440
+secrets which are in a
+
+116
+00:04:45,440 --> 00:04:48,800
+dc-based system
+
+117
+00:04:50,479 --> 00:04:52,720
+to break this down into two top-level
+
+118
+00:04:52,720 --> 00:04:54,880
+goals we want landlords to be treated
+
+119
+00:04:54,880 --> 00:04:57,440
+equally as other workloads
+
+120
+00:04:57,440 --> 00:04:59,120
+we also want to keep the benefits of
+
+121
+00:04:59,120 --> 00:05:00,639
+lambda intact
+
+122
+00:05:00,639 --> 00:05:03,520
+so more specifically functionality that
+
+123
+00:05:03,520 --> 00:05:05,600
+we want is to communicate with envoy
+
+124
+00:05:05,600 --> 00:05:08,240
+service mesh and have access to
+
+125
+00:05:08,240 --> 00:05:10,880
+application secrets
+
+126
+00:05:10,880 --> 00:05:12,720
+but we also want to maintain important
+
+127
+00:05:12,720 --> 00:05:15,199
+features such as response time and
+
+128
+00:05:15,199 --> 00:05:16,639
+scalability
+
+129
+00:05:16,639 --> 00:05:18,639
+we also want to be compatible with our
+
+130
+00:05:18,639 --> 00:05:21,440
+dc infrastructure and obviously
+
+131
+00:05:21,440 --> 00:05:23,840
+availability can't be degraded power
+
+132
+00:05:23,840 --> 00:05:26,799
+security infrastructure
+
+133
+00:05:27,680 --> 00:05:29,440
+so part one
+
+134
+00:05:29,440 --> 00:05:33,520
+calling the service mesh from lambda
+
+135
+00:05:34,400 --> 00:05:36,800
+to give a motivational example consider
+
+136
+00:05:36,800 --> 00:05:38,800
+two services in the
+
+137
+00:05:38,800 --> 00:05:41,600
+these square dc service one and service
+
+138
+00:05:41,600 --> 00:05:44,560
+two service one is calling service two
+
+139
+00:05:44,560 --> 00:05:47,199
+and service one turns out is a bursty
+
+140
+00:05:47,199 --> 00:05:48,960
+workload so
+
+141
+00:05:48,960 --> 00:05:50,960
+once a week or once a month it has a
+
+142
+00:05:50,960 --> 00:05:52,720
+high load spike and otherwise these
+
+143
+00:05:52,720 --> 00:05:54,320
+servers are
+
+144
+00:05:54,320 --> 00:05:56,319
+idle and not doing much
+
+145
+00:05:56,319 --> 00:05:58,080
+so this is a perfect candidate to move
+
+146
+00:05:58,080 --> 00:06:00,639
+to lambda
+
+147
+00:06:01,120 --> 00:06:02,720
+but once it's in lambda it still needs
+
+148
+00:06:02,720 --> 00:06:04,800
+to call service 2 and this is the
+
+149
+00:06:04,800 --> 00:06:06,639
+interesting part now so
+
+150
+00:06:06,639 --> 00:06:08,639
+for service 2 nothing should change it's
+
+151
+00:06:08,639 --> 00:06:10,880
+it should still be able to receive calls
+
+152
+00:06:10,880 --> 00:06:12,880
+from service 1 where they are in the
+
+153
+00:06:12,880 --> 00:06:15,039
+square data center or
+
+154
+00:06:15,039 --> 00:06:17,600
+residing in aws lambda we don't want to
+
+155
+00:06:17,600 --> 00:06:19,919
+change the the code for service 2 or the
+
+156
+00:06:19,919 --> 00:06:21,840
+infrastructure for service 2. it should
+
+157
+00:06:21,840 --> 00:06:24,318
+just work
+
+158
+00:06:25,120 --> 00:06:27,199
+and how we'll make this work we'll talk
+
+159
+00:06:27,199 --> 00:06:29,680
+about that
+
+160
+00:06:30,240 --> 00:06:32,479
+but first how do services communicate at
+
+161
+00:06:32,479 --> 00:06:34,560
+square at square everything is a
+
+162
+00:06:34,560 --> 00:06:36,000
+microservice
+
+163
+00:06:36,000 --> 00:06:38,000
+this predates me but square has been
+
+164
+00:06:38,000 --> 00:06:40,720
+using mtls since 2012.
+
+165
+00:06:40,720 --> 00:06:42,880
+you might know this technology as zero
+
+166
+00:06:42,880 --> 00:06:45,600
+trust networking or identity is the new
+
+167
+00:06:45,600 --> 00:06:46,800
+parameter
+
+168
+00:06:46,800 --> 00:06:49,199
+what this really means the network is as
+
+169
+00:06:49,199 --> 00:06:52,000
+trusted as a public wi-fi
+
+170
+00:06:52,000 --> 00:06:53,599
+we don't trust the network and assume it
+
+171
+00:06:53,599 --> 00:06:55,199
+compromised
+
+172
+00:06:55,199 --> 00:06:56,880
+all trust we have is anchored in
+
+173
+00:06:56,880 --> 00:06:58,639
+identities and everything else is
+
+174
+00:06:58,639 --> 00:07:01,199
+assumed bad
+
+175
+00:07:01,599 --> 00:07:03,759
+for connecting securely we use an envoy
+
+176
+00:07:03,759 --> 00:07:06,639
+service mesh services connect and clear
+
+177
+00:07:06,639 --> 00:07:08,800
+text to their envoy sidecar which
+
+178
+00:07:08,800 --> 00:07:10,560
+handles the connection
+
+179
+00:07:10,560 --> 00:07:13,039
+our workloads are available in square
+
+180
+00:07:13,039 --> 00:07:15,840
+dc's but also on kubernetes on a
+
+181
+00:07:15,840 --> 00:07:19,599
+platform based on aws eks
+
+182
+00:07:19,599 --> 00:07:21,919
+and the way we look at identity is a
+
+183
+00:07:21,919 --> 00:07:24,560
+tuple of service name and environment
+
+184
+00:07:24,560 --> 00:07:26,639
+encoded under certificate
+
+185
+00:07:26,639 --> 00:07:27,759
+for example
+
+186
+00:07:27,759 --> 00:07:30,240
+service 1 staging or service to
+
+187
+00:07:30,240 --> 00:07:32,800
+production
+
+188
+00:07:41,039 --> 00:07:42,479
+enter speaking
+
+189
+00:07:42,479 --> 00:07:44,960
+spifi is a workload identity standard
+
+190
+00:07:44,960 --> 00:07:47,280
+that is based on the way workloads have
+
+191
+00:07:47,280 --> 00:07:49,360
+been handled within companies such as
+
+192
+00:07:49,360 --> 00:07:52,240
+google square and others
+
+193
+00:07:52,240 --> 00:07:54,240
+the standard formalizes how to tie
+
+194
+00:07:54,240 --> 00:07:57,360
+identity to worklets or workloads and
+
+195
+00:07:57,360 --> 00:07:59,520
+how to issue it
+
+196
+00:07:59,520 --> 00:08:01,440
+there is also a reference implementation
+
+197
+00:08:01,440 --> 00:08:03,520
+for this pp standard which is called
+
+198
+00:08:03,520 --> 00:08:05,919
+spire
+
+199
+00:08:05,919 --> 00:08:08,000
+square began migrating to spire three
+
+200
+00:08:08,000 --> 00:08:10,560
+years ago we did this to move from an
+
+201
+00:08:10,560 --> 00:08:13,039
+in-house built identity issuance to an
+
+202
+00:08:13,039 --> 00:08:16,560
+open source standard solution
+
+203
+00:08:16,720 --> 00:08:18,800
+and we use spiffy for every
+
+204
+00:08:18,800 --> 00:08:20,400
+service
+
+205
+00:08:20,400 --> 00:08:22,319
+for every environment where we need
+
+206
+00:08:22,319 --> 00:08:25,639
+service identity
+
+207
+00:08:26,319 --> 00:08:28,560
+so what do we want identity to look like
+
+208
+00:08:28,560 --> 00:08:29,919
+for landis
+
+209
+00:08:29,919 --> 00:08:31,440
+square is using an architecture with
+
+210
+00:08:31,440 --> 00:08:33,360
+many aws accounts
+
+211
+00:08:33,360 --> 00:08:35,919
+and the way services are mapped to aws
+
+212
+00:08:35,919 --> 00:08:38,399
+accounts at square is the following
+
+213
+00:08:38,399 --> 00:08:40,080
+each tuple of service and environment
+
+214
+00:08:40,080 --> 00:08:42,399
+which i mentioned earlier has its own
+
+215
+00:08:42,399 --> 00:08:45,760
+aws account for example service one will
+
+216
+00:08:45,760 --> 00:08:47,920
+have different accounts for staging and
+
+217
+00:08:47,920 --> 00:08:49,040
+production
+
+218
+00:08:49,040 --> 00:08:51,200
+we get nice properties from that we know
+
+219
+00:08:51,200 --> 00:08:53,040
+that any resource that is associated
+
+220
+00:08:53,040 --> 00:08:55,279
+with a specific account belongs to a
+
+221
+00:08:55,279 --> 00:08:57,680
+certain service environment pair
+
+222
+00:08:57,680 --> 00:09:01,519
+and this is also true in reverse
+
+223
+00:09:01,519 --> 00:09:04,000
+what this also means is that all lambdas
+
+224
+00:09:04,000 --> 00:09:06,240
+within a single account belong to a
+
+225
+00:09:06,240 --> 00:09:08,880
+single service and within each account
+
+226
+00:09:08,880 --> 00:09:11,760
+we have multiple roles such as read only
+
+227
+00:09:11,760 --> 00:09:13,839
+for security checks or
+
+228
+00:09:13,839 --> 00:09:17,120
+an execution role where that we use to
+
+229
+00:09:17,120 --> 00:09:18,640
+run lambdas
+
+230
+00:09:18,640 --> 00:09:22,279
+and a bunch of others
+
+231
+00:09:23,120 --> 00:09:25,120
+first we were wondering can we use what
+
+232
+00:09:25,120 --> 00:09:26,720
+we have in a dc
+
+233
+00:09:26,720 --> 00:09:29,040
+in the dc identity is a solved problem
+
+234
+00:09:29,040 --> 00:09:30,880
+and it works well for our long-lived
+
+235
+00:09:30,880 --> 00:09:33,440
+workloads but there were issues
+
+236
+00:09:33,440 --> 00:09:35,760
+spira has no support for serverless and
+
+237
+00:09:35,760 --> 00:09:37,839
+requires an agent to operate
+
+238
+00:09:37,839 --> 00:09:42,320
+also lambda has no support for sidecars
+
+239
+00:09:42,480 --> 00:09:44,560
+we were also looking whether we could
+
+240
+00:09:44,560 --> 00:09:47,519
+bootstrap from aws account credentials
+
+241
+00:09:47,519 --> 00:09:49,839
+we wanted to externally signal account
+
+242
+00:09:49,839 --> 00:09:52,160
+ownership and identity
+
+243
+00:09:52,160 --> 00:09:54,160
+a possible solution would be to
+
+244
+00:09:54,160 --> 00:09:56,560
+construct via kms building barrier
+
+245
+00:09:56,560 --> 00:09:58,080
+tokens
+
+246
+00:09:58,080 --> 00:09:59,680
+this would have meant sending a signed
+
+247
+00:09:59,680 --> 00:10:00,640
+request
+
+248
+00:10:00,640 --> 00:10:02,800
+the issue of this is incompatibility
+
+249
+00:10:02,800 --> 00:10:05,760
+with our mtls service mesh
+
+250
+00:10:05,760 --> 00:10:07,360
+we wanted to avoid carrying cloud
+
+251
+00:10:07,360 --> 00:10:10,079
+implementation details into the dc
+
+252
+00:10:10,079 --> 00:10:11,920
+overall this didn't fit into our
+
+253
+00:10:11,920 --> 00:10:14,880
+architecture picture
+
+254
+00:10:16,800 --> 00:10:18,640
+since existing services steve made our
+
+255
+00:10:18,640 --> 00:10:20,480
+goals we decided we should build
+
+256
+00:10:20,480 --> 00:10:24,160
+identity issuance on our own
+
+257
+00:10:26,560 --> 00:10:28,399
+one big decision we had to make is
+
+258
+00:10:28,399 --> 00:10:30,560
+whether to issue identity in pull or
+
+259
+00:10:30,560 --> 00:10:33,760
+push style we looked at these two in
+
+260
+00:10:33,760 --> 00:10:36,000
+three metrics first
+
+261
+00:10:36,000 --> 00:10:38,079
+what would identity issuance look like
+
+262
+00:10:38,079 --> 00:10:39,040
+second
+
+263
+00:10:39,040 --> 00:10:41,680
+what the security aspects were
+
+264
+00:10:41,680 --> 00:10:42,560
+and
+
+265
+00:10:42,560 --> 00:10:44,079
+also whether there were availability
+
+266
+00:10:44,079 --> 00:10:46,079
+concerns
+
+267
+00:10:46,079 --> 00:10:47,839
+in the pool model we would generate
+
+268
+00:10:47,839 --> 00:10:49,600
+identity on invocation
+
+269
+00:10:49,600 --> 00:10:51,680
+we would have to create a form of agent
+
+270
+00:10:51,680 --> 00:10:52,880
+ourselves
+
+271
+00:10:52,880 --> 00:10:54,880
+in terms of security we saw this as
+
+272
+00:10:54,880 --> 00:10:58,160
+equivalent to the dc issuance
+
+273
+00:10:58,160 --> 00:11:00,399
+in terms of availability however we
+
+274
+00:11:00,399 --> 00:11:02,800
+noticed that poll creates a blocking
+
+275
+00:11:02,800 --> 00:11:04,720
+dependency for invocation
+
+276
+00:11:04,720 --> 00:11:08,800
+poll issuance is a higher dependency
+
+277
+00:11:09,600 --> 00:11:12,160
+as for push we will have to issue ahead
+
+278
+00:11:12,160 --> 00:11:13,279
+of time
+
+279
+00:11:13,279 --> 00:11:15,920
+identity would be readily available
+
+280
+00:11:15,920 --> 00:11:18,000
+this also means that identity will be
+
+281
+00:11:18,000 --> 00:11:21,760
+present even if a lambda is rarely used
+
+282
+00:11:21,760 --> 00:11:24,160
+what initially initially bothered me at
+
+283
+00:11:24,160 --> 00:11:26,480
+the time was the push seems a real
+
+284
+00:11:26,480 --> 00:11:28,720
+anti-pattern compared to spire which
+
+285
+00:11:28,720 --> 00:11:30,160
+uses pull
+
+286
+00:11:30,160 --> 00:11:32,560
+but in terms of security
+
+287
+00:11:32,560 --> 00:11:35,360
+although we were first concerned we
+
+288
+00:11:35,360 --> 00:11:37,839
+then concluded that if identity is tied
+
+289
+00:11:37,839 --> 00:11:40,320
+to access within an aws account it is
+
+290
+00:11:40,320 --> 00:11:43,760
+equivalent to pull we rely here on iem
+
+291
+00:11:43,760 --> 00:11:45,760
+and scp
+
+292
+00:11:45,760 --> 00:11:48,079
+and in terms of availability push was a
+
+293
+00:11:48,079 --> 00:11:50,719
+clear winner
+
+294
+00:11:52,000 --> 00:11:53,839
+to summarize push has no security
+
+295
+00:11:53,839 --> 00:11:56,160
+downsides it also makes for a higher
+
+296
+00:11:56,160 --> 00:11:58,160
+availability system since landers never
+
+297
+00:11:58,160 --> 00:12:00,079
+have to block on identity
+
+298
+00:12:00,079 --> 00:12:04,160
+based on that we decided to go with push
+
+299
+00:12:05,839 --> 00:12:07,680
+here are some of the components used in
+
+300
+00:12:07,680 --> 00:12:10,320
+our system identity governance and
+
+301
+00:12:10,320 --> 00:12:12,399
+administration is a square internal
+
+302
+00:12:12,399 --> 00:12:13,519
+service
+
+303
+00:12:13,519 --> 00:12:15,760
+we use it in this context to query for
+
+304
+00:12:15,760 --> 00:12:18,800
+whom to create land identity and receive
+
+305
+00:12:18,800 --> 00:12:21,279
+tuples of service environment and
+
+306
+00:12:21,279 --> 00:12:22,959
+account
+
+307
+00:12:22,959 --> 00:12:25,279
+our asian system generates certificates
+
+308
+00:12:25,279 --> 00:12:28,880
+per service with spf uris
+
+309
+00:12:28,880 --> 00:12:30,959
+this whole system is also implemented as
+
+310
+00:12:30,959 --> 00:12:32,480
+two lambdas
+
+311
+00:12:32,480 --> 00:12:35,440
+we also use aws private ca
+
+312
+00:12:35,440 --> 00:12:38,079
+this is an hsn backed ca that never
+
+313
+00:12:38,079 --> 00:12:40,880
+exposes its root key and for storage we
+
+314
+00:12:40,880 --> 00:12:43,040
+use aws secrets manager
+
+315
+00:12:43,040 --> 00:12:45,600
+we centralize all secrets in one account
+
+316
+00:12:45,600 --> 00:12:48,639
+and we make identity available via iam
+
+317
+00:12:48,639 --> 00:12:51,800
+and scp
+
+318
+00:12:57,839 --> 00:13:01,839
+so this is what the system looks like
+
+319
+00:13:01,839 --> 00:13:06,120
+first let's focus on this area
+
+320
+00:13:06,639 --> 00:13:08,720
+identity issuance is invoked on a crown
+
+321
+00:13:08,720 --> 00:13:10,959
+schedule so we get an invocation every
+
+322
+00:13:10,959 --> 00:13:13,279
+15 minutes and the first thing that
+
+323
+00:13:13,279 --> 00:13:15,440
+happens here is that the system connects
+
+324
+00:13:15,440 --> 00:13:18,560
+to the iga service and receives a list
+
+325
+00:13:18,560 --> 00:13:20,160
+of all services that should receive
+
+326
+00:13:20,160 --> 00:13:22,000
+lambda identity
+
+327
+00:13:22,000 --> 00:13:24,560
+then the system retrieves from secrets
+
+328
+00:13:24,560 --> 00:13:26,399
+manager all previously issued
+
+329
+00:13:26,399 --> 00:13:27,600
+certificates
+
+330
+00:13:27,600 --> 00:13:31,120
+to compare with the iga response what we
+
+331
+00:13:31,120 --> 00:13:32,800
+check for is
+
+332
+00:13:32,800 --> 00:13:34,959
+any certificate that would be expiring
+
+333
+00:13:34,959 --> 00:13:35,839
+or
+
+334
+00:13:35,839 --> 00:13:38,800
+have newly added applications
+
+335
+00:13:38,800 --> 00:13:41,040
+we issue certificates for 24 hours and
+
+336
+00:13:41,040 --> 00:13:42,880
+refresh the half-life so anything that
+
+337
+00:13:42,880 --> 00:13:44,800
+is older than 12 hours here will be
+
+338
+00:13:44,800 --> 00:13:47,199
+refreshed
+
+339
+00:13:47,199 --> 00:13:48,639
+those applications that need to be
+
+340
+00:13:48,639 --> 00:13:50,959
+refreshed we
+
+341
+00:13:50,959 --> 00:13:54,160
+create a csr and private key the private
+
+342
+00:13:54,160 --> 00:13:56,720
+key we write the secrets manager with
+
+343
+00:13:56,720 --> 00:13:59,519
+the correct permissions and the csr we
+
+344
+00:13:59,519 --> 00:14:03,120
+submit to aws pca api
+
+345
+00:14:03,120 --> 00:14:06,800
+this is where the first lander exits
+
+346
+00:14:06,800 --> 00:14:09,040
+now let's focus here
+
+347
+00:14:09,040 --> 00:14:10,800
+this is how another lambda that is
+
+348
+00:14:10,800 --> 00:14:14,839
+subscribed to aws pca
+
+349
+00:14:14,839 --> 00:14:18,240
+um events so whenever a certificate is
+
+350
+00:14:18,240 --> 00:14:20,720
+issued this land is being invoked with
+
+351
+00:14:20,720 --> 00:14:22,720
+that certificate and all this lambda
+
+352
+00:14:22,720 --> 00:14:25,360
+does is store these in secrets manager
+
+353
+00:14:25,360 --> 00:14:28,959
+with the correct permissions and exits
+
+354
+00:14:28,959 --> 00:14:30,800
+now let's focus on this secrets manager
+
+355
+00:14:30,800 --> 00:14:32,720
+so this is the same secrets manager that
+
+356
+00:14:32,720 --> 00:14:34,959
+we'll see in the next slide
+
+357
+00:14:34,959 --> 00:14:38,399
+it is a centralized resource
+
+358
+00:14:38,560 --> 00:14:40,240
+so coming back to the motivational
+
+359
+00:14:40,240 --> 00:14:43,199
+example service 1 now exists in lambda
+
+360
+00:14:43,199 --> 00:14:45,920
+and wants to call service 2 in the dc
+
+361
+00:14:45,920 --> 00:14:48,399
+on startup its lander layer reads the
+
+362
+00:14:48,399 --> 00:14:50,240
+private key and certificate
+
+363
+00:14:50,240 --> 00:14:52,880
+next it creates an mtls connection that
+
+364
+00:14:52,880 --> 00:14:54,800
+is load balanced and routed via mesh
+
+365
+00:14:54,800 --> 00:14:57,279
+proxy and now it can connect to service
+
+366
+00:14:57,279 --> 00:14:59,839
+2 again
+
+367
+00:15:07,120 --> 00:15:09,360
+so in more detail how does it work for a
+
+368
+00:15:09,360 --> 00:15:11,279
+lambda to make a call
+
+369
+00:15:11,279 --> 00:15:13,440
+fetching the secrets happens in a lambda
+
+370
+00:15:13,440 --> 00:15:15,519
+layer that our cloud foundation's team
+
+371
+00:15:15,519 --> 00:15:16,480
+provides
+
+372
+00:15:16,480 --> 00:15:18,320
+the fetching of identity is automatic
+
+373
+00:15:18,320 --> 00:15:20,800
+and does not require developer work
+
+374
+00:15:20,800 --> 00:15:23,120
+next a program in the layer starts
+
+375
+00:15:23,120 --> 00:15:25,519
+listening a local host so the lambda can
+
+376
+00:15:25,519 --> 00:15:29,199
+use it as a proxy to make calls
+
+377
+00:15:29,199 --> 00:15:31,839
+the layer overloads the tls verify peer
+
+378
+00:15:31,839 --> 00:15:34,399
+certificate function to perform spf uri
+
+379
+00:15:34,399 --> 00:15:36,240
+validation
+
+380
+00:15:36,240 --> 00:15:38,240
+important to note here the operation of
+
+381
+00:15:38,240 --> 00:15:39,920
+the layer is transparent to developers
+
+382
+00:15:39,920 --> 00:15:40,639
+so
+
+383
+00:15:40,639 --> 00:15:44,000
+all this is abstracted away
+
+384
+00:15:45,440 --> 00:15:47,920
+mesh proxy is a modified version of
+
+385
+00:15:47,920 --> 00:15:50,800
+envoy that does not terminate tls
+
+386
+00:15:50,800 --> 00:15:53,120
+a great property here is that it does
+
+387
+00:15:53,120 --> 00:15:55,759
+not need to be trusted as content is
+
+388
+00:15:55,759 --> 00:15:57,360
+encrypted
+
+389
+00:15:57,360 --> 00:15:59,839
+it receives calls from the lambda layer
+
+390
+00:15:59,839 --> 00:16:02,320
+and routes by sni
+
+391
+00:16:02,320 --> 00:16:04,480
+based on service availability the call
+
+392
+00:16:04,480 --> 00:16:09,440
+will be directed to either the dc or eks
+
+393
+00:16:09,440 --> 00:16:10,560
+and
+
+394
+00:16:10,560 --> 00:16:12,320
+once the lambda call arrives at the
+
+395
+00:16:12,320 --> 00:16:14,720
+destination the call service performs a
+
+396
+00:16:14,720 --> 00:16:17,360
+check against the caller spf uri to
+
+397
+00:16:17,360 --> 00:16:19,600
+verified services allowed to perform
+
+398
+00:16:19,600 --> 00:16:22,839
+this call
+
+399
+00:16:24,000 --> 00:16:26,160
+to revisit our gold from earlier in
+
+400
+00:16:26,160 --> 00:16:28,079
+terms of equal footing we have so far
+
+401
+00:16:28,079 --> 00:16:31,040
+enabled communication however no secrets
+
+402
+00:16:31,040 --> 00:16:32,160
+yet
+
+403
+00:16:32,160 --> 00:16:34,160
+we were also able to maintain the land
+
+404
+00:16:34,160 --> 00:16:35,279
+benefits
+
+405
+00:16:35,279 --> 00:16:37,440
+push style issuance has no startup cost
+
+406
+00:16:37,440 --> 00:16:40,480
+and is merely a secrets manager read
+
+407
+00:16:40,480 --> 00:16:42,320
+lambda speed and scalability is not
+
+408
+00:16:42,320 --> 00:16:43,279
+limited
+
+409
+00:16:43,279 --> 00:16:45,680
+we maintain compatibility by observing
+
+410
+00:16:45,680 --> 00:16:48,160
+the spfe standard and we are highly
+
+411
+00:16:48,160 --> 00:16:51,839
+available because we don't block
+
+412
+00:16:52,480 --> 00:16:55,199
+pulling my attacker head on for a minute
+
+413
+00:16:55,199 --> 00:16:57,440
+let's talk about the threats we consider
+
+414
+00:16:57,440 --> 00:16:59,360
+and how we mitigate them
+
+415
+00:16:59,360 --> 00:17:01,279
+the worst case attack to perform here
+
+416
+00:17:01,279 --> 00:17:03,680
+would be stealing the ca route in this
+
+417
+00:17:03,680 --> 00:17:05,439
+case an attacker would be able to issue
+
+418
+00:17:05,439 --> 00:17:07,439
+certificates offline and you will have
+
+419
+00:17:07,439 --> 00:17:09,039
+no way of telling
+
+420
+00:17:09,039 --> 00:17:11,359
+however we keep the route protected in
+
+421
+00:17:11,359 --> 00:17:13,760
+the hsm back in pca
+
+422
+00:17:13,760 --> 00:17:15,839
+we rely here on an industry standard for
+
+423
+00:17:15,839 --> 00:17:16,959
+protection
+
+424
+00:17:16,959 --> 00:17:19,199
+if attackers were to break pca a lot of
+
+425
+00:17:19,199 --> 00:17:20,880
+other internet infrastructure would be
+
+426
+00:17:20,880 --> 00:17:23,600
+at risk as well
+
+427
+00:17:30,880 --> 00:17:32,720
+the next option would be to attack the
+
+428
+00:17:32,720 --> 00:17:34,000
+asian system
+
+429
+00:17:34,000 --> 00:17:36,080
+issuance is in a specifically lockdown
+
+430
+00:17:36,080 --> 00:17:38,320
+account that is closely monitored by our
+
+431
+00:17:38,320 --> 00:17:40,080
+detection teams
+
+432
+00:17:40,080 --> 00:17:42,160
+other than that pca has added
+
+433
+00:17:42,160 --> 00:17:44,320
+capabilities that could serve to alert
+
+434
+00:17:44,320 --> 00:17:47,760
+us to unusual activity
+
+435
+00:17:47,760 --> 00:17:49,360
+another option would be to steal
+
+436
+00:17:49,360 --> 00:17:52,240
+identity directly from a lambda function
+
+437
+00:17:52,240 --> 00:17:53,760
+we are reducing the value here by
+
+438
+00:17:53,760 --> 00:17:56,640
+limiting lifetime to 24 hours also
+
+439
+00:17:56,640 --> 00:17:59,120
+our microservice ecosystem would limit
+
+440
+00:17:59,120 --> 00:18:01,120
+what services can be called reducing
+
+441
+00:18:01,120 --> 00:18:02,559
+value further
+
+442
+00:18:02,559 --> 00:18:05,840
+so access is protected by iam and scp
+
+443
+00:18:05,840 --> 00:18:07,679
+accessing the certificate requires
+
+444
+00:18:07,679 --> 00:18:10,000
+access to the account in the first place
+
+445
+00:18:10,000 --> 00:18:14,360
+overall we think we are well protected
+
+446
+00:18:15,360 --> 00:18:16,960
+and this is my favorite part of this
+
+447
+00:18:16,960 --> 00:18:20,000
+project so we finished the we finished
+
+448
+00:18:20,000 --> 00:18:23,919
+the work we went to production and we
+
+449
+00:18:23,919 --> 00:18:26,000
+wrote afterwards a blog post about this
+
+450
+00:18:26,000 --> 00:18:29,200
+system and a month or so later an rfc
+
+451
+00:18:29,200 --> 00:18:32,000
+was posted to the
+
+452
+00:18:32,000 --> 00:18:34,480
+aspire github account
+
+453
+00:18:34,480 --> 00:18:37,120
+this was about identity issuance for
+
+454
+00:18:37,120 --> 00:18:40,240
+serverless applications
+
+455
+00:18:40,240 --> 00:18:42,640
+what was interesting the rfc picked pole
+
+456
+00:18:42,640 --> 00:18:45,600
+style over push but what we actually
+
+457
+00:18:45,600 --> 00:18:48,160
+learned from our work is that push was
+
+458
+00:18:48,160 --> 00:18:50,720
+preferable so we got involved in a
+
+459
+00:18:50,720 --> 00:18:54,240
+discussion and advocated before for push
+
+460
+00:18:54,240 --> 00:18:57,760
+issuance successfully
+
+461
+00:18:57,760 --> 00:18:59,600
+and now work on the implementation has
+
+462
+00:18:59,600 --> 00:19:02,640
+started inspire version 1.1 will include
+
+463
+00:19:02,640 --> 00:19:04,559
+push identity issuance that is
+
+464
+00:19:04,559 --> 00:19:07,760
+compatible with our architecture
+
+465
+00:19:07,760 --> 00:19:09,280
+once it is released we are looking to
+
+466
+00:19:09,280 --> 00:19:11,039
+migrate to the open source spire
+
+467
+00:19:11,039 --> 00:19:13,440
+implementation in favor of our in-house
+
+468
+00:19:13,440 --> 00:19:15,120
+development
+
+469
+00:19:15,120 --> 00:19:16,799
+we are really excited to contribute our
+
+470
+00:19:16,799 --> 00:19:20,160
+learnings to spire directly
+
+471
+00:19:22,080 --> 00:19:24,160
+that brings us to part two and how we
+
+472
+00:19:24,160 --> 00:19:26,080
+worked on syncing application secrets to
+
+473
+00:19:26,080 --> 00:19:28,480
+lambda
+
+474
+00:19:29,840 --> 00:19:31,600
+to motivate the system
+
+475
+00:19:31,600 --> 00:19:33,360
+think of an application that operates in
+
+476
+00:19:33,360 --> 00:19:35,919
+a dc the services access to a secret
+
+477
+00:19:35,919 --> 00:19:38,559
+which is supplied by dc infrastructure
+
+478
+00:19:38,559 --> 00:19:40,160
+the secret is used to access a
+
+479
+00:19:40,160 --> 00:19:43,200
+third-party api
+
+480
+00:19:43,840 --> 00:19:45,440
+if developers migrate the service to
+
+481
+00:19:45,440 --> 00:19:47,280
+lambda they will still require access to
+
+482
+00:19:47,280 --> 00:19:49,280
+the secret to continue being able to
+
+483
+00:19:49,280 --> 00:19:51,600
+make these calls
+
+484
+00:19:51,600 --> 00:19:55,600
+and how this works we'll see now
+
+485
+00:19:56,320 --> 00:19:59,440
+we use keyways in a dc but first of all
+
+486
+00:19:59,440 --> 00:20:02,480
+what are secrets these can be api keys
+
+487
+00:20:02,480 --> 00:20:04,840
+gpg keys or
+
+488
+00:20:04,840 --> 00:20:08,000
+other secret contents
+
+489
+00:20:08,000 --> 00:20:10,400
+the system is open source and available
+
+490
+00:20:10,400 --> 00:20:11,840
+on github
+
+491
+00:20:11,840 --> 00:20:12,640
+we
+
+492
+00:20:12,640 --> 00:20:14,799
+the way we model ownership is by mapping
+
+493
+00:20:14,799 --> 00:20:18,480
+secrets to microservices and in a dc we
+
+494
+00:20:18,480 --> 00:20:20,559
+operate the system the following way
+
+495
+00:20:20,559 --> 00:20:23,840
+we use a parallel pki to establish trust
+
+496
+00:20:23,840 --> 00:20:26,960
+so on each node we run a daemon set that
+
+497
+00:20:26,960 --> 00:20:29,520
+synchronizes secrets
+
+498
+00:20:29,520 --> 00:20:30,880
+that sucker has access to all
+
+499
+00:20:30,880 --> 00:20:33,840
+applications secrets on that node and
+
+500
+00:20:33,840 --> 00:20:35,840
+this is important for later
+
+501
+00:20:35,840 --> 00:20:38,080
+also developers can use internal web
+
+502
+00:20:38,080 --> 00:20:40,320
+tooling in a system that is called
+
+503
+00:20:40,320 --> 00:20:42,400
+square console
+
+504
+00:20:42,400 --> 00:20:44,640
+for example they can self-serve ad
+
+505
+00:20:44,640 --> 00:20:45,679
+secrets
+
+506
+00:20:45,679 --> 00:20:48,240
+and one very important feature is to
+
+507
+00:20:48,240 --> 00:20:50,400
+track expiration of secrets before a
+
+508
+00:20:50,400 --> 00:20:53,039
+potential outage happens so we can alert
+
+509
+00:20:53,039 --> 00:20:54,880
+developers if something is about to
+
+510
+00:20:54,880 --> 00:20:57,120
+happen
+
+511
+00:20:58,320 --> 00:21:00,080
+we approach the situation with an open
+
+512
+00:21:00,080 --> 00:21:02,080
+mind and performed interviews with
+
+513
+00:21:02,080 --> 00:21:03,200
+developers
+
+514
+00:21:03,200 --> 00:21:05,200
+one request received was to let
+
+515
+00:21:05,200 --> 00:21:08,880
+developers use secrets manager directly
+
+516
+00:21:08,880 --> 00:21:10,880
+they would add secrets themselves and
+
+517
+00:21:10,880 --> 00:21:13,120
+share via iam
+
+518
+00:21:13,120 --> 00:21:14,640
+secrets would be disconnected from the
+
+519
+00:21:14,640 --> 00:21:17,200
+dc completely and this task would be
+
+520
+00:21:17,200 --> 00:21:18,400
+solved
+
+521
+00:21:18,400 --> 00:21:19,919
+we decided against it for a bunch of
+
+522
+00:21:19,919 --> 00:21:21,120
+reasons
+
+523
+00:21:21,120 --> 00:21:23,600
+for one security teams have developed
+
+524
+00:21:23,600 --> 00:21:25,840
+expertise in the handling of secrets it
+
+525
+00:21:25,840 --> 00:21:28,159
+is our everyday business a skill that is
+
+526
+00:21:28,159 --> 00:21:29,840
+not necessarily
+
+527
+00:21:29,840 --> 00:21:32,400
+something that all developers have
+
+528
+00:21:32,400 --> 00:21:35,039
+another reason is that secrets that need
+
+529
+00:21:35,039 --> 00:21:37,600
+to be available in multiple environments
+
+530
+00:21:37,600 --> 00:21:40,400
+are not updated correctly
+
+531
+00:21:40,400 --> 00:21:42,480
+we would rely on developers to perform
+
+532
+00:21:42,480 --> 00:21:44,880
+synchronization themselves
+
+533
+00:21:44,880 --> 00:21:47,200
+and lack of exploration tracking is a
+
+534
+00:21:47,200 --> 00:21:49,440
+potential availability problem as
+
+535
+00:21:49,440 --> 00:21:51,919
+expired secrets can lead to unexpected
+
+536
+00:21:51,919 --> 00:21:54,320
+outages
+
+537
+00:21:54,320 --> 00:21:56,240
+developers will also lose access to
+
+538
+00:21:56,240 --> 00:21:58,400
+other centralized tooling we offer such
+
+539
+00:21:58,400 --> 00:22:01,440
+as generation of gpg key material
+
+540
+00:22:01,440 --> 00:22:02,799
+overall
+
+541
+00:22:02,799 --> 00:22:04,880
+it would have been too risky and we want
+
+542
+00:22:04,880 --> 00:22:07,120
+to do better
+
+543
+00:22:07,120 --> 00:22:09,360
+we also considered full centralization
+
+544
+00:22:09,360 --> 00:22:12,640
+essentially replicating our dc system
+
+545
+00:22:12,640 --> 00:22:14,880
+same as for identity issuance there was
+
+546
+00:22:14,880 --> 00:22:17,440
+no node equivalent and we also can't
+
+547
+00:22:17,440 --> 00:22:19,840
+block on invoke essentially no
+
+548
+00:22:19,840 --> 00:22:21,600
+infrastructure is available before an
+
+549
+00:22:21,600 --> 00:22:24,480
+invocation where we could assign secrets
+
+550
+00:22:24,480 --> 00:22:27,840
+so it was incompatible
+
+551
+00:22:36,320 --> 00:22:37,840
+neither of these two solutions worked
+
+552
+00:22:37,840 --> 00:22:40,799
+for us so we decided to build we wanted
+
+553
+00:22:40,799 --> 00:22:42,720
+features of centralization but also
+
+554
+00:22:42,720 --> 00:22:44,880
+features of decentralization
+
+555
+00:22:44,880 --> 00:22:46,720
+we wanted the best of both worlds when
+
+556
+00:22:46,720 --> 00:22:48,880
+synchronizing secrets cloud native
+
+557
+00:22:48,880 --> 00:22:51,679
+reliability with the dc a single source
+
+558
+00:22:51,679 --> 00:22:55,720
+of truth for ease of management
+
+559
+00:22:56,240 --> 00:22:58,559
+so this project was a great opportunity
+
+560
+00:22:58,559 --> 00:23:00,640
+to revisit how we think of security
+
+561
+00:23:00,640 --> 00:23:02,400
+boundaries for secrets
+
+562
+00:23:02,400 --> 00:23:04,960
+in the dc we have powerful sinkers with
+
+563
+00:23:04,960 --> 00:23:06,720
+wide-ranging access
+
+564
+00:23:06,720 --> 00:23:08,720
+for lambda we wanted to approach this in
+
+565
+00:23:08,720 --> 00:23:10,799
+a more granular way and reduce blast
+
+566
+00:23:10,799 --> 00:23:11,919
+radius
+
+567
+00:23:11,919 --> 00:23:14,880
+also as lambda 7 concept of node we had
+
+568
+00:23:14,880 --> 00:23:17,919
+to be creative anyway
+
+569
+00:23:17,919 --> 00:23:20,000
+and this might seem obvious since we
+
+570
+00:23:20,000 --> 00:23:21,520
+just talked about lambda identity
+
+571
+00:23:21,520 --> 00:23:23,600
+earlier but something that really struck
+
+572
+00:23:23,600 --> 00:23:24,480
+us
+
+573
+00:23:24,480 --> 00:23:26,159
+we already had implemented spiffy
+
+574
+00:23:26,159 --> 00:23:28,320
+identity this unlocked for us to
+
+575
+00:23:28,320 --> 00:23:30,880
+communicate with the dc
+
+576
+00:23:30,880 --> 00:23:32,320
+this was not an immediately obvious
+
+577
+00:23:32,320 --> 00:23:33,520
+approach but
+
+578
+00:23:33,520 --> 00:23:34,880
+so we wanted
+
+579
+00:23:34,880 --> 00:23:37,520
+so we added spf support to keyways and
+
+580
+00:23:37,520 --> 00:23:39,440
+this enabled us to build a client-side
+
+581
+00:23:39,440 --> 00:23:42,159
+syncer essentially a site card that
+
+582
+00:23:42,159 --> 00:23:44,640
+synchronizes secrets so we could always
+
+583
+00:23:44,640 --> 00:23:47,360
+keep secrets within an aws account
+
+584
+00:23:47,360 --> 00:23:48,840
+rather than having to
+
+585
+00:23:48,840 --> 00:23:52,080
+traverse another idea was to require
+
+586
+00:23:52,080 --> 00:23:54,000
+opt-in per secret rather than
+
+587
+00:23:54,000 --> 00:23:56,960
+synchronize all our opt-out
+
+588
+00:23:56,960 --> 00:23:59,279
+this way we made sure not to overshare
+
+589
+00:23:59,279 --> 00:24:03,720
+secrets developers have to be explicit
+
+590
+00:24:04,640 --> 00:24:06,480
+in terms of availability
+
+591
+00:24:06,480 --> 00:24:08,480
+an observation we made with keyways is
+
+592
+00:24:08,480 --> 00:24:11,360
+that secrets are updated rarely
+
+593
+00:24:11,360 --> 00:24:13,520
+compared to how often they are accessed
+
+594
+00:24:13,520 --> 00:24:17,039
+the majority of syncs is really a no op
+
+595
+00:24:17,039 --> 00:24:20,080
+so it was more important for us to have
+
+596
+00:24:20,080 --> 00:24:22,240
+a reliable cache over blocking on
+
+597
+00:24:22,240 --> 00:24:23,279
+updates
+
+598
+00:24:23,279 --> 00:24:25,120
+we also allow developers to trigger
+
+599
+00:24:25,120 --> 00:24:27,279
+synchronization themselves
+
+600
+00:24:27,279 --> 00:24:30,240
+in case they need an immediate update
+
+601
+00:24:30,240 --> 00:24:32,559
+so for storage we decided to use secrets
+
+602
+00:24:32,559 --> 00:24:35,120
+manager as a cache we wanted to have
+
+603
+00:24:35,120 --> 00:24:38,159
+fast reads that don't depend on the dc
+
+604
+00:24:38,159 --> 00:24:40,320
+we also decided to use the default key
+
+605
+00:24:40,320 --> 00:24:42,000
+for encryption
+
+606
+00:24:42,000 --> 00:24:45,679
+this can prevent out of account sharing
+
+607
+00:24:45,679 --> 00:24:48,400
+aws enforces this feature to the default
+
+608
+00:24:48,400 --> 00:24:50,640
+key
+
+609
+00:24:52,240 --> 00:24:54,720
+now the system architecture on the far
+
+610
+00:24:54,720 --> 00:24:57,279
+right you can see the deploy artifact we
+
+611
+00:24:57,279 --> 00:24:59,360
+provide a single centralized artifact
+
+612
+00:24:59,360 --> 00:25:02,320
+the developers can deploy from
+
+613
+00:25:02,320 --> 00:25:04,480
+once deployed as first step the synchro
+
+614
+00:25:04,480 --> 00:25:06,400
+is invoked on a crown schedule every 15
+
+615
+00:25:06,400 --> 00:25:07,360
+minutes
+
+616
+00:25:07,360 --> 00:25:10,080
+step 2 when invoked the synchro makes an
+
+617
+00:25:10,080 --> 00:25:12,799
+mtls call to key within a dc
+
+618
+00:25:12,799 --> 00:25:14,559
+and this is what's interesting this call
+
+619
+00:25:14,559 --> 00:25:16,720
+is made with the identity of the service
+
+620
+00:25:16,720 --> 00:25:19,520
+in which the syncer runs
+
+621
+00:25:19,520 --> 00:25:22,559
+and kiwis knows which secrets have
+
+622
+00:25:22,559 --> 00:25:24,080
+which secrets are available to this
+
+623
+00:25:24,080 --> 00:25:25,279
+service
+
+624
+00:25:25,279 --> 00:25:27,440
+and the response with the metadata of
+
+625
+00:25:27,440 --> 00:25:29,919
+the secret so the names and the hmacs of
+
+626
+00:25:29,919 --> 00:25:31,279
+these secrets
+
+627
+00:25:31,279 --> 00:25:33,600
+step three the sinker reads all secrets
+
+628
+00:25:33,600 --> 00:25:36,400
+from its own secrets manager to compare
+
+629
+00:25:36,400 --> 00:25:38,240
+the metadata from the response it is
+
+630
+00:25:38,240 --> 00:25:41,039
+essentially a div operation
+
+631
+00:25:41,039 --> 00:25:43,679
+and step four for secrets that require
+
+632
+00:25:43,679 --> 00:25:46,400
+updating so anything with a changed hmac
+
+633
+00:25:46,400 --> 00:25:48,720
+or new secrets or secrets that are going
+
+634
+00:25:48,720 --> 00:25:51,039
+away the synchro requests secrets
+
+635
+00:25:51,039 --> 00:25:53,120
+contents
+
+636
+00:25:53,120 --> 00:25:55,520
+and finally step five updates are
+
+637
+00:25:55,520 --> 00:25:58,159
+applied to secrets manager so secrets
+
+638
+00:25:58,159 --> 00:26:01,039
+are either created updated or deleted
+
+639
+00:26:01,039 --> 00:26:02,559
+and at this point
+
+640
+00:26:02,559 --> 00:26:05,520
+the secrets manager is in sync with the
+
+641
+00:26:05,520 --> 00:26:08,080
+shared secrets in the dc and the syncer
+
+642
+00:26:08,080 --> 00:26:11,279
+can exit
+
+643
+00:26:11,279 --> 00:26:12,880
+so what does this look like for
+
+644
+00:26:12,880 --> 00:26:14,640
+developers who want to use secret
+
+645
+00:26:14,640 --> 00:26:17,279
+syncing to install we offer a terraform
+
+646
+00:26:17,279 --> 00:26:19,440
+module that can be installed with 24
+
+647
+00:26:19,440 --> 00:26:22,400
+lines and to access secrets all that is
+
+648
+00:26:22,400 --> 00:26:24,559
+necessary is to read from local secrets
+
+649
+00:26:24,559 --> 00:26:27,120
+manager and this can be done with normal
+
+650
+00:26:27,120 --> 00:26:30,320
+aws apis
+
+651
+00:26:30,720 --> 00:26:33,279
+we implemented the system as a lander
+
+652
+00:26:33,279 --> 00:26:35,520
+and we also use workload identity from
+
+653
+00:26:35,520 --> 00:26:37,600
+earlier in the talk to access secrets
+
+654
+00:26:37,600 --> 00:26:39,840
+vspp id
+
+655
+00:26:39,840 --> 00:26:42,080
+in terms of isolation the secret syncer
+
+656
+00:26:42,080 --> 00:26:44,080
+operates in each account individually
+
+657
+00:26:44,080 --> 00:26:47,199
+that requires secrets
+
+658
+00:26:49,120 --> 00:26:50,960
+here's what the signings here's what
+
+659
+00:26:50,960 --> 00:26:52,720
+assigning a secret looks like in square
+
+660
+00:26:52,720 --> 00:26:55,520
+console this is a test application if
+
+661
+00:26:55,520 --> 00:26:57,039
+you look at
+
+662
+00:26:57,039 --> 00:26:58,400
+number one
+
+663
+00:26:58,400 --> 00:27:00,240
+we have two different secrets here test
+
+664
+00:27:00,240 --> 00:27:02,559
+secret one and test secret two
+
+665
+00:27:02,559 --> 00:27:05,039
+test secret two is already available for
+
+666
+00:27:05,039 --> 00:27:06,400
+lamda
+
+667
+00:27:06,400 --> 00:27:08,640
+test secret one is not so we want to
+
+668
+00:27:08,640 --> 00:27:11,120
+change that so we click on test secret
+
+669
+00:27:11,120 --> 00:27:13,919
+one and then we click on update infras
+
+670
+00:27:13,919 --> 00:27:16,559
+we're at number two
+
+671
+00:27:16,559 --> 00:27:18,000
+then we get the screen which you see we
+
+672
+00:27:18,000 --> 00:27:21,279
+log so we can assign the secret to a
+
+673
+00:27:21,279 --> 00:27:23,279
+different infrastructure and we select
+
+674
+00:27:23,279 --> 00:27:25,360
+lambda we can see at the bottom at
+
+675
+00:27:25,360 --> 00:27:27,279
+number three that a change is being
+
+676
+00:27:27,279 --> 00:27:30,080
+applied to make the secret available to
+
+677
+00:27:30,080 --> 00:27:32,720
+lambda then we click update assignments
+
+678
+00:27:32,720 --> 00:27:35,039
+number four and on the next run of the
+
+679
+00:27:35,039 --> 00:27:37,919
+syncer the secret will be available in
+
+680
+00:27:37,919 --> 00:27:40,399
+lambda
+
+681
+00:27:41,120 --> 00:27:43,440
+after deploying the sync will show up as
+
+682
+00:27:43,440 --> 00:27:45,679
+a regular lambda in the service account
+
+683
+00:27:45,679 --> 00:27:47,520
+next to all other lambdas which are
+
+684
+00:27:47,520 --> 00:27:50,240
+available there
+
+685
+00:27:57,279 --> 00:27:59,200
+and here you can see that the shrinker
+
+686
+00:27:59,200 --> 00:28:01,279
+is attached to a cron event the synchro
+
+687
+00:28:01,279 --> 00:28:03,120
+is invoked every 15 minutes and takes
+
+688
+00:28:03,120 --> 00:28:05,279
+about two seconds to verify that the
+
+689
+00:28:05,279 --> 00:28:07,679
+local secrets are in sync all of these
+
+690
+00:28:07,679 --> 00:28:10,799
+are no op operations so we are comparing
+
+691
+00:28:10,799 --> 00:28:13,360
+against kiwis that all secrets are
+
+692
+00:28:13,360 --> 00:28:16,840
+in sync
+
+693
+00:28:16,880 --> 00:28:18,799
+so to revisit our goals with this
+
+694
+00:28:18,799 --> 00:28:21,200
+project we established both goals of
+
+695
+00:28:21,200 --> 00:28:23,440
+equal footing we can now communicate
+
+696
+00:28:23,440 --> 00:28:25,760
+with the service mesh so this is what we
+
+697
+00:28:25,760 --> 00:28:29,279
+had solved in in part one and what we
+
+698
+00:28:29,279 --> 00:28:31,120
+solved now in part two is access to
+
+699
+00:28:31,120 --> 00:28:32,159
+secrets
+
+700
+00:28:32,159 --> 00:28:34,080
+in terms of maintaining lambda secrets
+
+701
+00:28:34,080 --> 00:28:36,720
+and land the benefits our hot path for
+
+702
+00:28:36,720 --> 00:28:39,120
+accessing secrets only contains a secret
+
+703
+00:28:39,120 --> 00:28:43,840
+manager read so we don't block on a dc
+
+704
+00:28:43,840 --> 00:28:45,279
+we also remain compatible with
+
+705
+00:28:45,279 --> 00:28:47,440
+centralized tooling that makes secrets
+
+706
+00:28:47,440 --> 00:28:49,679
+management easier such as tracking of
+
+707
+00:28:49,679 --> 00:28:52,399
+expiration and other features of square
+
+708
+00:28:52,399 --> 00:28:54,879
+console
+
+709
+00:28:55,520 --> 00:28:57,520
+in terms of risk mitigation the most
+
+710
+00:28:57,520 --> 00:29:00,000
+valuable research is to gain access to
+
+711
+00:29:00,000 --> 00:29:02,399
+all secrets this would require either
+
+712
+00:29:02,399 --> 00:29:04,480
+attacking keyways or impersonating
+
+713
+00:29:04,480 --> 00:29:05,760
+services
+
+714
+00:29:05,760 --> 00:29:08,480
+for both we think kiwis is secure and we
+
+715
+00:29:08,480 --> 00:29:10,640
+trust our identity system
+
+716
+00:29:10,640 --> 00:29:12,559
+another option would be to attack the
+
+717
+00:29:12,559 --> 00:29:13,679
+synchro
+
+718
+00:29:13,679 --> 00:29:16,240
+we protect artifacts with a cicd
+
+719
+00:29:16,240 --> 00:29:19,039
+pipeline and we rely on s-free object
+
+720
+00:29:19,039 --> 00:29:21,919
+version to prevent modifications
+
+721
+00:29:21,919 --> 00:29:24,240
+and finally compromising individual
+
+722
+00:29:24,240 --> 00:29:25,760
+secrets
+
+723
+00:29:25,760 --> 00:29:27,760
+since secrets are strongly tied to
+
+724
+00:29:27,760 --> 00:29:30,559
+identity accessing secrets via the api
+
+725
+00:29:30,559 --> 00:29:32,320
+would really require compromising our
+
+726
+00:29:32,320 --> 00:29:34,399
+identity system
+
+727
+00:29:34,399 --> 00:29:36,799
+we are confident in that system we also
+
+728
+00:29:36,799 --> 00:29:39,200
+further reduce secrets exposure by using
+
+729
+00:29:39,200 --> 00:29:41,360
+opt-in and not synchronizing all secrets
+
+730
+00:29:41,360 --> 00:29:44,000
+automatically
+
+731
+00:29:45,520 --> 00:29:47,760
+currently the system is used in
+
+732
+00:29:47,760 --> 00:29:50,559
+production and spf support in keywords
+
+733
+00:29:50,559 --> 00:29:52,960
+is in our open source repository so you
+
+734
+00:29:52,960 --> 00:29:54,480
+can use it too
+
+735
+00:29:54,480 --> 00:29:56,320
+and for the future spiffy working
+
+736
+00:29:56,320 --> 00:29:59,039
+keywords makes makes it easier for us to
+
+737
+00:29:59,039 --> 00:30:01,840
+move to other environments through
+
+738
+00:30:01,840 --> 00:30:04,799
+interoperability
+
+739
+00:30:05,760 --> 00:30:09,799
+and now some key learnings
+
+740
+00:30:10,480 --> 00:30:12,480
+success criteria for us
+
+741
+00:30:12,480 --> 00:30:14,399
+are that both identity issuance and
+
+742
+00:30:14,399 --> 00:30:17,039
+secrets are used in production this
+
+743
+00:30:17,039 --> 00:30:19,360
+includes square financial services which
+
+744
+00:30:19,360 --> 00:30:21,600
+is a subsidiary of square
+
+745
+00:30:21,600 --> 00:30:23,679
+that is a bank
+
+746
+00:30:23,679 --> 00:30:26,000
+spire the reference implementation of
+
+747
+00:30:26,000 --> 00:30:28,240
+for spfe is implementing push
+
+748
+00:30:28,240 --> 00:30:30,000
+architecture we see it as of a
+
+749
+00:30:30,000 --> 00:30:34,000
+confirmation of our approach here
+
+750
+00:30:34,799 --> 00:30:35,600
+so
+
+751
+00:30:35,600 --> 00:30:38,480
+my advisor always used to say to close a
+
+752
+00:30:38,480 --> 00:30:41,120
+talk with free takeaways so here they
+
+753
+00:30:41,120 --> 00:30:42,480
+are
+
+754
+00:30:42,480 --> 00:30:44,240
+your developers will want to use lambda
+
+755
+00:30:44,240 --> 00:30:46,720
+whether you plan for it or not
+
+756
+00:30:46,720 --> 00:30:49,039
+and lambda has many benefits but as we
+
+757
+00:30:49,039 --> 00:30:51,200
+learned it's not compatible with dc
+
+758
+00:30:51,200 --> 00:30:52,480
+infrastructure
+
+759
+00:30:52,480 --> 00:30:55,039
+but there's a solution and this solution
+
+760
+00:30:55,039 --> 00:30:58,080
+can be working with other environments
+
+761
+00:30:58,080 --> 00:31:00,080
+we talked today about how to call into
+
+762
+00:31:00,080 --> 00:31:03,039
+the envoy service mesh and how to sync
+
+763
+00:31:03,039 --> 00:31:06,480
+application secrets from the dc
+
+764
+00:31:06,480 --> 00:31:08,880
+both accelerate development and make
+
+765
+00:31:08,880 --> 00:31:11,919
+things more secure
+
+766
+00:31:11,919 --> 00:31:13,600
+there are also several learnings for
+
+767
+00:31:13,600 --> 00:31:15,840
+hybrid environments that extend beyond
+
+768
+00:31:15,840 --> 00:31:17,120
+lambda
+
+769
+00:31:17,120 --> 00:31:19,200
+moving to the cloud really means that
+
+770
+00:31:19,200 --> 00:31:21,440
+there will be tricky dependencies this
+
+771
+00:31:21,440 --> 00:31:23,760
+interim state is quite challenging and
+
+772
+00:31:23,760 --> 00:31:27,519
+for complex systems this can last years
+
+773
+00:31:27,519 --> 00:31:29,840
+cloud services will rely on the dc and
+
+774
+00:31:29,840 --> 00:31:34,480
+operability interoperability is key here
+
+775
+00:31:34,480 --> 00:31:37,120
+and we found it helpful to use a bestop
+
+776
+00:31:37,120 --> 00:31:39,279
+buffer pouch to let environment support
+
+777
+00:31:39,279 --> 00:31:43,519
+each other and avoid blocking
+
+778
+00:31:43,919 --> 00:31:44,840
+thank
+
+779
+00:31:44,840 --> 00:31:48,480
+you both for paying attention and also
+
+780
+00:31:48,480 --> 00:31:50,320
+to everyone who contributed
+
+781
+00:31:50,320 --> 00:31:52,320
+this project involved a lot of people on
+
+782
+00:31:52,320 --> 00:31:55,039
+various teams thank you
+
+783
+00:31:55,039 --> 00:31:56,960
+also thank you to the spp community
+
+784
+00:31:56,960 --> 00:31:59,279
+working together on working identity has
+
+785
+00:31:59,279 --> 00:32:00,799
+been fun
+
+786
+00:32:00,799 --> 00:32:02,559
+we had a lot of fruitful conversations
+
+787
+00:32:02,559 --> 00:32:05,918
+to make identity stronger
+
+788
+00:32:06,480 --> 00:32:08,240
+the slides will be posted after this
+
+789
+00:32:08,240 --> 00:32:10,399
+talk i'll also be posting a write up
+
+790
+00:32:10,399 --> 00:32:12,880
+with more details on lambda secret
+
+791
+00:32:12,880 --> 00:32:15,600
+syncing the slides will contain links to
+
+792
+00:32:15,600 --> 00:32:18,559
+reference material
+
+793
+00:32:18,720 --> 00:32:22,640
+i'm ready to take questions now
+

@@ -1,0 +1,2444 @@
+﻿1
+00:00:14,639 --> 00:00:16,480
+yes my name is mitch kuznetsov and i'm
+
+2
+00:00:16,480 --> 00:00:18,160
+presenting my joint work with adam
+
+3
+00:00:18,160 --> 00:00:19,359
+morrison today
+
+4
+00:00:19,359 --> 00:00:21,439
+i'll be talking about drivebox as as we
+
+5
+00:00:21,439 --> 00:00:23,519
+have mentioned is a mechanism for faster
+
+6
+00:00:23,519 --> 00:00:25,119
+system calls through sandbox privileged
+
+7
+00:00:25,119 --> 00:00:26,480
+execution
+
+8
+00:00:26,480 --> 00:00:27,840
+now i'd like to start by talking a bit
+
+9
+00:00:27,840 --> 00:00:29,599
+about system calls system codes are the
+
+10
+00:00:29,599 --> 00:00:31,359
+main way processors request services
+
+11
+00:00:31,359 --> 00:00:33,360
+from the operating system system calls
+
+12
+00:00:33,360 --> 00:00:35,040
+are very similar in usage to a function
+
+13
+00:00:35,040 --> 00:00:36,960
+call as in both cases we prepare
+
+14
+00:00:36,960 --> 00:00:38,719
+parameters perform the invocation and
+
+15
+00:00:38,719 --> 00:00:40,879
+receive the result however unlike a
+
+16
+00:00:40,879 --> 00:00:42,640
+function call system called invocation
+
+17
+00:00:42,640 --> 00:00:44,800
+is orders of magnitude slower and this
+
+18
+00:00:44,800 --> 00:00:45,840
+has to do with the system called
+
+19
+00:00:45,840 --> 00:00:47,680
+invocation involving many more steps
+
+20
+00:00:47,680 --> 00:00:49,360
+both in hardware and software for
+
+21
+00:00:49,360 --> 00:00:50,960
+example the change of hardware privilege
+
+22
+00:00:50,960 --> 00:00:52,960
+level further if we take into account
+
+23
+00:00:52,960 --> 00:00:54,399
+spectrum and meltdown mitigations like
+
+24
+00:00:54,399 --> 00:00:56,879
+pti or page table isolation then system
+
+25
+00:00:56,879 --> 00:00:58,960
+call overhead becomes even worse
+
+26
+00:00:58,960 --> 00:01:00,480
+we can see in the graph
+
+27
+00:01:00,480 --> 00:01:02,160
+below that while a simple
+
+28
+00:01:02,160 --> 00:01:04,080
+function call has overhead of about 20
+
+29
+00:01:04,080 --> 00:01:06,400
+cycles a system call takes over 500
+
+30
+00:01:06,400 --> 00:01:08,159
+cycles and if we look at system called
+
+31
+00:01:08,159 --> 00:01:10,799
+pti mitigation overhead goes to over 900
+
+32
+00:01:10,799 --> 00:01:13,680
+cycles naturally system called overhead
+
+33
+00:01:13,680 --> 00:01:16,000
+is bad for system co-intensive processes
+
+34
+00:01:16,000 --> 00:01:17,200
+and as many
+
+35
+00:01:17,200 --> 00:01:18,640
+and many vocals are in fact system
+
+36
+00:01:18,640 --> 00:01:20,720
+called intensive if we recall most i
+
+37
+00:01:20,720 --> 00:01:22,400
+operations eventually translate to
+
+38
+00:01:22,400 --> 00:01:24,560
+system calls so io intensive workloads
+
+39
+00:01:24,560 --> 00:01:27,119
+suffer greatly from a system called
+
+40
+00:01:27,119 --> 00:01:28,560
+overhang
+
+41
+00:01:28,560 --> 00:01:30,080
+now let's look at a theoretical
+
+42
+00:01:30,080 --> 00:01:32,400
+regis-like workload and assume that it
+
+43
+00:01:32,400 --> 00:01:34,880
+runs at about 200 000 requests a second
+
+44
+00:01:34,880 --> 00:01:36,720
+and that each request requires at least
+
+45
+00:01:36,720 --> 00:01:38,560
+two system calls one to read the request
+
+46
+00:01:38,560 --> 00:01:40,479
+and one to write back the response now
+
+47
+00:01:40,479 --> 00:01:41,600
+if we record the number from the
+
+48
+00:01:41,600 --> 00:01:43,040
+previous slide where system called
+
+49
+00:01:43,040 --> 00:01:46,479
+overhead is roughly 900 cycles and as we
+
+50
+00:01:46,479 --> 00:01:48,799
+every if we add everything up and assume
+
+51
+00:01:48,799 --> 00:01:52,159
+a model cpu of about 2.6 gigahertz then
+
+52
+00:01:52,159 --> 00:01:53,920
+our theoretical workload spends at least
+
+53
+00:01:53,920 --> 00:01:56,479
+13 of its cycles on system co-entry and
+
+54
+00:01:56,479 --> 00:01:57,920
+exit
+
+55
+00:01:57,920 --> 00:01:59,759
+now reducing system called overheads is
+
+56
+00:01:59,759 --> 00:02:01,280
+a popular topic and there are several
+
+57
+00:02:01,280 --> 00:02:03,520
+approaches to address those overheads
+
+58
+00:02:03,520 --> 00:02:05,360
+for example modern operating systems
+
+59
+00:02:05,360 --> 00:02:07,119
+offer system calls that combine several
+
+60
+00:02:07,119 --> 00:02:09,119
+operations into a single invocation
+
+61
+00:02:09,119 --> 00:02:11,200
+however this is often limited to very
+
+62
+00:02:11,200 --> 00:02:14,160
+specific use cases and operations
+
+63
+00:02:14,160 --> 00:02:16,080
+next there are approaches like i o urine
+
+64
+00:02:16,080 --> 00:02:18,000
+and flexible system codes that avoid a
+
+65
+00:02:18,000 --> 00:02:19,680
+system called overhead entirely by
+
+66
+00:02:19,680 --> 00:02:21,760
+allowing invocation through memory but
+
+67
+00:02:21,760 --> 00:02:23,280
+those approaches require candlestick
+
+68
+00:02:23,280 --> 00:02:25,760
+polling which also cause cpu cycles and
+
+69
+00:02:25,760 --> 00:02:27,280
+also makes system calls asynchronous
+
+70
+00:02:27,280 --> 00:02:29,200
+which complicates the programming model
+
+71
+00:02:29,200 --> 00:02:31,440
+for the user processes
+
+72
+00:02:31,440 --> 00:02:32,959
+finally there are kernel bypass
+
+73
+00:02:32,959 --> 00:02:35,280
+approaches like dpdk that plug devices
+
+74
+00:02:35,280 --> 00:02:37,599
+directly into user processes now this
+
+75
+00:02:37,599 --> 00:02:39,760
+allows i o through the device without
+
+76
+00:02:39,760 --> 00:02:41,599
+going to the kernel but it also shifts
+
+77
+00:02:41,599 --> 00:02:43,280
+the burden of device management to the
+
+78
+00:02:43,280 --> 00:02:45,040
+process and requires implementation of
+
+79
+00:02:45,040 --> 00:02:46,800
+the device driver along with all the
+
+80
+00:02:46,800 --> 00:02:48,160
+higher level obstructions like network
+
+81
+00:02:48,160 --> 00:02:50,560
+protocols in user space
+
+82
+00:02:50,560 --> 00:02:52,000
+the bottom line is that none of the
+
+83
+00:02:52,000 --> 00:02:54,080
+above is either generic enough or can be
+
+84
+00:02:54,080 --> 00:02:55,519
+introduced into existing software
+
+85
+00:02:55,519 --> 00:02:56,720
+without requiring massive
+
+86
+00:02:56,720 --> 00:02:58,640
+re-architecture
+
+87
+00:02:58,640 --> 00:03:00,400
+in our work we propose brief box which
+
+88
+00:03:00,400 --> 00:03:01,760
+is a new mechanism for system
+
+89
+00:03:01,760 --> 00:03:03,440
+co-intensive workloads that allows
+
+90
+00:03:03,440 --> 00:03:05,680
+system calls with less overhead briefbox
+
+91
+00:03:05,680 --> 00:03:07,360
+allows user programs to execute their
+
+92
+00:03:07,360 --> 00:03:09,120
+system co-intensive code taps inside the
+
+93
+00:03:09,120 --> 00:03:11,120
+new semi-privileged yet sandboxed
+
+94
+00:03:11,120 --> 00:03:12,720
+execution mode
+
+95
+00:03:12,720 --> 00:03:14,400
+under previewbox system called entry and
+
+96
+00:03:14,400 --> 00:03:16,400
+exit are 2.2 times faster than a
+
+97
+00:03:16,400 --> 00:03:18,319
+traditional system called additionally
+
+98
+00:03:18,319 --> 00:03:19,920
+system calls under brief books retain
+
+99
+00:03:19,920 --> 00:03:22,080
+their familiar in synchronous nature and
+
+100
+00:03:22,080 --> 00:03:23,519
+adoption of free box does not require
+
+101
+00:03:23,519 --> 00:03:25,040
+massive code changes
+
+102
+00:03:25,040 --> 00:03:26,959
+for example during our evaluation we
+
+103
+00:03:26,959 --> 00:03:28,560
+modified memcached key value store to
+
+104
+00:03:28,560 --> 00:03:31,120
+use brief box and it took us under one
+
+105
+00:03:31,120 --> 00:03:33,360
+hour and it required less than 70 lines
+
+106
+00:03:33,360 --> 00:03:35,680
+of code
+
+107
+00:03:35,680 --> 00:03:36,799
+now to provide a bit better
+
+108
+00:03:36,799 --> 00:03:39,040
+understanding of what proofbox is about
+
+109
+00:03:39,040 --> 00:03:40,480
+we are going to compare it to regular
+
+110
+00:03:40,480 --> 00:03:42,560
+execution and in both cases we have a
+
+111
+00:03:42,560 --> 00:03:44,159
+sample application that has two
+
+112
+00:03:44,159 --> 00:03:46,799
+functions a main function and a duo
+
+113
+00:03:46,799 --> 00:03:48,879
+function that as its name suggests does
+
+114
+00:03:48,879 --> 00:03:50,879
+a lot of i o in case of regular
+
+115
+00:03:50,879 --> 00:03:53,120
+execution main function invokes duo
+
+116
+00:03:53,120 --> 00:03:54,799
+through a function call and new io
+
+117
+00:03:54,799 --> 00:03:56,480
+performs many i operations through the
+
+118
+00:03:56,480 --> 00:03:58,159
+system call interface
+
+119
+00:03:58,159 --> 00:03:59,920
+in regular execution our sample
+
+120
+00:03:59,920 --> 00:04:01,519
+application crosses kernel user space
+
+121
+00:04:01,519 --> 00:04:03,200
+boundary many times which has
+
+122
+00:04:03,200 --> 00:04:05,200
+considerable overhead
+
+123
+00:04:05,200 --> 00:04:06,480
+on the right hand side we can see
+
+124
+00:04:06,480 --> 00:04:08,959
+execution with pre-box in this case main
+
+125
+00:04:08,959 --> 00:04:10,799
+function loaded dual function into a
+
+126
+00:04:10,799 --> 00:04:13,200
+brief box environment and invokes the io
+
+127
+00:04:13,200 --> 00:04:15,280
+code through prebox mechanism
+
+128
+00:04:15,280 --> 00:04:17,040
+briefbox executes dual code in a
+
+129
+00:04:17,040 --> 00:04:19,040
+privileged cpu mode for example ring
+
+130
+00:04:19,040 --> 00:04:21,519
+zero on the x86 architecture but it also
+
+131
+00:04:21,519 --> 00:04:24,400
+sandboxes it to ensure system safety
+
+132
+00:04:24,400 --> 00:04:26,320
+under proofbox dualio can perform ios
+
+133
+00:04:26,320 --> 00:04:28,160
+simply through a function call and this
+
+134
+00:04:28,160 --> 00:04:29,919
+is because rebox exports a special
+
+135
+00:04:29,919 --> 00:04:31,280
+system called gate function that
+
+136
+00:04:31,280 --> 00:04:33,840
+provides a system called functionalities
+
+137
+00:04:33,840 --> 00:04:35,360
+invocation through the gate function
+
+138
+00:04:35,360 --> 00:04:36,880
+involves less steps and is therefore
+
+139
+00:04:36,880 --> 00:04:38,320
+much faster than a traditional system
+
+140
+00:04:38,320 --> 00:04:39,600
+construction
+
+141
+00:04:39,600 --> 00:04:41,759
+all in all under proofbox sample
+
+142
+00:04:41,759 --> 00:04:43,360
+application crosses the boundary between
+
+143
+00:04:43,360 --> 00:04:45,360
+user space and kernel fewer times and
+
+144
+00:04:45,360 --> 00:04:47,520
+therefore spends fewer cycles on system
+
+145
+00:04:47,520 --> 00:04:49,759
+called overheads
+
+146
+00:04:49,759 --> 00:04:51,280
+now to enable this execution with
+
+147
+00:04:51,280 --> 00:04:53,199
+elevated cpu privileges we introduced
+
+148
+00:04:53,199 --> 00:04:55,280
+semi-privileged execution mode a new
+
+149
+00:04:55,280 --> 00:04:57,520
+mode of execution for user processes
+
+150
+00:04:57,520 --> 00:04:59,120
+this new mode is based on the existing
+
+151
+00:04:59,120 --> 00:05:01,040
+kernel mode linux work and allows
+
+152
+00:05:01,040 --> 00:05:02,960
+execution of user space processes under
+
+153
+00:05:02,960 --> 00:05:04,320
+rank 0.
+
+154
+00:05:04,320 --> 00:05:06,160
+in our design process is transferred
+
+155
+00:05:06,160 --> 00:05:08,160
+into semi-privileged execution mode when
+
+156
+00:05:08,160 --> 00:05:10,320
+code is invoked inside brief box and it
+
+157
+00:05:10,320 --> 00:05:12,320
+returns to regular execution when code
+
+158
+00:05:12,320 --> 00:05:14,720
+inside prebox finishes its execution
+
+159
+00:05:14,720 --> 00:05:16,240
+now aside from running with elevated
+
+160
+00:05:16,240 --> 00:05:18,240
+privileges and the ability to access
+
+161
+00:05:18,240 --> 00:05:19,840
+system calls with less overhead
+
+162
+00:05:19,840 --> 00:05:21,840
+semi-privileged execution and regular
+
+163
+00:05:21,840 --> 00:05:23,600
+execution modes are semantically similar
+
+164
+00:05:23,600 --> 00:05:26,320
+from the operator system perspective
+
+165
+00:05:26,320 --> 00:05:28,560
+in both modes processes are subject to
+
+166
+00:05:28,560 --> 00:05:30,320
+all the same permission checks and other
+
+167
+00:05:30,320 --> 00:05:32,479
+security related mechanisms and in both
+
+168
+00:05:32,479 --> 00:05:34,240
+modes processes are preemptable are
+
+169
+00:05:34,240 --> 00:05:35,919
+subject to scheduler decisions and are
+
+170
+00:05:35,919 --> 00:05:38,000
+scheduled out when they perform blocking
+
+171
+00:05:38,000 --> 00:05:39,120
+operations
+
+172
+00:05:39,120 --> 00:05:41,039
+process in semi-previous execution mode
+
+173
+00:05:41,039 --> 00:05:42,960
+runs almost exactly the same like a
+
+174
+00:05:42,960 --> 00:05:45,440
+regular process
+
+175
+00:05:45,440 --> 00:05:47,120
+now in addition to the semi-privileged
+
+176
+00:05:47,120 --> 00:05:49,120
+execution mode rebox also introduces a
+
+177
+00:05:49,120 --> 00:05:50,800
+system called gate function which is
+
+178
+00:05:50,800 --> 00:05:52,800
+simply a function inside kernel memory
+
+179
+00:05:52,800 --> 00:05:54,400
+its interface and implementation are
+
+180
+00:05:54,400 --> 00:05:56,080
+very similar to the regular system
+
+181
+00:05:56,080 --> 00:05:58,240
+called handler code but it skips several
+
+182
+00:05:58,240 --> 00:06:01,039
+time consuming and now unnecessary steps
+
+183
+00:06:01,039 --> 00:06:02,639
+through the gate function reebok's code
+
+184
+00:06:02,639 --> 00:06:04,240
+can branch into system call execution
+
+185
+00:06:04,240 --> 00:06:06,240
+with minimal overhead and without the
+
+186
+00:06:06,240 --> 00:06:09,280
+requirement to change privilege level
+
+187
+00:06:09,280 --> 00:06:10,800
+now i want to talk a bit about the
+
+188
+00:06:10,800 --> 00:06:12,639
+workflow and lifecycle of programs under
+
+189
+00:06:12,639 --> 00:06:13,840
+prove box
+
+190
+00:06:13,840 --> 00:06:15,199
+first step in using briefbox is to
+
+191
+00:06:15,199 --> 00:06:16,560
+decide and mark which parts of the
+
+192
+00:06:16,560 --> 00:06:18,840
+program are going to be invoked through
+
+193
+00:06:18,840 --> 00:06:21,120
+pre-box once developer identifies and
+
+194
+00:06:21,120 --> 00:06:22,960
+marks relevant code program has to be
+
+195
+00:06:22,960 --> 00:06:24,960
+built with a custom compiler
+
+196
+00:06:24,960 --> 00:06:26,720
+at this step a custom compiler builds
+
+197
+00:06:26,720 --> 00:06:28,560
+marked code with pbox specific
+
+198
+00:06:28,560 --> 00:06:29,840
+instrumentation
+
+199
+00:06:29,840 --> 00:06:31,440
+this other instrumentation is required
+
+200
+00:06:31,440 --> 00:06:33,680
+to ensure safe execution of the code
+
+201
+00:06:33,680 --> 00:06:36,080
+inside semi-previous execution mode it
+
+202
+00:06:36,080 --> 00:06:37,600
+is important to note that the added
+
+203
+00:06:37,600 --> 00:06:40,000
+instrumentation introduces overhead
+
+204
+00:06:40,000 --> 00:06:42,479
+to the code and therefore slows it down
+
+205
+00:06:42,479 --> 00:06:44,319
+so while it is possible to annotate and
+
+206
+00:06:44,319 --> 00:06:46,160
+instrument the whole process rather than
+
+207
+00:06:46,160 --> 00:06:47,759
+just the system called intensive parts
+
+208
+00:06:47,759 --> 00:06:50,639
+which is highly sub-optimal
+
+209
+00:06:50,639 --> 00:06:52,240
+the third stage happens at the execution
+
+210
+00:06:52,240 --> 00:06:54,240
+time of the program program must load
+
+211
+00:06:54,240 --> 00:06:55,919
+all its instrumented code into a pre-box
+
+212
+00:06:55,919 --> 00:06:58,080
+environment and at this stage pre-box
+
+213
+00:06:58,080 --> 00:07:00,240
+verify runs and ensures the code is safe
+
+214
+00:07:00,240 --> 00:07:01,199
+by checking that required
+
+215
+00:07:01,199 --> 00:07:03,919
+instrumentation is present
+
+216
+00:07:03,919 --> 00:07:05,680
+the last stage is the actual invocation
+
+217
+00:07:05,680 --> 00:07:07,599
+of code inside pre-box when system
+
+218
+00:07:07,599 --> 00:07:09,599
+called intensive code is needed it can
+
+219
+00:07:09,599 --> 00:07:10,880
+be invoked inside the previous
+
+220
+00:07:10,880 --> 00:07:12,800
+environment and when invoked pre-box
+
+221
+00:07:12,800 --> 00:07:14,560
+transfers control to the instrumented
+
+222
+00:07:14,560 --> 00:07:16,400
+code under semi-privileged execution
+
+223
+00:07:16,400 --> 00:07:17,840
+mode
+
+224
+00:07:17,840 --> 00:07:19,120
+now let's talk a bit about the first
+
+225
+00:07:19,120 --> 00:07:20,960
+step of marking and adjusting code to
+
+226
+00:07:20,960 --> 00:07:22,720
+pre-books again we are looking at the
+
+227
+00:07:22,720 --> 00:07:24,240
+same sample application from the
+
+228
+00:07:24,240 --> 00:07:25,919
+previous slides which has a main
+
+229
+00:07:25,919 --> 00:07:28,560
+function and a drawya function
+
+230
+00:07:28,560 --> 00:07:30,160
+first the developer must identify and
+
+231
+00:07:30,160 --> 00:07:32,400
+mark system co-intensive code in our
+
+232
+00:07:32,400 --> 00:07:34,800
+case this is the uio function as you can
+
+233
+00:07:34,800 --> 00:07:36,319
+see on the right we have added pre-box
+
+234
+00:07:36,319 --> 00:07:38,160
+marker annotation to the code
+
+235
+00:07:38,160 --> 00:07:40,400
+during program compilation compiler will
+
+236
+00:07:40,400 --> 00:07:42,000
+inject instrumentation into code that
+
+237
+00:07:42,000 --> 00:07:44,880
+has pre-box annotations
+
+238
+00:07:44,880 --> 00:07:46,400
+next we direct the program to load
+
+239
+00:07:46,400 --> 00:07:48,720
+annotated code in this example we load
+
+240
+00:07:48,720 --> 00:07:50,479
+dual function into prefix environment
+
+241
+00:07:50,479 --> 00:07:52,800
+with a previous load call
+
+242
+00:07:52,800 --> 00:07:54,400
+and finally we replace function call
+
+243
+00:07:54,400 --> 00:07:56,240
+invocations of dualion with invocation
+
+244
+00:07:56,240 --> 00:07:58,400
+through pbox mechanism in our case the
+
+245
+00:07:58,400 --> 00:08:01,520
+prebox in voco is responsible for that
+
+246
+00:08:01,520 --> 00:08:03,360
+all in all port into previewbox requires
+
+247
+00:08:03,360 --> 00:08:05,360
+minimal and straightforward code changes
+
+248
+00:08:05,360 --> 00:08:07,039
+additionally this model suits well
+
+249
+00:08:07,039 --> 00:08:08,800
+programs with other threads our thread
+
+250
+00:08:08,800 --> 00:08:10,319
+code can be surgically marked so
+
+251
+00:08:10,319 --> 00:08:11,840
+instrumentation is limited and does not
+
+252
+00:08:11,840 --> 00:08:13,520
+slow down the rest of the process while
+
+253
+00:08:13,520 --> 00:08:14,879
+ios thread itself will be enjoying
+
+254
+00:08:14,879 --> 00:08:16,639
+previous execution and faster system
+
+255
+00:08:16,639 --> 00:08:18,879
+calls
+
+256
+00:08:18,879 --> 00:08:20,400
+next i want to talk a bit about safety
+
+257
+00:08:20,400 --> 00:08:22,400
+of execution inside pre-box the most
+
+258
+00:08:22,400 --> 00:08:24,000
+obvious issue with three box is that it
+
+259
+00:08:24,000 --> 00:08:25,759
+executes a code under canada-like
+
+260
+00:08:25,759 --> 00:08:26,960
+privileges
+
+261
+00:08:26,960 --> 00:08:28,639
+while on the other hand code running
+
+262
+00:08:28,639 --> 00:08:30,479
+inside drivebox is provided by user and
+
+263
+00:08:30,479 --> 00:08:32,880
+can be malicious so if left unrestricted
+
+264
+00:08:32,880 --> 00:08:34,479
+user code can gain complete access and
+
+265
+00:08:34,479 --> 00:08:36,640
+control of the system
+
+266
+00:08:36,640 --> 00:08:38,399
+to address this with sandbox execution
+
+267
+00:08:38,399 --> 00:08:40,719
+inside drivebox our high level criteria
+
+268
+00:08:40,719 --> 00:08:42,559
+for safe execution under briefbox is
+
+269
+00:08:42,559 --> 00:08:44,480
+that we do not allow any new kinds of
+
+270
+00:08:44,480 --> 00:08:46,640
+access through the use of brief books or
+
+271
+00:08:46,640 --> 00:08:48,399
+in other words the only things that code
+
+272
+00:08:48,399 --> 00:08:50,320
+under prefix should be able to perform
+
+273
+00:08:50,320 --> 00:08:51,360
+are the same things that it could
+
+274
+00:08:51,360 --> 00:08:53,279
+perform outside briefbox in regular
+
+275
+00:08:53,279 --> 00:08:55,120
+execution
+
+276
+00:08:55,120 --> 00:08:56,880
+in more detail we require the following
+
+277
+00:08:56,880 --> 00:08:58,080
+properties from the code we allow
+
+278
+00:08:58,080 --> 00:08:59,279
+interpret box
+
+279
+00:08:59,279 --> 00:09:01,600
+first no privileged instructions
+
+280
+00:09:01,600 --> 00:09:03,120
+privileged instructions are all those
+
+281
+00:09:03,120 --> 00:09:05,200
+instructions that require elevated cpu
+
+282
+00:09:05,200 --> 00:09:07,040
+privilege level they are not allowed
+
+283
+00:09:07,040 --> 00:09:08,560
+during regular execution of user
+
+284
+00:09:08,560 --> 00:09:10,399
+processes so we do not allow them inside
+
+285
+00:09:10,399 --> 00:09:12,399
+pre-box code either
+
+286
+00:09:12,399 --> 00:09:14,160
+second we require that loaded code does
+
+287
+00:09:14,160 --> 00:09:16,880
+not perform arbitrary kernel memory
+
+288
+00:09:16,880 --> 00:09:19,600
+accesses as kernel memory is also not
+
+289
+00:09:19,600 --> 00:09:21,200
+traditionally accessible to user space
+
+290
+00:09:21,200 --> 00:09:22,480
+processes
+
+291
+00:09:22,480 --> 00:09:24,160
+and finally to ensure the first two
+
+292
+00:09:24,160 --> 00:09:26,000
+properties hold over time we require
+
+293
+00:09:26,000 --> 00:09:28,080
+that the code inside brief box branches
+
+294
+00:09:28,080 --> 00:09:30,160
+only to other verified code it should
+
+295
+00:09:30,160 --> 00:09:31,440
+not be possible to circumvent our
+
+296
+00:09:31,440 --> 00:09:33,120
+sandbox simply simply by branching
+
+297
+00:09:33,120 --> 00:09:36,160
+elsewhere to some unverified code
+
+298
+00:09:36,160 --> 00:09:37,920
+next two slides we will talk a bit about
+
+299
+00:09:37,920 --> 00:09:40,240
+the compilation amplification processes
+
+300
+00:09:40,240 --> 00:09:41,360
+first i want to mention that our
+
+301
+00:09:41,360 --> 00:09:42,959
+instrumentation and verification methods
+
+302
+00:09:42,959 --> 00:09:45,519
+are inspired by native client work
+
+303
+00:09:45,519 --> 00:09:47,600
+now to take advantage of free books as
+
+304
+00:09:47,600 --> 00:09:49,440
+we have mentioned annotated code must be
+
+305
+00:09:49,440 --> 00:09:51,120
+compiled with a custom instrumenting
+
+306
+00:09:51,120 --> 00:09:52,560
+compiler
+
+307
+00:09:52,560 --> 00:09:55,040
+our custom pre-box compiler is based in
+
+308
+00:09:55,040 --> 00:09:56,959
+built and based on the safety properties
+
+309
+00:09:56,959 --> 00:09:58,720
+from the previous slide and generated
+
+310
+00:09:58,720 --> 00:10:00,720
+code that does not violate them
+
+311
+00:10:00,720 --> 00:10:02,480
+reebok's instrumentation logic happens
+
+312
+00:10:02,480 --> 00:10:03,760
+at the very late stages of the
+
+313
+00:10:03,760 --> 00:10:05,279
+compilation where machine instructions
+
+314
+00:10:05,279 --> 00:10:07,360
+are generated we look for instructions
+
+315
+00:10:07,360 --> 00:10:08,560
+that could potentially violate the
+
+316
+00:10:08,560 --> 00:10:10,800
+safety properties and transfer them into
+
+317
+00:10:10,800 --> 00:10:14,959
+equivalent but verifiably safe sequences
+
+318
+00:10:15,120 --> 00:10:16,959
+next there's the verification process
+
+319
+00:10:16,959 --> 00:10:18,800
+verification process happens each time
+
+320
+00:10:18,800 --> 00:10:20,240
+user program loads a new code into a
+
+321
+00:10:20,240 --> 00:10:22,160
+brief box when code is loaded the
+
+322
+00:10:22,160 --> 00:10:23,680
+verifier disassembles the code into
+
+323
+00:10:23,680 --> 00:10:25,440
+machine instructions and ensures the
+
+324
+00:10:25,440 --> 00:10:27,040
+instructions in site do not violate the
+
+325
+00:10:27,040 --> 00:10:29,440
+safety properties if verifier is not
+
+326
+00:10:29,440 --> 00:10:31,120
+able to assert the safety of some
+
+327
+00:10:31,120 --> 00:10:33,120
+instruction sequence the node operation
+
+328
+00:10:33,120 --> 00:10:34,959
+is rejected and that code will not be
+
+329
+00:10:34,959 --> 00:10:37,680
+able to run inside drivebox
+
+330
+00:10:37,680 --> 00:10:39,040
+now there's one major challenge in
+
+331
+00:10:39,040 --> 00:10:40,959
+verification through this assembly on
+
+332
+00:10:40,959 --> 00:10:42,399
+architectures with variable length
+
+333
+00:10:42,399 --> 00:10:45,040
+instructions for example like x86
+
+334
+00:10:45,040 --> 00:10:46,720
+the same buffer when disassembled at
+
+335
+00:10:46,720 --> 00:10:47,920
+different offsets can result in
+
+336
+00:10:47,920 --> 00:10:49,040
+completely different extraction
+
+337
+00:10:49,040 --> 00:10:50,880
+sequences
+
+338
+00:10:50,880 --> 00:10:52,560
+now like the example on the right we can
+
+339
+00:10:52,560 --> 00:10:54,240
+have code that when we disassemble it
+
+340
+00:10:54,240 --> 00:10:56,160
+it's one offset it used a sequence of
+
+341
+00:10:56,160 --> 00:10:58,000
+completely benign instructions but if we
+
+342
+00:10:58,000 --> 00:11:00,079
+disassemble it at some other offset will
+
+343
+00:11:00,079 --> 00:11:01,519
+yield us a privileged instruction for
+
+344
+00:11:01,519 --> 00:11:02,880
+example one that writes the control
+
+345
+00:11:02,880 --> 00:11:04,720
+register
+
+346
+00:11:04,720 --> 00:11:06,399
+to address this we introduce notion of
+
+347
+00:11:06,399 --> 00:11:08,640
+code chunks a code chunk is a fixed in
+
+348
+00:11:08,640 --> 00:11:10,480
+size and aligned and memory sequence of
+
+349
+00:11:10,480 --> 00:11:12,399
+instructions in proofbox we use code
+
+350
+00:11:12,399 --> 00:11:15,040
+chunks of 32 bytes
+
+351
+00:11:15,040 --> 00:11:16,560
+under brief box we require that all
+
+352
+00:11:16,560 --> 00:11:18,399
+loaded code is packed into code chunks
+
+353
+00:11:18,399 --> 00:11:19,519
+which basically means that no
+
+354
+00:11:19,519 --> 00:11:21,920
+instruction can cross chunk boundary
+
+355
+00:11:21,920 --> 00:11:23,519
+and that each chunk aligned address
+
+356
+00:11:23,519 --> 00:11:24,959
+contains a valid instruction of the
+
+357
+00:11:24,959 --> 00:11:26,480
+program
+
+358
+00:11:26,480 --> 00:11:28,399
+in addition we verify two properties
+
+359
+00:11:28,399 --> 00:11:29,920
+first that each code chunk when
+
+360
+00:11:29,920 --> 00:11:32,640
+disassembled is exactly 32 bytes long so
+
+361
+00:11:32,640 --> 00:11:34,399
+after its last instruction execution
+
+362
+00:11:34,399 --> 00:11:35,920
+continues from the beginning of the next
+
+363
+00:11:35,920 --> 00:11:36,720
+chunk
+
+364
+00:11:36,720 --> 00:11:38,800
+and second that all indirect branches
+
+365
+00:11:38,800 --> 00:11:40,720
+target only chunk aligned addresses
+
+366
+00:11:40,720 --> 00:11:42,240
+which means that the target a valid and
+
+367
+00:11:42,240 --> 00:11:44,079
+verified instruction
+
+368
+00:11:44,079 --> 00:11:45,600
+the two requirements allow us to address
+
+369
+00:11:45,600 --> 00:11:47,200
+the original concern of variable and
+
+370
+00:11:47,200 --> 00:11:48,399
+constructions
+
+371
+00:11:48,399 --> 00:11:50,000
+as long as we disassemble code chunked
+
+372
+00:11:50,000 --> 00:11:51,839
+by chunk at the line addresses and
+
+373
+00:11:51,839 --> 00:11:53,600
+ensure that all branch targets are
+
+374
+00:11:53,600 --> 00:11:55,519
+aligned we can be certain that process
+
+375
+00:11:55,519 --> 00:11:56,880
+will execute only instructions the
+
+376
+00:11:56,880 --> 00:11:58,959
+verifier has checked when it originally
+
+377
+00:11:58,959 --> 00:12:01,839
+disassembled the code
+
+378
+00:12:02,079 --> 00:12:04,079
+next let's talk a bit about the
+
+379
+00:12:04,079 --> 00:12:05,519
+instrumentation and verification of
+
+380
+00:12:05,519 --> 00:12:06,959
+machine instructions
+
+381
+00:12:06,959 --> 00:12:08,320
+first we deal with the privileged
+
+382
+00:12:08,320 --> 00:12:10,240
+instructions privileged instructions can
+
+383
+00:12:10,240 --> 00:12:12,320
+be easily identified when code is loaded
+
+384
+00:12:12,320 --> 00:12:14,240
+and disassembled and in case we find
+
+385
+00:12:14,240 --> 00:12:15,839
+such instruction we simply reject the
+
+386
+00:12:15,839 --> 00:12:18,000
+code
+
+387
+00:12:18,000 --> 00:12:19,519
+next are the load and store instructions
+
+388
+00:12:19,519 --> 00:12:21,440
+that read and write memory effective
+
+389
+00:12:21,440 --> 00:12:22,800
+address of those operations is
+
+390
+00:12:22,800 --> 00:12:24,399
+calculated from memory operand of the
+
+391
+00:12:24,399 --> 00:12:26,480
+instruction memory operand usually
+
+392
+00:12:26,480 --> 00:12:28,399
+refers to register values and therefore
+
+393
+00:12:28,399 --> 00:12:30,880
+effective address usually only known at
+
+394
+00:12:30,880 --> 00:12:32,639
+runtime
+
+395
+00:12:32,639 --> 00:12:33,839
+our main concern in loading store
+
+396
+00:12:33,839 --> 00:12:35,680
+instructions is their ability to access
+
+397
+00:12:35,680 --> 00:12:37,360
+kernel memory
+
+398
+00:12:37,360 --> 00:12:39,040
+and to ensure a load or store
+
+399
+00:12:39,040 --> 00:12:40,800
+instruction is safe we convert it into
+
+400
+00:12:40,800 --> 00:12:42,880
+the following instruction sequence
+
+401
+00:12:42,880 --> 00:12:44,560
+first we calculate the effective address
+
+402
+00:12:44,560 --> 00:12:46,880
+of the original memory operand
+
+403
+00:12:46,880 --> 00:12:48,720
+then we clear the most significant bit
+
+404
+00:12:48,720 --> 00:12:50,480
+of the calculated address
+
+405
+00:12:50,480 --> 00:12:52,240
+and finally we replace operand of the
+
+406
+00:12:52,240 --> 00:12:54,000
+original instruction with sanitized
+
+407
+00:12:54,000 --> 00:12:55,040
+address
+
+408
+00:12:55,040 --> 00:12:56,639
+correctness of this transformation
+
+409
+00:12:56,639 --> 00:12:58,000
+hinges on the traditional layout of
+
+410
+00:12:58,000 --> 00:13:00,160
+virtual memory if we recall layout that
+
+411
+00:13:00,160 --> 00:13:01,680
+appears on the bottom of the slide we
+
+412
+00:13:01,680 --> 00:13:03,360
+can see that kernel addresses always
+
+413
+00:13:03,360 --> 00:13:05,440
+have the most significant bit set
+
+414
+00:13:05,440 --> 00:13:06,800
+therefore an address with the cleared
+
+415
+00:13:06,800 --> 00:13:08,800
+most significant bit cannot be a kernel
+
+416
+00:13:08,800 --> 00:13:10,000
+address
+
+417
+00:13:10,000 --> 00:13:11,680
+this operation is also valid for user
+
+418
+00:13:11,680 --> 00:13:14,079
+space addresses as they always have most
+
+419
+00:13:14,079 --> 00:13:16,800
+significant bit cleared and therefore
+
+420
+00:13:16,800 --> 00:13:18,240
+are completely unaffected by this
+
+421
+00:13:18,240 --> 00:13:21,240
+transformation
+
+422
+00:13:21,519 --> 00:13:22,959
+third type of relevant instructions we
+
+423
+00:13:22,959 --> 00:13:25,040
+take care of are indirect branches and
+
+424
+00:13:25,040 --> 00:13:26,240
+returns
+
+425
+00:13:26,240 --> 00:13:28,560
+now indirect branches and returns move
+
+426
+00:13:28,560 --> 00:13:30,399
+instruction pointer to address stored in
+
+427
+00:13:30,399 --> 00:13:32,720
+registers or memory and similar to
+
+428
+00:13:32,720 --> 00:13:34,240
+loaded stores targets of indirect
+
+429
+00:13:34,240 --> 00:13:36,880
+branches are only known at runtime
+
+430
+00:13:36,880 --> 00:13:38,240
+with indirect branches we have two
+
+431
+00:13:38,240 --> 00:13:40,399
+concerns first we want to avoid branches
+
+432
+00:13:40,399 --> 00:13:42,639
+to kernel memory and second we want to
+
+433
+00:13:42,639 --> 00:13:45,600
+avoid branches to other unverified code
+
+434
+00:13:45,600 --> 00:13:47,680
+to address the first part branches to
+
+435
+00:13:47,680 --> 00:13:49,440
+kernel of branches to kernel memory we
+
+436
+00:13:49,440 --> 00:13:50,800
+implement the same technique as load
+
+437
+00:13:50,800 --> 00:13:52,399
+store instrumentation and we clear the
+
+438
+00:13:52,399 --> 00:13:54,320
+most significant bit of the of the
+
+439
+00:13:54,320 --> 00:13:55,920
+target address
+
+440
+00:13:55,920 --> 00:13:57,519
+the second part of targeting only
+
+441
+00:13:57,519 --> 00:13:59,120
+verified code is handled by clearing the
+
+442
+00:13:59,120 --> 00:14:00,560
+five least significant bits of the
+
+443
+00:14:00,560 --> 00:14:02,320
+target address which ensures the
+
+444
+00:14:02,320 --> 00:14:04,320
+resulting address is a multiple of 32
+
+445
+00:14:04,320 --> 00:14:05,600
+bytes
+
+446
+00:14:05,600 --> 00:14:07,760
+combining both operation
+
+447
+00:14:07,760 --> 00:14:09,760
+indirect branches and returns can target
+
+448
+00:14:09,760 --> 00:14:12,079
+only non-kernel addresses that are 32
+
+449
+00:14:12,079 --> 00:14:13,519
+bytes aligned
+
+450
+00:14:13,519 --> 00:14:15,199
+if we recall prove box code is packed
+
+451
+00:14:15,199 --> 00:14:17,360
+into code chunks and each 32 byte align
+
+452
+00:14:17,360 --> 00:14:20,240
+address contains a verified instruction
+
+453
+00:14:20,240 --> 00:14:22,000
+however by itself this instrumentation
+
+454
+00:14:22,000 --> 00:14:23,600
+is not enough as it still allows
+
+455
+00:14:23,600 --> 00:14:25,120
+branching to any city to bite aligned
+
+456
+00:14:25,120 --> 00:14:27,120
+address in user space even outside brief
+
+457
+00:14:27,120 --> 00:14:29,040
+box and we handle this shortcoming by
+
+458
+00:14:29,040 --> 00:14:31,519
+the mechanism we present next
+
+459
+00:14:31,519 --> 00:14:33,360
+the final part of the sandboxing design
+
+460
+00:14:33,360 --> 00:14:35,360
+is the memory layout that we use under
+
+461
+00:14:35,360 --> 00:14:37,440
+semi-previous execution mode there are
+
+462
+00:14:37,440 --> 00:14:39,600
+three main parts of our memory layout
+
+463
+00:14:39,600 --> 00:14:41,839
+first there's the prevos code region it
+
+464
+00:14:41,839 --> 00:14:43,839
+resides inside user memory and contains
+
+465
+00:14:43,839 --> 00:14:45,199
+the code that the process has loaded
+
+466
+00:14:45,199 --> 00:14:47,040
+into proofbox it is readable and
+
+467
+00:14:47,040 --> 00:14:48,720
+executable by user code but it is
+
+468
+00:14:48,720 --> 00:14:50,959
+writable only by the kernel and the only
+
+469
+00:14:50,959 --> 00:14:52,480
+way to introduce new code into this
+
+470
+00:14:52,480 --> 00:14:54,480
+region is to by is by loading it into
+
+471
+00:14:54,480 --> 00:14:57,360
+pre-box environment
+
+472
+00:14:57,680 --> 00:15:00,079
+next next there's the user memory
+
+473
+00:15:00,079 --> 00:15:01,920
+under proofbox user memory is similar to
+
+474
+00:15:01,920 --> 00:15:04,560
+user memory under regular execution only
+
+475
+00:15:04,560 --> 00:15:07,440
+difference is that it is not executable
+
+476
+00:15:07,440 --> 00:15:09,040
+this is required to make sure previous
+
+477
+00:15:09,040 --> 00:15:11,120
+code cannot branch to to this memory
+
+478
+00:15:11,120 --> 00:15:12,800
+region by mistake or through malicious
+
+479
+00:15:12,800 --> 00:15:13,839
+intent
+
+480
+00:15:13,839 --> 00:15:15,199
+and this along with the branching
+
+481
+00:15:15,199 --> 00:15:16,399
+instrumentation we have seen in the
+
+482
+00:15:16,399 --> 00:15:18,000
+previous slides ensures prevost code
+
+483
+00:15:18,000 --> 00:15:20,720
+cannot escape sandbox by branching
+
+484
+00:15:20,720 --> 00:15:22,240
+instrumentation we have seen ensures
+
+485
+00:15:22,240 --> 00:15:24,320
+target branches target only non-kernel
+
+486
+00:15:24,320 --> 00:15:26,800
+32 byte aligned addresses and under
+
+487
+00:15:26,800 --> 00:15:28,639
+preview under this memory layout the
+
+488
+00:15:28,639 --> 00:15:30,639
+only executable memory in this range is
+
+489
+00:15:30,639 --> 00:15:34,000
+the verified pre-box code
+
+490
+00:15:34,000 --> 00:15:35,600
+now the last part is the kernel memory
+
+491
+00:15:35,600 --> 00:15:36,800
+which is mapped and accessible to
+
+492
+00:15:36,800 --> 00:15:38,079
+previous code
+
+493
+00:15:38,079 --> 00:15:39,600
+this allows fast invocation of system
+
+494
+00:15:39,600 --> 00:15:41,040
+codes through the system congate
+
+495
+00:15:41,040 --> 00:15:42,880
+function and as we have mentioned in
+
+496
+00:15:42,880 --> 00:15:44,959
+previous slides arbitrary and undesired
+
+497
+00:15:44,959 --> 00:15:47,199
+memory accesses to the kernel memory are
+
+498
+00:15:47,199 --> 00:15:50,480
+restricted through the instrumentation
+
+499
+00:15:50,480 --> 00:15:52,079
+now during our work we have also noticed
+
+500
+00:15:52,079 --> 00:15:53,600
+that load storage instrumentation is
+
+501
+00:15:53,600 --> 00:15:55,120
+responsible for a significant part of
+
+502
+00:15:55,120 --> 00:15:57,519
+the sandboxing overhead and to address
+
+503
+00:15:57,519 --> 00:15:59,279
+this we propose a new hardware mechanism
+
+504
+00:15:59,279 --> 00:16:01,440
+named spa or semi-privileged access
+
+505
+00:16:01,440 --> 00:16:02,480
+prevention
+
+506
+00:16:02,480 --> 00:16:04,160
+spot mechanism can be used to detect and
+
+507
+00:16:04,160 --> 00:16:06,079
+prevent kernel accesses performed by
+
+508
+00:16:06,079 --> 00:16:07,519
+code running under semi-previous
+
+509
+00:16:07,519 --> 00:16:09,279
+execution mode
+
+510
+00:16:09,279 --> 00:16:10,959
+swap works in a very similar fashion to
+
+511
+00:16:10,959 --> 00:16:12,639
+the existing supervisor mode access and
+
+512
+00:16:12,639 --> 00:16:15,120
+execution prevention mechanisms of x86
+
+513
+00:16:15,120 --> 00:16:17,040
+and we expect it to be a very similar
+
+514
+00:16:17,040 --> 00:16:19,279
+and minimal overhead
+
+515
+00:16:19,279 --> 00:16:20,399
+on the bottom right you can see
+
+516
+00:16:20,399 --> 00:16:22,320
+performance of redis when compiled under
+
+517
+00:16:22,320 --> 00:16:24,320
+different levels of instrumentation
+
+518
+00:16:24,320 --> 00:16:26,320
+it can be seen that that instrumentation
+
+519
+00:16:26,320 --> 00:16:28,399
+required under step is considerably
+
+520
+00:16:28,399 --> 00:16:29,759
+faster than the full instrumentation
+
+521
+00:16:29,759 --> 00:16:31,600
+needed on today's hardware and is only
+
+522
+00:16:31,600 --> 00:16:33,440
+slightly slower than the uninstrumented
+
+523
+00:16:33,440 --> 00:16:34,480
+version
+
+524
+00:16:34,480 --> 00:16:36,720
+the reason for this is that under spap
+
+525
+00:16:36,720 --> 00:16:38,560
+our sandbox approach no longer needs to
+
+526
+00:16:38,560 --> 00:16:40,560
+instrument loads and stores and also can
+
+527
+00:16:40,560 --> 00:16:42,639
+use a lighter form of instrumentation
+
+528
+00:16:42,639 --> 00:16:45,680
+for branching instructions
+
+529
+00:16:45,839 --> 00:16:47,360
+finally i want to present our evaluation
+
+530
+00:16:47,360 --> 00:16:48,560
+results
+
+531
+00:16:48,560 --> 00:16:49,600
+the results are measured on the
+
+532
+00:16:49,600 --> 00:16:51,040
+prototype we have built based on the
+
+533
+00:16:51,040 --> 00:16:52,720
+presented design
+
+534
+00:16:52,720 --> 00:16:54,560
+first we measure the entry overhead of
+
+535
+00:16:54,560 --> 00:16:56,720
+system calls under prove box when code
+
+536
+00:16:56,720 --> 00:16:58,560
+is running inside previewbox system code
+
+537
+00:16:58,560 --> 00:17:00,959
+entry and exit take roughly 415 cycles
+
+538
+00:17:00,959 --> 00:17:03,360
+which is 2.2 times less overhead than
+
+539
+00:17:03,360 --> 00:17:05,039
+system construction on the system that
+
+540
+00:17:05,039 --> 00:17:08,319
+requires page labor isolation
+
+541
+00:17:08,319 --> 00:17:10,079
+additionally we evaluated the workload
+
+542
+00:17:10,079 --> 00:17:12,160
+that isolates all system called work
+
+543
+00:17:12,160 --> 00:17:14,319
+into dedicated threads and in this
+
+544
+00:17:14,319 --> 00:17:16,319
+workload we have compute threads that
+
+545
+00:17:16,319 --> 00:17:18,559
+process requests from clients and we
+
+546
+00:17:18,559 --> 00:17:20,000
+have other threads that communicate with
+
+547
+00:17:20,000 --> 00:17:21,839
+clients over socket interface
+
+548
+00:17:21,839 --> 00:17:23,599
+importantly our compute threads and our
+
+549
+00:17:23,599 --> 00:17:24,959
+threads communicate among themselves
+
+550
+00:17:24,959 --> 00:17:26,559
+over memory without the use of system
+
+551
+00:17:26,559 --> 00:17:28,160
+calls so all the system called work is
+
+552
+00:17:28,160 --> 00:17:30,240
+isolated to the eye threads
+
+553
+00:17:30,240 --> 00:17:31,360
+in the graph below we can see
+
+554
+00:17:31,360 --> 00:17:32,640
+performance of our benchmark under
+
+555
+00:17:32,640 --> 00:17:34,880
+pre-box relative to the performance when
+
+556
+00:17:34,880 --> 00:17:36,400
+using system calls
+
+557
+00:17:36,400 --> 00:17:38,240
+in this measurement we limited the size
+
+558
+00:17:38,240 --> 00:17:39,679
+of send and receive operations performed
+
+559
+00:17:39,679 --> 00:17:42,240
+by by the i threads and the result of
+
+560
+00:17:42,240 --> 00:17:43,679
+this is that
+
+561
+00:17:43,679 --> 00:17:45,360
+the smaller i size is the more system
+
+562
+00:17:45,360 --> 00:17:47,679
+calls are required to read or to read
+
+563
+00:17:47,679 --> 00:17:49,760
+each request or to write each response
+
+564
+00:17:49,760 --> 00:17:52,000
+eye sizes can be seen on the x axis of
+
+565
+00:17:52,000 --> 00:17:53,120
+the graph
+
+566
+00:17:53,120 --> 00:17:54,960
+we can see that for very small io size
+
+567
+00:17:54,960 --> 00:17:56,720
+which is translated to a very high rate
+
+568
+00:17:56,720 --> 00:17:58,640
+of system calls prebox variant
+
+569
+00:17:58,640 --> 00:18:00,320
+outperforms the system called variant by
+
+570
+00:18:00,320 --> 00:18:03,360
+up to 72 percent
+
+571
+00:18:03,360 --> 00:18:05,280
+finally we evaluated some real-world
+
+572
+00:18:05,280 --> 00:18:07,919
+workloads uh we present measurements for
+
+573
+00:18:07,919 --> 00:18:09,840
+radius and mkhd both popular key value
+
+574
+00:18:09,840 --> 00:18:11,280
+stores used in wide variety of
+
+575
+00:18:11,280 --> 00:18:12,480
+applications
+
+576
+00:18:12,480 --> 00:18:14,320
+it is worth noting that in both cases
+
+577
+00:18:14,320 --> 00:18:16,720
+for simplicity we instrumented the whole
+
+578
+00:18:16,720 --> 00:18:18,559
+program which is as we have mentioned
+
+579
+00:18:18,559 --> 00:18:19,679
+earlier in the beginning of the
+
+580
+00:18:19,679 --> 00:18:21,679
+presentation is heavily suboptimal
+
+581
+00:18:21,679 --> 00:18:23,520
+therefore the result we present can be
+
+582
+00:18:23,520 --> 00:18:24,960
+considered as a lower bound for
+
+583
+00:18:24,960 --> 00:18:27,280
+performance gain as more accurate to
+
+584
+00:18:27,280 --> 00:18:28,960
+pre-books with less unnecessary
+
+585
+00:18:28,960 --> 00:18:30,559
+instrumentation is likely to perform
+
+586
+00:18:30,559 --> 00:18:31,600
+better
+
+587
+00:18:31,600 --> 00:18:33,120
+now despite all this we were able to
+
+588
+00:18:33,120 --> 00:18:34,640
+improve performance of the workloads by
+
+589
+00:18:34,640 --> 00:18:37,600
+up to point up to 7.6 on today's
+
+590
+00:18:37,600 --> 00:18:39,919
+hardware and we expect to see an up to
+
+591
+00:18:39,919 --> 00:18:42,000
+11 improvement on hardware that supports
+
+592
+00:18:42,000 --> 00:18:43,760
+pap
+
+593
+00:18:43,760 --> 00:18:45,679
+now to conclude we present prebox which
+
+594
+00:18:45,679 --> 00:18:47,600
+is a new mechanism that allows faster
+
+595
+00:18:47,600 --> 00:18:49,360
+access to system calls for system called
+
+596
+00:18:49,360 --> 00:18:51,360
+heavy workloads briefbox adoption is
+
+597
+00:18:51,360 --> 00:18:52,880
+simple straightforward and does not
+
+598
+00:18:52,880 --> 00:18:54,799
+require software architecture
+
+599
+00:18:54,799 --> 00:18:56,400
+under brief box system called overhead
+
+600
+00:18:56,400 --> 00:18:58,320
+is 2.2 times lower than that of a
+
+601
+00:18:58,320 --> 00:19:00,320
+regular system construction we also
+
+602
+00:19:00,320 --> 00:19:02,640
+present results of up to 72 improvements
+
+603
+00:19:02,640 --> 00:19:04,400
+in workloads designed to take a direct
+
+604
+00:19:04,400 --> 00:19:06,320
+advantage of bridge books and we present
+
+605
+00:19:06,320 --> 00:19:08,160
+a lower bound of seven percent speed up
+
+606
+00:19:08,160 --> 00:19:10,400
+for workloads like radius and mkhd
+
+607
+00:19:10,400 --> 00:19:11,840
+and finally oral code is available and
+
+608
+00:19:11,840 --> 00:19:13,280
+documented along with all of the
+
+609
+00:19:13,280 --> 00:19:15,840
+experiments we have presented on github
+
+610
+00:19:15,840 --> 00:19:19,080
+thank you
+
+611
+00:21:48,240 --> 00:21:50,320
+you
+

@@ -1,0 +1,4328 @@
+﻿1
+00:00:02,230 --> 00:00:05,310
+[Music]
+
+2
+00:00:07,820 --> 00:00:09,840
+all right thanks for coming out here
+
+3
+00:00:09,840 --> 00:00:12,000
+listening to me talk today I'm going to
+
+4
+00:00:12,000 --> 00:00:14,759
+be talking about a mitigation that we
+
+5
+00:00:14,759 --> 00:00:16,320
+built at Microsoft and are now rolling
+
+6
+00:00:16,320 --> 00:00:19,080
+out called castguard uh before I talk
+
+7
+00:00:19,080 --> 00:00:20,880
+about
+
+8
+00:00:20,880 --> 00:00:23,279
+exactly how castguard works oh great my
+
+9
+00:00:23,279 --> 00:00:25,199
+clicker won't work now
+
+10
+00:00:25,199 --> 00:00:27,320
+um
+
+11
+00:00:30,240 --> 00:00:32,460
+okay uh yeah I just want to talk a
+
+12
+00:00:32,460 --> 00:00:34,079
+little bit about the the problem space
+
+13
+00:00:34,079 --> 00:00:35,520
+that we're working in because when you
+
+14
+00:00:35,520 --> 00:00:36,600
+hear people talk about building
+
+15
+00:00:36,600 --> 00:00:38,640
+mitigations oftentimes they're talking
+
+16
+00:00:38,640 --> 00:00:40,320
+about one of two things they're either
+
+17
+00:00:40,320 --> 00:00:42,239
+talking about building mitigations that
+
+18
+00:00:42,239 --> 00:00:43,980
+kill exploit techniques or they're
+
+19
+00:00:43,980 --> 00:00:45,719
+talking about building mitigations that
+
+20
+00:00:45,719 --> 00:00:48,239
+kill bugs and at Microsoft we've
+
+21
+00:00:48,239 --> 00:00:50,100
+certainly spent a lot of time working on
+
+22
+00:00:50,100 --> 00:00:53,340
+both of these but in recent years we've
+
+23
+00:00:53,340 --> 00:00:55,140
+not been quite as excited about building
+
+24
+00:00:55,140 --> 00:00:56,940
+mitigations to kill exploit techniques
+
+25
+00:00:56,940 --> 00:00:59,399
+primarily because there's very ambiguous
+
+26
+00:00:59,399 --> 00:01:01,440
+long-term value these sort of
+
+27
+00:01:01,440 --> 00:01:03,000
+mitigations are typically far enough
+
+28
+00:01:03,000 --> 00:01:06,420
+away from the bugs themselves that you
+
+29
+00:01:06,420 --> 00:01:09,659
+can work around the mitigations and
+
+30
+00:01:09,659 --> 00:01:11,820
+the the trade-offs that you end up
+
+31
+00:01:11,820 --> 00:01:13,380
+making with these sorts of mitigations
+
+32
+00:01:13,380 --> 00:01:15,900
+are just getting increasingly uglier and
+
+33
+00:01:15,900 --> 00:01:17,640
+uglier there's lots of performance
+
+34
+00:01:17,640 --> 00:01:20,520
+concerns compatibility concerns
+
+35
+00:01:20,520 --> 00:01:22,920
+um and so it's it's kind of unclear how
+
+36
+00:01:22,920 --> 00:01:24,299
+many more opportunities there are to
+
+37
+00:01:24,299 --> 00:01:26,100
+really build meaningful impactful
+
+38
+00:01:26,100 --> 00:01:29,179
+exploit mitigations
+
+39
+00:01:29,520 --> 00:01:31,380
+uh and that's why we've been working a
+
+40
+00:01:31,380 --> 00:01:34,860
+lot more recently on killing bugs and
+
+41
+00:01:34,860 --> 00:01:36,420
+we've been working on killing bugs in a
+
+42
+00:01:36,420 --> 00:01:38,900
+number of different ways sandboxing
+
+43
+00:01:38,900 --> 00:01:41,579
+removing attack surface eliminating
+
+44
+00:01:41,579 --> 00:01:43,500
+vulnerability classes which is one of
+
+45
+00:01:43,500 --> 00:01:44,280
+the things I'm going to be talking about
+
+46
+00:01:44,280 --> 00:01:48,299
+today or just investigating safer uh you
+
+47
+00:01:48,299 --> 00:01:49,920
+know safer programming languages things
+
+48
+00:01:49,920 --> 00:01:52,200
+like rust c-sharp
+
+49
+00:01:52,200 --> 00:01:53,100
+Etc
+
+50
+00:01:53,100 --> 00:01:55,158
+um
+
+51
+00:01:55,680 --> 00:01:56,640
+foreign
+
+52
+00:01:56,640 --> 00:01:58,560
+but even though we're investigating all
+
+53
+00:01:58,560 --> 00:02:01,200
+this stuff we realize that we are still
+
+54
+00:02:01,200 --> 00:02:04,380
+going to have lots of privileged CNC
+
+55
+00:02:04,380 --> 00:02:08,399
+plus plus code for quite a while and so
+
+56
+00:02:08,399 --> 00:02:09,899
+we need something to do for that code
+
+57
+00:02:09,899 --> 00:02:12,599
+because we don't want to just uh leave
+
+58
+00:02:12,599 --> 00:02:14,400
+it out there unprotected
+
+59
+00:02:14,400 --> 00:02:16,800
+and when it comes to memory safety
+
+60
+00:02:16,800 --> 00:02:18,959
+vulnerability specifically in CNC plus
+
+61
+00:02:18,959 --> 00:02:21,540
+plus there's four big buckets that are
+
+62
+00:02:21,540 --> 00:02:22,980
+responsible for most of the bugs we end
+
+63
+00:02:22,980 --> 00:02:25,379
+up seeing there are spatial safety
+
+64
+00:02:25,379 --> 00:02:27,360
+issues like buffer overflows there's not
+
+65
+00:02:27,360 --> 00:02:29,220
+initialized memory there is type
+
+66
+00:02:29,220 --> 00:02:30,660
+confusion and there's use after free
+
+67
+00:02:30,660 --> 00:02:32,280
+bugs
+
+68
+00:02:32,280 --> 00:02:34,620
+and uh this this graph here is really
+
+69
+00:02:34,620 --> 00:02:36,840
+just to illustrate that um type
+
+70
+00:02:36,840 --> 00:02:40,379
+confusion is a predominant bug category
+
+71
+00:02:40,379 --> 00:02:42,660
+for us I kind of highlighted it in uh in
+
+72
+00:02:42,660 --> 00:02:45,360
+red here but it's this big blue category
+
+73
+00:02:45,360 --> 00:02:48,000
+here in the past couple past year or two
+
+74
+00:02:48,000 --> 00:02:49,440
+we haven't seen quite as many of those
+
+75
+00:02:49,440 --> 00:02:51,120
+bugs but
+
+76
+00:02:51,120 --> 00:02:53,400
+um but in general we do see quite a few
+
+77
+00:02:53,400 --> 00:02:55,440
+type confusion issues uh come through
+
+78
+00:02:55,440 --> 00:02:58,080
+year after year
+
+79
+00:02:58,080 --> 00:03:01,019
+now I'm not endorsing uh necessarily any
+
+80
+00:03:01,019 --> 00:03:03,000
+of the Technologies on this slide but I
+
+81
+00:03:03,000 --> 00:03:05,340
+just want to illustrate that for some of
+
+82
+00:03:05,340 --> 00:03:07,260
+these different bug classes there are
+
+83
+00:03:07,260 --> 00:03:09,360
+solutions out there you know maybe those
+
+84
+00:03:09,360 --> 00:03:11,700
+Solutions aren't necessarily easy to
+
+85
+00:03:11,700 --> 00:03:13,500
+deploy or even possible to deploy but
+
+86
+00:03:13,500 --> 00:03:15,060
+there is a lot of research being done
+
+87
+00:03:15,060 --> 00:03:17,900
+for how we can
+
+88
+00:03:17,900 --> 00:03:19,800
+deterministically mitigate a lot of
+
+89
+00:03:19,800 --> 00:03:22,620
+these bug classes but type confusion is
+
+90
+00:03:22,620 --> 00:03:25,080
+one where there is not a whole lot of
+
+91
+00:03:25,080 --> 00:03:27,659
+research into or or practical solutions
+
+92
+00:03:27,659 --> 00:03:29,819
+from my perspective into how do you
+
+93
+00:03:29,819 --> 00:03:31,140
+deterministically mitigate this bug
+
+94
+00:03:31,140 --> 00:03:33,720
+class uh in a way that you can just
+
+95
+00:03:33,720 --> 00:03:35,700
+broadly roll out the the mitigation
+
+96
+00:03:35,700 --> 00:03:39,619
+across large amounts of code
+
+97
+00:03:40,260 --> 00:03:42,599
+and the issue with type confusion is
+
+98
+00:03:42,599 --> 00:03:44,340
+really that it comes in so many
+
+99
+00:03:44,340 --> 00:03:46,799
+different flavors and unlike a lot of
+
+100
+00:03:46,799 --> 00:03:48,780
+other types of memory safety issues
+
+101
+00:03:48,780 --> 00:03:50,580
+where there's a clear contract that's
+
+102
+00:03:50,580 --> 00:03:52,379
+being violated like in the case of use
+
+103
+00:03:52,379 --> 00:03:55,260
+after freeze you're using an object
+
+104
+00:03:55,260 --> 00:03:57,120
+after it has been deallocated so there's
+
+105
+00:03:57,120 --> 00:03:59,519
+a contract you're breaking in the case
+
+106
+00:03:59,519 --> 00:04:01,980
+of type confusion you're not really
+
+107
+00:04:01,980 --> 00:04:04,319
+breaking any clear contract you're
+
+108
+00:04:04,319 --> 00:04:06,959
+really just misinterpreting data Maybe
+
+109
+00:04:06,959 --> 00:04:09,420
+you downcast something incorrectly and
+
+110
+00:04:09,420 --> 00:04:11,459
+then you you know use fields of a
+
+111
+00:04:11,459 --> 00:04:13,980
+validly allocated and inbounds object
+
+112
+00:04:13,980 --> 00:04:16,500
+but you're just using fields that aren't
+
+113
+00:04:16,500 --> 00:04:18,959
+actually what you think they are similar
+
+114
+00:04:18,959 --> 00:04:20,459
+thing with unions you might use the
+
+115
+00:04:20,459 --> 00:04:22,979
+wrong field of a union but it is live
+
+116
+00:04:22,979 --> 00:04:25,020
+memory it is an inbounds memory access
+
+117
+00:04:25,020 --> 00:04:26,940
+you're just interpreting it wrong
+
+118
+00:04:26,940 --> 00:04:28,979
+so it's hard to generically solve type
+
+119
+00:04:28,979 --> 00:04:31,500
+confusion because it really comes down
+
+120
+00:04:31,500 --> 00:04:33,540
+to understanding the programmer intent
+
+121
+00:04:33,540 --> 00:04:35,340
+if you want to mitigate it you need to
+
+122
+00:04:35,340 --> 00:04:37,680
+understand is is the developer actually
+
+123
+00:04:37,680 --> 00:04:39,780
+actually accessing data in the correct
+
+124
+00:04:39,780 --> 00:04:41,460
+way or not and that's that's very
+
+125
+00:04:41,460 --> 00:04:42,900
+difficult
+
+126
+00:04:42,900 --> 00:04:45,540
+and and memory type confusion is
+
+127
+00:04:45,540 --> 00:04:48,240
+particularly concerning because it gives
+
+128
+00:04:48,240 --> 00:04:50,160
+really strong Primitives to attackers
+
+129
+00:04:50,160 --> 00:04:52,560
+and it allows you to bypass some of the
+
+130
+00:04:52,560 --> 00:04:54,240
+mitigations like memory tagging for
+
+131
+00:04:54,240 --> 00:04:55,560
+example that I mentioned on the previous
+
+132
+00:04:55,560 --> 00:04:58,560
+slide also could you know potentially
+
+133
+00:04:58,560 --> 00:05:00,660
+allow you to work around Sherry or other
+
+134
+00:05:00,660 --> 00:05:02,220
+Hardware solutions that people are
+
+135
+00:05:02,220 --> 00:05:04,080
+working on and so it is a fairly
+
+136
+00:05:04,080 --> 00:05:07,880
+important bug class to do research into
+
+137
+00:05:08,220 --> 00:05:09,780
+so what I'm going to talk today about is
+
+138
+00:05:09,780 --> 00:05:12,900
+castguard and casguard aims at solving a
+
+139
+00:05:12,900 --> 00:05:14,880
+legal static downcasts and so I thought
+
+140
+00:05:14,880 --> 00:05:16,080
+maybe we should just make sure
+
+141
+00:05:16,080 --> 00:05:17,580
+everyone's on the same page about what
+
+142
+00:05:17,580 --> 00:05:20,460
+is an illegal static downcast so in C
+
+143
+00:05:20,460 --> 00:05:22,500
+plus plus you can build class
+
+144
+00:05:22,500 --> 00:05:25,320
+hierarchies that have inheritance and in
+
+145
+00:05:25,320 --> 00:05:27,600
+this example here you might create a dog
+
+146
+00:05:27,600 --> 00:05:31,259
+object and you up cast it to be the
+
+147
+00:05:31,259 --> 00:05:33,180
+point of that dog object is stored in an
+
+148
+00:05:33,180 --> 00:05:36,240
+animal pointer and then you downcast it
+
+149
+00:05:36,240 --> 00:05:39,419
+to be a cat but a cat is not a dog so
+
+150
+00:05:39,419 --> 00:05:41,160
+that's an illegal static downcast you
+
+151
+00:05:41,160 --> 00:05:44,220
+you casted this base pointer down to the
+
+152
+00:05:44,220 --> 00:05:47,360
+wrong derived type
+
+153
+00:05:48,539 --> 00:05:50,520
+and some of you that are familiar with C
+
+154
+00:05:50,520 --> 00:05:52,800
+plus plus might be thinking well hey you
+
+155
+00:05:52,800 --> 00:05:53,880
+know you don't even need to give this
+
+156
+00:05:53,880 --> 00:05:55,320
+talk because there's already a solution
+
+157
+00:05:55,320 --> 00:05:57,120
+for this problem just use Dynamic cast
+
+158
+00:05:57,120 --> 00:05:58,680
+it's part of the C plus plus language
+
+159
+00:05:58,680 --> 00:06:02,340
+and that will do uh checking for you
+
+160
+00:06:02,340 --> 00:06:04,800
+when you do downcasts but the issue is
+
+161
+00:06:04,800 --> 00:06:07,380
+that Dynamic cast is a very hard thing
+
+162
+00:06:07,380 --> 00:06:10,380
+to just generically apply to a huge code
+
+163
+00:06:10,380 --> 00:06:12,900
+base because in order for dynamic cast
+
+164
+00:06:12,900 --> 00:06:15,000
+to work the code that creates the object
+
+165
+00:06:15,000 --> 00:06:17,400
+needs to enable runtime type information
+
+166
+00:06:17,400 --> 00:06:19,259
+or rtti
+
+167
+00:06:19,259 --> 00:06:22,220
+and on an operating system like Windows
+
+168
+00:06:22,220 --> 00:06:25,560
+we have no control over large amounts of
+
+169
+00:06:25,560 --> 00:06:27,300
+the code that runs on the platform and
+
+170
+00:06:27,300 --> 00:06:28,740
+so we can't enforce that they turned
+
+171
+00:06:28,740 --> 00:06:31,740
+rtti on and if you try to Dynamic cast
+
+172
+00:06:31,740 --> 00:06:33,360
+an object that was created without our
+
+173
+00:06:33,360 --> 00:06:34,560
+TTI
+
+174
+00:06:34,560 --> 00:06:37,500
+your program ends up crashing
+
+175
+00:06:37,500 --> 00:06:40,380
+and so Dynamic cast is very difficult or
+
+176
+00:06:40,380 --> 00:06:42,900
+really impossible to just deploy at
+
+177
+00:06:42,900 --> 00:06:47,160
+skill across a huge code base rtt rtti
+
+178
+00:06:47,160 --> 00:06:49,620
+itself is not used by many people
+
+179
+00:06:49,620 --> 00:06:51,840
+because it causes lots of binary sized
+
+180
+00:06:51,840 --> 00:06:53,880
+bloat like in one of our dlls for
+
+181
+00:06:53,880 --> 00:06:57,780
+example uh turning rtti on is over an 80
+
+182
+00:06:57,780 --> 00:07:00,600
+binary size regression that's huge
+
+183
+00:07:00,600 --> 00:07:02,160
+you're almost doubling the size of your
+
+184
+00:07:02,160 --> 00:07:03,960
+binaries by turning this on
+
+185
+00:07:03,960 --> 00:07:06,960
+and dynamic cast checks themselves also
+
+186
+00:07:06,960 --> 00:07:09,120
+have a lot of overhead and when we're
+
+187
+00:07:09,120 --> 00:07:11,460
+talking about doing downcasts in C plus
+
+188
+00:07:11,460 --> 00:07:13,380
+plus this is an operation that is
+
+189
+00:07:13,380 --> 00:07:15,240
+typically free there is no code
+
+190
+00:07:15,240 --> 00:07:17,039
+generation that happens when you do a
+
+191
+00:07:17,039 --> 00:07:19,139
+downcast it just changes how the
+
+192
+00:07:19,139 --> 00:07:21,360
+compiler allows you to interpret that
+
+193
+00:07:21,360 --> 00:07:24,720
+data and so Dynamic cast having a lot of
+
+194
+00:07:24,720 --> 00:07:27,660
+overhead can be kind of problematic
+
+195
+00:07:27,660 --> 00:07:29,759
+and just as an example there's a lot of
+
+196
+00:07:29,759 --> 00:07:31,560
+assembly here obviously we can't
+
+197
+00:07:31,560 --> 00:07:33,300
+actually read this assembly it's way too
+
+198
+00:07:33,300 --> 00:07:36,720
+small but I just did a test to see what
+
+199
+00:07:36,720 --> 00:07:38,520
+actually gets executed when you do a
+
+200
+00:07:38,520 --> 00:07:41,160
+dynamic cast on a very simple class
+
+201
+00:07:41,160 --> 00:07:43,080
+hierarchy single inheritance class
+
+202
+00:07:43,080 --> 00:07:47,400
+hierarchy you have 12 stores 30 loads 12
+
+203
+00:07:47,400 --> 00:07:49,560
+jumps and two calls that end up being
+
+204
+00:07:49,560 --> 00:07:51,599
+made and that's that's in the happy path
+
+205
+00:07:51,599 --> 00:07:54,000
+where the cast is going to succeed so
+
+206
+00:07:54,000 --> 00:07:55,800
+this is a tremendous amount of code that
+
+207
+00:07:55,800 --> 00:07:58,020
+ends up running and it might be possible
+
+208
+00:07:58,020 --> 00:07:59,819
+for us to do some work on the dynamic
+
+209
+00:07:59,819 --> 00:08:01,979
+cast implementation and optimize some of
+
+210
+00:08:01,979 --> 00:08:03,960
+it away but you still end up with this
+
+211
+00:08:03,960 --> 00:08:06,240
+dependency on rtti that you can't get
+
+212
+00:08:06,240 --> 00:08:08,599
+out of
+
+213
+00:08:09,000 --> 00:08:12,660
+so that brings us to cascard and I I
+
+214
+00:08:12,660 --> 00:08:14,099
+just want to call out that this is
+
+215
+00:08:14,099 --> 00:08:17,280
+actually inspired from a clang feature
+
+216
+00:08:17,280 --> 00:08:19,199
+that F sanitized CFI derived cast
+
+217
+00:08:19,199 --> 00:08:20,699
+feature
+
+218
+00:08:20,699 --> 00:08:22,139
+um we we took that feature as
+
+219
+00:08:22,139 --> 00:08:24,900
+inspiration and just really optimized it
+
+220
+00:08:24,900 --> 00:08:27,120
+like crazy and and that's what I'm here
+
+221
+00:08:27,120 --> 00:08:29,220
+to talk about
+
+222
+00:08:29,220 --> 00:08:31,440
+so here's the concept if you want to
+
+223
+00:08:31,440 --> 00:08:32,760
+protect against illegal static
+
+224
+00:08:32,760 --> 00:08:34,500
+downcasting you need some way to
+
+225
+00:08:34,500 --> 00:08:36,479
+identify what the type of the object is
+
+226
+00:08:36,479 --> 00:08:38,580
+that is being downcasted you don't know
+
+227
+00:08:38,580 --> 00:08:40,500
+what it is statically at compile time so
+
+228
+00:08:40,500 --> 00:08:41,940
+you need to be able to check at runtime
+
+229
+00:08:41,940 --> 00:08:44,820
+but we can't add identifiers into
+
+230
+00:08:44,820 --> 00:08:47,240
+objects generically
+
+231
+00:08:47,240 --> 00:08:49,680
+because that breaks that that changes
+
+232
+00:08:49,680 --> 00:08:51,420
+the object layout and so it's an ABI
+
+233
+00:08:51,420 --> 00:08:53,880
+breaking change it's it's similar to
+
+234
+00:08:53,880 --> 00:08:57,360
+requiring rtti uh but for objects that
+
+235
+00:08:57,360 --> 00:08:59,100
+already have virtual functions those
+
+236
+00:08:59,100 --> 00:09:01,080
+objects already have an identifier which
+
+237
+00:09:01,080 --> 00:09:03,120
+is the V table pointer that the object
+
+238
+00:09:03,120 --> 00:09:05,279
+contains we can actually use that to
+
+239
+00:09:05,279 --> 00:09:07,200
+uniquely identify objects
+
+240
+00:09:07,200 --> 00:09:09,420
+and so now that we have an identifier
+
+241
+00:09:09,420 --> 00:09:12,060
+that is just already baked into objects
+
+242
+00:09:12,060 --> 00:09:14,100
+that actually gives us a way that we
+
+243
+00:09:14,100 --> 00:09:17,580
+could do checks on downcasts to see if
+
+244
+00:09:17,580 --> 00:09:19,740
+they're legal or not without breaking
+
+245
+00:09:19,740 --> 00:09:20,940
+the Abi
+
+246
+00:09:20,940 --> 00:09:22,800
+and so that allows us to just
+
+247
+00:09:22,800 --> 00:09:24,540
+automatically convert all of the
+
+248
+00:09:24,540 --> 00:09:26,459
+existing static downcasts that we have
+
+249
+00:09:26,459 --> 00:09:29,100
+in our code into cascard protected
+
+250
+00:09:29,100 --> 00:09:31,200
+downcasts
+
+251
+00:09:31,200 --> 00:09:33,240
+foreign
+
+252
+00:09:33,240 --> 00:09:36,240
+so I am not like a C plus plus language
+
+253
+00:09:36,240 --> 00:09:38,399
+lawyer or anything I don't know how C
+
+254
+00:09:38,399 --> 00:09:40,320
+plus plus people necessarily talk about
+
+255
+00:09:40,320 --> 00:09:42,839
+some of this terminology but for the
+
+256
+00:09:42,839 --> 00:09:44,880
+sake of this presentation I want to tell
+
+257
+00:09:44,880 --> 00:09:47,220
+you how I talk about the the code that
+
+258
+00:09:47,220 --> 00:09:50,339
+we're going to be looking at so I call
+
+259
+00:09:50,339 --> 00:09:53,700
+the type that you are downcasting to
+
+260
+00:09:53,700 --> 00:09:55,980
+the left hand side type and I call it
+
+261
+00:09:55,980 --> 00:09:57,959
+the left hand side type because it's on
+
+262
+00:09:57,959 --> 00:10:00,120
+the left hand side of the expression
+
+263
+00:10:00,120 --> 00:10:03,300
+very creative right and I call the right
+
+264
+00:10:03,300 --> 00:10:05,399
+hand side type
+
+265
+00:10:05,399 --> 00:10:09,360
+the type that you statically declare the
+
+266
+00:10:09,360 --> 00:10:11,760
+right hand type of right hand side of
+
+267
+00:10:11,760 --> 00:10:13,800
+the expression to B so in this case
+
+268
+00:10:13,800 --> 00:10:16,200
+we're downcasting something that is
+
+269
+00:10:16,200 --> 00:10:19,140
+statically declared as an animal to be a
+
+270
+00:10:19,140 --> 00:10:20,700
+cat so I would say the right hand side
+
+271
+00:10:20,700 --> 00:10:22,620
+type is animal
+
+272
+00:10:22,620 --> 00:10:24,720
+and then the underlying type is the the
+
+273
+00:10:24,720 --> 00:10:27,000
+actual type of the object that you're
+
+274
+00:10:27,000 --> 00:10:28,740
+casting and we don't know that
+
+275
+00:10:28,740 --> 00:10:30,420
+statically at compile time we can only
+
+276
+00:10:30,420 --> 00:10:33,260
+know that at runtime
+
+277
+00:10:35,519 --> 00:10:37,800
+so castguard has a few requirements that
+
+278
+00:10:37,800 --> 00:10:39,660
+it's it's useful to discuss before we
+
+279
+00:10:39,660 --> 00:10:41,160
+talk about how the mitigation works just
+
+280
+00:10:41,160 --> 00:10:43,560
+so you aren't left wondering code needs
+
+281
+00:10:43,560 --> 00:10:44,880
+to be compiled with link time code
+
+282
+00:10:44,880 --> 00:10:47,519
+generation because we need a full world
+
+283
+00:10:47,519 --> 00:10:49,620
+view of all the code in the binary to
+
+284
+00:10:49,620 --> 00:10:51,000
+actually understand all the different
+
+285
+00:10:51,000 --> 00:10:52,620
+objects in play and all the different
+
+286
+00:10:52,620 --> 00:10:54,300
+casts that are going on
+
+287
+00:10:54,300 --> 00:10:56,279
+the objects obviously need to have a v
+
+288
+00:10:56,279 --> 00:10:57,959
+table because that's the identifier that
+
+289
+00:10:57,959 --> 00:10:58,980
+we're using
+
+290
+00:10:58,980 --> 00:11:01,380
+we also assume that the object itself is
+
+291
+00:11:01,380 --> 00:11:04,920
+valid so if you have another memory
+
+292
+00:11:04,920 --> 00:11:06,240
+safety vulnerability like you have a
+
+293
+00:11:06,240 --> 00:11:07,560
+buffer overflow and you're able to use
+
+294
+00:11:07,560 --> 00:11:10,260
+that to corrupt an object cascard isn't
+
+295
+00:11:10,260 --> 00:11:11,339
+going to provide you protection anymore
+
+296
+00:11:11,339 --> 00:11:13,500
+because cascard isn't the first
+
+297
+00:11:13,500 --> 00:11:16,019
+vulnerability in play cascard is really
+
+298
+00:11:16,019 --> 00:11:18,740
+just designed to protect against
+
+299
+00:11:18,740 --> 00:11:20,940
+vulnerabilities where the issue itself
+
+300
+00:11:20,940 --> 00:11:23,880
+is that you're just doing a bad downcast
+
+301
+00:11:23,880 --> 00:11:25,500
+so if you're able to corrupt memory in
+
+302
+00:11:25,500 --> 00:11:27,480
+other ways before you get to a cast all
+
+303
+00:11:27,480 --> 00:11:30,140
+bets are off
+
+304
+00:11:30,839 --> 00:11:32,640
+all right so let's talk about let's talk
+
+305
+00:11:32,640 --> 00:11:34,740
+about how castguard works and the best
+
+306
+00:11:34,740 --> 00:11:36,600
+way to the the best way to explain how
+
+307
+00:11:36,600 --> 00:11:39,000
+cascard works I think is just to look at
+
+308
+00:11:39,000 --> 00:11:41,399
+examples of what we actually do
+
+309
+00:11:41,399 --> 00:11:44,040
+so what does the compiler know if you
+
+310
+00:11:44,040 --> 00:11:45,420
+look at a piece of code like this the
+
+311
+00:11:45,420 --> 00:11:46,740
+compiler knows that it's a static
+
+312
+00:11:46,740 --> 00:11:49,079
+downcast and even if you didn't actually
+
+313
+00:11:49,079 --> 00:11:51,420
+use static cast you just did a c style
+
+314
+00:11:51,420 --> 00:11:53,100
+cast where you just you know used
+
+315
+00:11:53,100 --> 00:11:54,660
+parentheses and put the type that you
+
+316
+00:11:54,660 --> 00:11:56,820
+want to cast to the compiler actually
+
+317
+00:11:56,820 --> 00:11:59,519
+still knows that it's a static downcast
+
+318
+00:11:59,519 --> 00:12:00,120
+um
+
+319
+00:12:00,120 --> 00:12:03,300
+so we track that we know where the V
+
+320
+00:12:03,300 --> 00:12:05,880
+table pointer in the object is and we
+
+321
+00:12:05,880 --> 00:12:07,500
+know where the V tables themselves are
+
+322
+00:12:07,500 --> 00:12:09,120
+going to get laid out in the binary so
+
+323
+00:12:09,120 --> 00:12:11,519
+we know that cat's V table is at offset
+
+324
+00:12:11,519 --> 00:12:14,100
+500 into the binary or you know dogs V
+
+325
+00:12:14,100 --> 00:12:15,600
+table is an offset a thousand to the
+
+326
+00:12:15,600 --> 00:12:18,920
+binary we know where everything is
+
+327
+00:12:19,800 --> 00:12:22,260
+and if you look at how an object is laid
+
+328
+00:12:22,260 --> 00:12:24,180
+out in C plus
+
+329
+00:12:24,180 --> 00:12:27,779
+what you end up seeing here is that um
+
+330
+00:12:27,779 --> 00:12:30,180
+in in the case of the the base object
+
+331
+00:12:30,180 --> 00:12:33,180
+here in this diagram a the way that an a
+
+332
+00:12:33,180 --> 00:12:35,220
+object is laid out is you'll have the AV
+
+333
+00:12:35,220 --> 00:12:36,779
+table pointer at the beginning of the
+
+334
+00:12:36,779 --> 00:12:38,519
+object and then you have A's member
+
+335
+00:12:38,519 --> 00:12:40,019
+variables that come after that V table
+
+336
+00:12:40,019 --> 00:12:41,339
+pointer
+
+337
+00:12:41,339 --> 00:12:43,620
+and very important to C plus plus having
+
+338
+00:12:43,620 --> 00:12:45,480
+good performance is that when you
+
+339
+00:12:45,480 --> 00:12:48,300
+inherit from a really all that happens
+
+340
+00:12:48,300 --> 00:12:51,240
+is that the next object down the chain B
+
+341
+00:12:51,240 --> 00:12:54,240
+for example just has a copy of a right
+
+342
+00:12:54,240 --> 00:12:55,980
+at the beginning of it
+
+343
+00:12:55,980 --> 00:12:58,200
+and then any new member variables that b
+
+344
+00:12:58,200 --> 00:13:00,540
+introduces just get tacked onto the end
+
+345
+00:13:00,540 --> 00:13:02,700
+and if you look at the V table itself
+
+346
+00:13:02,700 --> 00:13:06,300
+for object B it will start with all of
+
+347
+00:13:06,300 --> 00:13:08,940
+the virtual functions that a introduced
+
+348
+00:13:08,940 --> 00:13:11,639
+and this is what allows you to do up
+
+349
+00:13:11,639 --> 00:13:14,220
+casts and downcasts in C plus plus
+
+350
+00:13:14,220 --> 00:13:17,760
+without actually requiring code like new
+
+351
+00:13:17,760 --> 00:13:19,260
+code generation to be added to the
+
+352
+00:13:19,260 --> 00:13:21,480
+binary you can take that same pointer
+
+353
+00:13:21,480 --> 00:13:24,839
+and interpret it as an A or as a b
+
+354
+00:13:24,839 --> 00:13:28,079
+because the layout is is structured so
+
+355
+00:13:28,079 --> 00:13:29,820
+that um so that that sort of thing works
+
+356
+00:13:29,820 --> 00:13:32,160
+if you have a b pointer the a member
+
+357
+00:13:32,160 --> 00:13:34,079
+variables are you know at a fixed offset
+
+358
+00:13:34,079 --> 00:13:36,620
+in that pointer
+
+359
+00:13:38,279 --> 00:13:40,200
+so with castguard since we're using V
+
+360
+00:13:40,200 --> 00:13:42,300
+tables as a way to identify the object
+
+361
+00:13:42,300 --> 00:13:44,639
+you really need to think about things in
+
+362
+00:13:44,639 --> 00:13:46,860
+terms of the V table view of the world
+
+363
+00:13:46,860 --> 00:13:49,380
+this was like one of the biggest uh like
+
+364
+00:13:49,380 --> 00:13:51,300
+cognitive shifts for me to wrap my head
+
+365
+00:13:51,300 --> 00:13:53,279
+around I kept trying to think about
+
+366
+00:13:53,279 --> 00:13:55,800
+checking for the validity of casts just
+
+367
+00:13:55,800 --> 00:13:58,019
+in terms of the classes that were in
+
+368
+00:13:58,019 --> 00:13:59,519
+play but I really needed to be thinking
+
+369
+00:13:59,519 --> 00:14:03,240
+about what are the V tables in play and
+
+370
+00:14:03,240 --> 00:14:05,399
+so if you have a class hierarchy like
+
+371
+00:14:05,399 --> 00:14:07,680
+the one on the left here the V table
+
+372
+00:14:07,680 --> 00:14:10,019
+hierarchy would be on the right and I
+
+373
+00:14:10,019 --> 00:14:12,240
+have the the mangled names that the
+
+374
+00:14:12,240 --> 00:14:13,940
+compiler uses but
+
+375
+00:14:13,940 --> 00:14:16,380
+this hierarchy effectively looks
+
+376
+00:14:16,380 --> 00:14:18,180
+identical to the the normal class
+
+377
+00:14:18,180 --> 00:14:19,920
+hierarchy because this is a very simple
+
+378
+00:14:19,920 --> 00:14:22,740
+single inheritance case but the compiler
+
+379
+00:14:22,740 --> 00:14:24,899
+does track V tables just like classes so
+
+380
+00:14:24,899 --> 00:14:26,940
+the compiler knows this is the the base
+
+381
+00:14:26,940 --> 00:14:30,120
+V table this BV table inherits from a
+
+382
+00:14:30,120 --> 00:14:32,220
+the CV table inherits from B the
+
+383
+00:14:32,220 --> 00:14:35,959
+compiler tracks all these relationships
+
+384
+00:14:37,200 --> 00:14:40,740
+and so conceptually if you want to do a
+
+385
+00:14:40,740 --> 00:14:43,920
+a cast check it's actually not extremely
+
+386
+00:14:43,920 --> 00:14:46,260
+complicated you end up building a table
+
+387
+00:14:46,260 --> 00:14:48,720
+kind of in your head about hey if I want
+
+388
+00:14:48,720 --> 00:14:51,540
+to downcast to something of type c
+
+389
+00:14:51,540 --> 00:14:54,300
+what would the what V tables would a
+
+390
+00:14:54,300 --> 00:14:56,519
+type c be allowed to have
+
+391
+00:14:56,519 --> 00:14:58,920
+and the V tables that a type c would be
+
+392
+00:14:58,920 --> 00:15:00,300
+allowed to have
+
+393
+00:15:00,300 --> 00:15:03,240
+our C's V table and then anything that
+
+394
+00:15:03,240 --> 00:15:05,699
+inherits from C and in this example and
+
+395
+00:15:05,699 --> 00:15:06,839
+this is the example that I'm going to
+
+396
+00:15:06,839 --> 00:15:08,459
+use going for for all the rest of the
+
+397
+00:15:08,459 --> 00:15:10,440
+slides is I'm going to be downcasting to
+
+398
+00:15:10,440 --> 00:15:13,440
+it to something of type c the the V
+
+399
+00:15:13,440 --> 00:15:16,980
+tables that are allowed are c e and f so
+
+400
+00:15:16,980 --> 00:15:19,440
+there's three V tables that an object of
+
+401
+00:15:19,440 --> 00:15:22,639
+type c would be allowed to have
+
+402
+00:15:23,880 --> 00:15:25,860
+foreign
+
+403
+00:15:25,860 --> 00:15:28,260
+so you can build a check pretty easily
+
+404
+00:15:28,260 --> 00:15:31,199
+for this if the compiler sees a static
+
+405
+00:15:31,199 --> 00:15:33,060
+cast and it's a downcast to something of
+
+406
+00:15:33,060 --> 00:15:35,040
+type c all you're really doing is you're
+
+407
+00:15:35,040 --> 00:15:37,320
+going to read the V table out of that
+
+408
+00:15:37,320 --> 00:15:38,519
+object
+
+409
+00:15:38,519 --> 00:15:40,139
+first you need to check if the object is
+
+410
+00:15:40,139 --> 00:15:42,600
+null you're allowed to always static
+
+411
+00:15:42,600 --> 00:15:43,980
+downcast to null pointer so if the
+
+412
+00:15:43,980 --> 00:15:45,779
+object is null you let the cast happen
+
+413
+00:15:45,779 --> 00:15:47,760
+if the object isn't null you read the V
+
+414
+00:15:47,760 --> 00:15:49,620
+table pointer out of it and then you
+
+415
+00:15:49,620 --> 00:15:52,139
+check is this V table pointer the CV
+
+416
+00:15:52,139 --> 00:15:54,899
+table the EV table or the Fe table and
+
+417
+00:15:54,899 --> 00:15:56,579
+if it is then the cast is allowed to
+
+418
+00:15:56,579 --> 00:15:57,660
+succeed
+
+419
+00:15:57,660 --> 00:15:59,160
+but you probably look at this and you
+
+420
+00:15:59,160 --> 00:16:02,160
+think okay this would be an absolute
+
+421
+00:16:02,160 --> 00:16:04,320
+performance disaster right what if you
+
+422
+00:16:04,320 --> 00:16:05,639
+had a class hierarchy with like a
+
+423
+00:16:05,639 --> 00:16:07,560
+thousand different classes in it and you
+
+424
+00:16:07,560 --> 00:16:09,180
+have to sit there just chugging along
+
+425
+00:16:09,180 --> 00:16:11,279
+through every different V table that
+
+426
+00:16:11,279 --> 00:16:13,380
+that might be allowed this would be way
+
+427
+00:16:13,380 --> 00:16:16,260
+worse than Dynamic cast so clearly this
+
+428
+00:16:16,260 --> 00:16:18,480
+isn't actually a scalable solution it's
+
+429
+00:16:18,480 --> 00:16:22,320
+just to help us understand the concept
+
+430
+00:16:22,320 --> 00:16:23,820
+so if we want to build a scalable
+
+431
+00:16:23,820 --> 00:16:25,139
+solution we need to get a little bit
+
+432
+00:16:25,139 --> 00:16:26,880
+trickier so the first thing that we're
+
+433
+00:16:26,880 --> 00:16:28,320
+going to do is we're going to lay out
+
+434
+00:16:28,320 --> 00:16:30,420
+all the V tables that might be used in
+
+435
+00:16:30,420 --> 00:16:32,760
+one of these cast checks together and I
+
+436
+00:16:32,760 --> 00:16:34,440
+put them inside of a region in the
+
+437
+00:16:34,440 --> 00:16:36,180
+binary that I just call the cascard V
+
+438
+00:16:36,180 --> 00:16:39,240
+table region very creative naming
+
+439
+00:16:39,240 --> 00:16:41,040
+um one thing that I would like to call
+
+440
+00:16:41,040 --> 00:16:43,800
+out is that the cascard V table region
+
+441
+00:16:43,800 --> 00:16:45,899
+starts with a global variable and ends
+
+442
+00:16:45,899 --> 00:16:47,279
+with a global variable so there's a
+
+443
+00:16:47,279 --> 00:16:49,019
+global variable called cascard V table
+
+444
+00:16:49,019 --> 00:16:51,180
+start and a global variable called
+
+445
+00:16:51,180 --> 00:16:53,519
+cascard V table end and those will be
+
+446
+00:16:53,519 --> 00:16:55,380
+important a couple slides later but just
+
+447
+00:16:55,380 --> 00:16:57,420
+remember that for now so we don't give
+
+448
+00:16:57,420 --> 00:16:58,920
+any particular ordering to these V
+
+449
+00:16:58,920 --> 00:17:00,300
+tables we just kind of shove them all
+
+450
+00:17:00,300 --> 00:17:02,459
+together in this region
+
+451
+00:17:02,459 --> 00:17:03,660
+and then we're going to create some
+
+452
+00:17:03,660 --> 00:17:07,020
+bitmaps so this is the same diagram that
+
+453
+00:17:07,020 --> 00:17:09,780
+I had before it's just on it it just
+
+454
+00:17:09,780 --> 00:17:11,760
+illustrates you know on the left hand
+
+455
+00:17:11,760 --> 00:17:13,980
+side of the diagram is the type that
+
+456
+00:17:13,980 --> 00:17:16,199
+you're casting to and then you get a
+
+457
+00:17:16,199 --> 00:17:17,640
+check mark for any V table that's
+
+458
+00:17:17,640 --> 00:17:19,260
+allowed for that type
+
+459
+00:17:19,260 --> 00:17:21,480
+and then on on the the left hand side of
+
+460
+00:17:21,480 --> 00:17:22,740
+the slide I have
+
+461
+00:17:22,740 --> 00:17:24,599
+the order that these different V tables
+
+462
+00:17:24,599 --> 00:17:27,540
+are laid out so a b c d e f g h that's
+
+463
+00:17:27,540 --> 00:17:29,460
+the order that we decided to lay the V
+
+464
+00:17:29,460 --> 00:17:31,380
+tables out in
+
+465
+00:17:31,380 --> 00:17:33,960
+but once we know what
+
+466
+00:17:33,960 --> 00:17:35,580
+uh V tables are allowed for any
+
+467
+00:17:35,580 --> 00:17:37,140
+particular type we go and we start
+
+468
+00:17:37,140 --> 00:17:38,820
+building bitmaps and you build one
+
+469
+00:17:38,820 --> 00:17:40,799
+bitmap for every type that you might
+
+470
+00:17:40,799 --> 00:17:42,539
+downcast to
+
+471
+00:17:42,539 --> 00:17:44,340
+and the way that you create the bitmap
+
+472
+00:17:44,340 --> 00:17:46,380
+is first you need to choose what I call
+
+473
+00:17:46,380 --> 00:17:49,320
+the base V table and the base V table is
+
+474
+00:17:49,320 --> 00:17:52,620
+just going to be the V table that is
+
+475
+00:17:52,620 --> 00:17:54,960
+closest to the beginning of the binary
+
+476
+00:17:54,960 --> 00:17:58,679
+that is allowed for that particular cast
+
+477
+00:17:58,679 --> 00:18:01,380
+so in this example that that I've been
+
+478
+00:18:01,380 --> 00:18:02,820
+using where we're downcasting to
+
+479
+00:18:02,820 --> 00:18:04,320
+something of type c
+
+480
+00:18:04,320 --> 00:18:07,020
+the the V table that is closest to the
+
+481
+00:18:07,020 --> 00:18:09,240
+beginning of the binary is the CV table
+
+482
+00:18:09,240 --> 00:18:11,100
+so that will be our base
+
+483
+00:18:11,100 --> 00:18:13,559
+and then you compute the offset between
+
+484
+00:18:13,559 --> 00:18:15,660
+That Base V table and all the other V
+
+485
+00:18:15,660 --> 00:18:17,700
+tables that are allowed for the cast so
+
+486
+00:18:17,700 --> 00:18:20,280
+one offset will be zero because the CV
+
+487
+00:18:20,280 --> 00:18:22,440
+table is is allowed for the cast right
+
+488
+00:18:22,440 --> 00:18:25,559
+but any other V tables so E and F you
+
+489
+00:18:25,559 --> 00:18:27,780
+compute the offsets
+
+490
+00:18:27,780 --> 00:18:29,340
+and then you end up constructing a
+
+491
+00:18:29,340 --> 00:18:31,860
+bitmap and here's what the bitmap ends
+
+492
+00:18:31,860 --> 00:18:35,179
+up looking like for for the CV table is
+
+493
+00:18:35,179 --> 00:18:39,059
+every index in that bitmap in this case
+
+494
+00:18:39,059 --> 00:18:41,220
+represents an eight byte offset from the
+
+495
+00:18:41,220 --> 00:18:42,179
+base
+
+496
+00:18:42,179 --> 00:18:45,480
+and you put a 1 in there if
+
+497
+00:18:45,480 --> 00:18:48,179
+that particular offset is legal to cast
+
+498
+00:18:48,179 --> 00:18:49,679
+and you put a zero if that particular
+
+499
+00:18:49,679 --> 00:18:52,380
+offset is illegal to cast
+
+500
+00:18:52,380 --> 00:18:54,240
+and so when you want to use this bitmap
+
+501
+00:18:54,240 --> 00:18:57,780
+what you end up doing at runtime
+
+502
+00:18:57,780 --> 00:19:01,260
+is you compute the difference the delta
+
+503
+00:19:01,260 --> 00:19:03,360
+between That Base V table which we know
+
+504
+00:19:03,360 --> 00:19:05,280
+statically at compile time the base V
+
+505
+00:19:05,280 --> 00:19:07,799
+table will be the CV table
+
+506
+00:19:07,799 --> 00:19:10,020
+you can be the Delta between that and
+
+507
+00:19:10,020 --> 00:19:11,760
+the objects V table that you read at
+
+508
+00:19:11,760 --> 00:19:13,860
+runtime and you figure out how many
+
+509
+00:19:13,860 --> 00:19:15,780
+bytes apart are these things
+
+510
+00:19:15,780 --> 00:19:18,419
+and then depending on the the alignment
+
+511
+00:19:18,419 --> 00:19:20,160
+of the bitmap in this case the bitmap
+
+512
+00:19:20,160 --> 00:19:22,020
+every every index in the bitmap
+
+513
+00:19:22,020 --> 00:19:24,360
+represents eight bytes so we shift out
+
+514
+00:19:24,360 --> 00:19:26,940
+some of the low bits of that Delta
+
+515
+00:19:26,940 --> 00:19:30,360
+and now we have an offset or an ordinal
+
+516
+00:19:30,360 --> 00:19:32,700
+and you can use that to go and look up
+
+517
+00:19:32,700 --> 00:19:34,860
+in the bitmap to see hey is this bit a
+
+518
+00:19:34,860 --> 00:19:37,760
+one or a zero
+
+519
+00:19:37,799 --> 00:19:39,660
+and you end up doing this for all of the
+
+520
+00:19:39,660 --> 00:19:40,980
+different types that you might downcast
+
+521
+00:19:40,980 --> 00:19:42,600
+to so
+
+522
+00:19:42,600 --> 00:19:44,460
+you don't need to create a bitmap if
+
+523
+00:19:44,460 --> 00:19:46,020
+some particular type is never downcast
+
+524
+00:19:46,020 --> 00:19:47,880
+to there's no reason because the bitmap
+
+525
+00:19:47,880 --> 00:19:49,740
+will never be referenced it's just going
+
+526
+00:19:49,740 --> 00:19:52,260
+to take up space in the binary
+
+527
+00:19:52,260 --> 00:19:54,179
+um another thing worth noting is that in
+
+528
+00:19:54,179 --> 00:19:56,400
+this in these examples I have each bit
+
+529
+00:19:56,400 --> 00:19:58,559
+in the bitmap representing an eight byte
+
+530
+00:19:58,559 --> 00:20:00,780
+offset but it doesn't need to be an 8
+
+531
+00:20:00,780 --> 00:20:02,700
+byte offset if your V tables are really
+
+532
+00:20:02,700 --> 00:20:05,520
+big then we can go and make the
+
+533
+00:20:05,520 --> 00:20:07,740
+um you know each each bit in the bitmap
+
+534
+00:20:07,740 --> 00:20:10,260
+represents 64 bytes or 128 bytes or
+
+535
+00:20:10,260 --> 00:20:12,059
+however many bytes we want to so it's
+
+536
+00:20:12,059 --> 00:20:14,899
+totally flexible
+
+537
+00:20:16,080 --> 00:20:17,820
+okay so there's a lot of code here now
+
+538
+00:20:17,820 --> 00:20:19,799
+but but basically this is just the
+
+539
+00:20:19,799 --> 00:20:22,740
+improved check where rather than having
+
+540
+00:20:22,740 --> 00:20:24,780
+a big if statement that kind of Loops
+
+541
+00:20:24,780 --> 00:20:26,880
+through every single possible V table to
+
+542
+00:20:26,880 --> 00:20:28,679
+check for validity instead what we're
+
+543
+00:20:28,679 --> 00:20:30,419
+doing is we just we compute the Delta
+
+544
+00:20:30,419 --> 00:20:32,760
+between the base V table and the objects
+
+545
+00:20:32,760 --> 00:20:35,460
+V table at runtime
+
+546
+00:20:35,460 --> 00:20:38,520
+shift out some bits to compute an index
+
+547
+00:20:38,520 --> 00:20:40,500
+we do a range check to make sure that
+
+548
+00:20:40,500 --> 00:20:42,360
+index is actually in balance of the
+
+549
+00:20:42,360 --> 00:20:44,880
+bitmap if the index is so big that it's
+
+550
+00:20:44,880 --> 00:20:46,320
+not even imbalance of the bitmap then
+
+551
+00:20:46,320 --> 00:20:48,360
+you know the cast is illegal
+
+552
+00:20:48,360 --> 00:20:49,919
+and if it is in Balance then you do the
+
+553
+00:20:49,919 --> 00:20:52,620
+bit test and if the bid is a one the
+
+554
+00:20:52,620 --> 00:20:54,299
+cast is allowed if it's a zero the cast
+
+555
+00:20:54,299 --> 00:20:55,500
+isn't allowed
+
+556
+00:20:55,500 --> 00:20:57,600
+so this is a lot better this this cash
+
+557
+00:20:57,600 --> 00:21:00,240
+check ends up scaling pretty well it
+
+558
+00:21:00,240 --> 00:21:02,640
+doesn't matter how many V tables you
+
+559
+00:21:02,640 --> 00:21:05,460
+have really it still is a pretty
+
+560
+00:21:05,460 --> 00:21:06,960
+constant time operation that you're
+
+561
+00:21:06,960 --> 00:21:07,740
+doing
+
+562
+00:21:07,740 --> 00:21:09,660
+but it turns out we can actually do even
+
+563
+00:21:09,660 --> 00:21:11,520
+better than this
+
+564
+00:21:11,520 --> 00:21:14,480
+the bitmap is still not perfect because
+
+565
+00:21:14,480 --> 00:21:17,100
+bitmap requires an extra memory load
+
+566
+00:21:17,100 --> 00:21:18,780
+that you're doing and it's a Memory load
+
+567
+00:21:18,780 --> 00:21:20,760
+that might be in memory that isn't super
+
+568
+00:21:20,760 --> 00:21:24,000
+hot so it could take time
+
+569
+00:21:24,000 --> 00:21:26,160
+okay so if we want to do better then
+
+570
+00:21:26,160 --> 00:21:28,799
+instead of laying the V tables out using
+
+571
+00:21:28,799 --> 00:21:31,260
+just a random ordering we're actually
+
+572
+00:21:31,260 --> 00:21:33,360
+going to lay the V tables out using a
+
+573
+00:21:33,360 --> 00:21:35,700
+depth first ordering so it's kind of
+
+574
+00:21:35,700 --> 00:21:37,080
+like a depth first search I guess but
+
+575
+00:21:37,080 --> 00:21:38,220
+we're not actually searching for
+
+576
+00:21:38,220 --> 00:21:40,740
+anything but you lay out the AV table
+
+577
+00:21:40,740 --> 00:21:44,280
+and then the BV table c e go back up F
+
+578
+00:21:44,280 --> 00:21:46,200
+go back up to B
+
+579
+00:21:46,200 --> 00:21:49,559
+DV table G and then H so we lay the V
+
+580
+00:21:49,559 --> 00:21:51,659
+tables out in this order and you might
+
+581
+00:21:51,659 --> 00:21:52,740
+have a bunch of different V table
+
+582
+00:21:52,740 --> 00:21:55,140
+hierarchies in your binary and the order
+
+583
+00:21:55,140 --> 00:21:57,059
+that different hierarchies are laid out
+
+584
+00:21:57,059 --> 00:21:58,820
+relative to one another doesn't matter
+
+585
+00:21:58,820 --> 00:22:01,980
+it just matters how the V tables in any
+
+586
+00:22:01,980 --> 00:22:03,480
+particular hierarchy are laid out
+
+587
+00:22:03,480 --> 00:22:05,340
+relative to the other view tables in
+
+588
+00:22:05,340 --> 00:22:07,939
+that hierarchy
+
+589
+00:22:08,159 --> 00:22:11,100
+okay so then once again you might go
+
+590
+00:22:11,100 --> 00:22:12,960
+ahead and just kind of intuitively you
+
+591
+00:22:12,960 --> 00:22:15,000
+create bitmaps but one of the things
+
+592
+00:22:15,000 --> 00:22:16,799
+that you end up noticing when we create
+
+593
+00:22:16,799 --> 00:22:19,080
+the bitmaps this time is that when you
+
+594
+00:22:19,080 --> 00:22:20,940
+lay the V tables out using this depth
+
+595
+00:22:20,940 --> 00:22:23,520
+first ordering you never have a
+
+596
+00:22:23,520 --> 00:22:27,000
+situation where you have two V tables
+
+597
+00:22:27,000 --> 00:22:28,860
+that are legal for a cast and a v table
+
+598
+00:22:28,860 --> 00:22:30,659
+that's not legal for the cast in between
+
+599
+00:22:30,659 --> 00:22:31,799
+them
+
+600
+00:22:31,799 --> 00:22:34,080
+all the tables that are legal for any
+
+601
+00:22:34,080 --> 00:22:37,860
+particular cast are laid out linearly
+
+602
+00:22:37,860 --> 00:22:40,500
+next to one another
+
+603
+00:22:40,500 --> 00:22:42,120
+and because they're laid out next to one
+
+604
+00:22:42,120 --> 00:22:45,000
+another you don't actually need to look
+
+605
+00:22:45,000 --> 00:22:47,760
+up in the bitmap to see if the bitmap is
+
+606
+00:22:47,760 --> 00:22:50,760
+a one or a zero if the range check
+
+607
+00:22:50,760 --> 00:22:53,460
+passed in that example then you would
+
+608
+00:22:53,460 --> 00:22:55,860
+know that the bitmap itself contains a
+
+609
+00:22:55,860 --> 00:22:57,360
+one right so you don't even need to look
+
+610
+00:22:57,360 --> 00:22:58,559
+at the bitmap
+
+611
+00:22:58,559 --> 00:23:00,059
+and you can actually take this even
+
+612
+00:23:00,059 --> 00:23:01,679
+further and you can say you don't even
+
+613
+00:23:01,679 --> 00:23:03,419
+need to compute the ordinal you don't
+
+614
+00:23:03,419 --> 00:23:06,840
+need to do that shift operation on the
+
+615
+00:23:06,840 --> 00:23:08,820
+the offset between the base fee table
+
+616
+00:23:08,820 --> 00:23:11,280
+and the objects V table
+
+617
+00:23:11,280 --> 00:23:11,940
+um
+
+618
+00:23:11,940 --> 00:23:14,159
+you can just do a range check so so in
+
+619
+00:23:14,159 --> 00:23:15,600
+the example that I've been using where
+
+620
+00:23:15,600 --> 00:23:17,340
+we're downcasting to an object of type c
+
+621
+00:23:17,340 --> 00:23:20,100
+you can see so we have the CV table here
+
+622
+00:23:20,100 --> 00:23:21,840
+E and F
+
+623
+00:23:21,840 --> 00:23:24,720
+and so we can just say if
+
+624
+00:23:24,720 --> 00:23:27,900
+the Delta between the the base V table C
+
+625
+00:23:27,900 --> 00:23:31,080
+and the object c table is 16 bytes or
+
+626
+00:23:31,080 --> 00:23:32,159
+less
+
+627
+00:23:32,159 --> 00:23:33,780
+then that would mean that you must have
+
+628
+00:23:33,780 --> 00:23:37,799
+either an e a c an e or an f and so the
+
+629
+00:23:37,799 --> 00:23:40,980
+cast is allowed to succeed
+
+630
+00:23:40,980 --> 00:23:42,480
+and this is what this ends up looking
+
+631
+00:23:42,480 --> 00:23:44,880
+like in in C sudo code you you read the
+
+632
+00:23:44,880 --> 00:23:46,620
+V table pointer you compute the offset
+
+633
+00:23:46,620 --> 00:23:48,659
+and then you just compare is this offset
+
+634
+00:23:48,659 --> 00:23:50,340
+greater than 16 if it is then fail
+
+635
+00:23:50,340 --> 00:23:53,039
+otherwise succeed very very very simple
+
+636
+00:23:53,039 --> 00:23:56,520
+check here and we don't introduce any
+
+637
+00:23:56,520 --> 00:23:58,500
+real extra memory loads the only memory
+
+638
+00:23:58,500 --> 00:23:59,880
+load that we're doing in this check is
+
+639
+00:23:59,880 --> 00:24:01,620
+just reading the V table pointer but
+
+640
+00:24:01,620 --> 00:24:03,240
+given that you're using an object that
+
+641
+00:24:03,240 --> 00:24:04,620
+has a v table
+
+642
+00:24:04,620 --> 00:24:07,320
+that cache line is probably hot anyways
+
+643
+00:24:07,320 --> 00:24:09,539
+so it doesn't really cost us much to
+
+644
+00:24:09,539 --> 00:24:11,460
+read it
+
+645
+00:24:11,460 --> 00:24:13,320
+now some of you might be thinking wait a
+
+646
+00:24:13,320 --> 00:24:15,900
+second what if somebody had corrupted
+
+647
+00:24:15,900 --> 00:24:18,059
+this object already and and they made it
+
+648
+00:24:18,059 --> 00:24:20,100
+so that you know the V table that the
+
+649
+00:24:20,100 --> 00:24:21,780
+offset that you compute is like nine
+
+650
+00:24:21,780 --> 00:24:23,280
+bytes
+
+651
+00:24:23,280 --> 00:24:25,440
+you know it passes your range check even
+
+652
+00:24:25,440 --> 00:24:27,059
+though it's not even pointing at the
+
+653
+00:24:27,059 --> 00:24:28,980
+start of any V table in that region it's
+
+654
+00:24:28,980 --> 00:24:30,480
+like pointing into the middle of one of
+
+655
+00:24:30,480 --> 00:24:32,159
+the V tables
+
+656
+00:24:32,159 --> 00:24:33,840
+but you got to remember that our threat
+
+657
+00:24:33,840 --> 00:24:35,460
+model is that no memory corruption has
+
+658
+00:24:35,460 --> 00:24:36,720
+happened at this point we're assuming
+
+659
+00:24:36,720 --> 00:24:38,760
+that the object is valid and if the
+
+660
+00:24:38,760 --> 00:24:40,500
+object is valid then you would never
+
+661
+00:24:40,500 --> 00:24:43,200
+compute an offset of nine bytes because
+
+662
+00:24:43,200 --> 00:24:45,000
+that's just nonsense so we don't
+
+663
+00:24:45,000 --> 00:24:47,039
+actually need to worry about this
+
+664
+00:24:47,039 --> 00:24:49,380
+the range check is a completely legal
+
+665
+00:24:49,380 --> 00:24:52,580
+optimization for us to do
+
+666
+00:24:52,740 --> 00:24:54,179
+another thing that you might be
+
+667
+00:24:54,179 --> 00:24:56,220
+wondering is well what happens if this
+
+668
+00:24:56,220 --> 00:24:57,720
+object was created in a completely
+
+669
+00:24:57,720 --> 00:24:59,220
+different binary
+
+670
+00:24:59,220 --> 00:25:01,559
+and then you're casting it when you go
+
+671
+00:25:01,559 --> 00:25:03,960
+and you do this this check to say hey
+
+672
+00:25:03,960 --> 00:25:05,640
+what's the offset between the base fee
+
+673
+00:25:05,640 --> 00:25:07,799
+table in my current binary and the V
+
+674
+00:25:07,799 --> 00:25:09,840
+table that this object has that offset
+
+675
+00:25:09,840 --> 00:25:11,280
+is going to be huge it could be millions
+
+676
+00:25:11,280 --> 00:25:12,960
+of bytes because the object is in a
+
+677
+00:25:12,960 --> 00:25:15,360
+completely different binary
+
+678
+00:25:15,360 --> 00:25:17,460
+and so this is where those global
+
+679
+00:25:17,460 --> 00:25:19,080
+variables that I talked out talked about
+
+680
+00:25:19,080 --> 00:25:21,299
+before come into play what we actually
+
+681
+00:25:21,299 --> 00:25:23,700
+end up doing is we say if you pass the
+
+682
+00:25:23,700 --> 00:25:25,620
+range or if you fail the range check
+
+683
+00:25:25,620 --> 00:25:27,779
+your offset is too big
+
+684
+00:25:27,779 --> 00:25:31,620
+then we do a second check to to see is
+
+685
+00:25:31,620 --> 00:25:33,960
+the V table pointer that the object uh
+
+686
+00:25:33,960 --> 00:25:36,659
+contains is that within our binaries
+
+687
+00:25:36,659 --> 00:25:39,120
+cast guard region and if it isn't within
+
+688
+00:25:39,120 --> 00:25:40,860
+our binaries cast guard region then we
+
+689
+00:25:40,860 --> 00:25:43,320
+assume oh so this V table must be from a
+
+690
+00:25:43,320 --> 00:25:45,600
+different binary and we can't check that
+
+691
+00:25:45,600 --> 00:25:48,179
+we we can't do a security check on that
+
+692
+00:25:48,179 --> 00:25:50,039
+because it's from a different binary and
+
+693
+00:25:50,039 --> 00:25:52,500
+so we just fail open in that case but in
+
+694
+00:25:52,500 --> 00:25:54,600
+Windows most of the objects that our
+
+695
+00:25:54,600 --> 00:25:56,220
+binaries are using are not really
+
+696
+00:25:56,220 --> 00:25:58,860
+getting crossed across binary boundaries
+
+697
+00:25:58,860 --> 00:26:01,440
+like this or even in the case of com
+
+698
+00:26:01,440 --> 00:26:03,720
+objects they might get passed across
+
+699
+00:26:03,720 --> 00:26:06,179
+binary boundaries but you're not really
+
+700
+00:26:06,179 --> 00:26:08,100
+supposed to static cast com objects
+
+701
+00:26:08,100 --> 00:26:09,419
+yourself you're supposed to use Query
+
+702
+00:26:09,419 --> 00:26:11,279
+interface and the query interface code
+
+703
+00:26:11,279 --> 00:26:12,840
+lives in the binary that created the
+
+704
+00:26:12,840 --> 00:26:14,279
+object
+
+705
+00:26:14,279 --> 00:26:15,900
+um so it's it's pretty uncommon for us
+
+706
+00:26:15,900 --> 00:26:18,960
+to have casts happening on an object
+
+707
+00:26:18,960 --> 00:26:20,640
+that was not actually created inside of
+
+708
+00:26:20,640 --> 00:26:22,980
+your binary so for the for most cases
+
+709
+00:26:22,980 --> 00:26:24,360
+that we see
+
+710
+00:26:24,360 --> 00:26:28,140
+uh we can correctly uh do we like we can
+
+711
+00:26:28,140 --> 00:26:30,840
+we can do secure cast checks we don't
+
+712
+00:26:30,840 --> 00:26:32,159
+need to worry about the object coming
+
+713
+00:26:32,159 --> 00:26:34,340
+from another binary so this fail open
+
+714
+00:26:34,340 --> 00:26:36,840
+application compatibility check is not a
+
+715
+00:26:36,840 --> 00:26:39,500
+big deal for us
+
+716
+00:26:39,740 --> 00:26:42,720
+uh and you know I I included the the
+
+717
+00:26:42,720 --> 00:26:44,820
+final assembly that this compiles down
+
+718
+00:26:44,820 --> 00:26:46,799
+to just so you can see how minimal this
+
+719
+00:26:46,799 --> 00:26:48,659
+really is it's seven instructions total
+
+720
+00:26:48,659 --> 00:26:50,940
+to do a a cast check here there's one
+
+721
+00:26:50,940 --> 00:26:53,159
+memory load a couple branches the code
+
+722
+00:26:53,159 --> 00:26:55,620
+speculates very well the app compat
+
+723
+00:26:55,620 --> 00:26:57,480
+check is not contained in this assembly
+
+724
+00:26:57,480 --> 00:26:59,279
+because we don't expect it to be hit
+
+725
+00:26:59,279 --> 00:27:01,860
+very often so we actually put that out
+
+726
+00:27:01,860 --> 00:27:03,779
+of line we don't put it in the hot path
+
+727
+00:27:03,779 --> 00:27:06,179
+of a function we'll just jump to it if
+
+728
+00:27:06,179 --> 00:27:09,260
+it actually is needed
+
+729
+00:27:09,960 --> 00:27:12,299
+okay what about multiple inheritance
+
+730
+00:27:12,299 --> 00:27:14,520
+so multiple inheritance seems really
+
+731
+00:27:14,520 --> 00:27:16,980
+scary at first because you have a second
+
+732
+00:27:16,980 --> 00:27:18,779
+parent
+
+733
+00:27:18,779 --> 00:27:19,919
+but the thing that you have to remember
+
+734
+00:27:19,919 --> 00:27:22,320
+is the V table view of the world so when
+
+735
+00:27:22,320 --> 00:27:23,580
+you have multiple inheritance you
+
+736
+00:27:23,580 --> 00:27:25,620
+actually have two completely separate V
+
+737
+00:27:25,620 --> 00:27:27,539
+table hierarchies you have a v table
+
+738
+00:27:27,539 --> 00:27:30,240
+hierarchy that chains back to each of
+
+739
+00:27:30,240 --> 00:27:31,980
+your base classes
+
+740
+00:27:31,980 --> 00:27:33,480
+and if you look at how the objects
+
+741
+00:27:33,480 --> 00:27:35,640
+themselves are laid out you'll see that
+
+742
+00:27:35,640 --> 00:27:37,799
+the two base classes A and Z they're
+
+743
+00:27:37,799 --> 00:27:39,960
+laid out effectively How We Do how you
+
+744
+00:27:39,960 --> 00:27:41,159
+would expect they have their V table
+
+745
+00:27:41,159 --> 00:27:43,080
+they have their member variables and
+
+746
+00:27:43,080 --> 00:27:45,600
+anything that inherits from both of them
+
+747
+00:27:45,600 --> 00:27:49,140
+once again it has a copy of both the A
+
+748
+00:27:49,140 --> 00:27:50,580
+and Z object
+
+749
+00:27:50,580 --> 00:27:54,900
+so object B for example it has an A and
+
+750
+00:27:54,900 --> 00:27:56,340
+Z object which means it has two
+
+751
+00:27:56,340 --> 00:27:58,200
+different V tables one chaining to the a
+
+752
+00:27:58,200 --> 00:27:59,700
+hierarchy one chaining to the Z
+
+753
+00:27:59,700 --> 00:28:02,039
+hierarchy
+
+754
+00:28:02,039 --> 00:28:04,200
+and so when you encounter multiple
+
+755
+00:28:04,200 --> 00:28:06,299
+inheritance really the only question
+
+756
+00:28:06,299 --> 00:28:08,159
+that you need to ask yourself is which V
+
+757
+00:28:08,159 --> 00:28:10,740
+table hierarchy should I use here if
+
+758
+00:28:10,740 --> 00:28:14,640
+your right hand side type is an a object
+
+759
+00:28:14,640 --> 00:28:16,559
+then it's only guaranteed to have one V
+
+760
+00:28:16,559 --> 00:28:18,539
+table and so that's the V table that you
+
+761
+00:28:18,539 --> 00:28:20,279
+need to do your cast checks with and if
+
+762
+00:28:20,279 --> 00:28:21,900
+the right hand side type is a z object
+
+763
+00:28:21,900 --> 00:28:24,059
+again it's only guaranteed to have one V
+
+764
+00:28:24,059 --> 00:28:26,100
+table it might have more than one V
+
+765
+00:28:26,100 --> 00:28:28,559
+table but it's only guaranteed to have
+
+766
+00:28:28,559 --> 00:28:31,760
+one because it's a z
+
+767
+00:28:31,760 --> 00:28:35,940
+uh and if it is anything else if it's a
+
+768
+00:28:35,940 --> 00:28:38,159
+b or a c or a d or any of these objects
+
+769
+00:28:38,159 --> 00:28:40,200
+that do have multiple view tables then
+
+770
+00:28:40,200 --> 00:28:41,580
+you can use either V table it doesn't
+
+771
+00:28:41,580 --> 00:28:43,080
+matter which one you use for the cast
+
+772
+00:28:43,080 --> 00:28:45,659
+check what we do is we use the V table
+
+773
+00:28:45,659 --> 00:28:47,820
+that is closest to the beginning of the
+
+774
+00:28:47,820 --> 00:28:49,919
+binary just because it minimizes code
+
+775
+00:28:49,919 --> 00:28:52,380
+size you don't need to do math on the
+
+776
+00:28:52,380 --> 00:28:54,500
+pointer in order to
+
+777
+00:28:54,500 --> 00:28:58,820
+read the V table out of the object
+
+778
+00:29:00,960 --> 00:29:02,820
+so I mean the point here though is
+
+779
+00:29:02,820 --> 00:29:04,559
+really that multiple inheritance it
+
+780
+00:29:04,559 --> 00:29:05,820
+seems scary but it's actually
+
+781
+00:29:05,820 --> 00:29:07,380
+effectively identical to single
+
+782
+00:29:07,380 --> 00:29:10,200
+inheritance we still do range checks it
+
+783
+00:29:10,200 --> 00:29:12,840
+still optimizes extremely well you just
+
+784
+00:29:12,840 --> 00:29:15,539
+need to be diligent about which V table
+
+785
+00:29:15,539 --> 00:29:17,220
+am I going to use or which V table
+
+786
+00:29:17,220 --> 00:29:19,440
+hierarchy am I going to use for the cash
+
+787
+00:29:19,440 --> 00:29:21,740
+check
+
+788
+00:29:22,080 --> 00:29:23,580
+um there's one final thing which is
+
+789
+00:29:23,580 --> 00:29:25,919
+virtual based inheritance but I don't
+
+790
+00:29:25,919 --> 00:29:27,659
+have time to talk about it because it is
+
+791
+00:29:27,659 --> 00:29:31,140
+very complicated C plus feature what I
+
+792
+00:29:31,140 --> 00:29:32,520
+will say though is that virtual base
+
+793
+00:29:32,520 --> 00:29:34,860
+inheritance is the one case where we
+
+794
+00:29:34,860 --> 00:29:36,960
+actually need to use bitmap checks
+
+795
+00:29:36,960 --> 00:29:38,880
+sometimes you can't always handle them
+
+796
+00:29:38,880 --> 00:29:40,980
+with range checks so that's why I spent
+
+797
+00:29:40,980 --> 00:29:42,419
+the first part of this talk talking
+
+798
+00:29:42,419 --> 00:29:44,520
+about how the bitmap checks were I've
+
+799
+00:29:44,520 --> 00:29:46,140
+included a bunch of information on this
+
+800
+00:29:46,140 --> 00:29:47,880
+in the appendix of this slide so you can
+
+801
+00:29:47,880 --> 00:29:49,740
+check it out uh once the slides go
+
+802
+00:29:49,740 --> 00:29:51,899
+online
+
+803
+00:29:51,899 --> 00:29:53,760
+okay so I had a few interesting things
+
+804
+00:29:53,760 --> 00:29:55,919
+that I I think they're interesting uh
+
+805
+00:29:55,919 --> 00:29:57,059
+that I that I discovered when we were
+
+806
+00:29:57,059 --> 00:29:58,980
+working on castguard so the first thing
+
+807
+00:29:58,980 --> 00:30:00,899
+is that cascar does not play Super
+
+808
+00:30:00,899 --> 00:30:03,480
+nicely with every single optimization
+
+809
+00:30:03,480 --> 00:30:05,520
+that there is out there uh one
+
+810
+00:30:05,520 --> 00:30:07,020
+optimization that the Linker has is
+
+811
+00:30:07,020 --> 00:30:09,720
+called identical comdat folding or ICF
+
+812
+00:30:09,720 --> 00:30:11,520
+and really all that the Linker is doing
+
+813
+00:30:11,520 --> 00:30:12,779
+here is it's saying hey you have two
+
+814
+00:30:12,779 --> 00:30:14,340
+read-only pieces of data that are the
+
+815
+00:30:14,340 --> 00:30:16,380
+same I don't need to include two
+
+816
+00:30:16,380 --> 00:30:17,880
+read-only pieces of data that are the
+
+817
+00:30:17,880 --> 00:30:19,080
+same in the binary I'm just going to
+
+818
+00:30:19,080 --> 00:30:20,580
+include it one time and everyone can
+
+819
+00:30:20,580 --> 00:30:22,440
+reference that single copy
+
+820
+00:30:22,440 --> 00:30:24,059
+but with cascard that's kind of a
+
+821
+00:30:24,059 --> 00:30:26,100
+problem because we're using the V tables
+
+822
+00:30:26,100 --> 00:30:28,080
+as a way to uniquely identify objects
+
+823
+00:30:28,080 --> 00:30:30,179
+and so we don't want all the V tables to
+
+824
+00:30:30,179 --> 00:30:32,159
+be merged into like one single copy
+
+825
+00:30:32,159 --> 00:30:34,380
+because then we can't uniquely identify
+
+826
+00:30:34,380 --> 00:30:37,080
+objects anymore and so any V table that
+
+827
+00:30:37,080 --> 00:30:39,059
+is laid out in the cascard region we
+
+828
+00:30:39,059 --> 00:30:42,179
+turn ICF off for if the V table is not
+
+829
+00:30:42,179 --> 00:30:43,799
+going to be used in a cast check then it
+
+830
+00:30:43,799 --> 00:30:46,020
+can it can still be icf'd by the Linker
+
+831
+00:30:46,020 --> 00:30:47,279
+we don't care about it but if it is
+
+832
+00:30:47,279 --> 00:30:50,820
+going to be used in a cash check no ICF
+
+833
+00:30:50,820 --> 00:30:53,520
+and that actually brings me to this
+
+834
+00:30:53,520 --> 00:30:54,960
+really interesting programming pattern
+
+835
+00:30:54,960 --> 00:30:57,299
+called crtp or the curiously recurring
+
+836
+00:30:57,299 --> 00:31:00,059
+template pattern this is a pattern that
+
+837
+00:31:00,059 --> 00:31:02,460
+is used a lot in some windows binaries
+
+838
+00:31:02,460 --> 00:31:04,620
+and the gist of this programming pattern
+
+839
+00:31:04,620 --> 00:31:06,840
+really is just that you might have a
+
+840
+00:31:06,840 --> 00:31:08,899
+base class and it has a virtual function
+
+841
+00:31:08,899 --> 00:31:11,580
+and then you have a class in the middle
+
+842
+00:31:11,580 --> 00:31:13,740
+and I call it Class B in this example
+
+843
+00:31:13,740 --> 00:31:15,600
+and the the interesting thing about
+
+844
+00:31:15,600 --> 00:31:18,240
+class B is that it takes a template
+
+845
+00:31:18,240 --> 00:31:20,039
+parameter and the template parameter is
+
+846
+00:31:20,039 --> 00:31:21,240
+a Class Type
+
+847
+00:31:21,240 --> 00:31:24,419
+and anything that inherits from class B
+
+848
+00:31:24,419 --> 00:31:28,440
+such as C in this example passes its own
+
+849
+00:31:28,440 --> 00:31:31,200
+type as that template parameter so
+
+850
+00:31:31,200 --> 00:31:32,880
+you're inheriting from your parent but
+
+851
+00:31:32,880 --> 00:31:34,740
+you're actually passing your own type as
+
+852
+00:31:34,740 --> 00:31:36,840
+the template parameter your parent it's
+
+853
+00:31:36,840 --> 00:31:39,059
+kind of weird and what class B ends up
+
+854
+00:31:39,059 --> 00:31:41,159
+doing is it will do things like static
+
+855
+00:31:41,159 --> 00:31:43,620
+cast to that type it was passed which
+
+856
+00:31:43,620 --> 00:31:45,240
+ends up being a static downcast it will
+
+857
+00:31:45,240 --> 00:31:46,799
+static downcast to the thing that
+
+858
+00:31:46,799 --> 00:31:49,700
+derived from it
+
+859
+00:31:49,740 --> 00:31:51,539
+important thing to realize with this
+
+860
+00:31:51,539 --> 00:31:53,159
+programming pattern is that if you look
+
+861
+00:31:53,159 --> 00:31:56,340
+at the class or the the class diagram in
+
+862
+00:31:56,340 --> 00:31:58,080
+source code it looks like there's only
+
+863
+00:31:58,080 --> 00:32:00,179
+one class B but if you look at it from
+
+864
+00:32:00,179 --> 00:32:02,600
+the compiler's perspective each of those
+
+865
+00:32:02,600 --> 00:32:06,000
+specialized versions of B is actually a
+
+866
+00:32:06,000 --> 00:32:10,580
+unique class and it has a unique V table
+
+867
+00:32:12,200 --> 00:32:14,760
+so why does cascard have issues with
+
+868
+00:32:14,760 --> 00:32:17,039
+this well it really comes down to the
+
+869
+00:32:17,039 --> 00:32:18,659
+identical combat folding stuff that I
+
+870
+00:32:18,659 --> 00:32:21,179
+was talking about before so without
+
+871
+00:32:21,179 --> 00:32:23,580
+castguard enabled you might have
+
+872
+00:32:23,580 --> 00:32:25,140
+functions like there's this do stuff
+
+873
+00:32:25,140 --> 00:32:26,760
+function here and I realize it's hard to
+
+874
+00:32:26,760 --> 00:32:29,520
+leave hard to read but all the do stuff
+
+875
+00:32:29,520 --> 00:32:31,620
+function does effectively is it does a
+
+876
+00:32:31,620 --> 00:32:34,260
+static downcast and static downcasts
+
+877
+00:32:34,260 --> 00:32:37,679
+normally have no code generation and so
+
+878
+00:32:37,679 --> 00:32:39,059
+all of these different do stuff
+
+879
+00:32:39,059 --> 00:32:41,100
+functions for each specialized version
+
+880
+00:32:41,100 --> 00:32:43,799
+of Class B they compile to the exact
+
+881
+00:32:43,799 --> 00:32:46,320
+same assembly and so the Linker looks at
+
+882
+00:32:46,320 --> 00:32:49,440
+that and merges it all into one but when
+
+883
+00:32:49,440 --> 00:32:51,059
+you put cast guard checks on these
+
+884
+00:32:51,059 --> 00:32:53,220
+downcasts suddenly you have type
+
+885
+00:32:53,220 --> 00:32:56,340
+specific downcast checks in all of the
+
+886
+00:32:56,340 --> 00:32:58,080
+different functions
+
+887
+00:32:58,080 --> 00:33:00,480
+and those functions can now no longer be
+
+888
+00:33:00,480 --> 00:33:02,159
+merged together because one version is
+
+889
+00:33:02,159 --> 00:33:03,960
+doing a cast check for downcasting to
+
+890
+00:33:03,960 --> 00:33:06,899
+see one of them is doing a check for D
+
+891
+00:33:06,899 --> 00:33:07,980
+Etc
+
+892
+00:33:07,980 --> 00:33:09,659
+so you get more code
+
+893
+00:33:09,659 --> 00:33:11,520
+and then the other the other reason this
+
+894
+00:33:11,520 --> 00:33:13,980
+caused an issue is because these most
+
+895
+00:33:13,980 --> 00:33:17,760
+derived classes C and D for example they
+
+896
+00:33:17,760 --> 00:33:19,380
+do not change any of the virtual
+
+897
+00:33:19,380 --> 00:33:21,899
+functions which means that their virtual
+
+898
+00:33:21,899 --> 00:33:23,880
+function tables are identical to their
+
+899
+00:33:23,880 --> 00:33:26,100
+parents virtual function table and so
+
+900
+00:33:26,100 --> 00:33:27,840
+again the Linker would merge those but
+
+901
+00:33:27,840 --> 00:33:30,720
+with cast guard on those V tables are
+
+902
+00:33:30,720 --> 00:33:33,179
+used in cash checks so we do not allow
+
+903
+00:33:33,179 --> 00:33:35,940
+identical combat folding to happen and
+
+904
+00:33:35,940 --> 00:33:37,799
+so some of our winrt binaries when we
+
+905
+00:33:37,799 --> 00:33:39,240
+compiled with castguard ended up getting
+
+906
+00:33:39,240 --> 00:33:41,100
+20 bigger
+
+907
+00:33:41,100 --> 00:33:43,799
+which is unacceptable for us we're
+
+908
+00:33:43,799 --> 00:33:46,620
+calling that out explicitly but we can
+
+909
+00:33:46,620 --> 00:33:48,059
+actually optimize this away really well
+
+910
+00:33:48,059 --> 00:33:50,880
+because what we realized was that these
+
+911
+00:33:50,880 --> 00:33:53,220
+different specialized versions of B
+
+912
+00:33:53,220 --> 00:33:56,039
+they're never actually created directly
+
+913
+00:33:56,039 --> 00:33:58,019
+you only create the most derived types
+
+914
+00:33:58,019 --> 00:33:59,580
+in source code
+
+915
+00:33:59,580 --> 00:34:02,580
+and because those different B classes
+
+916
+00:34:02,580 --> 00:34:05,760
+are never created directly there's no
+
+917
+00:34:05,760 --> 00:34:07,919
+reason to include their V tables in the
+
+918
+00:34:07,919 --> 00:34:09,839
+cast checks at all because you know that
+
+919
+00:34:09,839 --> 00:34:11,460
+no one would ever have that V table the
+
+920
+00:34:11,460 --> 00:34:14,339
+object's never created
+
+921
+00:34:14,339 --> 00:34:16,859
+so if we're doing a downcast and we
+
+922
+00:34:16,859 --> 00:34:18,719
+currently have something that's a b
+
+923
+00:34:18,719 --> 00:34:21,659
+specialized by C and we're downcasting
+
+924
+00:34:21,659 --> 00:34:24,418
+it to just be a c the most derived type
+
+925
+00:34:24,418 --> 00:34:26,159
+well we know that if you currently have
+
+926
+00:34:26,159 --> 00:34:28,080
+a pointer that's a b specialized by C
+
+927
+00:34:28,080 --> 00:34:29,699
+there's only two different classes that
+
+928
+00:34:29,699 --> 00:34:32,159
+it could be it could be that b
+
+929
+00:34:32,159 --> 00:34:34,020
+specialized by C-Class or it could be
+
+930
+00:34:34,020 --> 00:34:36,780
+the most derived class the C-Class
+
+931
+00:34:36,780 --> 00:34:38,639
+but as I just mentioned we actually know
+
+932
+00:34:38,639 --> 00:34:40,500
+that it it couldn't actually be a b
+
+933
+00:34:40,500 --> 00:34:42,540
+specialized by C the compiler knows that
+
+934
+00:34:42,540 --> 00:34:44,940
+class was never created at all so the
+
+935
+00:34:44,940 --> 00:34:46,500
+only thing that that could actually be
+
+936
+00:34:46,500 --> 00:34:48,239
+is a c
+
+937
+00:34:48,239 --> 00:34:50,639
+and you're down casting to a c
+
+938
+00:34:50,639 --> 00:34:52,320
+and so we could just statically prove
+
+939
+00:34:52,320 --> 00:34:54,119
+that the cast is safe we know that the
+
+940
+00:34:54,119 --> 00:34:56,460
+only underlying object you could have as
+
+941
+00:34:56,460 --> 00:34:58,260
+a c in your casting to a c so you're
+
+942
+00:34:58,260 --> 00:35:00,440
+good to go cascard cannot provide
+
+943
+00:35:00,440 --> 00:35:02,760
+there's there's nothing for cascard to
+
+944
+00:35:02,760 --> 00:35:04,080
+do there so there's no reason to put a
+
+945
+00:35:04,080 --> 00:35:05,280
+check in place
+
+946
+00:35:05,280 --> 00:35:06,720
+and because we don't have to put a cast
+
+947
+00:35:06,720 --> 00:35:08,520
+card check in place
+
+948
+00:35:08,520 --> 00:35:12,060
+we can now uh continue doing the
+
+949
+00:35:12,060 --> 00:35:13,980
+identical comdat folding on all of those
+
+950
+00:35:13,980 --> 00:35:17,099
+do stuff functions and the V tables
+
+951
+00:35:17,099 --> 00:35:19,140
+themselves aren't referenced by cascard
+
+952
+00:35:19,140 --> 00:35:21,300
+checks anymore so they can be optimized
+
+953
+00:35:21,300 --> 00:35:23,099
+Away by the Linker as well
+
+954
+00:35:23,099 --> 00:35:25,500
+in the case of these winrt binaries that
+
+955
+00:35:25,500 --> 00:35:27,480
+we have in Windows that heavily use the
+
+956
+00:35:27,480 --> 00:35:29,880
+crtp programming pattern we're actually
+
+957
+00:35:29,880 --> 00:35:31,980
+able to statically prove away every
+
+958
+00:35:31,980 --> 00:35:33,839
+single cash check in the binary so we
+
+959
+00:35:33,839 --> 00:35:36,300
+went from a 20 binary size regression to
+
+960
+00:35:36,300 --> 00:35:38,220
+zero percent there's no more cast checks
+
+961
+00:35:38,220 --> 00:35:41,040
+at all it's just statically proven safe
+
+962
+00:35:41,040 --> 00:35:43,079
+and something else that was interesting
+
+963
+00:35:43,079 --> 00:35:48,300
+is that clang CFI and xfg which is a
+
+964
+00:35:48,300 --> 00:35:49,859
+technology that Microsoft has been
+
+965
+00:35:49,859 --> 00:35:52,079
+working on that's similar to clang CFI
+
+966
+00:35:52,079 --> 00:35:54,960
+they also caused really big optimization
+
+967
+00:35:54,960 --> 00:35:57,119
+issues with the crtp programming pattern
+
+968
+00:35:57,119 --> 00:35:59,400
+on the same binary that had a 20
+
+969
+00:35:59,400 --> 00:36:03,300
+regression with cascard xfg had a 43
+
+970
+00:36:03,300 --> 00:36:06,119
+binary size regression and so we went
+
+971
+00:36:06,119 --> 00:36:08,940
+made some changes to xfg to make it uh
+
+972
+00:36:08,940 --> 00:36:11,280
+not care about these template parameters
+
+973
+00:36:11,280 --> 00:36:12,599
+to classes
+
+974
+00:36:12,599 --> 00:36:14,220
+um so we kind of weaken the security of
+
+975
+00:36:14,220 --> 00:36:16,380
+it so that we could eliminate this 43
+
+976
+00:36:16,380 --> 00:36:18,240
+binary size regression
+
+977
+00:36:18,240 --> 00:36:20,400
+um claims I I don't think the the clang
+
+978
+00:36:20,400 --> 00:36:21,660
+folks are aware of this programming
+
+979
+00:36:21,660 --> 00:36:24,660
+pattern so if you use clang CFI on crtp
+
+980
+00:36:24,660 --> 00:36:26,820
+you'll probably get a lot of binary size
+
+981
+00:36:26,820 --> 00:36:28,820
+bloat
+
+982
+00:36:28,820 --> 00:36:31,920
+uh so at the end of the day performance
+
+983
+00:36:31,920 --> 00:36:33,599
+with cast guard is great
+
+984
+00:36:33,599 --> 00:36:35,160
+um the spec benchmarks show no
+
+985
+00:36:35,160 --> 00:36:37,320
+regression it's a super super minimal
+
+986
+00:36:37,320 --> 00:36:38,700
+amount of instructions that we're adding
+
+987
+00:36:38,700 --> 00:36:41,099
+to binaries it optimizes Well it
+
+988
+00:36:41,099 --> 00:36:44,579
+speculates Well uh so we're really not
+
+989
+00:36:44,579 --> 00:36:46,380
+concerned about the performance uh
+
+990
+00:36:46,380 --> 00:36:48,359
+binary size impact is Tiny it's under
+
+991
+00:36:48,359 --> 00:36:50,640
+one percent typically uh if your
+
+992
+00:36:50,640 --> 00:36:53,460
+component doesn't do casting static down
+
+993
+00:36:53,460 --> 00:36:55,020
+casting then you won't have any binary
+
+994
+00:36:55,020 --> 00:36:56,880
+size regression
+
+995
+00:36:56,880 --> 00:36:58,079
+um
+
+996
+00:36:58,079 --> 00:37:00,900
+so very easy for us to roll out
+
+997
+00:37:00,900 --> 00:37:02,700
+future possibilities that you could use
+
+998
+00:37:02,700 --> 00:37:04,619
+for this sort of technology and I'm not
+
+999
+00:37:04,619 --> 00:37:06,240
+committing to anything these are just
+
+1000
+00:37:06,240 --> 00:37:09,119
+ideas that we have we could possibly
+
+1001
+00:37:09,119 --> 00:37:10,920
+introduce a strict mode for casguard
+
+1002
+00:37:10,920 --> 00:37:13,320
+where we could say we're not doing app
+
+1003
+00:37:13,320 --> 00:37:15,540
+compat checks we only expect this object
+
+1004
+00:37:15,540 --> 00:37:17,339
+to be created in the binary and so it
+
+1005
+00:37:17,339 --> 00:37:18,599
+better have been created in the binary
+
+1006
+00:37:18,599 --> 00:37:20,099
+if it was created by a different binary
+
+1007
+00:37:20,099 --> 00:37:21,960
+we just crash
+
+1008
+00:37:21,960 --> 00:37:23,579
+we could also have a strict mode if we
+
+1009
+00:37:23,579 --> 00:37:25,800
+wanted that always does bitmap checks
+
+1010
+00:37:25,800 --> 00:37:28,079
+and and if you always do bitmap checks
+
+1011
+00:37:28,079 --> 00:37:29,220
+then you might be able to be more
+
+1012
+00:37:29,220 --> 00:37:31,560
+resilient even if someone corrupts your
+
+1013
+00:37:31,560 --> 00:37:34,880
+object Maybe
+
+1014
+00:37:34,980 --> 00:37:36,960
+you could also potentially use cascard
+
+1015
+00:37:36,960 --> 00:37:38,880
+as a way to accelerate Dynamic cast
+
+1016
+00:37:38,880 --> 00:37:41,400
+right now Dynamic cast is a huge amount
+
+1017
+00:37:41,400 --> 00:37:42,960
+of code but you could potentially just
+
+1018
+00:37:42,960 --> 00:37:45,960
+use cascard checks for these these
+
+1019
+00:37:45,960 --> 00:37:48,000
+downcasts and then if the cast guard
+
+1020
+00:37:48,000 --> 00:37:50,280
+check fails then you could just go and
+
+1021
+00:37:50,280 --> 00:37:52,619
+do a full Dynamic cash check and decide
+
+1022
+00:37:52,619 --> 00:37:54,720
+you know is should Dynamic cast really
+
+1023
+00:37:54,720 --> 00:37:58,578
+check this really fail this or not
+
+1024
+00:37:59,339 --> 00:38:01,920
+but again these are just ideas
+
+1025
+00:38:01,920 --> 00:38:03,060
+um nothing that we're committing to
+
+1026
+00:38:03,060 --> 00:38:05,240
+doing
+
+1027
+00:38:05,339 --> 00:38:06,900
+what I do want you all to take away from
+
+1028
+00:38:06,900 --> 00:38:09,780
+this though is that it is possible to do
+
+1029
+00:38:09,780 --> 00:38:12,660
+really really performant checks on
+
+1030
+00:38:12,660 --> 00:38:14,520
+downcasts like the the state of the art
+
+1031
+00:38:14,520 --> 00:38:17,099
+with Dynamic cast is it doesn't need to
+
+1032
+00:38:17,099 --> 00:38:19,260
+go that slow we can go way faster and
+
+1033
+00:38:19,260 --> 00:38:21,060
+have better type safety and C plus plus
+
+1034
+00:38:21,060 --> 00:38:23,099
+and this stuff matters because type
+
+1035
+00:38:23,099 --> 00:38:25,380
+confusion is a super important bug class
+
+1036
+00:38:25,380 --> 00:38:27,660
+and especially in the face of Hardware
+
+1037
+00:38:27,660 --> 00:38:29,220
+mitigations that a number of different
+
+1038
+00:38:29,220 --> 00:38:31,440
+companies are working on uh type
+
+1039
+00:38:31,440 --> 00:38:33,180
+confusion vulnerabilities are going to
+
+1040
+00:38:33,180 --> 00:38:36,960
+be a lot more important going forward
+
+1041
+00:38:36,960 --> 00:38:38,760
+uh for people that are interested
+
+1042
+00:38:38,760 --> 00:38:41,099
+hyper-v is currently flighting in the
+
+1043
+00:38:41,099 --> 00:38:43,260
+windsider windows Insider preview builds
+
+1044
+00:38:43,260 --> 00:38:46,200
+with castguard enabled it is currently
+
+1045
+00:38:46,200 --> 00:38:49,859
+enabled in uh what we call Telemetry
+
+1046
+00:38:49,859 --> 00:38:51,599
+mode so it won't actually fast fill the
+
+1047
+00:38:51,599 --> 00:38:55,200
+process it just uh logs Telemetry for us
+
+1048
+00:38:55,200 --> 00:38:57,060
+but cascard is such a compatible
+
+1049
+00:38:57,060 --> 00:38:58,380
+technology
+
+1050
+00:38:58,380 --> 00:39:00,839
+that we actually have had zero Telemetry
+
+1051
+00:39:00,839 --> 00:39:02,940
+mode failures with it and so we have
+
+1052
+00:39:02,940 --> 00:39:04,619
+switched it on to enforcement mode it
+
+1053
+00:39:04,619 --> 00:39:06,119
+just that hasn't reached the flighting
+
+1054
+00:39:06,119 --> 00:39:07,619
+yet
+
+1055
+00:39:07,619 --> 00:39:09,420
+and we are working on rolling this out
+
+1056
+00:39:09,420 --> 00:39:11,040
+to additional Windows components in the
+
+1057
+00:39:11,040 --> 00:39:12,660
+future and so you know you can keep your
+
+1058
+00:39:12,660 --> 00:39:14,040
+eyes open if you're interested in it
+
+1059
+00:39:14,040 --> 00:39:15,720
+hyperview was the first one but there
+
+1060
+00:39:15,720 --> 00:39:17,220
+will be more to come
+
+1061
+00:39:17,220 --> 00:39:18,720
+and uh finally I just want to
+
+1062
+00:39:18,720 --> 00:39:20,040
+acknowledge that I'm up here talking
+
+1063
+00:39:20,040 --> 00:39:21,720
+about this technology and I certainly
+
+1064
+00:39:21,720 --> 00:39:23,339
+did a lot of work on this technology but
+
+1065
+00:39:23,339 --> 00:39:24,839
+I am not the only one that worked on
+
+1066
+00:39:24,839 --> 00:39:27,540
+this technology we had a lot of people
+
+1067
+00:39:27,540 --> 00:39:29,520
+contribute to this project from Windows
+
+1068
+00:39:29,520 --> 00:39:33,119
+visual studio and msrc and of course we
+
+1069
+00:39:33,119 --> 00:39:35,400
+were inspired by uh the the clang at
+
+1070
+00:39:35,400 --> 00:39:37,619
+sanitized CFI derived cast so none of
+
+1071
+00:39:37,619 --> 00:39:39,480
+this stuff would be possible without the
+
+1072
+00:39:39,480 --> 00:39:41,520
+help from everyone who is involved in
+
+1073
+00:39:41,520 --> 00:39:43,380
+the project and everyone who inspired
+
+1074
+00:39:43,380 --> 00:39:44,579
+the project
+
+1075
+00:39:44,579 --> 00:39:47,579
+I am out of time so I do not have time
+
+1076
+00:39:47,579 --> 00:39:49,500
+for questions here but I do have time
+
+1077
+00:39:49,500 --> 00:39:52,260
+for questions in the side room that
+
+1078
+00:39:52,260 --> 00:39:54,000
+they'll be setting up so if you'd like
+
+1079
+00:39:54,000 --> 00:39:55,980
+to chat more uh let's let's just take it
+
+1080
+00:39:55,980 --> 00:39:58,860
+over there thanks for your time
+
+1081
+00:39:58,860 --> 00:40:01,969
+[Music]
+
+1082
+00:40:05,820 --> 00:40:08,919
+[Music]
+

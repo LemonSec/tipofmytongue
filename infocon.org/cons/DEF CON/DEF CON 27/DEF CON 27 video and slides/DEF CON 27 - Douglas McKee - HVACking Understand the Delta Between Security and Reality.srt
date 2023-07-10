@@ -1,0 +1,2440 @@
+﻿00:00:00.067,00:00:04.538
+>>Thanks for coming and uh,
+please join me in welcoming
+Douglas McKee and Mark Bereza.
+
+00:00:04.538,00:00:09.543
+[Applause] >>Thank you and
+welcome. Really excited to be
+here. We're glad you could come
+
+00:00:13.513,00:00:18.385
+see our talk today. We're going
+to be talking about a zero day
+uh, that we discovered. We're
+
+00:00:18.385,00:00:22.990
+going to walk through our
+vulnerability research process
+or exploitation process and post
+
+00:00:22.990,00:00:28.295
+exploitation and hopefully have
+some really cool demos for you
+uh, at the end. So first off,
+
+00:00:28.295,00:00:32.065
+who the two crazy idiots
+standing in front of you? Uh, my
+name’s Doug McKee. I'm a
+
+00:00:32.065,00:00:36.136
+Security Researcher for McAfee's
+Advanced Threat Research Team.
+I've got a little over eight
+
+00:00:36.136,00:00:41.241
+years of experience involved
+research and pen testing. >>And
+I'm Mark Bereza. I have a little
+
+00:00:41.241,00:00:44.711
+over eight months of experience
+in vulnerability research and
+pen testing. [Laughter].
+
+00:00:44.711,00:00:49.716
+>>That's great. So, first off,
+most importantly, what are we
+here to talk about today? We're
+
+00:00:51.852,00:00:56.456
+going to talk about an ICS
+system produced by a company
+called Delta Controls. They
+
+00:00:56.456,00:01:00.794
+refer to it as their Intelli Bus
+Manager. And what this is, is,
+it's called a Building
+
+00:01:00.794,00:01:06.400
+Controller. It's used to manage
+systems in a commercial
+building, things like HVAC,
+
+00:01:06.400,00:01:13.140
+lighting, pressure rooms, etc.
+and important thing to note is,
+that this device uses a
+
+00:01:13.140,00:01:18.111
+networking protocol called Back
+Net. That's largely how it
+manages these devices. BACnet
+
+00:01:18.111,00:01:23.283
+stands for Building Automation
+Control Network, and I also want
+to highlight that this is not
+
+00:01:23.283,00:01:28.488
+specific to Delta Systems. This
+is an industry wide used
+protocol. It also has a, a
+
+00:01:28.488,00:01:32.492
+slight, a little bit of router
+capability built into it, which
+I'll touch on here a little bit
+
+00:01:32.492,00:01:37.631
+later. And before I get, go any
+further, I often get the
+question, how do you pick your
+
+00:01:37.631,00:01:42.703
+targets, or why did you pick
+this target? Uh, generally, an
+ATR we try to pick targets that
+
+00:01:42.703,00:01:46.673
+had, can have a very high impact
+as if they were compromised.
+Obviously, there's a lot of cri,
+
+00:01:46.673,00:01:50.744
+critical systems that they fall
+into that and this happened to
+be one that we were able to
+
+00:01:50.744,00:01:54.881
+obtain. And also something of
+interest is the fact that it
+uses the back net protocol,
+
+00:01:54.881,00:01:58.752
+therefore it's network
+accessible. So let me take a
+moment to explain to you how
+
+00:01:58.752,00:02:03.056
+this works in the real world
+before we jump into hacking this
+device. So what you see in front
+
+00:02:03.056,00:02:08.261
+of you, is we have a wiring
+diagram, of one of these
+devices, uh, potentially for an
+
+00:02:08.261,00:02:12.699
+HVAC system. So you have the
+Delta Controller, which talks
+over a CANBUS to something
+
+00:02:12.699,00:02:18.472
+called modules. At the highest
+level, these modules take inputs
+to use, and uses it to control
+
+00:02:18.472,00:02:23.644
+outputs. So that each device is
+programd differently from the
+installer and depending on the
+
+00:02:23.644,00:02:27.881
+state of those inputs, it
+changes those outputs. So in the
+wiring diagram in front of you,
+
+00:02:27.881,00:02:32.219
+assuming it's an HVAC system,
+depending on the temperature,
+it'll do something like turn on,
+
+00:02:32.219,00:02:37.657
+on, on or off a boiler, turn on
+and off a pump, etc, etc. And
+that's just one example is used
+
+00:02:37.657,00:02:42.029
+across industries for multiple
+things, which we'll get back to
+here momentarily. So,
+
+00:02:42.029,00:02:46.466
+understanding this, how do we
+start looking for bugs? Or where
+do we start looking for vuln
+
+00:02:46.466,00:02:50.837
+research? Well, as I said, one
+of the most important things for
+us from attack vector is we like
+
+00:02:50.837,00:02:55.208
+the fact that it's network
+accessible. So in front of you,
+you can see uh, an end map scan
+
+00:02:55.208,00:02:59.446
+of the fact that it uses the
+back net protocol. So now we
+know what direction we want to
+
+00:02:59.446,00:03:03.016
+attack it from. We're going to
+do a network attack on this
+hopefully. Well what else do we
+
+00:03:03.016,00:03:08.488
+need? It'd be really useful to
+have the software. Well, lucky
+for us the developers left uh,
+
+00:03:08.488,00:03:13.794
+UART headers on the board, which
+was completely un-authenticated
+root access to the system. This
+
+00:03:13.794,00:03:18.498
+made it simple for us to pull
+off the firmware. So if we, if
+we look at that firmware for a
+
+00:03:18.498,00:03:23.470
+moment, a couple important
+things to note, is one, there
+was no ASLR and Annex was
+
+00:03:23.470,00:03:28.341
+enabled. And also, it was
+quickly able to see that symbols
+were left into the program. This
+
+00:03:28.341,00:03:31.311
+will become extremely useful and
+I will reference this multiple
+times throughout this
+
+00:03:31.311,00:03:35.816
+presentation. So we want to use
+a network attack vector. So what
+does that mean? Well, we're
+
+00:03:35.816,00:03:40.821
+going to start with fuzzing,
+like everybody else. So, we
+decided to use a commercial
+
+00:03:40.821,00:03:46.259
+fuzzer called the Defensics. Uh,
+this, this fuzzer has a built in
+module for a BACnet Server, we
+
+00:03:46.259,00:03:50.330
+weren't quite using a BACnet
+Server but because of the router
+protocol, the routerness of the
+
+00:03:50.330,00:03:55.769
+device, it had a lot of similar
+attributes. And one of that is,
+the back net protocol uses
+
+00:03:55.769,00:04:00.207
+broadcast traffic pretty
+frequently. So we use this
+fuzzer as a starting point, it
+
+00:04:00.207,00:04:04.411
+started the fuzz the device.
+This is one of those packets
+that you see on the screen, that
+
+00:04:04.411,00:04:09.282
+the fuzzer chose to use as a
+test case. Couple things I'll
+highlight real quickly. Uh,
+
+00:04:09.282,00:04:14.054
+besides the fact that it's a
+broadcast packet, the fuzzer
+here is sending about 8000 bytes
+
+00:04:14.054,00:04:18.291
+in what's called the BLBC layer,
+or the BACnet layer of the
+packet. You can even see that
+
+00:04:18.291,00:04:23.063
+Wire Shark is telling you that
+this layer is really only
+supposed to be a maximum of 1400
+
+00:04:23.063,00:04:27.434
+and 76 bytes. I think it's
+pretty easy to see here that the
+fuzzer is trying to look for a
+
+00:04:27.434,00:04:33.607
+buffer overflow attack. So we
+fire up Definsics, we run this
+test case, and after, after a
+
+00:04:33.607,00:04:38.111
+few minutes, we see this on the
+URX screen. Quite simply what
+you see, is that it's a core
+
+00:04:38.111,00:04:41.781
+dumping and the system's
+rebooting. Now I'm a little bit
+of a pessimist when it comes to
+
+00:04:41.781,00:04:45.318
+vulnerability research, so I
+never actually believe I found
+something the first time and so
+
+00:04:45.318,00:04:50.123
+I run the Definsics uh, at least
+two or three more times. And,
+for your amusement I took a
+
+00:04:50.123,00:04:53.960
+picture of Mark's face uh, once
+we were running a fuzzer because
+this is pretty much what it
+
+00:04:53.960,00:04:58.965
+looked like, and he got excited
+because we had a reproducible
+crash. Ironically, though, we, I
+
+00:05:01.301,00:05:04.571
+went back to that packet that I
+showed you on the previous
+screen, and I sent just that
+
+00:05:04.571,00:05:09.009
+packet to the device.
+Interestingly enough, the device
+did not crash. I sent that
+
+00:05:09.009,00:05:12.779
+packet twice, and the device
+still did not crash. Through a
+lot of trial and error, I
+
+00:05:12.779,00:05:17.317
+actually discovered that it took
+97 packets to crash this device.
+And I'll touch on this here
+
+00:05:17.317,00:05:22.856
+momentarily. But, after
+discovering it took 97 packets,
+I was able to do it repeatedly.
+
+00:05:22.856,00:05:27.194
+So that meant it was time to
+investigate further. Well as you
+saw the system produced a core
+
+00:05:27.194,00:05:30.497
+dump? So let's take a look at
+that core dump as a first place
+to start to try to figure out
+
+00:05:30.497,00:05:34.501
+where to move on. Obviously, we
+have a seg fault here that makes
+a lot of sense, the device
+
+00:05:34.501,00:05:39.172
+crashed. But what can we learn
+about that looking at the
+registers? Well, let's start
+
+00:05:39.172,00:05:43.043
+with the R0 register. For those
+of you that haven't fallen
+asleep yet, you might notice
+
+00:05:43.043,00:05:47.180
+some similarity and what's in
+the R0 register to the packet to
+which Defensics decided to send
+
+00:05:47.180,00:05:50.984
+to the system. There's a lot
+twenty twos there are pass key
+quotation marks. That's
+
+00:05:50.984,00:05:54.788
+interesting. We know that that's
+network data. If we keep
+thinking about network data and
+
+00:05:54.788,00:06:00.994
+we look forward at R3 and R8, R3
+has the value 81 in it. For
+those of you that we're smart
+
+00:06:00.994,00:06:06.566
+enough not to read the BACnet
+RFC, you wouldn't know that 81
+is the first bite, uh set in all
+
+00:06:06.566,00:06:10.770
+BACnet packets, this indicates
+the BLBC layer. Again, this
+indicates that there's some
+
+00:06:10.770,00:06:15.875
+networking data in the system.
+And if we take a look at R8, and
+we account for the the Indians
+
+00:06:15.875,00:06:20.747
+inside the computer, we know
+that this is 47, 808, or the
+source or destination port. So
+
+00:06:20.747,00:06:24.918
+once again, we have some clues
+that we have networking data
+where the crash is occurring.
+
+00:06:24.918,00:06:29.389
+Obviously, the next and most
+important question is, where in
+the system is it crashing? Uh,
+
+00:06:29.389,00:06:33.693
+and we can look at the back
+trace and the R, LR register to
+give us hints on that. So let's
+
+00:06:33.693,00:06:38.732
+just do that, let's go to the
+exact addresses in memory, where
+the crash is occurring. Well,
+
+00:06:38.732,00:06:43.770
+lucky for us, we find ourselves
+inside MEMCPY. And not only do
+we find ourselves in, inside of
+
+00:06:43.770,00:06:49.209
+MEMCPY, but the exact line of
+code which has crashed on, it is
+trying to take the data in R3
+
+00:06:49.209,00:06:54.214
+and store at the address located
+in R0. Well this fully explains
+why the system crashed. R0 has
+
+00:06:56.216,00:07:00.453
+an invalid address in it that
+came from our payload and it's
+attempting to store the first
+
+00:07:00.453,00:07:06.326
+byte of the networking payload,
+into that address. So this is
+obviously, extremely
+
+00:07:06.326,00:07:10.964
+interesting. But, I don't know
+for you, the last time I opened
+up any commercial Linux
+
+00:07:10.964,00:07:15.702
+application, MEMCPY was called
+more than once. So this is not
+enough, sometimes MEMCPY’s
+
+00:07:15.702,00:07:19.572
+called hundreds of times. So
+what is the exact code path that
+triggered this, that triggered
+
+00:07:19.572,00:07:25.412
+this crash? We can use the LR
+register to help us figure that
+out. In ARM, the LR register
+
+00:07:25.412,00:07:29.949
+points to the instruction that's
+going to be executed after a
+function call. So to actually
+
+00:07:29.949,00:07:33.787
+know what function was called,
+we need to look one instruction
+before that address being
+
+00:07:33.787,00:07:39.492
+pointed by the LR register. By
+then doing so, we can see a
+function called scNetMove. Thank
+
+00:07:39.492,00:07:45.165
+you again for leaving the
+symbols in, it was extremely
+useful. If we dig into scNetMove
+
+00:07:45.165,00:07:50.704
+function, it's actually just a
+wrapper for MEMCPY . And this
+becomes the place of, to start
+
+00:07:50.704,00:07:54.974
+as far as understanding why this
+vulnerability exists. And if we
+continue down this path, and we
+
+00:07:54.974,00:08:00.280
+use the IDD compilers and a
+little bit of a, a little bit of
+intuition, we can actually very
+
+00:08:00.280,00:08:04.651
+easily statically analyse this
+bug and figure out why it's
+there. So, I've renamed some
+
+00:08:04.651,00:08:10.123
+variables here to help this be a
+little simpler to see. But what
+we have is we have a buffer,
+
+00:08:10.123,00:08:14.461
+which I've named Source. And
+that buffer is being used to
+read data off the wire from a,
+
+00:08:14.461,00:08:21.067
+uh, through a socket function.
+That buffer is hard coded to be
+1700 and 32 bytes, both in size
+
+00:08:21.067,00:08:24.771
+and what it is to read off the
+network. And then after its
+reading that off the network, it
+
+00:08:24.771,00:08:30.643
+stores that in a variable and
+I've renamed that Size. So, I
+want to point out for a second
+
+00:08:30.643,00:08:35.315
+that this in itself, there is no
+development flaw here. It's
+statically defined, it's
+
+00:08:35.315,00:08:40.320
+ensuring that it doesn't read
+more than 1700 and 32 bytes.
+This is perfectly fine code.
+
+00:08:40.320,00:08:44.824
+However, if we continue to look
+at this code, we’ll see a second
+buffer buffer which I've named
+
+00:08:44.824,00:08:50.530
+Destination, uh, which is
+allocated using the Linux packet
+Alec function for 1400 and 76
+
+00:08:50.530,00:08:54.200
+bytes. Again, if you didn't fall
+asleep in the beginning of the
+presentation, that number might
+
+00:08:54.200,00:08:58.538
+mean something to you. That is
+the number that is the, the
+acceptable amount of bytes which
+
+00:08:58.538,00:09:03.243
+is expected in a BACnet packet,
+however, it doesn't match the
+1700 and 32 from the other
+
+00:09:03.243,00:09:07.046
+buffer. Those experienced with
+vulnerability research and
+exploitation probably see where
+
+00:09:07.046,00:09:11.384
+I'm going with this. There's a
+further call down the line where
+that scNetMove function is
+
+00:09:11.384,00:09:16.356
+called, and it uses both those
+buffers, but it hasn't validated
+that it's the same size, and
+
+00:09:16.356,00:09:21.561
+hence we have a buffer overflow.
+But now I'll step back and
+remind you that I said just
+
+00:09:21.561,00:09:26.232
+sending that large packet did
+not crash the device. In fact,
+sending 2 of the large packets
+
+00:09:26.232,00:09:31.871
+didn't crash the device, it took
+97. So what's that all about?
+Well, the interesting thing is,
+
+00:09:31.871,00:09:37.477
+the large packet triggers a
+buffer overflow. It overflows a
+section of memory, or an address
+
+00:09:37.477,00:09:41.881
+is being stored for future
+MEMCPY. So what we've
+overwritten is that address,
+
+00:09:41.881,00:09:47.821
+hence why it was stored in R, R0
+in the beginning. So in order to
+exercise this vulnerability, it
+
+00:09:47.821,00:09:52.459
+took 97 more packets before
+tried to access that address,
+and what [clears throat], so
+
+00:09:52.459,00:09:57.330
+what we have, is we have the
+initial packet, which overrides
+the section of memory, because
+
+00:09:57.330,00:10:01.868
+of the buffer overflow and 97
+packets later, it takes that
+data and tries to write it to
+
+00:10:01.868,00:10:05.805
+that address. And we have a
+typical Write What Where
+condition. This is really
+
+00:10:05.805,00:10:09.442
+promising for us as
+vulnerability researchers,
+because, this means that
+
+00:10:09.442,00:10:15.281
+exploitation is highly likely.
+Well, now that we've analysed
+this statically and we think
+
+00:10:15.281,00:10:19.552
+that we have something worth
+going forward on, we'd really
+like the ability to dynamic,
+
+00:10:19.552,00:10:24.224
+dynamically debug the system.
+Anyone that has done this type
+of work before, static analysis
+
+00:10:24.224,00:10:29.963
+is great, but dynamic analysis
+really makes it a lot simpler.
+So, as expected, we compile a
+
+00:10:29.963,00:10:34.734
+GDP server for the correct
+architecture of our device,
+plopped it on there and, and
+
+00:10:34.734,00:10:40.306
+started to debug, except for we
+instantly had a crash. Uh, and
+as you can see, this has been
+
+00:10:40.306,00:10:45.311
+heavily redacted at the request
+of the vendor. But what you have
+going on here is, there is a, a
+
+00:10:45.311,00:10:49.215
+Watchdog error which occurs
+because we've triggered a
+Watchdog timer and the system
+
+00:10:49.215,00:10:55.188
+reboots. For those not familiar,
+in ICS systems Watchdog timers
+are extremely common. They're
+
+00:10:55.188,00:10:59.025
+used so that if the system
+stalls in any way, because these
+are critical systems, it takes
+
+00:10:59.025,00:11:03.062
+some action, in order to ensure
+that the system doesn't stay
+down, in this instance the
+
+00:11:03.062,00:11:07.734
+system reboots. However, it's a
+bit of a problem if you're
+trying to dynamically debug the
+
+00:11:07.734,00:11:12.605
+system. Well, because the error
+messages were left in and
+because symbols were left in, it
+
+00:11:12.605,00:11:17.710
+was actually very easy to track
+down this line of code. As you
+can see here, there are, I think
+
+00:11:17.710,00:11:22.815
+it's about 3, 3 counters, which
+are being decremented by 5. So
+when the counters hit zero, it
+
+00:11:22.815,00:11:27.153
+triggers the Watchdog timer,
+though and it trips and the
+device reboots. Well, this is
+
+00:11:27.153,00:11:32.458
+not a hard problem for us to fix
+as reverse engineers, we will
+just simply binary patch this,
+
+00:11:32.458,00:11:39.332
+this uh, binary. So we, we take
+the 5, we change it to zero, and
+now as far as the system is
+
+00:11:39.332,00:11:44.571
+concerned, it, it still executes
+that line of code and decrements
+the value, but it decrements it
+
+00:11:44.571,00:11:49.576
+by zero. As you can see on the
+right hand side of the screen,
+even IDA now removes that line.
+
+00:11:49.576,00:11:54.180
+It's not that it's not there.
+It's just ineffective. So
+thinking that we're, you know,
+
+00:11:54.180,00:11:58.585
+pretty smart, we reload this
+back onto the system, and we
+start debugging and of course,
+
+00:11:58.585,00:12:03.990
+it starts to work, until exactly
+3 minutes later, and 3 minutes
+later, the system reboots itself
+
+00:12:03.990,00:12:08.895
+again. Now, at this point,
+Mark’s pretty agitated because
+he thought he already fixed the
+
+00:12:08.895,00:12:13.199
+problem. So now we're, we’re
+looking and trying to figure out
+why the heck did the system
+
+00:12:13.199,00:12:20.173
+reboot. Well, uh, unfortunately,
+we forgot that in ICS systems,
+there's generally a hardware
+
+00:12:20.173,00:12:25.712
+Watchdog timer as well. And this
+hardware Watchdog timer was set
+in boot, as you can see on the
+
+00:12:25.712,00:12:30.717
+URX screen here, to 180 seconds
+or 3 minutes. So, how do we get
+past this? Well, if there's a
+
+00:12:33.886,00:12:39.192
+hardware Watchdog timer, that
+means the software on the system
+has to kick that Watchdog timer.
+
+00:12:39.192,00:12:45.098
+Well, in this instance, the
+developers for all of their
+functions exported that, the
+
+00:12:45.098,00:12:51.638
+functions of the SO files, which
+means that all we had to do was
+use their code, to kick the
+
+00:12:51.638,00:12:57.443
+Watchdog. So we wrote a small c
+program. We uh, were put,
+compiled the program for the
+
+00:12:57.443,00:13:02.515
+device, to execute those
+functions, and then set it to
+run on boot up. And so when the
+
+00:13:02.515,00:13:07.353
+system boot up, it called our
+Watchdog kicker, and it always
+kicked the dog. A combination of
+
+00:13:07.353,00:13:12.225
+this hardware Watchdog fix in
+the binary patch, and we were
+able to effectively remove the
+
+00:13:12.225,00:13:17.463
+Watchdog as a requirement for
+debugging. And we were on our
+way. Now, that was a short
+
+00:13:17.463,00:13:21.367
+tangent, but I thought it was
+worthwhile. So let's get back to
+the job at hand. We want to
+
+00:13:21.367,00:13:26.773
+write an exploit for the system.
+So where are we at? Well, we
+have a broadcast packet with a
+
+00:13:26.773,00:13:32.378
+payload of 1700 and 32 bytes. By
+sending that packet we can
+trigger a buffer overflow. That
+
+00:13:32.378,00:13:37.216
+buffer overflow by itself does
+not crash the system. In fact,
+it takes another 97 packages to
+
+00:13:37.216,00:13:41.988
+cause the crash. But, when we
+cause the crash, it manifests
+itself into it, Write What Where
+
+00:13:41.988,00:13:47.527
+condition. We know from our
+initial analysis, that there is
+no ASLR enabled on the system,
+
+00:13:47.527,00:13:52.532
+but we do know that NX or Dep is
+enabled. So, the next step is,
+we want execution control. And
+
+00:13:55.401,00:13:59.572
+if we have a Write What Where
+condition, this question simply
+becomes, what do we want to
+
+00:13:59.572,00:14:04.977
+write where? Well, considering
+that NX is enabled, we want to
+find a location in memory that
+
+00:14:04.977,00:14:10.083
+is writeable, that we, allow us
+to gain some control of
+execution. Lucky for us, there's
+
+00:14:10.083,00:14:15.655
+something called the Global
+Offset Table. This is uh, native
+to Linux and it's a table uh,
+
+00:14:15.655,00:14:22.261
+created at runtime, therefore it
+is usually writeable. And sim,
+simply speaking, it has a list
+
+00:14:22.261,00:14:26.566
+of function names and addresses.
+When the function is called, it
+looks up the address for that
+
+00:14:26.566,00:14:30.837
+function, and then it jumps to
+that section of memory. Well,
+since we have a Write What
+
+00:14:30.837,00:14:34.974
+Where, we can write anywhere we
+want, hypothetically speaking,
+we could take something like
+
+00:14:34.974,00:14:39.612
+malloc change the address of
+malloc, and then when malloc was
+called, we would be able to jump
+
+00:14:39.612,00:14:46.018
+to our section of code. This
+would gain us control of
+execution. But, we also, need to
+
+00:14:46.018,00:14:49.956
+know, what function do we want
+to overwrite? Now we know where
+we want to overwrite, but what
+
+00:14:49.956,00:14:55.328
+do we want to overwrite? This is
+a uh, multi threaded
+application. And so we really
+
+00:14:55.328,00:14:59.432
+want to make sure that we gain
+execution control as soon as
+possible after the, the
+
+00:14:59.432,00:15:03.603
+vulnerability is triggered. If
+we go back to where we saw the
+vulnerability exists in the
+
+00:15:03.603,00:15:08.574
+scNetMove function, we can see
+approximately 20 to 30 inch
+assembly instructions later, we
+
+00:15:08.574,00:15:13.913
+end up at a function called
+scDecodeBACnetUDP. This becomes
+the ideal place for us to gain
+
+00:15:13.913,00:15:18.684
+control of execution as fast as
+possible, from when the
+vulnerability is triggered. With
+
+00:15:18.684,00:15:23.823
+all that background, the next
+simple thing to do was to sim,
+to write our own, code, to gain,
+
+00:15:23.823,00:15:28.828
+to execute. And for that, I'm
+going to turn this over to Mark.
+>>Thanks Doug. All right, well,
+
+00:15:32.765,00:15:36.669
+before I get finished pwning
+this device, is important we
+step back and look at the
+
+00:15:36.669,00:15:41.240
+resources we already had
+available. So to begin, if
+you're paying attention, haven't
+
+00:15:41.240,00:15:46.145
+fallen asleep, you know that we
+have execution control on the
+system using the GOT overwrite
+
+00:15:46.145,00:15:50.483
+that Doug mentioned previously.
+Additionally, the developers
+were kind enough to leave Netcat
+
+00:15:50.483,00:15:54.754
+installed on the device and it’s
+your grand daddy's kind with the
+Dash-e flag, so you knew this
+
+00:15:54.754,00:15:59.058
+was going to be good.
+[Laughter]. Uh, lastly, we still
+control some memory on the heap,
+
+00:15:59.058,00:16:02.295
+from our initial buffer
+overflow, although a lot of it
+does get clobbered by the time
+
+00:16:02.295,00:16:06.766
+we get, execution control. Okay,
+so that's all well and good. The
+next question we have to ask
+
+00:16:06.766,00:16:12.305
+ourselves is, what do we want? A
+simple question. But as Mr.
+Gosling can attest to, sometimes
+
+00:16:12.305,00:16:17.143
+you just gotta ask. Well, we
+decided to start pretty simple.
+We wanted root access,
+
+00:16:17.143,00:16:22.615
+obviously, but ideally, we also
+want to persistence on the
+device across reboots. So the
+
+00:16:22.615,00:16:27.086
+last questions we have to ask
+ourselves were, how do we get
+this? But more importantly, how
+
+00:16:27.086,00:16:31.457
+do we get it easily? You'll soon
+see that we still had a very
+long road ahead of us, so we
+
+00:16:31.457,00:16:37.363
+wanted something quick. Well, by
+looking back at what we already
+had available to us, uh, a
+
+00:16:37.363,00:16:42.501
+straightforward way to get root
+access was be to use the Netcat
+already installed on the device
+
+00:16:42.501,00:16:46.806
+to obtain a root shell, or
+reverse shell. We can accomplish
+this hypothetically, by putting
+
+00:16:46.806,00:16:52.345
+some shellcode into that heat
+memory we control, and this
+shellcode would essentially, uh,
+
+00:16:52.345,00:16:55.915
+store and Netcat command for the
+reverse shell into R zero
+register, and then branch
+
+00:16:55.915,00:17:00.019
+through the address of the
+system function in the libc. Uh,
+The system function as you may,
+
+00:17:00.019,00:17:04.323
+or may not know, uh, executes
+the commands stored in its first
+and only parameter, in this case
+
+00:17:04.323,00:17:08.961
+a Netcat reverse shell command
+stored in R zero. This
+ultimately comes together to
+
+00:17:08.961,00:17:15.601
+create what is commonly referred
+to as a return to libc style
+attack, and, although this would
+
+00:17:15.601,00:17:20.139
+not grant us persistence on its
+own, ultimately, we can use our
+reverse shell in order to alter
+
+00:17:20.139,00:17:25.044
+some of the startup scripts and
+that would, that would grant us
+persistence on the device. So
+
+00:17:25.044,00:17:28.881
+that's all well and good. But if
+we actually take a look at the
+heat memory we control, we’ll
+
+00:17:28.881,00:17:34.053
+see this’s actually not so easy.
+So, the, the memory we still
+haven't met, uh, that we control
+
+00:17:34.053,00:17:39.692
+on the heap, is the 22’s bytes
+you see in front of you. And
+particularly, we have, the
+
+00:17:39.692,00:17:44.830
+longest continuous chunk that we
+control is only 32 bytes long,
+highlighted there in red. Now
+
+00:17:44.830,00:17:50.536
+why is this a problem? Well, the
+reason being is that somehow in
+this 32 bytes section, we had to
+
+00:17:50.536,00:17:54.974
+fit all of our shellcode
+instructions, and the command
+string for Netcat, which on its
+
+00:17:54.974,00:18:01.580
+own is 24 bytes. Using some very
+complex arithmetic, this leaves
+us with a grand total of 2 ARM
+
+00:18:01.580,00:18:06.686
+instructions. Which is simply
+not enough to do what we want.
+Now I know some smart asses out
+
+00:18:06.686,00:18:10.389
+there are probably thinking to
+themselves, just use thumb mode,
+you dingus, those instructions
+
+00:18:10.389,00:18:14.860
+are half the length. But,
+although this is a great idea,
+through trial and error, we
+
+00:18:14.860,00:18:18.564
+discovered that that mode is
+actually not enabled on the
+processor on the device, so
+
+00:18:18.564,00:18:24.470
+that’s out. I want to be, I'm
+gonna level for you guys here.
+At this point, we were stuck. I
+
+00:18:24.470,00:18:30.276
+couldn't sleep, I couldn't eat.
+I even considered switching over
+to an IoT webcam. Things were
+
+00:18:30.276,00:18:36.349
+looking very, very dark. But
+suddenly I was struck with some
+motivation. I thought to myself,
+
+00:18:36.349,00:18:41.520
+and I could, if I could live off
+of Chilli Chow Cuppa Noodles,
+registered trademark, for four
+
+00:18:41.520,00:18:47.026
+years, then this should be
+child's play. And then I got
+thinking some more. Child's
+
+00:18:47.026,00:18:52.031
+Play, children playing, children
+play hopscotch, memory
+hopscotch, that was the key. Now
+
+00:18:54.967,00:18:59.205
+what the hell am I talking
+about? Well, when we started
+looking, digging in further, we
+
+00:18:59.205,00:19:03.442
+found that, we don't have to
+just use the 32 continuous
+bytes, we could use any section
+
+00:19:03.442,00:19:08.547
+of memory we control, as long as
+it's at least 8 bytes long. This
+grants us one shell instruction
+
+00:19:08.547,00:19:14.487
+and it jumped to the next region
+of memory we control, or hot if
+you will. So, if we look back at
+
+00:19:14.487,00:19:19.158
+the heat memory we control,
+you'll see two such regions that
+qualify. This effectively
+
+00:19:19.158,00:19:24.230
+doubles the number of shellcode
+instructions we have from 2 to
+4, which is a great news. But we
+
+00:19:24.230,00:19:29.235
+weren't out of the woods just
+quite yet. Unfortunately, ar ARM
+is actually very uh, cheap with
+
+00:19:31.671,00:19:37.643
+its immediate values to be, to,
+as an understatement. In fact,
+it limits them to only a single
+
+00:19:37.643,00:19:41.647
+byte each with optional zero
+padding left to write. This
+meant that if we wanted to load
+
+00:19:41.647,00:19:45.551
+the address of system into a
+register, it would take all 4 of
+our instructions and that wasn't
+
+00:19:45.551,00:19:51.223
+going to fly. Well thankfully,
+we were able to use the address
+already located at R4, because
+
+00:19:51.223,00:19:55.094
+it was pretty close to the
+address of system, so if a
+simple offset, we could get
+
+00:19:55.094,00:20:00.533
+there. And to end, this resulted
+in shellcode that met our tight
+spa, memory space requirements
+
+00:20:00.533,00:20:05.071
+and granted us a reverse shell.
+But instead of explaining in
+detail how cool this all is, how
+
+00:20:05.071,00:20:11.711
+about I just show you instead.
+So here we have a demo video of
+the reverse shell in action. On
+
+00:20:11.711,00:20:16.582
+the right half of the screen, I
+hope you can read it, is the
+UART interface of the device.
+
+00:20:16.582,00:20:21.020
+Now the first thing we're going
+to do is we're going to run IF
+config to find out its IP
+
+00:20:21.020,00:20:26.625
+address so you can see there,
+ends in 7 dot 14. Next, we're
+going to print out the first few
+
+00:20:26.625,00:20:30.796
+lines of the of the pro, the
+devices startup script, let's
+just approve the, that we are in
+
+00:20:30.796,00:20:35.134
+fact in the Delta device, and
+you can see the copyright
+message there. Uh, next, we're
+
+00:20:35.134,00:20:38.938
+going to show that there's no
+instances of Netcat already
+running on the device, as you
+
+00:20:38.938,00:20:44.577
+can see, we will refer to this
+later. Moving over to the attack
+machine on the left, we start up
+
+00:20:44.577,00:20:49.281
+a Netcat lesson on our port 9,
+this will capture over our
+shell. And on the same attack
+
+00:20:49.281,00:20:53.519
+machine, we watch our exploit
+script, which leverages the
+vulnerability and launches the
+
+00:20:53.519,00:20:59.358
+Netcat command you see there.
+So, once it's finished
+executing, we move back to the
+
+00:20:59.358,00:21:04.130
+UART interface, and show that
+there is in fact, an instance of
+Netcat now running that wasn't
+
+00:21:04.130,00:21:10.069
+before, and it has the same
+command string. So far, so good.
+Okay, moving back to the Netcat
+
+00:21:10.069,00:21:14.473
+listener which should have
+connected, we run IF config
+again and the IP address match,
+
+00:21:14.473,00:21:19.478
+imagine that. And, just to
+confirm, we do in fact have root
+access. Okay, that's great.
+
+00:21:22.248,00:21:25.317
+[Applause], mission
+accomplished, right? [Applause].
+We got root access to the
+
+00:21:25.317,00:21:30.990
+system, everything's good, bra.
+[Laughter]. Like a tenured
+physics professor, we don't know
+
+00:21:30.990,00:21:36.929
+when to quit. I mean, after all,
+we wanted I/O control on the
+device. We're more interested in
+
+00:21:36.929,00:21:41.333
+the HVAC systems, the access
+control, the pressure rooms that
+are, being managed by this
+
+00:21:41.333,00:21:47.173
+device. And root access does not
+grant this out on its own, we
+needed to keep digging. Our, our
+
+00:21:47.173,00:21:51.577
+next strategy was to look at how
+the device uh, natively handles
+controlling the I/O hardware and
+
+00:21:51.577,00:21:56.315
+maybe get some of that code to
+work for us instead. So the
+first approach we tried, is to
+
+00:21:56.315,00:22:01.153
+look at the database files,
+located on the devices file
+system. Now something that
+
+00:22:01.153,00:22:06.258
+immediately jumped out at us
+here, is that I had no idea what
+the hell I was looking at. This
+
+00:22:06.258,00:22:12.031
+was too complicated. Well, the
+next thing we tried, is to look
+at what happens in terms of uh,
+
+00:22:12.031,00:22:16.402
+packets sent, when we tried to
+change the I/O state from the
+touchscreen. And maybe we could
+
+00:22:16.402,00:22:20.172
+replay some of those packets.
+Now those of you paying very
+close attention might notice
+
+00:22:20.172,00:22:24.376
+that the structure of the packet
+is actually very similar to the
+database, and that I still have
+
+00:22:24.376,00:22:29.315
+no idea what the hell I'm
+looking at. This was still too
+complicated. While the last
+
+00:22:29.315,00:22:35.621
+thing we tried is hooking to the
+I/O control functions natively.
+And this turned out to be just
+
+00:22:35.621,00:22:41.093
+right. Now, as Doug mentioned
+before, sim, symbols being left
+and proved invaluable here,
+
+00:22:41.093,00:22:45.097
+because functions of names like
+canioWriteOutput immediately
+jumped out at us, because we
+
+00:22:45.097,00:22:49.768
+knew that the I/O modules were
+controlled through the CAN bus.
+Furthermore, through reverse
+
+00:22:49.768,00:22:53.505
+engineering of these I/O control
+functions, we discovered that
+there was different ones
+
+00:22:53.505,00:22:58.877
+dedicated to controlling each
+category of I/O hardware, and
+there were 6 such categories.
+
+00:22:58.877,00:23:03.282
+You got your inputs, you got
+outputs and you got variables
+and this can, these can all be
+
+00:23:03.282,00:23:08.287
+either analogue or binary. Now
+our first initial naive approach
+was to try and execute these
+
+00:23:10.656,00:23:15.394
+functions from uh, external SICA
+like we did with the Watchdog
+kicking code. But unfortunately,
+
+00:23:15.394,00:23:20.532
+the handles to this, to these
+hardware devices, were trapped
+inside the program space
+
+00:23:20.532,00:23:24.470
+allocated for the Deltas
+existing programming, and they
+simply couldn't be accessed from
+
+00:23:24.470,00:23:29.675
+an external code. Somehow, we
+have to figure out how to insert
+our malicious code whatever
+
+00:23:29.675,00:23:34.747
+ended up being, inside the
+program space of the existing
+programming. Well, the solution
+
+00:23:34.747,00:23:39.351
+ended up being something called
+LD preload. And for those that
+don't know, LD preload is a
+
+00:23:39.351,00:23:45.624
+Linux environment variable, and
+its job is that any shared
+objects this variable points to,
+
+00:23:45.624,00:23:51.263
+are loaded first by the dynamic
+linker, when a binary’s
+executed. Now, this is not a new
+
+00:23:51.263,00:23:55.868
+or novel idea. This is actually
+a pretty common approach, for
+inserting code into an existing
+
+00:23:55.868,00:24:01.674
+program’s memory space, which is
+exactly what we wanted to do. So
+in our case, we uh, used our
+
+00:24:01.674,00:24:05.277
+persistence on the device to
+alter one of the startup
+scripts, have this variable
+
+00:24:05.277,00:24:11.884
+point to our malware, and then,
+get it inside the existing
+programming. And that's all well
+
+00:24:11.884,00:24:15.821
+and good. But how does this work
+mechanically? Well, let's begin
+by looking at the normal
+
+00:24:15.821,00:24:19.958
+operation of the device. So in
+normal operation, the first
+thing that occurs is that the
+
+00:24:19.958,00:24:25.297
+Delta programming will execute.
+Pretty straightforward. Once the
+dynamic linker starts doing its
+
+00:24:25.297,00:24:29.968
+job, it loads the shared objects
+in the following order. First,
+the dactetra binary, which was
+
+00:24:29.968,00:24:34.673
+the entry point, then all the
+Delta proprietary shared
+objects. And finally, all the
+
+00:24:34.673,00:24:40.579
+other miscellaneous libraries
+like libc. Now, once the program
+is, is actually running, you
+
+00:24:40.579,00:24:43.949
+have an I/O polling thread that
+consistently runs in the
+background, and this is what
+
+00:24:43.949,00:24:48.187
+calls those I/O control
+functions I mentioned earlier.
+So in this case, we're going to
+
+00:24:48.187,00:24:52.324
+look at an example where it
+calls the function
+caniowriteOutput, in order to
+
+00:24:52.324,00:24:58.097
+flip a relay, okay? Now, how
+does our use of LD preload
+change all this? Well, as
+
+00:24:58.097,00:25:02.735
+before, the Delta programming
+will execute, but now the
+dynamic linker wrote, loads our
+
+00:25:02.735,00:25:07.539
+malicious binaries first, before
+any of the other shared objects.
+This becomes important, when
+
+00:25:07.539,00:25:12.444
+that background thread is
+running, because now it ru, it
+loads the uh, it calls the
+
+00:25:12.444,00:25:16.448
+function of the same signature
+and our malicious binary instead
+of the real one, because those
+
+00:25:16.448,00:25:22.254
+symbols are loaded first. Better
+yet, through the use of a C
+function called DL Sim, we're
+
+00:25:22.254,00:25:26.658
+actually get, able to get a
+handle to the real function at
+runtime, which means we can sort
+
+00:25:26.658,00:25:31.330
+of do a catch and release
+approach where we intercept the
+course, these I/O control
+
+00:25:31.330,00:25:35.300
+functions, mess with them
+however we want, and pass it
+back to the real deal of the
+
+00:25:35.300,00:25:41.874
+program being none the wiser.
+Okay, so this is all well and
+good. We had malware, we knew
+
+00:25:41.874,00:25:47.546
+how to insert it, but the
+question is, where the hell do
+we put it? Well, here are our
+
+00:25:47.546,00:25:52.384
+options. Now this diagram is a
+very high level overview of the
+startup routine for the Delta
+
+00:25:52.384,00:25:56.822
+programming. And through some
+reversing, we discover that our
+best approach would be to use
+
+00:25:56.822,00:26:01.460
+the function highlighted in
+yellow, canioInet. The reason
+why, is because as Doug
+
+00:26:01.460,00:26:06.165
+mentioned, or maybe not
+mentioned, I don't remember, is
+uh, that this programming is all
+
+00:26:06.165,00:26:10.402
+vastly multi threaded. So in
+order to avoid race conditions
+or inconsistencies we wanted to
+
+00:26:10.402,00:26:16.141
+function that is called early
+and boot, called by a single
+thread and only called once, and
+
+00:26:16.141,00:26:20.512
+this function met all those
+criteria. Now, what does it look
+like once the malware is
+
+00:26:20.512,00:26:25.350
+inserted here? Well this is what
+it looks like. When this
+function is called, our malware
+
+00:26:25.350,00:26:29.388
+spins up a thread that runs in
+the background, and it listens
+for attack or, for, listens for
+
+00:26:29.388,00:26:33.692
+command set by the attacker over
+the network. Based on the
+content of these commands. The
+
+00:26:33.692,00:26:37.229
+malware intercept the
+corresponding I/O control
+function, in order to control
+
+00:26:37.229,00:26:42.201
+the device the attacker wants to
+uh, influence. Now I've sort of
+been doing a lot of hand waving
+
+00:26:42.201,00:26:46.538
+about how we actually alter
+these parameters in order to get
+it to do its job. So while I dig
+
+00:26:46.538,00:26:51.643
+into that a little bit. Now,
+although there's a whole array
+of I/O control functions that
+
+00:26:51.643,00:26:55.481
+did share one key commonality
+that we were able to take
+advantage of, and that's the
+
+00:26:55.481,00:26:59.485
+fact that the first parameter
+passed to them, as a data
+structure that essentially just
+
+00:26:59.485,00:27:04.590
+describes the hardware being
+managed, or being controlled. So
+in this case, you see an output
+
+00:27:04.590,00:27:09.595
+of it here through GDB, and
+highlighted in red is the
+devices’ ID, the first 4 bytes.
+
+00:27:09.595,00:27:14.700
+This is unique to each device.
+At a 12 byte offset, highlighted
+in blue, is the current state of
+
+00:27:14.700,00:27:19.438
+the device, which is actually
+the most useful. In this case,
+we have uh, 75 degrees
+
+00:27:19.438,00:27:25.144
+Fahrenheit as a floating point
+value. And then at uh, at an
+arbitrary offset, you could also
+
+00:27:25.144,00:27:29.081
+find a descriptive string of the
+device which is also extremely
+useful, because this is how we
+
+00:27:29.081,00:27:34.653
+know this device in particular,
+is responsible for monitoring
+room temperature. Using this
+
+00:27:34.653,00:27:37.823
+information is actually pretty
+straightforward to just alter
+the state store in these data
+
+00:27:37.823,00:27:42.394
+structures, pass it along, and
+then we have control of I/O.
+Okay, so now mission
+
+00:27:42.394,00:27:48.033
+accomplished, right? We control
+the I/O, we got root access.
+Well, the answer is still no.
+
+00:27:48.033,00:27:53.138
+The reason being is that our
+motto here ATR, unofficially, is
+to overdo everything. And in
+
+00:27:53.138,00:27:58.777
+that spirit, we decided to pimp
+out our malware of all kinds of
+premium features. First of which
+
+00:27:58.777,00:28:03.482
+you get automatic discovery of
+all the I/O devices. Sit back
+and relax as the malware does
+
+00:28:03.482,00:28:08.453
+all the recon for you. Next, you
+actually get remote control of
+the malware through an
+
+00:28:08.453,00:28:13.625
+interactive TCP session. My
+therapist told me that the most
+important key to a healthy
+
+00:28:13.625,00:28:18.597
+relationship is two way
+communication. [Laughter]. Now,
+am I saying this malware will
+
+00:28:18.597,00:28:23.535
+fix your marriage? Yes, that's
+exactly what I'm saying.
+[Laughter]. Next, you can see
+
+00:28:23.535,00:28:27.606
+the stay of all the hardware in
+real time, so you can see
+exactly how much damage you’re
+
+00:28:27.606,00:28:33.212
+causing. Who said happiness can
+be quantified. And last but
+certainly not least, with a
+
+00:28:33.212,00:28:37.816
+single command, you can revert
+the device to its original
+unhack state, wiping it of any
+
+00:28:37.816,00:28:42.921
+traces that the malware was ever
+there. And, if you call in the
+next 30 minutes, you can get all
+
+00:28:42.921,00:28:47.926
+this and more for just 30,000
+easy payments of 19.95, taxes
+and shipping not included. And
+
+00:28:51.363,00:28:54.566
+if you're still not convinced,
+be sure to check us both out at
+ICS village where you could see
+
+00:28:54.566,00:29:00.539
+this bad boy in action. Now, we
+are getting pretty happy from
+malware, our baby is looking
+
+00:29:00.539,00:29:05.410
+pretty good. But we're still
+missing one key premium feature.
+And that's a remote attack
+
+00:29:05.410,00:29:10.515
+vector. Now this looked pretty
+grim at first because, after
+all, we're using broadcast
+
+00:29:10.515,00:29:14.219
+traffic and that typically
+doesn't travel over the
+internet. But thankfully, a
+
+00:29:14.219,00:29:20.792
+certain BACnet technology came
+to save the day. And that is
+BBMD or BACnet/IP Broadcast
+
+00:29:20.792,00:29:25.764
+Management Device. A real tongue
+twister, but suffice it to say,
+it allows for the transmission
+
+00:29:25.764,00:29:32.704
+of BACnet broadcast traffic,
+exactly the kind we, we're
+using. Imagine that, over, uh,
+
+00:29:32.704,00:29:36.808
+the internet between different
+networks. So on the diagram on
+the right, you can see 2 such
+
+00:29:36.808,00:29:42.447
+BACnet networks, each having a
+BBMD. The way this works is
+that, uh, broadcast traffic
+
+00:29:42.447,00:29:48.587
+intended for a foreign network,
+is first sent to the source
+networks BBMD, this sends it to
+
+00:29:48.587,00:29:54.526
+the destination networks BBMD,
+and its job is to rebroadcast on
+the destination network. That's
+
+00:29:54.526,00:29:58.964
+a bit of an aside, but how does
+this help us? Well, through
+testing, we found out that using
+
+00:29:58.964,00:30:03.935
+this technology allows for our
+exploit to work entirely
+remotely. Now let me repeat
+
+00:30:03.935,00:30:10.242
+that, at the time that the slide
+was created, any EBMGR connected
+to the Internet of its default
+
+00:30:10.242,00:30:15.280
+network settings, could be pwned
+100% remotely, using this
+exploit. This is all pretty
+
+00:30:15.280,00:30:20.252
+scary stuff. But what's the
+actual impact? What can someone
+do with this? Well, for that,
+
+00:30:20.252,00:30:25.257
+I'm gonna hand it back to Doug.
+[Applause]. >>Thanks. So, as
+Mark said, we confirmed that
+
+00:30:32.898,00:30:37.736
+this would work 100% over the
+internet. Now I know everyone in
+the room will agree with me,
+
+00:30:37.736,00:30:41.506
+that no one would ever connect
+these systems to the internet,
+that would be completely
+
+00:30:41.506,00:30:47.646
+unreasonable. [Laughter]. Oh,
+that's right, Shodan tells us a
+little bit differently. At, at
+
+00:30:47.646,00:30:52.651
+the time that we created this
+slide, there was approximately
+500 of these exact devices
+
+00:30:52.651,00:30:56.822
+running firmware that was
+vulnerable to this connected
+worldwide. Because of the nature
+
+00:30:56.822,00:31:00.759
+of this vulnerability and where
+it's found in, [clears throat]
+in the code, if we extrapolate
+
+00:31:00.759,00:31:04.963
+out that other Delta devices
+likely have the same
+vulnerability, this number
+
+00:31:04.963,00:31:10.836
+balloons up to 16 to 700 teen
+um, I’m sorry, 1600 to 1700
+devices, uh, give or take about
+
+00:31:10.836,00:31:16.808
+10% for known honey pots. So,
+[clears throat], as Mark said,
+in the spirit of overdoing
+
+00:31:16.808,00:31:21.947
+things, we actually decided to
+build a fully functional HVAC
+unit controlled by a Delta
+
+00:31:21.947,00:31:27.719
+system, uh, in order to
+demonstrate the effectiveness of
+this type of attack. So if you
+
+00:31:27.719,00:31:32.524
+watch on the video, as we move
+to the back of this demo unit,
+you'll see all the components
+
+00:31:32.524,00:31:38.463
+you would see in a real working
+HVAC system. You'll have valves,
+pumps, fans, etc. And this was
+
+00:31:38.463,00:31:43.201
+actually created by a contract
+company that actually puts these
+systems into current data
+
+00:31:43.201,00:31:47.539
+centres. So this is as accurate
+as we could possibly make it.
+The only thing that's not 100%
+
+00:31:47.539,00:31:51.977
+accurate is we used cold water
+instead of a compressor, because
+my boss would not pay $8,000 for
+
+00:31:51.977,00:31:56.581
+a compressor. [Laughter]. On
+this side, we have an enclosed
+data se, uh, miniature enclosed
+
+00:31:56.581,00:32:01.686
+data centre, again with all the
+normal HVAC components, a raised
+floor and a server which
+
+00:32:01.686,00:32:05.891
+generates heat. For a moment, I
+want to draw your attention to
+something that was just on the
+
+00:32:05.891,00:32:09.694
+screen, the independent
+temperature sensor. The reason
+this is important is its the
+
+00:32:09.694,00:32:13.899
+only component that you would
+not find in real life. And it's
+there to over, we always know
+
+00:32:13.899,00:32:18.537
+the true temperature in the data
+centre, regardless of what the
+Delta says. Then on top of the
+
+00:32:18.537,00:32:23.008
+system, we've added some lights,
+just to show the state of
+different devices and to
+
+00:32:23.008,00:32:27.512
+indicate an alarm is active.
+Once again, the boss got annoyed
+at having a siren, so he forced
+
+00:32:27.512,00:32:32.184
+us to turn it into a light. So,
+but this alarm would simply
+indicate whether an alarm has
+
+00:32:32.184,00:32:36.855
+been triggered. This could be in
+the form of a, an audible siren,
+a light, or even email
+
+00:32:36.855,00:32:43.495
+notifications. This just
+indicates what an alarm has been
+centred on. So, if this is the
+
+00:32:43.495,00:32:48.600
+system, an HVAC system that is
+cooling a data centre, what
+would happen if we apply the
+
+00:32:48.600,00:32:55.006
+research we did to this system?
+Let's take a look. Here on the
+left hand side of the screen,
+
+00:32:55.006,00:32:59.444
+you can see it's hacker running
+the exploits script in the top
+right is a picture and picture
+
+00:32:59.444,00:33:03.415
+of the Delta controller. The
+attacker leverages the
+vulnerability to download the
+
+00:33:03.415,00:33:08.053
+premium malware which Mark was
+talking about, and a few other
+extra pictures, and the device
+
+00:33:08.053,00:33:13.258
+reboots in order to implement
+the LD preload strategy, which
+Mark discussed. Now when the
+
+00:33:13.258,00:33:17.562
+device comes back up, we've been
+a little creative with the
+images to show that the device
+
+00:33:17.562,00:33:22.400
+has been hacked. And we will
+also log into the system. I want
+to emphasise that logging into
+
+00:33:22.400,00:33:27.138
+the system is not part of the
+attack. We are simply
+demonstrating what the screen
+
+00:33:27.138,00:33:32.277
+would look like and to follow
+along. It is not needed for the
+trigger, anything of the attack.
+
+00:33:32.277,00:33:37.382
+So, something the attacker might
+want to do is control outputs on
+the device. This is as I said,
+
+00:33:37.382,00:33:41.753
+devices function is to turn
+outputs on and off. So what
+would it look like if the
+
+00:33:41.753,00:33:45.957
+attacker started to modify these
+outputs using the premium
+malware? You can see in the
+
+00:33:45.957,00:33:50.862
+bottom right hand corner, that
+the device will react
+accordingly. In the top right
+
+00:33:50.862,00:33:55.700
+hand corner, the Delta screen,
+you might take notice that it is
+not updating. This is because
+
+00:33:55.700,00:34:00.772
+the attacker has the ability to
+choose to change or not change
+the screen. If they want the
+
+00:34:00.772,00:34:05.277
+user to know that something is
+changing, they can change it. If
+they don't, it won't. Providing
+
+00:34:05.277,00:34:11.449
+this attacker with a lot of
+different attack scenarios. Now,
+on these type of devices, there
+
+00:34:11.449,00:34:15.887
+are multiple types of outputs.
+There are analogue and binary
+outputs. What you just saw was
+
+00:34:15.887,00:34:21.426
+binary outputs. [Clears throat].
+We either turn it on or off.
+Analogue outputs, require a
+
+00:34:21.426,00:34:26.731
+specific value, a floating point
+value, like Mark was mentioning,
+of room temperature earlier. So
+
+00:34:26.731,00:34:30.735
+here, what we're going to see
+the attacker do, is modify one
+of these values, and this time
+
+00:34:30.735,00:34:35.240
+the attacker is going to choose
+to modify the Delta screen as
+well. Just proving that we can
+
+00:34:35.240,00:34:39.844
+do it either way. So we have the
+fan speed and we have the valve
+and you'll notice that once
+
+00:34:39.844,00:34:45.550
+again that the components on the
+actual demo rig, react as you
+would expect. [Clears throat].
+
+00:34:45.550,00:34:50.855
+So, an, and also as a premium
+feature, we built in a reset
+command, which sets everything
+
+00:34:50.855,00:34:55.860
+back to its initial state. Now,
+with the attacker still having
+persistence on the box. So cool,
+
+00:34:57.929,00:35:02.233
+controlling output is kind of
+fun. We can think of some areas
+that we may be able to influence
+
+00:35:02.233,00:35:05.470
+by controlling each individual
+output. [Clears throat]. But if
+you remember from the beginning
+
+00:35:05.470,00:35:11.509
+of my presentation, the devices
+are designed to take data as
+input in React. So what if the
+
+00:35:11.509,00:35:17.115
+attacker was to modify the data
+the system was ingesting or the
+inputs? As you can see here, the
+
+00:35:17.115,00:35:22.253
+attacker is going to change what
+the system is reading for
+temperature to third from uh,
+
+00:35:22.253,00:35:26.825
+the real temperature to 30 and
+40 degrees respectively. Now
+what happens in your house if
+
+00:35:26.825,00:35:30.996
+the HVAC system thinks it's 30
+degrees in the room? Well, it's
+not going to kick on, it's going
+
+00:35:30.996,00:35:34.966
+to turn off, right? And you can
+monitor our independent
+temperature system on the bottom
+
+00:35:34.966,00:35:39.938
+right hand corner of the screen
+and the temperature in the data
+centre is starting to rise. And,
+
+00:35:39.938,00:35:43.808
+there's no alarms being
+triggered, because the system
+thinks it's 30 degrees. why
+
+00:35:43.808,00:35:48.513
+would it trigger an alarm?
+There's nothing going, nothing
+that's going on wrong. So this
+
+00:35:48.513,00:35:55.453
+is just one small scenario, of
+one purpose, of these devices,
+in HVAC system, in a data
+
+00:35:55.453,00:35:59.791
+centre, of the impact we might
+have. I don't know if anyone
+here manages a data centre, but
+
+00:35:59.791,00:36:04.162
+what would happen if your data
+centre went unattended with no
+HVAC for a long period of time?
+
+00:36:04.162,00:36:09.701
+I cannot imagine that it would
+be a positive effect on the
+system. [Clears throat]. So,
+
+00:36:09.701,00:36:13.972
+let's look at some of the other
+scenarios that are possible with
+control, in an industrial
+
+00:36:13.972,00:36:18.543
+control system like this. One of
+the interesting things about
+systems like this, is they're
+
+00:36:18.543,00:36:22.781
+using a very wide variety of
+industries, because they're
+using commercial buildings.
+
+00:36:22.781,00:36:26.918
+You're not going to find one at
+home, but you will find them in
+the different industries listed
+
+00:36:26.918,00:36:30.688
+here. I'm going to take a moment
+to talk about just a couple. I'm
+gonna look at healthcare,
+
+00:36:30.688,00:36:35.927
+government and education.
+[Clears throat]. Excuse me.
+Healthcare is an interestingly
+
+00:36:35.927,00:36:40.698
+new case, because, they’re
+usually used for something
+called pressure rooms. For those
+
+00:36:40.698,00:36:45.570
+that don't understand what that
+means, in a hospital setting,
+we, there's, different rooms are
+
+00:36:45.570,00:36:49.741
+kept at different pressure
+points, in order to prevent
+disease from spreading. And it's
+
+00:36:49.741,00:36:53.611
+not much. It's just a, a little
+bit difference here in a little
+bit difference there, in order
+
+00:36:53.611,00:36:58.583
+to protect things like the OR or
+quarantine areas. And if an
+attacker was to get into one of
+
+00:36:58.583,00:37:02.821
+these systems, which is, this is
+what is used for, and to just
+set all the pressures to the
+
+00:37:02.821,00:37:08.760
+same value and chose not to
+update the screen and not to
+allow any alarms to send, nobody
+
+00:37:08.760,00:37:11.996
+would notice it's not something
+you're going to feel going in a
+room, that the pressure is
+
+00:37:11.996,00:37:15.767
+different. All of a sudden those
+diseases that were contained by
+one of these systems, could
+
+00:37:15.767,00:37:20.038
+easily spread throughout the
+hospital. Might sound slightly
+dramatic, but it's definitely
+
+00:37:20.038,00:37:26.544
+possible in this scenario. If we
+move onto a different situation
+and think about government.
+
+00:37:26.544,00:37:31.015
+Through OSN, we were actually
+able to pull up documents openly
+available on the internet, to
+
+00:37:31.015,00:37:35.520
+see that, acc, these systems are
+used for access control and some
+state government buildings. I
+
+00:37:35.520,00:37:39.157
+don't think I have to explain
+too in depth what the impact
+would be, if an attacker was
+
+00:37:39.157,00:37:44.028
+able to open and close doors as
+they chose, in certain uh,
+pretty sensitive areas of
+
+00:37:44.028,00:37:49.868
+buildings. And lastly, I want to
+talk about education, just
+because I think it, it's fun to
+
+00:37:49.868,00:37:55.006
+when people ask me questions,
+why would I care if, that you
+change the HVAC in my kids room?
+
+00:37:55.006,00:37:59.377
+Well, you probably don't care.
+But, one of the other avenues of
+attack on these systems is
+
+00:37:59.377,00:38:04.282
+they’re an entry point into the
+network. If I have 100% control
+of one of these devices, and
+
+00:38:04.282,00:38:09.187
+it's not isolated, which again,
+is nothing we ever see in the
+real world, if, but if they're
+
+00:38:09.187,00:38:12.824
+not isolated from other
+networks, this now becomes a
+point that we can leverage in
+
+00:38:12.824,00:38:16.961
+order to get on to other
+systems. I don't know, maybe
+stream cameras from different
+
+00:38:16.961,00:38:21.733
+rooms, out to the attackers
+terminal screen, or other things
+like that. All of a sudden, you
+
+00:38:21.733,00:38:27.605
+started to become slightly more
+concerned. So these are just an
+example of, of some uses in, in
+
+00:38:27.605,00:38:32.443
+the industry. And because of
+this, and because that it's a
+true RC over the internet. It
+
+00:38:32.443,00:38:39.184
+was assigned to CVSS store of
+9.8. Per McAfee's responsible
+disclosure policy, uh, once we
+
+00:38:39.184,00:38:44.255
+understood what we have, we
+reached out to the vendor. This
+was in late 2018. We assigned
+
+00:38:44.255,00:38:48.493
+the CVE number and we started
+working very closely with the
+vendor. The vendor was extremely
+
+00:38:48.493,00:38:53.598
+responsive, and as of June of
+2019 they ever released a patch
+was fully mitigates this
+
+00:38:53.598,00:38:59.537
+vulnerability. Uh, ATR has also
+tested the patch and can confirm
+that it is uh, in fact
+
+00:38:59.537,00:39:04.175
+effective. I'd like to take just
+a moment to highlight this,
+because I think sometimes
+
+00:39:04.175,00:39:08.246
+there's a problem in our
+industry with security
+researchers and vendors. Uh,
+
+00:39:08.246,00:39:13.151
+Delta was extremely cooperative,
+it was wonderful to work with
+and we were actually able to
+
+00:39:13.151,00:39:17.088
+come up with a solution to help
+fix this problem. And I think
+this really needs to become the
+
+00:39:17.088,00:39:21.659
+gold standard in the industry
+for security research. We need
+to do this type of research to
+
+00:39:21.659,00:39:25.964
+find these type of bugs, and the
+vendors need to be receptive,
+just like Delta was, in order
+
+00:39:25.964,00:39:29.968
+for us to be able to fix these
+problems, before the, before
+malicious attacks can be
+
+00:39:29.968,00:39:33.504
+created. I hope we've
+demonstrated that the impact of
+these attacks can be pretty
+
+00:39:33.504,00:39:37.742
+severe and if they're not
+attended to, we can actually
+have a problem. So thank you
+
+00:39:37.742,00:39:42.747
+Delta for your cooperation.
+[Applause]. So with that said,
+that concludes the technical
+
+00:39:49.520,00:39:53.424
+part of our presentation. I
+thank you very much all for
+coming. Uh, if you have any
+
+00:39:53.424,00:39:57.195
+questions, as long as the goons
+allow us to stay up here, we'll
+answer them, or please see us in
+
+00:39:57.195,00:40:00.965
+the back, I believe that's where
+they're doing questions. So,
+thank you.
+

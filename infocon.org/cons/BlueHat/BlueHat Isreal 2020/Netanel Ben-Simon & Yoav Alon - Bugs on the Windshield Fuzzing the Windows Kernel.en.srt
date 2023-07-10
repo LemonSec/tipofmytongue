@@ -1,0 +1,3412 @@
+﻿1
+00:00:01,140 --> 00:00:04,280
+[Music]
+
+2
+00:00:12,639 --> 00:00:17,540
+so hi everyone welcome to our talk bugs
+
+3
+00:00:16,100 --> 00:00:19,670
+on the windshield fuzzing the windows
+
+4
+00:00:17,540 --> 00:00:22,700
+kernel we know it's been a very long day
+
+5
+00:00:19,670 --> 00:00:25,070
+with many interesting talks and we hope
+
+6
+00:00:22,700 --> 00:00:25,580
+you enjoyed we thank you for sticking
+
+7
+00:00:25,070 --> 00:00:27,800
+around
+
+8
+00:00:25,580 --> 00:00:30,639
+and we hope you enjoy watching this
+
+9
+00:00:27,800 --> 00:00:34,550
+presentation as much as we had making it
+
+10
+00:00:30,640 --> 00:00:36,590
+so just a little bit about us my name is
+
+11
+00:00:34,550 --> 00:00:38,300
+Evelyn I'm the CTO at Oracle security
+
+12
+00:00:36,590 --> 00:00:40,220
+I've been a security researcher for 10
+
+13
+00:00:38,300 --> 00:00:43,069
+years it's a bitly redundant and
+
+14
+00:00:40,220 --> 00:00:44,870
+recently I've been added to nsrc most
+
+15
+00:00:43,070 --> 00:00:49,640
+secure most valuable security research
+
+16
+00:00:44,870 --> 00:00:52,218
+list for 2019 I'm a security researcher
+
+17
+00:00:49,640 --> 00:00:54,410
+at checkpoint research and I'm also in
+
+18
+00:00:52,219 --> 00:00:56,690
+the same list as you we had a pretty
+
+19
+00:00:54,410 --> 00:00:59,358
+successful fuzzing campaign fuzzing
+
+20
+00:00:56,690 --> 00:01:01,570
+binary format parsers in userspace we
+
+21
+00:00:59,359 --> 00:01:05,540
+found multiple vulnerabilities in
+
+22
+00:01:01,570 --> 00:01:08,930
+formats such as JPEG PDF wmf and so on
+
+23
+00:01:05,540 --> 00:01:11,450
+and targeting mostly Adobe Reader and
+
+24
+00:01:08,930 --> 00:01:13,070
+Microsoft edge if you want to check out
+
+25
+00:01:11,450 --> 00:01:14,509
+more if you want to read more about this
+
+26
+00:01:13,070 --> 00:01:16,270
+research you should check out checkpoint
+
+27
+00:01:14,509 --> 00:01:18,890
+research blog for more details
+
+28
+00:01:16,270 --> 00:01:20,360
+yeah but at this point we were wrapping
+
+29
+00:01:18,890 --> 00:01:21,979
+out the previous research and we felt
+
+30
+00:01:20,360 --> 00:01:23,990
+that we wanted a bigger challenge and
+
+31
+00:01:21,979 --> 00:01:27,229
+fuzzing Windows kernel seemed hard
+
+32
+00:01:23,990 --> 00:01:29,719
+enough and as an added bonus we can use
+
+33
+00:01:27,229 --> 00:01:30,950
+our user space vulnerabilities chain
+
+34
+00:01:29,719 --> 00:01:32,990
+them together with our newly found
+
+35
+00:01:30,950 --> 00:01:37,310
+kernel all abilities and get a full
+
+36
+00:01:32,990 --> 00:01:38,899
+chain which is pretty cool so since this
+
+37
+00:01:37,310 --> 00:01:40,789
+is a positive fuzzing presentation I'm
+
+38
+00:01:38,899 --> 00:01:43,549
+gonna do a really quick recap of what is
+
+39
+00:01:40,789 --> 00:01:45,590
+fuzzing fuzzing is a method for
+
+40
+00:01:43,549 --> 00:01:47,329
+automatic software testing it's the most
+
+41
+00:01:45,590 --> 00:01:50,360
+cost effective way we know for finding
+
+42
+00:01:47,329 --> 00:01:52,520
+real bugs in real software the input for
+
+43
+00:01:50,360 --> 00:01:54,890
+the process or the targets if to you
+
+44
+00:01:52,520 --> 00:01:59,990
+what you want to fuss and CPU time and
+
+45
+00:01:54,890 --> 00:02:02,570
+the outputs are hopefully bugs an
+
+46
+00:01:59,990 --> 00:02:05,060
+example of a very basic buzzer is W
+
+47
+00:02:02,570 --> 00:02:08,389
+random it just pipes random bytes into
+
+48
+00:02:05,060 --> 00:02:12,350
+destiny in f2 STD N and this was a
+
+49
+00:02:08,389 --> 00:02:14,329
+killer fuzzer back in the 90s fuzzing is
+
+50
+00:02:12,350 --> 00:02:16,430
+also a very active area of research and
+
+51
+00:02:14,330 --> 00:02:17,930
+as you can see from the graph the number
+
+52
+00:02:16,430 --> 00:02:22,190
+of publications for you grows very
+
+53
+00:02:17,930 --> 00:02:23,780
+rapidly but we're in this talk we're
+
+54
+00:02:22,190 --> 00:02:26,000
+interested in modern fuzzers
+
+55
+00:02:23,780 --> 00:02:28,550
+modern fuzzles consists of three things
+
+56
+00:02:26,000 --> 00:02:30,650
+three major things one is a test case
+
+57
+00:02:28,550 --> 00:02:32,420
+generator and mutator which is
+
+58
+00:02:30,650 --> 00:02:35,120
+responsible for automatically generating
+
+59
+00:02:32,420 --> 00:02:37,160
+inputs a bad Oracle which is something
+
+60
+00:02:35,120 --> 00:02:39,319
+that detects buggy conditions that
+
+61
+00:02:37,160 --> 00:02:42,380
+usually means seg fault but it can be
+
+62
+00:02:39,319 --> 00:02:45,260
+any other thing like asserts memory
+
+63
+00:02:42,380 --> 00:02:47,209
+leaks and so on and finally we need some
+
+64
+00:02:45,260 --> 00:02:49,489
+sort of a feedback mechanism which in
+
+65
+00:02:47,209 --> 00:02:51,319
+modern fuzzers is usually coverage but
+
+66
+00:02:49,489 --> 00:02:56,230
+it can be any other metric that you can
+
+67
+00:02:51,319 --> 00:02:58,640
+target like CPU cycles memory and so on
+
+68
+00:02:56,230 --> 00:02:59,959
+example the modern fathers area fairly
+
+69
+00:02:58,640 --> 00:03:03,470
+father Hong funds
+
+70
+00:02:59,959 --> 00:03:05,959
+Hong fuzz and a few others and if we
+
+71
+00:03:03,470 --> 00:03:08,450
+look back at the example of our previous
+
+72
+00:03:05,959 --> 00:03:11,630
+father we can see that Devi random has a
+
+73
+00:03:08,450 --> 00:03:13,910
+test case generator random it's not a
+
+74
+00:03:11,630 --> 00:03:16,730
+very good one but it exists it has a bug
+
+75
+00:03:13,910 --> 00:03:19,040
+Oracle it can detect segmentation faults
+
+76
+00:03:16,730 --> 00:03:21,829
+but it doesn't have any feedback
+
+77
+00:03:19,040 --> 00:03:23,049
+mechanism so definitely not a modern
+
+78
+00:03:21,830 --> 00:03:25,819
+fuzzer
+
+79
+00:03:23,050 --> 00:03:27,680
+so let's see the process of coverage
+
+80
+00:03:25,819 --> 00:03:30,018
+guided fuzzing and how it works
+
+81
+00:03:27,680 --> 00:03:32,810
+internally so we start with an initial
+
+82
+00:03:30,019 --> 00:03:35,870
+corpus which is a fancy word for a bunch
+
+83
+00:03:32,810 --> 00:03:37,850
+of inputs usually files we take this in
+
+84
+00:03:35,870 --> 00:03:41,450
+we take the inputs and import them into
+
+85
+00:03:37,850 --> 00:03:45,290
+the fuzzer cube we take the we either
+
+86
+00:03:41,450 --> 00:03:47,089
+generate new input or select one from
+
+87
+00:03:45,290 --> 00:03:49,459
+the two and mutate that randomly and
+
+88
+00:03:47,090 --> 00:03:54,079
+then we feed it to our coverage
+
+89
+00:03:49,459 --> 00:03:56,690
+instrumented program then if if if the
+
+90
+00:03:54,079 --> 00:03:59,690
+program crashed that's great we have a
+
+91
+00:03:56,690 --> 00:04:01,730
+bug we can triage it and save it
+
+92
+00:03:59,690 --> 00:04:05,329
+triaging means look for looking for
+
+93
+00:04:01,730 --> 00:04:07,190
+duplicates otherwise we will check if
+
+94
+00:04:05,329 --> 00:04:09,170
+new coverage was detected when we say
+
+95
+00:04:07,190 --> 00:04:12,049
+new coverage we usually means new if
+
+96
+00:04:09,170 --> 00:04:13,670
+statements were arrived if it was so
+
+97
+00:04:12,049 --> 00:04:16,459
+we'll try to minimize it and save it
+
+98
+00:04:13,670 --> 00:04:19,039
+otherwise we'll discard it and keep on
+
+99
+00:04:16,459 --> 00:04:22,100
+going this is basically how every
+
+100
+00:04:19,039 --> 00:04:25,849
+coverage guided father's work AFL League
+
+101
+00:04:22,100 --> 00:04:28,190
+fuzz fuzz I know in all others so back
+
+102
+00:04:25,850 --> 00:04:30,289
+to our research we were and we said to
+
+103
+00:04:28,190 --> 00:04:32,960
+herself well we have an experience with
+
+104
+00:04:30,289 --> 00:04:37,219
+AFL can we use AFL to attack OS kernels
+
+105
+00:04:32,960 --> 00:04:39,770
+and the answer is yes there's kfl
+
+106
+00:04:37,220 --> 00:04:42,920
+which is AFL with okay and K stands for
+
+107
+00:04:39,770 --> 00:04:45,500
+kernel so K FLE is a research father
+
+108
+00:04:42,920 --> 00:04:47,360
+from the bottom university that
+
+109
+00:04:45,500 --> 00:04:50,990
+leverages AFL style fuzzing for
+
+110
+00:04:47,360 --> 00:04:54,020
+attacking OS kernel it KL supports
+
+111
+00:04:50,990 --> 00:04:56,300
+Windows Linux and Mac OS and it was used
+
+112
+00:04:54,020 --> 00:04:59,900
+to find real bugs in real software which
+
+113
+00:04:56,300 --> 00:05:01,490
+is kind of what we're after k FL has a
+
+114
+00:04:59,900 --> 00:05:03,200
+pretty interesting architecture and
+
+115
+00:05:01,490 --> 00:05:05,360
+we're gonna review it very quickly
+
+116
+00:05:03,200 --> 00:05:07,430
+the main father runs on the host and
+
+117
+00:05:05,360 --> 00:05:09,500
+when it starts it will spawn multiple
+
+118
+00:05:07,430 --> 00:05:14,420
+virtual machines running the target
+
+119
+00:05:09,500 --> 00:05:16,670
+target OS the in the agent there will be
+
+120
+00:05:14,420 --> 00:05:18,920
+a pre-loaded in the VM there will be a
+
+121
+00:05:16,670 --> 00:05:20,570
+VIP reloaded agent that will cooperate
+
+122
+00:05:18,920 --> 00:05:22,970
+with the father to drive the fuzzing
+
+123
+00:05:20,570 --> 00:05:25,340
+process in the fuzzing loop looks
+
+124
+00:05:22,970 --> 00:05:27,020
+something like this first the father the
+
+125
+00:05:25,340 --> 00:05:28,940
+agent will request an input from the
+
+126
+00:05:27,020 --> 00:05:32,270
+father the input will be transferred
+
+127
+00:05:28,940 --> 00:05:34,040
+through shared memory then the a the
+
+128
+00:05:32,270 --> 00:05:35,479
+agent will send a request to the
+
+129
+00:05:34,040 --> 00:05:37,580
+hypervisor to tell him to start
+
+130
+00:05:35,480 --> 00:05:40,130
+recording a coverage we'll talk about
+
+131
+00:05:37,580 --> 00:05:42,109
+exactly how in a moment then the agent
+
+132
+00:05:40,130 --> 00:05:44,510
+will pass the inputs to whatever we want
+
+133
+00:05:42,110 --> 00:05:47,360
+to attack in in our example its tests s
+
+134
+00:05:44,510 --> 00:05:48,860
+and finally it will tell the the
+
+135
+00:05:47,360 --> 00:05:52,810
+hypervisor to stopped racing coverage
+
+136
+00:05:48,860 --> 00:05:56,090
+and test the coverage back to the father
+
+137
+00:05:52,810 --> 00:05:58,700
+KF else coverage implementation uses
+
+138
+00:05:56,090 --> 00:06:00,109
+Intel processor trace for those of you
+
+139
+00:05:58,700 --> 00:06:01,610
+who are less familiar the Intel
+
+140
+00:06:00,110 --> 00:06:04,010
+processor trace which is also known as
+
+141
+00:06:01,610 --> 00:06:06,050
+Intel PT is a low overhead hardware
+
+142
+00:06:04,010 --> 00:06:11,120
+execution tracing feature in the Intel
+
+143
+00:06:06,050 --> 00:06:12,490
+CPU it it uses it uses a trace it uses
+
+144
+00:06:11,120 --> 00:06:16,370
+the hardware to write trace information
+
+145
+00:06:12,490 --> 00:06:19,130
+into compressed memory and AKL
+
+146
+00:06:16,370 --> 00:06:24,050
+uses a fast decoder to decode to decode
+
+147
+00:06:19,130 --> 00:06:26,930
+those traces into full traces finally
+
+148
+00:06:24,050 --> 00:06:30,470
+how does a FL detect crashes well when
+
+149
+00:06:26,930 --> 00:06:32,090
+the agent is first loaded kfl the agent
+
+150
+00:06:30,470 --> 00:06:33,680
+will send the addresses of object in
+
+151
+00:06:32,090 --> 00:06:36,890
+buck checks to the hypervisor
+
+152
+00:06:33,680 --> 00:06:38,630
+the hypervisor will attach the addresses
+
+153
+00:06:36,890 --> 00:06:41,599
+of bug check and bug tracks with a
+
+154
+00:06:38,630 --> 00:06:43,219
+special shell code that we have a
+
+155
+00:06:41,600 --> 00:06:47,360
+special shell code that each use a hyper
+
+156
+00:06:43,220 --> 00:06:48,860
+call when the system crashes the the
+
+157
+00:06:47,360 --> 00:06:50,660
+kernel will call buck chicken buck check
+
+158
+00:06:48,860 --> 00:06:53,090
+X which is which
+
+159
+00:06:50,660 --> 00:06:56,570
+we'll call KVM which in turn notified
+
+160
+00:06:53,090 --> 00:06:58,909
+the father that we crashed and this is a
+
+161
+00:06:56,570 --> 00:07:00,560
+screenshot for kfs dashboard if you
+
+162
+00:06:58,910 --> 00:07:05,930
+blink fast enough it kind of looks like
+
+163
+00:07:00,560 --> 00:07:10,280
+AFL so what should we attack with AFL or
+
+164
+00:07:05,930 --> 00:07:12,770
+kfl so from our experience good target
+
+165
+00:07:10,280 --> 00:07:13,640
+for AFL ok a fella I have a few
+
+166
+00:07:12,770 --> 00:07:15,830
+characteristics
+
+167
+00:07:13,640 --> 00:07:17,570
+the first one is they're fast you are
+
+168
+00:07:15,830 --> 00:07:20,090
+able to execute hundreds of iterations
+
+169
+00:07:17,570 --> 00:07:23,240
+per second and the second thing is their
+
+170
+00:07:20,090 --> 00:07:25,969
+parsers specifically for binary formats
+
+171
+00:07:23,240 --> 00:07:28,850
+those are the best targets so we can ask
+
+172
+00:07:25,970 --> 00:07:30,290
+ourselves which best binary format
+
+173
+00:07:28,850 --> 00:07:31,910
+parsers live inside the Windows kernel
+
+174
+00:07:30,290 --> 00:07:34,130
+and the answer there are quite a few
+
+175
+00:07:31,910 --> 00:07:36,770
+there are the file system and file
+
+176
+00:07:34,130 --> 00:07:40,640
+system like formats like registry and
+
+177
+00:07:36,770 --> 00:07:42,890
+NTFS CLF as fat and so on there is the
+
+178
+00:07:40,640 --> 00:07:45,169
+device drivers that first binary
+
+179
+00:07:42,890 --> 00:07:47,630
+information there are there's the crypto
+
+180
+00:07:45,170 --> 00:07:49,640
+API that uses some of it there's the P
+
+181
+00:07:47,630 --> 00:07:53,659
+format that we did actually they've
+
+182
+00:07:49,640 --> 00:07:56,390
+talked about before and a few others but
+
+183
+00:07:53,660 --> 00:07:58,240
+we looked at this map and we want and we
+
+184
+00:07:56,390 --> 00:08:00,469
+said to ourselves let's take a step back
+
+185
+00:07:58,240 --> 00:08:03,470
+let's look at the typical kernel
+
+186
+00:08:00,470 --> 00:08:06,410
+vulnerability at this case C V 2018 zero
+
+187
+00:08:03,470 --> 00:08:08,000
+seven four four you don't have to really
+
+188
+00:08:06,410 --> 00:08:09,950
+read the code you just have to look at
+
+189
+00:08:08,000 --> 00:08:12,290
+the structure of the code and you can
+
+190
+00:08:09,950 --> 00:08:15,080
+really see that it has a few properties
+
+191
+00:08:12,290 --> 00:08:18,260
+the first one this there are many system
+
+192
+00:08:15,080 --> 00:08:19,849
+calls here there's not just one at the
+
+193
+00:08:18,260 --> 00:08:24,640
+end they all receive highly structured
+
+194
+00:08:19,850 --> 00:08:29,720
+data like structs have magic numbers
+
+195
+00:08:24,640 --> 00:08:30,080
+function pointers strings flags and so
+
+196
+00:08:29,720 --> 00:08:32,660
+on
+
+197
+00:08:30,080 --> 00:08:34,760
+and notice that there are dependencies
+
+198
+00:08:32,659 --> 00:08:37,010
+between the calls that meaning that the
+
+199
+00:08:34,760 --> 00:08:40,370
+output of one call is the input for the
+
+200
+00:08:37,010 --> 00:08:42,080
+next phone which means that and this is
+
+201
+00:08:40,370 --> 00:08:44,420
+this is pretty common for a kernel
+
+202
+00:08:42,080 --> 00:08:47,210
+vulnerability where we don't actually
+
+203
+00:08:44,420 --> 00:08:49,430
+parse anything binary but there is a
+
+204
+00:08:47,210 --> 00:08:51,020
+sequence of calls that reaches a state
+
+205
+00:08:49,430 --> 00:08:53,000
+where vulnerability is triggered and
+
+206
+00:08:51,020 --> 00:08:56,000
+these are the kind of on abilities we
+
+207
+00:08:53,000 --> 00:08:58,670
+want our fuzzer to find so going step
+
+208
+00:08:56,000 --> 00:09:00,610
+back okay
+
+209
+00:08:58,670 --> 00:09:03,910
+what kfl provides us
+
+210
+00:09:00,610 --> 00:09:06,189
+is a binary blob and what we want is a
+
+211
+00:09:03,910 --> 00:09:09,368
+sequence of semantically meaningful sis
+
+212
+00:09:06,189 --> 00:09:11,618
+cones preferably in a C file so at that
+
+213
+00:09:09,369 --> 00:09:13,779
+point and if we look back at the
+
+214
+00:09:11,619 --> 00:09:16,749
+available attack surface when looking at
+
+215
+00:09:13,779 --> 00:09:18,610
+K FL and compare it with Cisco father we
+
+216
+00:09:16,749 --> 00:09:21,879
+can see that the map now drastically
+
+217
+00:09:18,610 --> 00:09:25,779
+changes and this this VM provides us an
+
+218
+00:09:21,879 --> 00:09:27,999
+attacker much more room to work with so
+
+219
+00:09:25,779 --> 00:09:30,220
+we decided to dump k FL and move to a
+
+220
+00:09:27,999 --> 00:09:32,379
+Cisco father and we did what every good
+
+221
+00:09:30,220 --> 00:09:35,339
+researcher does we used Google to find
+
+222
+00:09:32,379 --> 00:09:35,339
+the Cisco father
+
+223
+00:09:39,020 --> 00:09:44,360
+and so we found this caller and I'll
+
+224
+00:09:42,050 --> 00:09:45,609
+call it Nathan L to the stage tell you
+
+225
+00:09:44,360 --> 00:09:51,260
+all about it
+
+226
+00:09:45,610 --> 00:09:52,760
+thank you sis color is covered guided
+
+227
+00:09:51,260 --> 00:09:56,330
+structure working on father
+
+228
+00:09:52,760 --> 00:09:58,390
+try saying this five times in a row it's
+
+229
+00:09:56,330 --> 00:10:01,100
+also known as a smart Cisco father
+
+230
+00:09:58,390 --> 00:10:03,110
+it supports running a multiple supports
+
+231
+00:10:01,100 --> 00:10:06,070
+multiple operating systems such as Linux
+
+232
+00:10:03,110 --> 00:10:08,660
+FreeBSD Fuchs yeah Android and others
+
+233
+00:10:06,070 --> 00:10:11,839
+support running on multiple machine
+
+234
+00:10:08,660 --> 00:10:14,120
+types such as such as qmu gas Google
+
+235
+00:10:11,839 --> 00:10:17,510
+Cloud engine instances mobile phones and
+
+236
+00:10:14,120 --> 00:10:20,750
+up and so on it's also support multiple
+
+237
+00:10:17,510 --> 00:10:24,319
+architectures like x86 64 64-bit arms
+
+238
+00:10:20,750 --> 00:10:26,300
+and others this collar is also known in
+
+239
+00:10:24,320 --> 00:10:28,510
+some circles as the hardest-working
+
+240
+00:10:26,300 --> 00:10:32,329
+researcher in the Linux kernel community
+
+241
+00:10:28,510 --> 00:10:35,990
+today it has found around 37 hundred
+
+242
+00:10:32,330 --> 00:10:38,990
+bugs in the Linux kernel one example is
+
+243
+00:10:35,990 --> 00:10:40,550
+CB 2019 two two one five use of the
+
+244
+00:10:38,990 --> 00:10:42,830
+frame binder which was found being
+
+245
+00:10:40,550 --> 00:10:45,589
+exploited in world as you can see in the
+
+246
+00:10:42,830 --> 00:10:48,020
+screenshot below from sis bot sis colors
+
+247
+00:10:45,589 --> 00:10:51,079
+online dashboard it was found two years
+
+248
+00:10:48,020 --> 00:10:52,520
+prior by Caesar color if you recall from
+
+249
+00:10:51,079 --> 00:10:54,949
+a few slides ago these are the free
+
+250
+00:10:52,520 --> 00:10:56,620
+foundations of modern fathers let's see
+
+251
+00:10:54,950 --> 00:10:58,760
+how Cisco answered this material
+
+252
+00:10:56,620 --> 00:11:02,990
+starting with test case generator
+
+253
+00:10:58,760 --> 00:11:05,450
+material sis color generates programs
+
+254
+00:11:02,990 --> 00:11:06,680
+which are a sequence of Cisco's let's
+
+255
+00:11:05,450 --> 00:11:09,589
+look at an example of a program
+
+256
+00:11:06,680 --> 00:11:12,469
+generated by sis color this program
+
+257
+00:11:09,589 --> 00:11:15,680
+opens a file called file 0 and assign
+
+258
+00:11:12,470 --> 00:11:17,690
+each result to R 0 this weird pointer
+
+259
+00:11:15,680 --> 00:11:19,969
+assignment syntax our instruction to
+
+260
+00:11:17,690 --> 00:11:23,209
+Cisco our instructions to write the file
+
+261
+00:11:19,970 --> 00:11:26,480
+the string file 0 to memory and pass its
+
+262
+00:11:23,209 --> 00:11:28,399
+pointer to the open Cisco this syntax is
+
+263
+00:11:26,480 --> 00:11:30,200
+not only used for strings but also
+
+264
+00:11:28,399 --> 00:11:34,190
+describing memory layouts of struct
+
+265
+00:11:30,200 --> 00:11:36,410
+buffers unions and so on next the
+
+266
+00:11:34,190 --> 00:11:41,260
+program reads 57 bytes from the file to
+
+267
+00:11:36,410 --> 00:11:43,430
+memory and finally it closes the file
+
+268
+00:11:41,260 --> 00:11:45,170
+but how does this color generate
+
+269
+00:11:43,430 --> 00:11:47,719
+programs well it uses syscall
+
+270
+00:11:45,170 --> 00:11:49,729
+descriptions Cisco descriptions are or
+
+271
+00:11:47,720 --> 00:11:52,430
+how you as a researcher defined two sis
+
+272
+00:11:49,730 --> 00:11:52,940
+color how to call Cisco's it's basically
+
+273
+00:11:52,430 --> 00:11:54,969
+the rest
+
+274
+00:11:52,940 --> 00:11:56,960
+is used by sis caller to bake programs
+
+275
+00:11:54,970 --> 00:11:59,780
+let's look at the simple syscall
+
+276
+00:11:56,960 --> 00:12:02,360
+descriptions for example this is coaxial
+
+277
+00:11:59,780 --> 00:12:04,240
+exit which has only one parameter in the
+
+278
+00:12:02,360 --> 00:12:07,070
+error code which is which is an int
+
+279
+00:12:04,240 --> 00:12:10,100
+notice that sees that this color has a
+
+280
+00:12:07,070 --> 00:12:12,050
+go like syntax where the word where the
+
+281
+00:12:10,100 --> 00:12:16,100
+argument type comes after the argument
+
+282
+00:12:12,050 --> 00:12:19,339
+name a more complicated example is the
+
+283
+00:12:16,100 --> 00:12:20,510
+open Cisco the clause is concerned this
+
+284
+00:12:19,340 --> 00:12:24,170
+is called receive the file descriptor
+
+285
+00:12:20,510 --> 00:12:25,640
+which is technically an int however we
+
+286
+00:12:24,170 --> 00:12:28,040
+know that file descriptors are a
+
+287
+00:12:25,640 --> 00:12:30,500
+resource or a kernel resource meaning
+
+288
+00:12:28,040 --> 00:12:35,439
+that bundle number would just be
+
+289
+00:12:30,500 --> 00:12:38,510
+rejected but sorry I'm oh yeah sir so
+
+290
+00:12:35,440 --> 00:12:40,550
+the cisco this receive this Cisco
+
+291
+00:12:38,510 --> 00:12:42,680
+receives a file descriptor as I said
+
+292
+00:12:40,550 --> 00:12:45,199
+earlier meaning that random numbers will
+
+293
+00:12:42,680 --> 00:12:47,359
+just be rejected by the kernel that's
+
+294
+00:12:45,200 --> 00:12:49,550
+why cisco has the concept of a resource
+
+295
+00:12:47,360 --> 00:12:51,710
+which is a type that it cannot generate
+
+296
+00:12:49,550 --> 00:12:55,550
+by itself but it has to use other
+
+297
+00:12:51,710 --> 00:12:58,280
+Cisco's to obtain it an example of Cisco
+
+298
+00:12:55,550 --> 00:13:02,120
+that generates a file descriptor is the
+
+299
+00:12:58,280 --> 00:13:05,480
+open Cisco Cisco also supports flags
+
+300
+00:13:02,120 --> 00:13:07,850
+structs unions and more in the case of
+
+301
+00:13:05,480 --> 00:13:10,610
+open you know it knows that open mode is
+
+302
+00:13:07,850 --> 00:13:14,150
+a flag which means it can use one or
+
+303
+00:13:10,610 --> 00:13:16,670
+more flags together last example is the
+
+304
+00:13:14,150 --> 00:13:18,620
+wreath Cisco the Cisco receives a buffer
+
+305
+00:13:16,670 --> 00:13:23,120
+is an input which it will write up to
+
+306
+00:13:18,620 --> 00:13:24,740
+lengths bytes to it notice that that
+
+307
+00:13:23,120 --> 00:13:27,290
+buffer and lengths have a semantic
+
+308
+00:13:24,740 --> 00:13:29,570
+relationship meaning that if the length
+
+309
+00:13:27,290 --> 00:13:34,189
+is bigger than the buffer the Cisco will
+
+310
+00:13:29,570 --> 00:13:36,589
+probably fail siskel descriptions are
+
+311
+00:13:34,190 --> 00:13:39,230
+written to text file since this gem
+
+312
+00:13:36,589 --> 00:13:40,730
+which is another sis color tool will
+
+313
+00:13:39,230 --> 00:13:42,500
+take all the say all the Cisco
+
+314
+00:13:40,730 --> 00:13:44,810
+descriptions and not to magically
+
+315
+00:13:42,500 --> 00:13:47,960
+generate a go code that will be compiled
+
+316
+00:13:44,810 --> 00:13:50,839
+into this father this buzzer will found
+
+317
+00:13:47,960 --> 00:13:53,120
+will then start generating programs by
+
+318
+00:13:50,839 --> 00:13:56,620
+randomly selecting Cisco's and making
+
+319
+00:13:53,120 --> 00:13:56,620
+sure to satisfy all the dependencies
+
+320
+00:13:56,980 --> 00:14:01,430
+Cisco are also able to mutate existing
+
+321
+00:13:59,420 --> 00:14:04,849
+programs let's look at the flu mutation
+
+322
+00:14:01,430 --> 00:14:06,750
+strategies insert call well inserts a
+
+323
+00:14:04,850 --> 00:14:08,490
+call making sure to
+
+324
+00:14:06,750 --> 00:14:12,780
+satisfy all the dependencies to call
+
+325
+00:14:08,490 --> 00:14:16,880
+successfully the Cisco muted art will
+
+326
+00:14:12,780 --> 00:14:16,880
+mutate an argument according to its type
+
+327
+00:14:17,480 --> 00:14:28,740
+splice will take two random programs and
+
+328
+00:14:21,330 --> 00:14:31,110
+join them squash and Eve will perform
+
+329
+00:14:28,740 --> 00:14:36,270
+AFL Stein mutation on complex pointers
+
+330
+00:14:31,110 --> 00:14:38,040
+such as drugs buffers unions and so so
+
+331
+00:14:36,270 --> 00:14:40,020
+clearly see scholar has a sophisticated
+
+332
+00:14:38,040 --> 00:14:45,089
+test case test case generator mutator
+
+333
+00:14:40,020 --> 00:14:46,439
+moving on to feedback mechanism now that
+
+334
+00:14:45,090 --> 00:14:47,970
+we know how this caller generates
+
+335
+00:14:46,440 --> 00:14:48,890
+programs let's look at the bigger
+
+336
+00:14:47,970 --> 00:14:51,510
+picture
+
+337
+00:14:48,890 --> 00:14:53,699
+the main binary for sis caller is his
+
+338
+00:14:51,510 --> 00:14:55,710
+manager when it starts it will do the
+
+339
+00:14:53,700 --> 00:14:58,020
+following it will load the purpose of
+
+340
+00:14:55,710 --> 00:15:00,930
+programs and then it will start the
+
+341
+00:14:58,020 --> 00:15:02,640
+target machines it will copy the father
+
+342
+00:15:00,930 --> 00:15:05,370
+and executors binaries to the machine
+
+343
+00:15:02,640 --> 00:15:08,069
+using an SSH then it will execute the
+
+344
+00:15:05,370 --> 00:15:09,960
+father at this point this father will
+
+345
+00:15:08,070 --> 00:15:14,100
+establish connection with his manager
+
+346
+00:15:09,960 --> 00:15:15,780
+and start communicating by RPC then this
+
+347
+00:15:14,100 --> 00:15:18,450
+father will fetch the corpus from the
+
+348
+00:15:15,780 --> 00:15:21,030
+manager and start generating programs
+
+349
+00:15:18,450 --> 00:15:25,470
+for each program it will send it back to
+
+350
+00:15:21,030 --> 00:15:27,510
+the manager in case of a crash then it
+
+351
+00:15:25,470 --> 00:15:30,089
+will start the executor then it'll send
+
+352
+00:15:27,510 --> 00:15:32,310
+in to the executor which will execute
+
+353
+00:15:30,089 --> 00:15:35,010
+the sales calls and collect coverage
+
+354
+00:15:32,310 --> 00:15:36,989
+from the kernel Linux kernel coverage is
+
+355
+00:15:35,010 --> 00:15:41,339
+done using keiko which is a compile time
+
+356
+00:15:36,990 --> 00:15:43,500
+tracing feature finally sees executor
+
+357
+00:15:41,339 --> 00:15:46,140
+will report back the coverage to his
+
+358
+00:15:43,500 --> 00:15:49,830
+father which will notify the manager in
+
+359
+00:15:46,140 --> 00:15:56,400
+case of a new coverage feedback
+
+360
+00:15:49,830 --> 00:15:59,130
+mechanism check finally bug or worker in
+
+361
+00:15:56,400 --> 00:16:01,740
+case of a crash Linux kernel panic and
+
+362
+00:15:59,130 --> 00:16:04,439
+we can print crash information to the
+
+363
+00:16:01,740 --> 00:16:06,720
+output console since manager will then
+
+364
+00:16:04,440 --> 00:16:08,210
+detect the output message and will
+
+365
+00:16:06,720 --> 00:16:10,830
+report on a crash
+
+366
+00:16:08,210 --> 00:16:13,980
+this color is usually used with case on
+
+367
+00:16:10,830 --> 00:16:14,730
+came son Katie son and other artists
+
+368
+00:16:13,980 --> 00:16:16,620
+sanitizers
+
+369
+00:16:14,730 --> 00:16:19,320
+too great which gratefully which greatly
+
+370
+00:16:16,620 --> 00:16:21,800
+improved the scholar ability to detect
+
+371
+00:16:19,320 --> 00:16:21,800
+pressures
+
+372
+00:16:22,190 --> 00:16:29,340
+but Oracle check sis caller aims to be
+
+373
+00:16:27,420 --> 00:16:32,250
+unsupervised meaning it will try to
+
+374
+00:16:29,340 --> 00:16:34,590
+automate the entire fussing forces in an
+
+375
+00:16:32,250 --> 00:16:36,839
+ideal world fathers are just like and
+
+376
+00:16:34,590 --> 00:16:39,120
+play but like Charlie Miller used to say
+
+377
+00:16:36,839 --> 00:16:41,850
+working with fathers is like babysitting
+
+378
+00:16:39,120 --> 00:16:44,160
+an army of monkeys in the case of
+
+379
+00:16:41,850 --> 00:16:47,010
+crushes his manager will spawn multiple
+
+380
+00:16:44,160 --> 00:16:50,550
+reproducer machine in the process of
+
+381
+00:16:47,010 --> 00:16:51,180
+reproduction in the process of
+
+382
+00:16:50,550 --> 00:16:53,160
+reproduction
+
+383
+00:16:51,180 --> 00:16:55,859
+since caller will decide the crashing
+
+384
+00:16:53,160 --> 00:16:58,920
+programs from its log and will try to
+
+385
+00:16:55,860 --> 00:17:01,710
+minimize them when the process is
+
+386
+00:16:58,920 --> 00:17:03,810
+finished it will either reproduce this
+
+387
+00:17:01,710 --> 00:17:06,470
+program like we've seen earlier or a C
+
+388
+00:17:03,810 --> 00:17:11,510
+code which will produce the crash
+
+389
+00:17:06,470 --> 00:17:15,510
+so to recap this color is awesome but
+
+390
+00:17:11,510 --> 00:17:17,490
+this color is for Linux well actually
+
+391
+00:17:15,510 --> 00:17:19,349
+before this presentation we talked to
+
+392
+00:17:17,490 --> 00:17:22,680
+Dmitriy vehicle which is the father of
+
+393
+00:17:19,349 --> 00:17:25,109
+six color and it corrected us sister is
+
+394
+00:17:22,680 --> 00:17:27,600
+not only for Linux but support other
+
+395
+00:17:25,109 --> 00:17:29,310
+operating system as well so when we say
+
+396
+00:17:27,599 --> 00:17:34,439
+this color is for Linux we actually mean
+
+397
+00:17:29,310 --> 00:17:39,870
+this color is also for Linux so let's
+
+398
+00:17:34,440 --> 00:17:41,429
+wrong Linux and windows what is w SL w
+
+399
+00:17:39,870 --> 00:17:42,959
+cell is a compatibility layer for
+
+400
+00:17:41,429 --> 00:17:46,620
+running Linux binaries natively on
+
+401
+00:17:42,960 --> 00:17:48,390
+Windows it transit between Linux is
+
+402
+00:17:46,620 --> 00:17:51,030
+called the Windows API it allows to
+
+403
+00:17:48,390 --> 00:17:54,000
+interrupt Linux Windows and Linux and
+
+404
+00:17:51,030 --> 00:17:56,040
+Windows binaries for example you can run
+
+405
+00:17:54,000 --> 00:17:58,320
+the task list from bash and count the
+
+406
+00:17:56,040 --> 00:18:00,360
+number of lines it requires less
+
+407
+00:17:58,320 --> 00:18:03,330
+resources when running a full virtual
+
+408
+00:18:00,360 --> 00:18:05,550
+machine and finally it was designed to
+
+409
+00:18:03,330 --> 00:18:10,320
+run bash and called Linux commands for
+
+410
+00:18:05,550 --> 00:18:12,629
+developers let's see how does it work
+
+411
+00:18:10,320 --> 00:18:14,490
+starting from Windows 10 there is new
+
+412
+00:18:12,630 --> 00:18:18,000
+type of a process at the lightweight
+
+413
+00:18:14,490 --> 00:18:20,100
+process called Pico process when the
+
+414
+00:18:18,000 --> 00:18:22,590
+pickup process issues a Cisco it will
+
+415
+00:18:20,100 --> 00:18:25,020
+pass the end it will pass the NT kernel
+
+416
+00:18:22,590 --> 00:18:27,419
+to a dedicated driver called picker
+
+417
+00:18:25,020 --> 00:18:29,850
+provider in the case of double yourself
+
+418
+00:18:27,420 --> 00:18:33,779
+the picker processes our Linux binaries
+
+419
+00:18:29,850 --> 00:18:35,609
+and the and the picker provider Alex
+
+420
+00:18:33,779 --> 00:18:38,129
+Cinda LexCorp will transit the Linux
+
+421
+00:18:35,609 --> 00:18:43,408
+Cisco's to Windows and his Windows
+
+422
+00:18:38,129 --> 00:18:46,769
+system cause at this point we decided to
+
+423
+00:18:43,409 --> 00:18:49,109
+fast w so because fuzzing w cell is very
+
+424
+00:18:46,769 --> 00:18:51,479
+similar to fuzzing Linux kernel we can
+
+425
+00:18:49,109 --> 00:18:54,779
+use we can reuse most of the existing
+
+426
+00:18:51,479 --> 00:18:57,570
+grammar and the executor it is
+
+427
+00:18:54,779 --> 00:18:58,979
+relatively new has two driver as two
+
+428
+00:18:57,570 --> 00:19:02,939
+drivers which are one one megabyte
+
+429
+00:18:58,979 --> 00:19:05,580
+Accord with little civvies and finally
+
+430
+00:19:02,940 --> 00:19:07,589
+we wanted to find bugs for full chain
+
+431
+00:19:05,580 --> 00:19:10,830
+but we also wanted to get some
+
+432
+00:19:07,589 --> 00:19:12,928
+experience with this color on Windows so
+
+433
+00:19:10,830 --> 00:19:16,918
+it looked like a good step first step
+
+434
+00:19:12,929 --> 00:19:18,570
+for us good first step for us looking at
+
+435
+00:19:16,919 --> 00:19:21,269
+this color architecture we need to
+
+436
+00:19:18,570 --> 00:19:23,849
+change few things to the files W so we
+
+437
+00:19:21,269 --> 00:19:26,279
+need an SSH server which is easy we have
+
+438
+00:19:23,849 --> 00:19:30,359
+a Linux distro for that we need to find
+
+439
+00:19:26,279 --> 00:19:32,639
+a way to collect garbage and finally we
+
+440
+00:19:30,359 --> 00:19:37,199
+need a mechanism to detect crashes and
+
+441
+00:19:32,639 --> 00:19:39,508
+deduplicate them so how to get tracing
+
+442
+00:19:37,200 --> 00:19:42,359
+garbage windows this close toast
+
+443
+00:19:39,509 --> 00:19:44,599
+compiled burner meaning we can use a
+
+444
+00:19:42,359 --> 00:19:47,968
+compile time tracing feature like keiko
+
+445
+00:19:44,599 --> 00:19:50,279
+so before the few alternatives the first
+
+446
+00:19:47,969 --> 00:19:51,479
+one was using an emulator like box or
+
+447
+00:19:50,279 --> 00:19:54,359
+qumu and landing coverage
+
+448
+00:19:51,479 --> 00:19:56,190
+instrumentation the second option was
+
+449
+00:19:54,359 --> 00:19:59,789
+using static binary instrumentation for
+
+450
+00:19:56,190 --> 00:20:02,820
+coverage like in PFL another option
+
+451
+00:19:59,789 --> 00:20:05,219
+was using a hypervisor with sampling
+
+452
+00:20:02,820 --> 00:20:09,658
+coverage like in apple pies but at the
+
+453
+00:20:05,219 --> 00:20:14,580
+end we settled on on using Intel PT for
+
+454
+00:20:09,659 --> 00:20:16,649
+coverage like in kfo what we did was to
+
+455
+00:20:14,580 --> 00:20:19,139
+add patches to KVM to support coverage
+
+456
+00:20:16,649 --> 00:20:23,369
+with interpreting we used large parts of
+
+457
+00:20:19,139 --> 00:20:24,899
+kfl KVM patches for that in addition we
+
+458
+00:20:23,369 --> 00:20:27,059
+exposed the cake off like interface
+
+459
+00:20:24,899 --> 00:20:29,339
+through hyper calls so now when the
+
+460
+00:20:27,059 --> 00:20:31,799
+executor tries to start store or
+
+461
+00:20:29,339 --> 00:20:38,158
+collects coverage if we communicate with
+
+462
+00:20:31,799 --> 00:20:39,929
+the KVM instead of the kernel we also
+
+463
+00:20:38,159 --> 00:20:42,299
+added support for exporting coverage in
+
+464
+00:20:39,929 --> 00:20:45,809
+dynamo format also known as the Archon
+
+465
+00:20:42,299 --> 00:20:47,730
+format we used either in the heart and
+
+466
+00:20:45,809 --> 00:20:51,780
+the awesome lighthouse plugin to visual
+
+467
+00:20:47,730 --> 00:20:54,330
+the coverage here's an example of how
+
+468
+00:20:51,780 --> 00:20:55,950
+light off of how lighthouse visualized
+
+469
+00:20:54,330 --> 00:21:00,120
+the coverage by adding colors to
+
+470
+00:20:55,950 --> 00:21:02,190
+executed basic blocks as for ba-gawk-oh
+
+471
+00:21:00,120 --> 00:21:04,649
+we used the same technique as in carry
+
+472
+00:21:02,190 --> 00:21:06,630
+FL in case you already forgot for for
+
+473
+00:21:04,650 --> 00:21:08,460
+garden we patch back check in back check
+
+474
+00:21:06,630 --> 00:21:12,180
+X with the shell code that teaches the
+
+475
+00:21:08,460 --> 00:21:13,830
+iPad poll on the trash where the drag X
+
+476
+00:21:12,180 --> 00:21:16,200
+identified fresh from p.m. your output
+
+477
+00:21:13,830 --> 00:21:19,040
+and finally we enable driver verifier
+
+478
+00:21:16,200 --> 00:21:23,010
+with special pools for L Expo and LX SS
+
+479
+00:21:19,040 --> 00:21:25,139
+to catch pop eruptions a common issue
+
+480
+00:21:23,010 --> 00:21:27,990
+with phosphorus is its that they
+
+481
+00:21:25,140 --> 00:21:30,600
+encountered the same bug many times when
+
+482
+00:21:27,990 --> 00:21:32,670
+the father find a new crush we want our
+
+483
+00:21:30,600 --> 00:21:35,129
+father to be able to determine whether
+
+484
+00:21:32,670 --> 00:21:39,060
+it's actually a unique rush or is it a
+
+485
+00:21:35,130 --> 00:21:41,190
+duplicate in order to decide this sis
+
+486
+00:21:39,060 --> 00:21:43,470
+caller has to get a unique crash output
+
+487
+00:21:41,190 --> 00:21:46,020
+in unique output from for each crash in
+
+488
+00:21:43,470 --> 00:21:49,830
+the case of windows we settled on a call
+
+489
+00:21:46,020 --> 00:21:51,360
+stack the simple answer architecture is
+
+490
+00:21:49,830 --> 00:21:53,460
+really awkward and you should really
+
+491
+00:21:51,360 --> 00:21:53,820
+read the full blog post for all the
+
+492
+00:21:53,460 --> 00:21:56,790
+details
+
+493
+00:21:53,820 --> 00:21:58,909
+suffice to say we had another Windows
+
+494
+00:21:56,790 --> 00:22:01,710
+machine running alongside our father and
+
+495
+00:21:58,910 --> 00:22:03,360
+reading from the reading memory from the
+
+496
+00:22:01,710 --> 00:22:05,370
+guest to us and retrieve a call stack
+
+497
+00:22:03,360 --> 00:22:10,350
+this architecture was heavily inspired
+
+498
+00:22:05,370 --> 00:22:12,510
+by box pong for Windows so after a lot
+
+499
+00:22:10,350 --> 00:22:18,480
+of agony we got from these random
+
+500
+00:22:12,510 --> 00:22:22,980
+numbers to this beautiful call stack so
+
+501
+00:22:18,480 --> 00:22:26,400
+a quick recap SSH server check coverage
+
+502
+00:22:22,980 --> 00:22:30,270
+check first deduplication and detection
+
+503
+00:22:26,400 --> 00:22:33,030
+check so we started fast to start
+
+504
+00:22:30,270 --> 00:22:34,129
+fasting double yourself and then it
+
+505
+00:22:33,030 --> 00:22:37,649
+rained bugs
+
+506
+00:22:34,130 --> 00:22:40,080
+well not really a short time after we
+
+507
+00:22:37,650 --> 00:22:41,850
+started or the faster we notice the
+
+508
+00:22:40,080 --> 00:22:43,350
+crash with critical structure corruption
+
+509
+00:22:41,850 --> 00:22:46,949
+and we were like what the fast
+
+510
+00:22:43,350 --> 00:22:50,520
+so a quick googling show that it's
+
+511
+00:22:46,950 --> 00:22:53,850
+actually very good so why did patch
+
+512
+00:22:50,520 --> 00:22:56,070
+guard came to our life so let's return
+
+513
+00:22:53,850 --> 00:22:58,409
+to how we detect brushes remember
+
+514
+00:22:56,070 --> 00:23:00,389
+remember that we in order to detect
+
+515
+00:22:58,410 --> 00:23:03,720
+brushes we patch
+
+516
+00:23:00,390 --> 00:23:08,370
+- scanner so good news everyone pet
+
+517
+00:23:03,720 --> 00:23:11,160
+guard is working what we first tried is
+
+518
+00:23:08,370 --> 00:23:13,139
+to enable carbide kernel debugging but
+
+519
+00:23:11,160 --> 00:23:15,480
+that caused random hangs in the guest
+
+520
+00:23:13,140 --> 00:23:18,360
+so what eventually we did was to write a
+
+521
+00:23:15,480 --> 00:23:21,930
+small driver called panic reporter which
+
+522
+00:23:18,360 --> 00:23:23,969
+will which will register with anthos bug
+
+523
+00:23:21,930 --> 00:23:27,330
+check orbit with Kay register bugs a
+
+524
+00:23:23,970 --> 00:23:29,670
+callback so now when the kernel part so
+
+525
+00:23:27,330 --> 00:23:31,770
+now when the kernel crashes enters will
+
+526
+00:23:29,670 --> 00:23:35,450
+will call the panic reporter which will
+
+527
+00:23:31,770 --> 00:23:38,580
+issue hyper call notifying on a crash
+
+528
+00:23:35,450 --> 00:23:41,760
+another issue we encountered is covered
+
+529
+00:23:38,580 --> 00:23:45,000
+stability this color is a uses multiple
+
+530
+00:23:41,760 --> 00:23:46,830
+threads to find data races but our
+
+531
+00:23:45,000 --> 00:23:49,860
+coverage implementation had only one
+
+532
+00:23:46,830 --> 00:23:51,389
+buffer per process in practice the same
+
+533
+00:23:49,860 --> 00:23:54,389
+program would result in different
+
+534
+00:23:51,390 --> 00:23:56,760
+coverage each run garbage instability
+
+535
+00:23:54,390 --> 00:23:58,170
+hurts the father's ability to define the
+
+536
+00:23:56,760 --> 00:24:04,260
+new and interesting paths and
+
+537
+00:23:58,170 --> 00:24:06,300
+essentially bugs what we did TL DR we
+
+538
+00:24:04,260 --> 00:24:09,450
+added gas fretwork into KVM and
+
+539
+00:24:06,300 --> 00:24:10,830
+allocated buffer for each thread if you
+
+540
+00:24:09,450 --> 00:24:14,760
+want all the details again you should
+
+541
+00:24:10,830 --> 00:24:17,310
+check the blog where the few more minor
+
+542
+00:24:14,760 --> 00:24:19,550
+issues like Auto loaded program that
+
+543
+00:24:17,310 --> 00:24:21,960
+would starve our father's few hundred
+
+544
+00:24:19,550 --> 00:24:24,000
+Windows Update we started our father's
+
+545
+00:24:21,960 --> 00:24:28,230
+randomly causing Cisco to think it's a
+
+546
+00:24:24,000 --> 00:24:30,000
+hang Windows Windows Defender randomly
+
+547
+00:24:28,230 --> 00:24:33,390
+decided that our father is a virus and
+
+548
+00:24:30,000 --> 00:24:39,210
+in general take time and make sure you
+
+549
+00:24:33,390 --> 00:24:43,290
+adjusted for best performance so after
+
+550
+00:24:39,210 --> 00:24:47,130
+two weeks of fuzzing we got a working
+
+551
+00:24:43,290 --> 00:24:50,129
+prototype for Cisco learn Windows for
+
+552
+00:24:47,130 --> 00:24:53,700
+denial of service bugs to that fit in a
+
+553
+00:24:50,130 --> 00:24:56,400
+tweet to that logs that are still not
+
+554
+00:24:53,700 --> 00:24:58,590
+resolved but zero security
+
+555
+00:24:56,400 --> 00:25:01,260
+vulnerabilities were found we were a bit
+
+556
+00:24:58,590 --> 00:25:03,629
+disappointed but we decided to move to
+
+557
+00:25:01,260 --> 00:25:05,250
+real privilege escalation target so now
+
+558
+00:25:03,630 --> 00:25:08,210
+will you have will come and talk to you
+
+559
+00:25:05,250 --> 00:25:08,210
+about our next target
+
+560
+00:25:10,579 --> 00:25:16,619
+so we we look back at the attack surface
+
+561
+00:25:14,279 --> 00:25:20,009
+of the Windows kernel and we decided
+
+562
+00:25:16,619 --> 00:25:22,408
+sets our sights on win32 K so first
+
+563
+00:25:20,009 --> 00:25:24,029
+things first what is win32 k it's the
+
+564
+00:25:22,409 --> 00:25:26,009
+kernel side of the windows subsystem
+
+565
+00:25:24,029 --> 00:25:28,709
+which is the gooey infrastructure for
+
+566
+00:25:26,009 --> 00:25:30,569
+the entire operating system it includes
+
+567
+00:25:28,709 --> 00:25:33,029
+the kernel side of the window manager
+
+568
+00:25:30,569 --> 00:25:35,699
+also known as user and the kernel side
+
+569
+00:25:33,029 --> 00:25:40,439
+of the GD graphics device interface also
+
+570
+00:25:35,699 --> 00:25:41,939
+known as GDI and so why we 32k well it's
+
+571
+00:25:40,439 --> 00:25:43,529
+a very popular target for local
+
+572
+00:25:41,939 --> 00:25:46,049
+privilege escalation and we want the
+
+573
+00:25:43,529 --> 00:25:47,939
+local privilege escalation the reason is
+
+574
+00:25:46,049 --> 00:25:50,249
+very popular target for local privilege
+
+575
+00:25:47,939 --> 00:25:52,619
+escalation it's because it has a huge
+
+576
+00:25:50,249 --> 00:25:55,589
+attack surface with more than 1,500
+
+577
+00:25:52,619 --> 00:25:57,559
+Cisco's and although it be it has been
+
+578
+00:25:55,589 --> 00:26:00,149
+fast before some would say to the death
+
+579
+00:25:57,559 --> 00:26:02,399
+we couldn't find any previous work of
+
+580
+00:26:00,149 --> 00:26:04,879
+coverage guided grammar fuzzing for that
+
+581
+00:26:02,399 --> 00:26:07,109
+target so we decided to go for it
+
+582
+00:26:04,879 --> 00:26:10,259
+looking about it the architecture we
+
+583
+00:26:07,109 --> 00:26:12,948
+need to make additional changes we need
+
+584
+00:26:10,259 --> 00:26:15,719
+to change the father and the executor a
+
+585
+00:26:12,949 --> 00:26:17,639
+minor tweak to coverage our first
+
+586
+00:26:15,719 --> 00:26:20,369
+attempt was just to rename everything to
+
+587
+00:26:17,639 --> 00:26:23,158
+dot exe and hope for the best but since
+
+588
+00:26:20,369 --> 00:26:26,188
+did didn't do the trick we just had to
+
+589
+00:26:23,159 --> 00:26:28,979
+do a real work so for the executor
+
+590
+00:26:26,189 --> 00:26:30,719
+changes we needed to support up to 12
+
+591
+00:26:28,979 --> 00:26:33,599
+parameters per Cisco because you know
+
+592
+00:26:30,719 --> 00:26:35,789
+windows and the second thing we had to
+
+593
+00:26:33,599 --> 00:26:37,499
+do was to poured some OS related things
+
+594
+00:26:35,789 --> 00:26:39,059
+like around thread management shared
+
+595
+00:26:37,499 --> 00:26:42,299
+memory in pipes not really interesting
+
+596
+00:26:39,059 --> 00:26:46,049
+and we had to expose Windows Cisco's to
+
+597
+00:26:42,299 --> 00:26:48,689
+a sis color and we decided that we want
+
+598
+00:26:46,049 --> 00:26:52,408
+to compile everything on linux compiling
+
+599
+00:26:48,689 --> 00:26:55,679
+on linux was a bit of a drag because we
+
+600
+00:26:52,409 --> 00:26:57,119
+needed windows - we needed mingw to
+
+601
+00:26:55,679 --> 00:26:59,099
+create to call all the windows cisco
+
+602
+00:26:57,119 --> 00:27:02,639
+what we did is we took dealers from
+
+603
+00:26:59,099 --> 00:27:05,249
+Windows to Linux we use it to name
+
+604
+00:27:02,639 --> 00:27:07,859
+gender to create deaf files even we use
+
+605
+00:27:05,249 --> 00:27:10,319
+another mingw tool to create import lips
+
+606
+00:27:07,859 --> 00:27:12,658
+and we use that to link everything to
+
+607
+00:27:10,319 --> 00:27:15,449
+our executor so finally we can call
+
+608
+00:27:12,659 --> 00:27:17,369
+Windows Cisco's the father also had a
+
+609
+00:27:15,449 --> 00:27:20,159
+few changes around memory management
+
+610
+00:27:17,369 --> 00:27:23,020
+shirt and doesn't shared memory and
+
+611
+00:27:20,159 --> 00:27:25,809
+pipes but and
+
+612
+00:27:23,020 --> 00:27:28,660
+we had to have to add win32 cake grammar
+
+613
+00:27:25,809 --> 00:27:33,010
+well we'll talk about win32 K grammar in
+
+614
+00:27:28,660 --> 00:27:34,929
+a few slides and for coverage win32 K is
+
+615
+00:27:33,010 --> 00:27:37,660
+not one thing about three things it's
+
+616
+00:27:34,929 --> 00:27:40,570
+winter it's win32 k win third UK base
+
+617
+00:27:37,660 --> 00:27:42,549
+and win32 k4 so in our coverage
+
+618
+00:27:40,570 --> 00:27:45,039
+implementation only supported one module
+
+619
+00:27:42,549 --> 00:27:48,389
+so what we did is we opted out to
+
+620
+00:27:45,039 --> 00:27:53,320
+another coverage coverage the decoder
+
+621
+00:27:48,390 --> 00:27:57,309
+from Winnie FL which is by much faster
+
+622
+00:27:53,320 --> 00:28:00,220
+and helped us and we can see now
+
+623
+00:27:57,309 --> 00:28:05,200
+coverage traces from win32 k which is
+
+624
+00:28:00,220 --> 00:28:07,960
+pretty cool so quick recap further check
+
+625
+00:28:05,200 --> 00:28:11,220
+IPC check executor check coverage check
+
+626
+00:28:07,960 --> 00:28:14,980
+what we what did we forget sanity check
+
+627
+00:28:11,220 --> 00:28:19,270
+so we we took our father for a spin and
+
+628
+00:28:14,980 --> 00:28:21,820
+we try to reproduce a cv 2920 1807 44
+
+629
+00:28:19,270 --> 00:28:24,820
+which we showed before but the father
+
+630
+00:28:21,820 --> 00:28:26,620
+wasn't able to reproduce the bug and we
+
+631
+00:28:24,820 --> 00:28:28,059
+were a bit surprised so we we
+
+632
+00:28:26,620 --> 00:28:30,580
+investigated a little bit and we
+
+633
+00:28:28,059 --> 00:28:32,799
+discovered that our father was earning
+
+634
+00:28:30,580 --> 00:28:35,199
+under session zero not under normal
+
+635
+00:28:32,799 --> 00:28:37,658
+session user one the fix was pretty
+
+636
+00:28:35,200 --> 00:28:39,190
+simple we moved the ssh server from
+
+637
+00:28:37,659 --> 00:28:41,380
+being a service to being a starter
+
+638
+00:28:39,190 --> 00:28:44,350
+program but the main conclusion from
+
+639
+00:28:41,380 --> 00:28:45,940
+this is reproduce all bugs and test your
+
+640
+00:28:44,350 --> 00:28:49,389
+father's because otherwise you're
+
+641
+00:28:45,940 --> 00:28:51,309
+probably wasting cpu time so after
+
+642
+00:28:49,390 --> 00:28:54,640
+sanity check we moved to stability check
+
+643
+00:28:51,309 --> 00:28:56,889
+we added about 15 api's and we let it
+
+644
+00:28:54,640 --> 00:29:00,490
+run for the night and we got a blue
+
+645
+00:28:56,890 --> 00:29:03,610
+screen our first thought was that guard
+
+646
+00:29:00,490 --> 00:29:05,590
+but after but we tested it without the
+
+647
+00:29:03,610 --> 00:29:07,750
+father and it was reproduced so we
+
+648
+00:29:05,590 --> 00:29:10,090
+thought maybe it's not that girl our
+
+649
+00:29:07,750 --> 00:29:13,570
+first bug was actually i use after free
+
+650
+00:29:10,090 --> 00:29:15,549
+and open clipboard but it only
+
+651
+00:29:13,570 --> 00:29:19,049
+reproduces on reproduced on some
+
+652
+00:29:15,549 --> 00:29:22,120
+machines and we were like what the fuzz
+
+653
+00:29:19,049 --> 00:29:24,190
+looking at the at crash code at the
+
+654
+00:29:22,120 --> 00:29:27,668
+crashing code we couldn't find close to
+
+655
+00:29:24,190 --> 00:29:30,360
+white crashes so we had to go to the
+
+656
+00:29:27,669 --> 00:29:33,070
+binary looking at the binary we can see
+
+657
+00:29:30,360 --> 00:29:34,658
+that it crashes when it tries to fetch
+
+658
+00:29:33,070 --> 00:29:36,100
+the process ID from the process
+
+659
+00:29:34,659 --> 00:29:37,810
+information block
+
+660
+00:29:36,100 --> 00:29:41,080
+but the process information block is
+
+661
+00:29:37,810 --> 00:29:43,060
+already free on machines that the that
+
+662
+00:29:41,080 --> 00:29:45,100
+the crash reproduces the if statement
+
+663
+00:29:43,060 --> 00:29:47,050
+above the block evaluates the true well
+
+664
+00:29:45,100 --> 00:29:50,500
+what does it check for well it checks
+
+665
+00:29:47,050 --> 00:29:54,250
+where we if win32 k trace logging yeah
+
+666
+00:29:50,500 --> 00:29:55,600
+is turned on for a specific feature we
+
+667
+00:29:54,250 --> 00:29:58,030
+what we found out through
+
+668
+00:29:55,600 --> 00:30:01,000
+experimentation is that this feature is
+
+669
+00:29:58,030 --> 00:30:03,850
+either turned on or off by boot and it
+
+670
+00:30:01,000 --> 00:30:05,860
+depends by at the install time and it
+
+671
+00:30:03,850 --> 00:30:07,750
+depends if you install the same machine
+
+672
+00:30:05,860 --> 00:30:09,909
+a couple of times it would I will be on
+
+673
+00:30:07,750 --> 00:30:12,520
+or off and it felt like our Father was
+
+674
+00:30:09,910 --> 00:30:16,660
+part of an experiment so a feature
+
+675
+00:30:12,520 --> 00:30:18,220
+experiment so we don't always find a we
+
+676
+00:30:16,660 --> 00:30:20,970
+don't always get a be tested machine but
+
+677
+00:30:18,220 --> 00:30:23,440
+when we do we found one ability in one
+
+678
+00:30:20,970 --> 00:30:26,140
+so we went back to stability checking
+
+679
+00:30:23,440 --> 00:30:27,880
+and we reinstalled windows making sure
+
+680
+00:30:26,140 --> 00:30:31,750
+that this feature is definitely turned
+
+681
+00:30:27,880 --> 00:30:34,060
+off and we had another bug this time it
+
+682
+00:30:31,750 --> 00:30:37,720
+was a denial of service in registry
+
+683
+00:30:34,060 --> 00:30:40,080
+classy X which is a pretty weird because
+
+684
+00:30:37,720 --> 00:30:42,610
+the register class is very is very basic
+
+685
+00:30:40,080 --> 00:30:45,399
+what we found out is the bug itself is
+
+686
+00:30:42,610 --> 00:30:47,500
+not in wretched class TX but in RT a lot
+
+687
+00:30:45,400 --> 00:30:50,680
+okay tip apparently when you allocate
+
+688
+00:30:47,500 --> 00:30:52,630
+specific sizes in specific time of point
+
+689
+00:30:50,680 --> 00:30:54,580
+in time you can actually cause the
+
+690
+00:30:52,630 --> 00:30:58,810
+kernel to allocate from reserved pages
+
+691
+00:30:54,580 --> 00:31:00,699
+and crash so at this point our
+
+692
+00:30:58,810 --> 00:31:03,700
+motivation was really high because we
+
+693
+00:31:00,700 --> 00:31:06,490
+found we added 15 Cisco's and we found 2
+
+694
+00:31:03,700 --> 00:31:11,170
+bugs and with 1500 Cisco's we're gonna
+
+695
+00:31:06,490 --> 00:31:13,240
+find like 200 bucks right so yeah at
+
+696
+00:31:11,170 --> 00:31:17,170
+this point we decided to commit to
+
+697
+00:31:13,240 --> 00:31:19,330
+writing all the grammar so we writing
+
+698
+00:31:17,170 --> 00:31:22,060
+grammar is a lot of work because there
+
+699
+00:31:19,330 --> 00:31:24,429
+are a lot of Cisco's and we bit lazy so
+
+700
+00:31:22,060 --> 00:31:26,139
+our first thought was automation how can
+
+701
+00:31:24,430 --> 00:31:28,420
+we automate this there are a few
+
+702
+00:31:26,140 --> 00:31:30,940
+problems the first one is that the
+
+703
+00:31:28,420 --> 00:31:33,760
+windows headers don't contain enough
+
+704
+00:31:30,940 --> 00:31:36,790
+semantic information to generate to
+
+705
+00:31:33,760 --> 00:31:38,860
+generate quality grammar for example
+
+706
+00:31:36,790 --> 00:31:40,270
+every every single duplicate type here
+
+707
+00:31:38,860 --> 00:31:43,000
+means different things in different
+
+708
+00:31:40,270 --> 00:31:46,500
+contexts and the other thing is that
+
+709
+00:31:43,000 --> 00:31:48,290
+Windows has a lot of undocumented api's
+
+710
+00:31:46,500 --> 00:31:49,990
+fortunately
+
+711
+00:31:48,290 --> 00:31:53,360
+Windows is technically open-source
+
+712
+00:31:49,990 --> 00:31:54,020
+because there is the Windows NT leaked
+
+713
+00:31:53,360 --> 00:31:56,179
+sources
+
+714
+00:31:54,020 --> 00:31:58,190
+there's the Windows 2000 League sources
+
+715
+00:31:56,180 --> 00:32:00,260
+there's reactor waste which technically
+
+716
+00:31:58,190 --> 00:32:02,360
+Windows 2003 leaked sources
+
+717
+00:32:00,260 --> 00:32:05,930
+there's the WR K and a few other
+
+718
+00:32:02,360 --> 00:32:09,320
+resources so what we did was for each
+
+719
+00:32:05,930 --> 00:32:12,380
+Cisco we looked at the sources plus the
+
+720
+00:32:09,320 --> 00:32:14,480
+documentation and we try to verify it as
+
+721
+00:32:12,380 --> 00:32:17,030
+much as we can with static analysis and
+
+722
+00:32:14,480 --> 00:32:21,080
+dynamic analysis we became get basically
+
+723
+00:32:17,030 --> 00:32:23,720
+workers in the grammar minds most API is
+
+724
+00:32:21,080 --> 00:32:26,149
+are pretty simple but others are really
+
+725
+00:32:23,720 --> 00:32:29,750
+hard with terrible semantic relationship
+
+726
+00:32:26,150 --> 00:32:31,850
+and complicated structures it's a few
+
+727
+00:32:29,750 --> 00:32:36,860
+examples of system calls we reported
+
+728
+00:32:31,850 --> 00:32:39,649
+it's just to see so we let the fuzz run
+
+729
+00:32:36,860 --> 00:32:41,689
+for the day and we got through new three
+
+730
+00:32:39,650 --> 00:32:43,580
+new vulnerabilities within the day and
+
+731
+00:32:41,690 --> 00:32:46,730
+we let it run for the week and it didn't
+
+732
+00:32:43,580 --> 00:32:51,020
+find everything new and we we said well
+
+733
+00:32:46,730 --> 00:32:54,770
+we want more so at this point we we had
+
+734
+00:32:51,020 --> 00:32:56,810
+to go a bit deeper and and I have to
+
+735
+00:32:54,770 --> 00:32:59,930
+tell you something that not many people
+
+736
+00:32:56,810 --> 00:33:02,270
+say fathers are not magic what it means
+
+737
+00:32:59,930 --> 00:33:04,520
+is that researchers have to help father
+
+738
+00:33:02,270 --> 00:33:06,139
+to teach them by teaching them tricks
+
+739
+00:33:04,520 --> 00:33:09,020
+and helping them reach hard to reach
+
+740
+00:33:06,140 --> 00:33:12,050
+attack surfaces our process for doing
+
+741
+00:33:09,020 --> 00:33:13,160
+that is we start from reading as much as
+
+742
+00:33:12,050 --> 00:33:15,230
+we can about the attack surface
+
+743
+00:33:13,160 --> 00:33:18,440
+everything that we can get our hands off
+
+744
+00:33:15,230 --> 00:33:21,680
+prior work all the bugs every research
+
+745
+00:33:18,440 --> 00:33:23,840
+presentation we can see we also try and
+
+746
+00:33:21,680 --> 00:33:27,410
+reproduce all bugs are bugs teach us a
+
+747
+00:33:23,840 --> 00:33:31,040
+lot about the attack surface and about
+
+748
+00:33:27,410 --> 00:33:34,430
+the father's ability to abilities and
+
+749
+00:33:31,040 --> 00:33:36,590
+limitations and finally and we take time
+
+750
+00:33:34,430 --> 00:33:38,900
+to look at coverage maps coverage maps
+
+751
+00:33:36,590 --> 00:33:40,780
+tell you gives you a pretty clear map
+
+752
+00:33:38,900 --> 00:33:43,520
+where your father is not targeting and
+
+753
+00:33:40,780 --> 00:33:44,990
+we try to take all of these insights and
+
+754
+00:33:43,520 --> 00:33:47,090
+we try to inject them back into the
+
+755
+00:33:44,990 --> 00:33:51,650
+fuzzing process let's see an example
+
+756
+00:33:47,090 --> 00:33:53,929
+which is not so empirical one thing that
+
+757
+00:33:51,650 --> 00:33:55,550
+we learned through arts for it through
+
+758
+00:33:53,930 --> 00:33:58,340
+the research is there is such a thing
+
+759
+00:33:55,550 --> 00:33:59,990
+called GDI shared handle table which is
+
+760
+00:33:58,340 --> 00:34:01,879
+an array of structured pointer by
+
+761
+00:33:59,990 --> 00:34:04,720
+pointed by the PB
+
+762
+00:34:01,880 --> 00:34:07,220
+it contains all handles for GDI objects
+
+763
+00:34:04,720 --> 00:34:10,159
+if you notice there's the process ID
+
+764
+00:34:07,220 --> 00:34:13,668
+which is which indicates which process
+
+765
+00:34:10,159 --> 00:34:17,899
+owns this specific handle Global handles
+
+766
+00:34:13,668 --> 00:34:19,549
+are ones that the process ID is zero so
+
+767
+00:34:17,899 --> 00:34:21,710
+we thought to ourselves maybe we can
+
+768
+00:34:19,550 --> 00:34:23,450
+teach our father to use those kinds of
+
+769
+00:34:21,710 --> 00:34:26,780
+handle in the fuzzing process and maybe
+
+770
+00:34:23,449 --> 00:34:28,790
+it with findbugs so what we did is we
+
+771
+00:34:26,780 --> 00:34:31,280
+created the new self doe Cisco that
+
+772
+00:34:28,790 --> 00:34:34,159
+returns handles from this list and we
+
+773
+00:34:31,280 --> 00:34:36,200
+let the father run for a few hours and
+
+774
+00:34:34,159 --> 00:34:38,870
+it found a vulnerability almost
+
+775
+00:34:36,199 --> 00:34:40,908
+immediately the vulnerability itself is
+
+776
+00:34:38,870 --> 00:34:44,690
+triggered by one system call and it's a
+
+777
+00:34:40,909 --> 00:34:49,250
+use after free and it involves only the
+
+778
+00:34:44,690 --> 00:34:51,830
+one a global object so our result for
+
+779
+00:34:49,250 --> 00:34:54,350
+this part of the of the research were
+
+780
+00:34:51,830 --> 00:34:56,889
+we've we fought for about a month and a
+
+781
+00:34:54,350 --> 00:34:59,089
+half of CPU time in our spare time we
+
+782
+00:34:56,889 --> 00:35:01,430
+found eight own abilities
+
+783
+00:34:59,090 --> 00:35:04,850
+we got assigned six CVE one was deemed
+
+784
+00:35:01,430 --> 00:35:08,000
+duplicate and one is still pending we
+
+785
+00:35:04,850 --> 00:35:10,339
+found three denial of service bugs one a
+
+786
+00:35:08,000 --> 00:35:12,800
+crash in window GaN which we are having
+
+787
+00:35:10,340 --> 00:35:16,310
+a really hard time to reproduce and a
+
+788
+00:35:12,800 --> 00:35:18,670
+few dead locks but the local privilege
+
+789
+00:35:16,310 --> 00:35:29,060
+escalation is nice can we make it an RC
+
+790
+00:35:18,670 --> 00:35:31,550
+so enter EMF wmfc flag in the 90s it
+
+791
+00:35:29,060 --> 00:35:33,470
+supports both vector graphics and bitmap
+
+792
+00:35:31,550 --> 00:35:35,690
+and if I have to summarize the entire
+
+793
+00:35:33,470 --> 00:35:38,120
+format in one word in one sentence its
+
+794
+00:35:35,690 --> 00:35:43,250
+what would happen if we took Siskel's
+
+795
+00:35:38,120 --> 00:35:45,109
+and wrap them up in an image format the
+
+796
+00:35:43,250 --> 00:35:48,740
+Microsoft extended the format a few
+
+797
+00:35:45,110 --> 00:35:50,720
+times in we have EMF EMF bus and EMF
+
+798
+00:35:48,740 --> 00:35:53,419
+spool and if you want to read all about
+
+799
+00:35:50,720 --> 00:35:56,080
+this attack surface and the format you
+
+800
+00:35:53,420 --> 00:35:59,780
+should check out Jerusalem more details
+
+801
+00:35:56,080 --> 00:36:03,290
+so a we looked at the specs and we've
+
+802
+00:35:59,780 --> 00:36:05,240
+and under the bitmap record types we saw
+
+803
+00:36:03,290 --> 00:36:07,160
+there is a stretch ability record type
+
+804
+00:36:05,240 --> 00:36:09,500
+and for those of you are familiar with
+
+805
+00:36:07,160 --> 00:36:11,839
+GDI there is a stretch BLT called there
+
+806
+00:36:09,500 --> 00:36:17,290
+and we happen to have a vulnerability
+
+807
+00:36:11,840 --> 00:36:17,290
+and stretch BLT so so let's see a demo
+
+808
+00:36:21,100 --> 00:36:27,410
+so here we we try to show the version of
+
+809
+00:36:24,740 --> 00:36:35,359
+the of Windows you can see it's pretty
+
+810
+00:36:27,410 --> 00:36:40,970
+new it was new at the time and we're
+
+811
+00:36:35,360 --> 00:36:43,310
+opening the EMF image you can we're
+
+812
+00:36:40,970 --> 00:36:54,649
+using in front of you because making it
+
+813
+00:36:43,310 --> 00:36:58,340
+work inward was painful and that's it so
+
+814
+00:36:54,650 --> 00:37:00,920
+a bit about future work we want to fuzz
+
+815
+00:36:58,340 --> 00:37:03,200
+we only touch them in parts and when 32k
+
+816
+00:37:00,920 --> 00:37:05,660
+that we were able to fuss we didn't
+
+817
+00:37:03,200 --> 00:37:09,200
+touchdown drive it directly drivers
+
+818
+00:37:05,660 --> 00:37:11,810
+because they have input structures that
+
+819
+00:37:09,200 --> 00:37:13,730
+are hard to model in this color and we
+
+820
+00:37:11,810 --> 00:37:15,320
+also haven't touched on when 32k a
+
+821
+00:37:13,730 --> 00:37:17,270
+callback functions for those of you
+
+822
+00:37:15,320 --> 00:37:21,110
+familiar that's that's where a lot of
+
+823
+00:37:17,270 --> 00:37:25,790
+blogs are we have a huge corpus of
+
+824
+00:37:21,110 --> 00:37:27,530
+programs for win32 k about 450,000 so we
+
+825
+00:37:25,790 --> 00:37:29,779
+thought that to take all of them and run
+
+826
+00:37:27,530 --> 00:37:31,850
+them through other bug Oracle's such as
+
+827
+00:37:29,780 --> 00:37:35,090
+box one to see if they find new and
+
+828
+00:37:31,850 --> 00:37:38,180
+interesting bugs and finally we want to
+
+829
+00:37:35,090 --> 00:37:39,500
+open source our reports and finally fast
+
+830
+00:37:38,180 --> 00:37:43,700
+the rest of the kernel but that's the
+
+831
+00:37:39,500 --> 00:37:45,590
+future work so in summary we started
+
+832
+00:37:43,700 --> 00:37:48,560
+from our user space vulnerabilities but
+
+833
+00:37:45,590 --> 00:37:50,810
+we wanted kernel we started we looked at
+
+834
+00:37:48,560 --> 00:37:52,730
+kfl but it wasn't good enough for us so
+
+835
+00:37:50,810 --> 00:37:56,630
+we moved to Cisco fuzzing and we found
+
+836
+00:37:52,730 --> 00:37:58,250
+six color we decided to port to wsl
+
+837
+00:37:56,630 --> 00:38:01,460
+first because it seemed like the first
+
+838
+00:37:58,250 --> 00:38:03,560
+good step we moved to we haven't we
+
+839
+00:38:01,460 --> 00:38:06,440
+didn't have luck so we moved to wintry
+
+840
+00:38:03,560 --> 00:38:09,170
+2k and we had we found eight
+
+841
+00:38:06,440 --> 00:38:11,930
+vulnerabilities and we managed to make
+
+842
+00:38:09,170 --> 00:38:14,000
+some of them are seized we want to say
+
+843
+00:38:11,930 --> 00:38:15,980
+special thanks to the dynamics tool team
+
+844
+00:38:14,000 --> 00:38:18,160
+at Google for endometrial II
+
+845
+00:38:15,980 --> 00:38:20,360
+specifically for creating CS color
+
+846
+00:38:18,160 --> 00:38:23,629
+Dmitry will be lecturing about this
+
+847
+00:38:20,360 --> 00:38:25,790
+color tomorrow so I encourage you all to
+
+848
+00:38:23,630 --> 00:38:28,550
+check his talk and to UM greenhouse
+
+849
+00:38:25,790 --> 00:38:29,720
+cavite which assisted us in creating the
+
+850
+00:38:28,550 --> 00:38:31,460
+presentation
+
+851
+00:38:29,720 --> 00:38:35,830
+unmentioned for his special assistance
+
+852
+00:38:31,460 --> 00:38:35,830
+in the research thank you
+
+853
+00:38:37,490 --> 00:38:42,200
+[Applause]
+

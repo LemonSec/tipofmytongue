@@ -1,0 +1,4604 @@
+﻿1
+00:00:05,839 --> 00:00:09,920
+all right welcome everybody um
+
+2
+00:00:07,680 --> 00:00:12,320
+we have this ffs talk and we have two of
+
+3
+00:00:09,920 --> 00:00:14,719
+us of the cfs core contributors
+
+4
+00:00:12,320 --> 00:00:17,920
+jeff and patrick so please welcome them
+
+5
+00:00:14,719 --> 00:00:17,919
+and enjoy their talk
+
+6
+00:00:20,800 --> 00:00:25,119
+hi everybody this is a talk about some
+
+7
+00:00:23,039 --> 00:00:27,680
+work i've been
+
+8
+00:00:25,119 --> 00:00:29,119
+working on for the last uh year or so
+
+9
+00:00:27,680 --> 00:00:32,558
+it's still quite bleeding edge so
+
+10
+00:00:29,119 --> 00:00:34,239
+be gentle um so first of all go ahead
+
+11
+00:00:32,558 --> 00:00:35,919
+go in though yeah sorry let me apologize
+
+12
+00:00:34,239 --> 00:00:37,519
+for this firefox browse the web thing
+
+13
+00:00:35,920 --> 00:00:40,320
+yake the door
+
+14
+00:00:37,520 --> 00:00:40,960
+um so anyway uh just a little bit about
+
+15
+00:00:40,320 --> 00:00:44,559
+us
+
+16
+00:00:40,960 --> 00:00:47,760
+i'm longtime colonel dev i've done some
+
+17
+00:00:44,559 --> 00:00:49,760
+uh move to doing uh recent work with uh
+
+18
+00:00:47,760 --> 00:00:51,120
+seth and just recently took over uh
+
+19
+00:00:49,760 --> 00:00:53,440
+maintainership of
+
+20
+00:00:51,120 --> 00:00:55,360
+case ffs zhang wanted to move on to
+
+21
+00:00:53,440 --> 00:00:58,160
+doing more work in the mds
+
+22
+00:00:55,360 --> 00:00:58,640
+and so i've taken over that part of it
+
+23
+00:00:58,160 --> 00:01:01,919
+and
+
+24
+00:00:58,640 --> 00:01:05,760
+patrick is uh also a
+
+25
+00:01:01,920 --> 00:01:09,760
+contributor or a lead uh person on cfs
+
+26
+00:01:05,760 --> 00:01:11,520
+these days and uh joined red hat in 2016
+
+27
+00:01:09,760 --> 00:01:14,080
+and uh he mostly shepherds the project
+
+28
+00:01:11,520 --> 00:01:17,280
+along at this point
+
+29
+00:01:14,080 --> 00:01:20,320
+so anyway uh what motivated this
+
+30
+00:01:17,280 --> 00:01:22,320
+work is uh the real is it yeah the
+
+31
+00:01:20,320 --> 00:01:23,758
+sort of the truism that anytime you're
+
+32
+00:01:22,320 --> 00:01:24,639
+working with a network file system you
+
+33
+00:01:23,759 --> 00:01:27,840
+know nfs
+
+34
+00:01:24,640 --> 00:01:29,759
+sifs chef anything like that
+
+35
+00:01:27,840 --> 00:01:30,960
+metadata directory operation directory
+
+36
+00:01:29,759 --> 00:01:34,240
+operations generally are
+
+37
+00:01:30,960 --> 00:01:36,000
+pretty slow um
+
+38
+00:01:34,240 --> 00:01:38,240
+oh you know if you're doing an open an
+
+39
+00:01:36,000 --> 00:01:40,880
+unlink rename anything like that you
+
+40
+00:01:38,240 --> 00:01:42,479
+almost always are doing a round trip
+
+41
+00:01:40,880 --> 00:01:43,280
+synchronous round trip to the server so
+
+42
+00:01:42,479 --> 00:01:45,759
+we'll you know
+
+43
+00:01:43,280 --> 00:01:46,560
+someone will call into the kernel uh
+
+44
+00:01:45,759 --> 00:01:49,040
+we'll
+
+45
+00:01:46,560 --> 00:01:50,320
+dispatch an rpc to the server and then
+
+46
+00:01:49,040 --> 00:01:51,520
+we have to wait for the reply to come in
+
+47
+00:01:50,320 --> 00:01:52,398
+and then finally we can return back to
+
+48
+00:01:51,520 --> 00:01:55,679
+userland
+
+49
+00:01:52,399 --> 00:01:57,040
+those are slow uh so this affects a
+
+50
+00:01:55,680 --> 00:01:57,680
+whole lot of different workloads you
+
+51
+00:01:57,040 --> 00:01:59,759
+know
+
+52
+00:01:57,680 --> 00:02:00,960
+you know you're untarring files you know
+
+53
+00:01:59,759 --> 00:02:02,640
+rsync
+
+54
+00:02:00,960 --> 00:02:04,880
+uh you know anytime you're removing a
+
+55
+00:02:02,640 --> 00:02:07,119
+big directory tree
+
+56
+00:02:04,880 --> 00:02:08,000
+and also stuff like compiling software
+
+57
+00:02:07,119 --> 00:02:09,520
+you know basically
+
+58
+00:02:08,000 --> 00:02:12,879
+anything you do that touches a file
+
+59
+00:02:09,520 --> 00:02:12,879
+system is going to be affected by that
+
+60
+00:02:14,160 --> 00:02:18,879
+um so first is you know why
+
+61
+00:02:17,440 --> 00:02:20,480
+first of all is why are local file
+
+62
+00:02:18,879 --> 00:02:21,840
+systems so much faster well the obvious
+
+63
+00:02:20,480 --> 00:02:22,959
+thing is that they don't have a server
+
+64
+00:02:21,840 --> 00:02:25,120
+to talk to right you know they don't
+
+65
+00:02:22,959 --> 00:02:27,520
+have to make this long round trip
+
+66
+00:02:25,120 --> 00:02:28,879
+um then there's also some journal
+
+67
+00:02:27,520 --> 00:02:30,800
+non-journal file systems
+
+68
+00:02:28,879 --> 00:02:32,480
+uh that buffer their metadata mutations
+
+69
+00:02:30,800 --> 00:02:36,239
+in memory so like
+
+70
+00:02:32,480 --> 00:02:38,480
+these are stuff like ext2 um
+
+71
+00:02:36,239 --> 00:02:40,239
+not so much in use these days but in
+
+72
+00:02:38,480 --> 00:02:41,200
+most journal file systems the journal's
+
+73
+00:02:40,239 --> 00:02:43,360
+pretty quick
+
+74
+00:02:41,200 --> 00:02:44,799
+and so you know we don't tend to worry
+
+75
+00:02:43,360 --> 00:02:46,080
+too much about uh
+
+76
+00:02:44,800 --> 00:02:48,400
+the fact that we have to journal all
+
+77
+00:02:46,080 --> 00:02:51,280
+this data in order to handle the
+
+78
+00:02:48,400 --> 00:02:53,120
+crash recovery so the consequences of
+
+79
+00:02:51,280 --> 00:02:55,920
+that is that you know you can
+
+80
+00:02:53,120 --> 00:02:57,040
+uh uh they can you know batch out the
+
+81
+00:02:55,920 --> 00:02:58,958
+rights to the journal
+
+82
+00:02:57,040 --> 00:03:00,319
+uh so you can do do a whole bunch of you
+
+83
+00:02:58,959 --> 00:03:02,319
+can build basically a transaction and
+
+84
+00:03:00,319 --> 00:03:04,640
+then flush it out to the journal
+
+85
+00:03:02,319 --> 00:03:05,760
+um but those operations are not
+
+86
+00:03:04,640 --> 00:03:08,480
+guaranteed to be
+
+87
+00:03:05,760 --> 00:03:09,760
+uh not all you know especially when
+
+88
+00:03:08,480 --> 00:03:10,560
+you're dealing with these non-journal
+
+89
+00:03:09,760 --> 00:03:13,440
+file systems
+
+90
+00:03:10,560 --> 00:03:15,040
+uh the operations that you do are not
+
+91
+00:03:13,440 --> 00:03:16,560
+guaranteed to be durable unless you have
+
+92
+00:03:15,040 --> 00:03:19,840
+sync
+
+93
+00:03:16,560 --> 00:03:22,720
+so uh if you do a rename unlink
+
+94
+00:03:19,840 --> 00:03:24,879
+anything like that uh it's possible that
+
+95
+00:03:22,720 --> 00:03:27,760
+uh if the box crashes before
+
+96
+00:03:24,879 --> 00:03:28,399
+the data hits the disk uh you may uh
+
+97
+00:03:27,760 --> 00:03:29,760
+that
+
+98
+00:03:28,400 --> 00:03:31,920
+operation may turn out never to have
+
+99
+00:03:29,760 --> 00:03:32,879
+happened even after you've returned back
+
+100
+00:03:31,920 --> 00:03:35,119
+to userland
+
+101
+00:03:32,879 --> 00:03:37,599
+now it turns out in most modern journal
+
+102
+00:03:35,120 --> 00:03:39,599
+file systems that's not such an issue
+
+103
+00:03:37,599 --> 00:03:41,040
+they almost all synchronously write to
+
+104
+00:03:39,599 --> 00:03:42,480
+the journal before they'll return to
+
+105
+00:03:41,040 --> 00:03:44,959
+userland
+
+106
+00:03:42,480 --> 00:03:46,560
+but uh you know technically you know
+
+107
+00:03:44,959 --> 00:03:46,959
+you're supposed to f-sync in order to do
+
+108
+00:03:46,560 --> 00:03:49,519
+that
+
+109
+00:03:46,959 --> 00:03:52,480
+in order to ensure that your operation
+
+110
+00:03:49,519 --> 00:03:52,480
+is persisted on disk
+
+111
+00:03:52,640 --> 00:03:57,679
+um i'll let you take this part so this
+
+112
+00:03:55,040 --> 00:03:57,679
+is uh uh
+
+113
+00:03:57,760 --> 00:04:03,760
+so uh can you all hear me on this
+
+114
+00:04:00,879 --> 00:04:05,760
+i don't know if the mic's working okay
+
+115
+00:04:03,760 --> 00:04:08,239
+no
+
+116
+00:04:05,760 --> 00:04:08,239
+it's loud
+
+117
+00:04:09,200 --> 00:04:14,000
+speak up okay i'll try to speak up
+
+118
+00:04:12,000 --> 00:04:17,600
+that's hard for me all right so
+
+119
+00:04:14,000 --> 00:04:19,440
+um i get you know just to give you all
+
+120
+00:04:17,600 --> 00:04:20,880
+an introduction to cfs for those of you
+
+121
+00:04:19,440 --> 00:04:24,400
+who don't know
+
+122
+00:04:20,880 --> 00:04:25,440
+7s is a posix distributed file system
+
+123
+00:04:24,400 --> 00:04:28,400
+it's the oldest
+
+124
+00:04:25,440 --> 00:04:30,320
+storage application that's run on ceph
+
+125
+00:04:28,400 --> 00:04:34,320
+it was the original use case for sev
+
+126
+00:04:30,320 --> 00:04:34,320
+back in around 2005.
+
+127
+00:04:34,400 --> 00:04:38,960
+it's a cooperative file system with
+
+128
+00:04:37,040 --> 00:04:41,120
+clients
+
+129
+00:04:38,960 --> 00:04:42,080
+in particular of note is that the
+
+130
+00:04:41,120 --> 00:04:45,199
+clients have direct
+
+131
+00:04:42,080 --> 00:04:47,359
+access to the object storage devices
+
+132
+00:04:45,199 --> 00:04:49,759
+they're able to read and write all the
+
+133
+00:04:47,360 --> 00:04:50,880
+the file data blocks themselves they
+
+134
+00:04:49,759 --> 00:04:52,080
+don't have to go through any kind of
+
+135
+00:04:50,880 --> 00:04:53,680
+metadata server
+
+136
+00:04:52,080 --> 00:04:55,919
+so the server that jeff was talking
+
+137
+00:04:53,680 --> 00:04:57,680
+about earlier is actually the metadata
+
+138
+00:04:55,919 --> 00:04:59,599
+server so that is
+
+139
+00:04:57,680 --> 00:05:00,880
+the centralized services there can be
+
+140
+00:04:59,600 --> 00:05:04,720
+more than one that
+
+141
+00:05:00,880 --> 00:05:07,520
+uh aggregate all the metadata mutations
+
+142
+00:05:04,720 --> 00:05:09,280
+journal them to ratos in the metadata
+
+143
+00:05:07,520 --> 00:05:11,198
+pool
+
+144
+00:05:09,280 --> 00:05:12,880
+and also serve to manage the cash
+
+145
+00:05:11,199 --> 00:05:14,080
+between all the clients making sure the
+
+146
+00:05:12,880 --> 00:05:17,360
+clients are all
+
+147
+00:05:14,080 --> 00:05:19,120
+uh consistent and uh
+
+148
+00:05:17,360 --> 00:05:21,440
+and that the client's caches are also
+
+149
+00:05:19,120 --> 00:05:25,120
+coherent so there's um
+
+150
+00:05:21,440 --> 00:05:26,960
+a capability mechanism that the mds has
+
+151
+00:05:25,120 --> 00:05:28,880
+to give the clients rights to do things
+
+152
+00:05:26,960 --> 00:05:31,840
+like read or write from a file
+
+153
+00:05:28,880 --> 00:05:32,800
+or keep track of what entries exist in a
+
+154
+00:05:31,840 --> 00:05:34,560
+directory
+
+155
+00:05:32,800 --> 00:05:36,800
+and that's all cooperatively maintained
+
+156
+00:05:34,560 --> 00:05:38,720
+by the clients and and the mdss
+
+157
+00:05:36,800 --> 00:05:42,160
+the clients are considered trusted in
+
+158
+00:05:38,720 --> 00:05:45,919
+this ffs model so they're not going to
+
+159
+00:05:42,160 --> 00:05:47,840
+misbehave in any way because namely
+
+160
+00:05:45,919 --> 00:05:50,479
+they do have direct access to the data
+
+161
+00:05:47,840 --> 00:05:52,080
+pool but they're also expected to
+
+162
+00:05:50,479 --> 00:05:53,520
+maintain their caches coherently with
+
+163
+00:05:52,080 --> 00:05:57,039
+the mds
+
+164
+00:05:53,520 --> 00:06:00,240
+uh so jeff's gonna talk
+
+165
+00:05:57,039 --> 00:06:02,880
+in particular um in this talk uh
+
+166
+00:06:00,240 --> 00:06:03,840
+focusing on these rpcs at the top
+
+167
+00:06:02,880 --> 00:06:07,840
+between the client
+
+168
+00:06:03,840 --> 00:06:07,840
+and the active metadata server
+
+169
+00:06:09,600 --> 00:06:14,000
+so you know how how does the mds manage
+
+170
+00:06:12,560 --> 00:06:15,120
+all this you know mediate between the
+
+171
+00:06:14,000 --> 00:06:16,720
+different clients well it has this
+
+172
+00:06:15,120 --> 00:06:17,520
+mechanism that we it's called the cap
+
+173
+00:06:16,720 --> 00:06:20,720
+subsystem
+
+174
+00:06:17,520 --> 00:06:22,159
+short for capabilities
+
+175
+00:06:20,720 --> 00:06:25,120
+and basically capabilities if you're
+
+176
+00:06:22,160 --> 00:06:26,880
+familiar with something like nfs or smb
+
+177
+00:06:25,120 --> 00:06:28,319
+is very similar to like a delegation or
+
+178
+00:06:26,880 --> 00:06:30,960
+op lock
+
+179
+00:06:28,319 --> 00:06:32,000
+it's but they're more granular in
+
+180
+00:06:30,960 --> 00:06:33,758
+particular they
+
+181
+00:06:32,000 --> 00:06:35,600
+come in several different types of
+
+182
+00:06:33,759 --> 00:06:38,960
+flavors so we have a pin
+
+183
+00:06:35,600 --> 00:06:40,960
+off file link x adder and so they
+
+184
+00:06:38,960 --> 00:06:42,719
+a lot of that sounds pretty obvious pin
+
+185
+00:06:40,960 --> 00:06:44,080
+just ensures that the thing doesn't go
+
+186
+00:06:42,720 --> 00:06:47,520
+away
+
+187
+00:06:44,080 --> 00:06:49,520
+and off ensures that our pin actually
+
+188
+00:06:47,520 --> 00:06:51,680
+ensures that it doesn't float between
+
+189
+00:06:49,520 --> 00:06:53,359
+mdss i believe actually so
+
+190
+00:06:51,680 --> 00:06:55,039
+uh so we ensure that that thing is
+
+191
+00:06:53,360 --> 00:06:57,199
+pinned to a particular nvs while the
+
+192
+00:06:55,039 --> 00:06:59,919
+operation is going on
+
+193
+00:06:57,199 --> 00:07:02,000
+auth is uh covers uh user you know
+
+194
+00:06:59,919 --> 00:07:04,318
+ownership mode
+
+195
+00:07:02,000 --> 00:07:05,199
+file is a big cap i'll talk about that
+
+196
+00:07:04,319 --> 00:07:08,639
+in a minute
+
+197
+00:07:05,199 --> 00:07:09,120
+link is link count primarily and then x
+
+198
+00:07:08,639 --> 00:07:12,319
+adder
+
+199
+00:07:09,120 --> 00:07:13,840
+is uh you know covers x headers so they
+
+200
+00:07:12,319 --> 00:07:15,840
+all have pretty much all have a shared
+
+201
+00:07:13,840 --> 00:07:17,599
+and exclusive variety so we can hand out
+
+202
+00:07:15,840 --> 00:07:18,479
+shared or exclusive caps to a to a
+
+203
+00:07:17,599 --> 00:07:22,000
+client
+
+204
+00:07:18,479 --> 00:07:24,719
+for them to to buffer operations or
+
+205
+00:07:22,000 --> 00:07:26,240
+their cache operations but the file caps
+
+206
+00:07:24,720 --> 00:07:28,000
+are a little special they have a whole
+
+207
+00:07:26,240 --> 00:07:30,080
+bunch of other different bits
+
+208
+00:07:28,000 --> 00:07:32,080
+and if you see down here too you know
+
+209
+00:07:30,080 --> 00:07:32,719
+the way we express caps and track them
+
+210
+00:07:32,080 --> 00:07:35,520
+in the car
+
+211
+00:07:32,720 --> 00:07:36,560
+in uh in all the code is uh via bit mask
+
+212
+00:07:35,520 --> 00:07:39,198
+and so this
+
+213
+00:07:36,560 --> 00:07:40,720
+you know part down here is uh more or
+
+214
+00:07:39,199 --> 00:07:42,080
+less showing you sort of how the bits
+
+215
+00:07:40,720 --> 00:07:43,599
+are laid out for the for the different
+
+216
+00:07:42,080 --> 00:07:45,199
+caps
+
+217
+00:07:43,599 --> 00:07:46,719
+the thing to notice about the file caps
+
+218
+00:07:45,199 --> 00:07:48,479
+is that they are uh
+
+219
+00:07:46,720 --> 00:07:50,319
+pretty extensive so we have uh we have
+
+220
+00:07:48,479 --> 00:07:53,599
+you know shared exclusive of course
+
+221
+00:07:50,319 --> 00:07:56,240
+but there's also um uh cash read write
+
+222
+00:07:53,599 --> 00:07:57,039
+buffer i believe that one is an append
+
+223
+00:07:56,240 --> 00:07:59,199
+and then there's
+
+224
+00:07:57,039 --> 00:08:01,599
+a lazy i o which is sort of a weirdo
+
+225
+00:07:59,199 --> 00:08:05,199
+thing to allow it to uh
+
+226
+00:08:01,599 --> 00:08:05,199
+not have to talk to the mds so much
+
+227
+00:08:06,639 --> 00:08:10,319
+but mostly here we're talking about
+
+228
+00:08:08,639 --> 00:08:14,160
+directory operations
+
+229
+00:08:10,319 --> 00:08:16,240
+and so uh traditionally the mds has
+
+230
+00:08:14,160 --> 00:08:17,440
+uh not really given out much in the way
+
+231
+00:08:16,240 --> 00:08:19,919
+of caps to the to
+
+232
+00:08:17,440 --> 00:08:22,000
+for on directories so we will give out
+
+233
+00:08:19,919 --> 00:08:25,039
+uh shared caps pretty much
+
+234
+00:08:22,000 --> 00:08:26,240
+but uh exclusive caps not so much uh and
+
+235
+00:08:25,039 --> 00:08:29,280
+then
+
+236
+00:08:26,240 --> 00:08:29,840
+uh but so you know in order to try to
+
+237
+00:08:29,280 --> 00:08:32,079
+speed up
+
+238
+00:08:29,840 --> 00:08:34,000
+asynchronous speed up directory
+
+239
+00:08:32,080 --> 00:08:36,399
+operations what we want to do is start
+
+240
+00:08:34,000 --> 00:08:37,599
+allowing the clients to do a bit more
+
+241
+00:08:36,399 --> 00:08:40,320
+locally
+
+242
+00:08:37,599 --> 00:08:41,120
+and so to do that we have extended or
+
+243
+00:08:40,320 --> 00:08:44,560
+over
+
+244
+00:08:41,120 --> 00:08:46,320
+over loaded the uh the
+
+245
+00:08:44,560 --> 00:08:48,800
+file caps to have different meanings on
+
+246
+00:08:46,320 --> 00:08:49,680
+directories so in particular uh we want
+
+247
+00:08:48,800 --> 00:08:52,240
+to allow
+
+248
+00:08:49,680 --> 00:08:54,239
+create and unlink uh those are the two
+
+249
+00:08:52,240 --> 00:08:56,320
+that at least we're starting with
+
+250
+00:08:54,240 --> 00:08:57,279
+uh so basically and we're also going to
+
+251
+00:08:56,320 --> 00:09:00,399
+have the mds
+
+252
+00:08:57,279 --> 00:09:01,920
+uh handout uh exclusive caps so we
+
+253
+00:09:00,399 --> 00:09:03,920
+you'll notice too that we have sort of a
+
+254
+00:09:01,920 --> 00:09:07,599
+shorthand notation here as well for
+
+255
+00:09:03,920 --> 00:09:10,640
+for how the caps work or how the caps
+
+256
+00:09:07,600 --> 00:09:13,839
+are expressed um
+
+257
+00:09:10,640 --> 00:09:16,399
+so internally in the mds
+
+258
+00:09:13,839 --> 00:09:18,160
+we've done typically whenever we have to
+
+259
+00:09:16,399 --> 00:09:20,160
+do a directory operation the mds has to
+
+260
+00:09:18,160 --> 00:09:22,319
+gather a bunch of locks between you know
+
+261
+00:09:20,160 --> 00:09:24,800
+to ensure that other mdss don't
+
+262
+00:09:22,320 --> 00:09:25,839
+come in and try to do something uh and
+
+263
+00:09:24,800 --> 00:09:28,719
+so
+
+264
+00:09:25,839 --> 00:09:29,440
+uh zhang sort of lead a developer on the
+
+265
+00:09:28,720 --> 00:09:33,760
+mds
+
+266
+00:09:29,440 --> 00:09:35,120
+uh has uh developed a new lock caching
+
+267
+00:09:33,760 --> 00:09:38,000
+facility so he can
+
+268
+00:09:35,120 --> 00:09:40,080
+basically uh have on mds gather locks
+
+269
+00:09:38,000 --> 00:09:42,240
+for an operation on a directory
+
+270
+00:09:40,080 --> 00:09:44,080
+uh and then cache those for later use if
+
+271
+00:09:42,240 --> 00:09:46,399
+he needs to do another
+
+272
+00:09:44,080 --> 00:09:47,760
+um so essentially what happens is we
+
+273
+00:09:46,399 --> 00:09:50,000
+only uh
+
+274
+00:09:47,760 --> 00:09:52,160
+hand these out though in on the first
+
+275
+00:09:50,000 --> 00:09:55,519
+synchronous
+
+276
+00:09:52,160 --> 00:09:55,519
+creator unlink in a directory
+
+277
+00:09:58,800 --> 00:10:02,240
+so now let's talk a little bit about
+
+278
+00:10:00,480 --> 00:10:03,519
+denture caching so
+
+279
+00:10:02,240 --> 00:10:05,200
+you know again we don't want to always
+
+280
+00:10:03,519 --> 00:10:06,720
+have to do a synchronous round trip to
+
+281
+00:10:05,200 --> 00:10:07,600
+the server to do a lookup or something
+
+282
+00:10:06,720 --> 00:10:10,480
+like that for
+
+283
+00:10:07,600 --> 00:10:11,680
+uh for a directory entry and when i talk
+
+284
+00:10:10,480 --> 00:10:13,279
+about density what i'm talking about is
+
+285
+00:10:11,680 --> 00:10:16,560
+a path name component
+
+286
+00:10:13,279 --> 00:10:20,000
+uh within the within the file system
+
+287
+00:10:16,560 --> 00:10:21,199
+so uh uh in order to do an asynchronous
+
+288
+00:10:20,000 --> 00:10:23,440
+directory operation
+
+289
+00:10:21,200 --> 00:10:24,320
+we have to we need reliably we need to
+
+290
+00:10:23,440 --> 00:10:25,680
+know that our
+
+291
+00:10:24,320 --> 00:10:27,839
+cached information about the directory
+
+292
+00:10:25,680 --> 00:10:29,519
+is correct uh we can't go and fire off
+
+293
+00:10:27,839 --> 00:10:31,519
+an unlink and then find out later that
+
+294
+00:10:29,519 --> 00:10:34,399
+oh that file didn't actually exist
+
+295
+00:10:31,519 --> 00:10:36,000
+you know so that's not allowed so we
+
+296
+00:10:34,399 --> 00:10:39,360
+have two mechanisms for tracking
+
+297
+00:10:36,000 --> 00:10:41,680
+uh denturies we have a
+
+298
+00:10:39,360 --> 00:10:43,519
+dense releases and we can they just come
+
+299
+00:10:41,680 --> 00:10:46,560
+in positive or negative flavors
+
+300
+00:10:43,519 --> 00:10:49,120
+and then we also can hand out fs and
+
+301
+00:10:46,560 --> 00:10:51,599
+by extension you know share shared file
+
+302
+00:10:49,120 --> 00:10:53,839
+caps on a directory or
+
+303
+00:10:51,600 --> 00:10:56,160
+exclusive caps on a directory exclusive
+
+304
+00:10:53,839 --> 00:10:59,519
+implied shared
+
+305
+00:10:56,160 --> 00:11:01,120
+and so for the latter if we
+
+306
+00:10:59,519 --> 00:11:02,160
+if we just get the caps on the directory
+
+307
+00:11:01,120 --> 00:11:03,440
+we don't actually know anything about
+
+308
+00:11:02,160 --> 00:11:04,000
+the dentures that are in it so we have
+
+309
+00:11:03,440 --> 00:11:06,000
+to
+
+310
+00:11:04,000 --> 00:11:07,600
+either have done a reader you know full
+
+311
+00:11:06,000 --> 00:11:09,120
+reader on the directory
+
+312
+00:11:07,600 --> 00:11:10,480
+or we have to know that the direct you
+
+313
+00:11:09,120 --> 00:11:11,040
+know what the state of all the densities
+
+314
+00:11:10,480 --> 00:11:12,800
+in the direct
+
+315
+00:11:11,040 --> 00:11:14,079
+is in the directory so for instance if
+
+316
+00:11:12,800 --> 00:11:15,040
+we create a new directory we know it's
+
+317
+00:11:14,079 --> 00:11:18,560
+empty
+
+318
+00:11:15,040 --> 00:11:18,560
+and we can consider it complete
+
+319
+00:11:19,279 --> 00:11:22,640
+and this allows us so we do this use
+
+320
+00:11:21,279 --> 00:11:25,839
+this today actually
+
+321
+00:11:22,640 --> 00:11:29,120
+because this allows us to do uh lookups
+
+322
+00:11:25,839 --> 00:11:30,720
+even negative lookups on a directory
+
+323
+00:11:29,120 --> 00:11:32,240
+without having to talk to the mds if we
+
+324
+00:11:30,720 --> 00:11:33,360
+know that the state that our
+
+325
+00:11:32,240 --> 00:11:35,120
+information about the directory is
+
+326
+00:11:33,360 --> 00:11:36,399
+complete and someone asked for some
+
+327
+00:11:35,120 --> 00:11:37,600
+entry that we know is not there we don't
+
+328
+00:11:36,399 --> 00:11:40,480
+have to talk to the mds we can just say
+
+329
+00:11:37,600 --> 00:11:40,480
+no that doesn't exist
+
+330
+00:11:41,440 --> 00:11:48,399
+so uh so now let's talk about doing uh
+
+331
+00:11:45,279 --> 00:11:49,920
+actual asynchronous operations so we'll
+
+332
+00:11:48,399 --> 00:11:51,519
+start with talking about what what
+
+333
+00:11:49,920 --> 00:11:54,399
+happens today right you know it's pretty
+
+334
+00:11:51,519 --> 00:11:56,000
+pretty typical uh similar to nfs or uh
+
+335
+00:11:54,399 --> 00:11:58,000
+smd or anything like that
+
+336
+00:11:56,000 --> 00:11:59,920
+uh when we do an asynchronous we do a
+
+337
+00:11:58,000 --> 00:12:01,600
+synchronous someone calls unlink down
+
+338
+00:11:59,920 --> 00:12:05,519
+into the kernel for instance
+
+339
+00:12:01,600 --> 00:12:08,480
+um we do that synchronously we
+
+340
+00:12:05,519 --> 00:12:09,760
+dispatch a call to the mds we have to
+
+341
+00:12:08,480 --> 00:12:11,120
+wait for the reply to come in and when
+
+342
+00:12:09,760 --> 00:12:13,760
+the reply comes in
+
+343
+00:12:11,120 --> 00:12:15,200
+uh then we can return back to userland
+
+344
+00:12:13,760 --> 00:12:17,600
+um but this is
+
+345
+00:12:15,200 --> 00:12:18,240
+can be really slow right i mean think
+
+346
+00:12:17,600 --> 00:12:20,399
+about it if
+
+347
+00:12:18,240 --> 00:12:21,760
+doing like an rm-rf on a directory you
+
+348
+00:12:20,399 --> 00:12:23,360
+know we're gonna do a reader
+
+349
+00:12:21,760 --> 00:12:25,200
+find out what all is in there and then
+
+350
+00:12:23,360 --> 00:12:27,760
+we go issue an unlink on
+
+351
+00:12:25,200 --> 00:12:29,040
+on each file and you know each of those
+
+352
+00:12:27,760 --> 00:12:32,000
+is a round trip
+
+353
+00:12:29,040 --> 00:12:34,319
+uh and so that slows that's pretty or
+
+354
+00:12:32,000 --> 00:12:36,880
+very very slow
+
+355
+00:12:34,320 --> 00:12:37,680
+so in fact here's a diagram that kind of
+
+356
+00:12:36,880 --> 00:12:40,399
+shows the
+
+357
+00:12:37,680 --> 00:12:41,519
+procedure for an asynchronous unlink so
+
+358
+00:12:40,399 --> 00:12:43,519
+here we have uh
+
+359
+00:12:41,519 --> 00:12:45,120
+so we didn't open on directory right so
+
+360
+00:12:43,519 --> 00:12:46,480
+we get a uh and then
+
+361
+00:12:45,120 --> 00:12:48,720
+that's going to do you know get
+
+362
+00:12:46,480 --> 00:12:50,240
+information about the directory we get
+
+363
+00:12:48,720 --> 00:12:52,399
+capabilities for the directory let's say
+
+364
+00:12:50,240 --> 00:12:54,240
+we've got you know exclusive caps
+
+365
+00:12:52,399 --> 00:12:56,160
+we do a to fill it you know so
+
+366
+00:12:54,240 --> 00:12:58,880
+that we know what all the entries are
+
+367
+00:12:56,160 --> 00:13:00,079
+uh and then we do uh go back and you
+
+368
+00:12:58,880 --> 00:13:02,720
+know that gets reply
+
+369
+00:13:00,079 --> 00:13:04,000
+gets a reply and then we do an unlink
+
+370
+00:13:02,720 --> 00:13:05,279
+and then that comes back and we do
+
+371
+00:13:04,000 --> 00:13:06,800
+another unlink and that comes back and
+
+372
+00:13:05,279 --> 00:13:07,600
+so on and so on and so forth and finally
+
+373
+00:13:06,800 --> 00:13:10,000
+we can do an r
+
+374
+00:13:07,600 --> 00:13:10,000
+at the bottom
+
+375
+00:13:14,240 --> 00:13:18,079
+so you know if we're going to do these
+
+376
+00:13:16,560 --> 00:13:19,119
+asynchronously we have a decision to
+
+377
+00:13:18,079 --> 00:13:21,359
+make
+
+378
+00:13:19,120 --> 00:13:22,480
+do we want to wait to transmit them or
+
+379
+00:13:21,360 --> 00:13:24,560
+do we want to
+
+380
+00:13:22,480 --> 00:13:25,600
+uh just go ahead and fire them off as
+
+381
+00:13:24,560 --> 00:13:29,760
+soon as we get them
+
+382
+00:13:25,600 --> 00:13:29,760
+right and so it's natural to think about
+
+383
+00:13:29,839 --> 00:13:33,200
+when you're talking about asynchronous
+
+384
+00:13:30,959 --> 00:13:35,920
+operations it's natural to think about
+
+385
+00:13:33,200 --> 00:13:37,040
+like buffered i o in the kernel in that
+
+386
+00:13:35,920 --> 00:13:39,040
+case we are
+
+387
+00:13:37,040 --> 00:13:40,880
+writing to a cache in page cache in the
+
+388
+00:13:39,040 --> 00:13:41,760
+kernel and then eventually we flush that
+
+389
+00:13:40,880 --> 00:13:43,519
+out and so the
+
+390
+00:13:41,760 --> 00:13:45,120
+the deal with the kernel with writes
+
+391
+00:13:43,519 --> 00:13:46,639
+though is that
+
+392
+00:13:45,120 --> 00:13:48,720
+anytime you do a write in the kernel
+
+393
+00:13:46,639 --> 00:13:50,399
+there's a pretty high probability that
+
+394
+00:13:48,720 --> 00:13:52,000
+you know that there will be a follow-on
+
+395
+00:13:50,399 --> 00:13:55,279
+write a little later that may
+
+396
+00:13:52,000 --> 00:13:57,199
+also modify that data so often it's
+
+397
+00:13:55,279 --> 00:14:00,320
+uh advantageous to wait a while to
+
+398
+00:13:57,199 --> 00:14:03,040
+before you flush these things out
+
+399
+00:14:00,320 --> 00:14:04,800
+not so much on directories uh you know
+
+400
+00:14:03,040 --> 00:14:07,279
+operate you know workloads that
+
+401
+00:14:04,800 --> 00:14:08,160
+uh repeatedly create and unlink the same
+
+402
+00:14:07,279 --> 00:14:11,279
+entries
+
+403
+00:14:08,160 --> 00:14:13,120
+are pretty rare so you know at least the
+
+404
+00:14:11,279 --> 00:14:14,160
+at this point we are
+
+405
+00:14:13,120 --> 00:14:15,440
+operating under the assumption that
+
+406
+00:14:14,160 --> 00:14:17,040
+there's not a lot to be gained by
+
+407
+00:14:15,440 --> 00:14:18,720
+delaying them
+
+408
+00:14:17,040 --> 00:14:19,680
+and so as soon as someone calls this
+
+409
+00:14:18,720 --> 00:14:21,120
+we're just going to go ahead and fire
+
+410
+00:14:19,680 --> 00:14:23,680
+off the call and then we just won't wait
+
+411
+00:14:21,120 --> 00:14:23,680
+on the reply
+
+412
+00:14:24,079 --> 00:14:27,120
+uh we may change this in the future
+
+413
+00:14:25,680 --> 00:14:30,719
+there are some workloads
+
+414
+00:14:27,120 --> 00:14:33,839
+things like rsync uh
+
+415
+00:14:30,720 --> 00:14:35,920
+to uh uh will often uh copy
+
+416
+00:14:33,839 --> 00:14:37,600
+you know create a file write to it and
+
+417
+00:14:35,920 --> 00:14:40,160
+then rename it into place
+
+418
+00:14:37,600 --> 00:14:40,720
+uh that may be more advantageous to to
+
+419
+00:14:40,160 --> 00:14:44,240
+do that
+
+420
+00:14:40,720 --> 00:14:47,199
+can i uh wait until the end so okay
+
+421
+00:14:44,240 --> 00:14:48,240
+so um that may be more advantageous to
+
+422
+00:14:47,199 --> 00:14:50,800
+uh so we may
+
+423
+00:14:48,240 --> 00:14:53,440
+you know in the future consider doing
+
+424
+00:14:50,800 --> 00:14:53,439
+this differently
+
+425
+00:14:55,839 --> 00:14:59,279
+so an asynchronous unlink so how do we
+
+426
+00:14:57,600 --> 00:15:00,880
+do this right so first of all we have to
+
+427
+00:14:59,279 --> 00:15:03,279
+get uh you know exclusive caps on the
+
+428
+00:15:00,880 --> 00:15:04,560
+directory and we also need an unlink cap
+
+429
+00:15:03,279 --> 00:15:06,160
+which typically means that we have to
+
+430
+00:15:04,560 --> 00:15:08,000
+have done a synchronous unlink in the
+
+431
+00:15:06,160 --> 00:15:09,760
+directory first
+
+432
+00:15:08,000 --> 00:15:11,519
+we also need to know that the density is
+
+433
+00:15:09,760 --> 00:15:14,319
+positive right so we have to know that
+
+434
+00:15:11,519 --> 00:15:14,320
+the file exists
+
+435
+00:15:15,279 --> 00:15:19,600
+and then also we there's also a concept
+
+436
+00:15:18,560 --> 00:15:21,680
+in ceph it's
+
+437
+00:15:19,600 --> 00:15:24,079
+sort of exclusive to stuff that uh it
+
+438
+00:15:21,680 --> 00:15:27,199
+has to be the primary entry for a uh
+
+439
+00:15:24,079 --> 00:15:29,120
+for for the file uh seth has
+
+440
+00:15:27,199 --> 00:15:31,279
+has a really strange way of tracking
+
+441
+00:15:29,120 --> 00:15:33,040
+hard linked files and so
+
+442
+00:15:31,279 --> 00:15:34,399
+we exclude basically you're excluding
+
+443
+00:15:33,040 --> 00:15:36,079
+hard link files from this at least for
+
+444
+00:15:34,399 --> 00:15:37,519
+the time being
+
+445
+00:15:36,079 --> 00:15:40,399
+so the idea here is that we're going to
+
+446
+00:15:37,519 --> 00:15:41,519
+fire off the unlink call to the mds
+
+447
+00:15:40,399 --> 00:15:43,839
+and then we're just going to assume that
+
+448
+00:15:41,519 --> 00:15:44,560
+it worked right and then not wait on the
+
+449
+00:15:43,839 --> 00:15:46,320
+reply
+
+450
+00:15:44,560 --> 00:15:47,839
+so we can fire the thing off we go ahead
+
+451
+00:15:46,320 --> 00:15:50,639
+and
+
+452
+00:15:47,839 --> 00:15:51,120
+delete the entry inside the kernel and
+
+453
+00:15:50,639 --> 00:15:53,920
+then we
+
+454
+00:15:51,120 --> 00:15:55,519
+return back to userland um you know the
+
+455
+00:15:53,920 --> 00:15:56,719
+upshot of that is that if we're doing a
+
+456
+00:15:55,519 --> 00:15:58,160
+whole bunch of these
+
+457
+00:15:56,720 --> 00:16:00,480
+uh we're shoveling them all out in
+
+458
+00:15:58,160 --> 00:16:00,880
+parallel and that really can speed up
+
+459
+00:16:00,480 --> 00:16:02,880
+cert
+
+460
+00:16:00,880 --> 00:16:05,519
+uh you know like removing a directory
+
+461
+00:16:02,880 --> 00:16:05,519
+recursively
+
+462
+00:16:05,839 --> 00:16:10,720
+so here's a there's our diagram again
+
+463
+00:16:08,880 --> 00:16:12,480
+pretty much all the same up here but
+
+464
+00:16:10,720 --> 00:16:13,199
+down here you can see we're we're firing
+
+465
+00:16:12,480 --> 00:16:16,240
+off
+
+466
+00:16:13,199 --> 00:16:18,079
+lots of you know async unlink requests
+
+467
+00:16:16,240 --> 00:16:19,600
+and then they come back and then we
+
+468
+00:16:18,079 --> 00:16:21,040
+eventually once we
+
+469
+00:16:19,600 --> 00:16:22,800
+you know once all the replies have come
+
+470
+00:16:21,040 --> 00:16:27,120
+in we can go ahead and issue the
+
+471
+00:16:22,800 --> 00:16:27,120
+an rmd request to remove the directory
+
+472
+00:16:32,959 --> 00:16:37,199
+so again this is real bleeding edge work
+
+473
+00:16:35,759 --> 00:16:39,360
+so
+
+474
+00:16:37,199 --> 00:16:40,560
+these numbers may change in the future
+
+475
+00:16:39,360 --> 00:16:42,480
+but for now
+
+476
+00:16:40,560 --> 00:16:43,920
+you know i just did some real basic
+
+477
+00:16:42,480 --> 00:16:47,519
+testing on a virtualized
+
+478
+00:16:43,920 --> 00:16:50,479
+uh test environment on my home machine
+
+479
+00:16:47,519 --> 00:16:51,839
+and so it basically created 10 000 files
+
+480
+00:16:50,480 --> 00:16:53,839
+in a directory
+
+481
+00:16:51,839 --> 00:16:55,279
+so and i should say say here too when we
+
+482
+00:16:53,839 --> 00:16:57,839
+did started this work we started with
+
+483
+00:16:55,279 --> 00:16:58,720
+unlinked because it's easier creates are
+
+484
+00:16:57,839 --> 00:17:00,639
+you know uh
+
+485
+00:16:58,720 --> 00:17:01,920
+quite a bit harder and i'll go into why
+
+486
+00:17:00,639 --> 00:17:05,760
+that is later
+
+487
+00:17:01,920 --> 00:17:07,599
+but so um here you can see if we just
+
+488
+00:17:05,760 --> 00:17:08,799
+remove all the files in that directory
+
+489
+00:17:07,599 --> 00:17:10,639
+if we have to wait and do them all
+
+490
+00:17:08,799 --> 00:17:14,079
+synchronously it took about 10 seconds
+
+491
+00:17:10,640 --> 00:17:16,480
+on this box but with asynchronous durops
+
+492
+00:17:14,079 --> 00:17:20,319
+less than a second
+
+493
+00:17:16,480 --> 00:17:22,319
+the catches that the uh we have to wait
+
+494
+00:17:20,319 --> 00:17:24,159
+uh for all the replies to come in before
+
+495
+00:17:22,319 --> 00:17:26,319
+we can issue the r ender
+
+496
+00:17:24,160 --> 00:17:27,520
+so again here i'm just removing all the
+
+497
+00:17:26,319 --> 00:17:28,960
+files in the directory i didn't actually
+
+498
+00:17:27,520 --> 00:17:30,160
+remove the directory itself
+
+499
+00:17:28,960 --> 00:17:32,080
+if you go and remove the directory
+
+500
+00:17:30,160 --> 00:17:32,960
+itself you you'll find that it blocks
+
+501
+00:17:32,080 --> 00:17:35,918
+for a while
+
+502
+00:17:32,960 --> 00:17:36,400
+um you know it's still faster uh than
+
+503
+00:17:35,919 --> 00:17:39,679
+the
+
+504
+00:17:36,400 --> 00:17:41,760
+async or than the sync synchronous case
+
+505
+00:17:39,679 --> 00:17:43,039
+because you're not waiting for uh
+
+506
+00:17:41,760 --> 00:17:44,480
+because we're issuing all these unlinks
+
+507
+00:17:43,039 --> 00:17:47,200
+in parallel
+
+508
+00:17:44,480 --> 00:17:47,919
+but it uh it does but you do notice a
+
+509
+00:17:47,200 --> 00:17:50,720
+delay on the
+
+510
+00:17:47,919 --> 00:17:50,720
+rm dirt part
+
+511
+00:17:52,000 --> 00:17:58,960
+here's some more numbers um so
+
+512
+00:17:55,520 --> 00:17:59,760
+these are histograms that i created with
+
+513
+00:17:58,960 --> 00:18:02,400
+bpf
+
+514
+00:17:59,760 --> 00:18:04,240
+if you've not used bpf in the uh yet it
+
+515
+00:18:02,400 --> 00:18:07,280
+you should it's awesome
+
+516
+00:18:04,240 --> 00:18:09,280
+um but uh so you can see here these are
+
+517
+00:18:07,280 --> 00:18:10,639
+this is the time spent in ceph unlinked
+
+518
+00:18:09,280 --> 00:18:12,639
+these are in jiffy's which is a
+
+519
+00:18:10,640 --> 00:18:15,600
+millisecond uh
+
+520
+00:18:12,640 --> 00:18:16,320
+and so uh here you can see synchronously
+
+521
+00:18:15,600 --> 00:18:18,399
+uh
+
+522
+00:18:16,320 --> 00:18:20,080
+that these are all quite slow right you
+
+523
+00:18:18,400 --> 00:18:22,799
+know we're the the fastest one is
+
+524
+00:18:20,080 --> 00:18:24,159
+still 512 thousand mil you know
+
+525
+00:18:22,799 --> 00:18:26,639
+milliseconds
+
+526
+00:18:24,160 --> 00:18:28,799
+over here we're down to a thousand you
+
+527
+00:18:26,640 --> 00:18:30,880
+know a thousand two thousand
+
+528
+00:18:28,799 --> 00:18:32,720
+uh and the and you see down here there's
+
+529
+00:18:30,880 --> 00:18:33,919
+one outlier right here you know that's
+
+530
+00:18:32,720 --> 00:18:36,240
+probably
+
+531
+00:18:33,919 --> 00:18:37,280
+uh you know and some of them are still
+
+532
+00:18:36,240 --> 00:18:39,039
+outliers
+
+533
+00:18:37,280 --> 00:18:40,799
+uh i haven't gone to figure out why some
+
+534
+00:18:39,039 --> 00:18:42,640
+of them are not going as fast i think
+
+535
+00:18:40,799 --> 00:18:45,440
+occasionally we get a situation where
+
+536
+00:18:42,640 --> 00:18:45,440
+they go synchronous
+
+537
+00:18:49,679 --> 00:18:53,520
+and again we have to do at least one one
+
+538
+00:18:51,679 --> 00:18:55,039
+synchronous remove in the directory two
+
+539
+00:18:53,520 --> 00:18:56,720
+or one synchronous unlink in the
+
+540
+00:18:55,039 --> 00:18:59,679
+directory before we can
+
+541
+00:18:56,720 --> 00:19:02,880
+do an async with um jeff i think those
+
+542
+00:18:59,679 --> 00:19:02,880
+are actually microseconds
+
+543
+00:19:03,200 --> 00:19:07,840
+uh so now i think i decided that it was
+
+544
+00:19:05,120 --> 00:19:11,678
+1000 microseconds
+
+545
+00:19:07,840 --> 00:19:13,280
+i did these in jiffy's so yeah okay
+
+546
+00:19:11,679 --> 00:19:15,039
+so i'll have to go back and look maybe
+
+547
+00:19:13,280 --> 00:19:18,000
+i've got it maybe i'm off by a factor of
+
+548
+00:19:15,039 --> 00:19:18,000
+a thousand but i don't know
+
+549
+00:19:18,720 --> 00:19:24,160
+yeah maybe you're right okay
+
+550
+00:19:22,160 --> 00:19:27,280
+i stand corrected i did do it in jiffy's
+
+551
+00:19:24,160 --> 00:19:30,799
+though um
+
+552
+00:19:27,280 --> 00:19:31,678
+the uh so um we have some opportunities
+
+553
+00:19:30,799 --> 00:19:34,400
+to prove that
+
+554
+00:19:31,679 --> 00:19:35,679
+improve this uh situation too right uh
+
+555
+00:19:34,400 --> 00:19:38,240
+right now we're not doing
+
+556
+00:19:35,679 --> 00:19:40,000
+uh we're doing synchronous rmber but we
+
+557
+00:19:38,240 --> 00:19:41,360
+may consider doing that asynchronously
+
+558
+00:19:40,000 --> 00:19:44,559
+in the future
+
+559
+00:19:41,360 --> 00:19:47,600
+um again to you know
+
+560
+00:19:44,559 --> 00:19:49,120
+what i find you know in certain cases
+
+561
+00:19:47,600 --> 00:19:50,879
+is that you know like like i said we
+
+562
+00:19:49,120 --> 00:19:52,080
+have some outliers here and i think what
+
+563
+00:19:50,880 --> 00:19:53,600
+happens is
+
+564
+00:19:52,080 --> 00:19:55,760
+occasionally we end up doing something
+
+565
+00:19:53,600 --> 00:19:58,080
+synchronously and then those
+
+566
+00:19:55,760 --> 00:20:00,240
+operations get backed up behind the pile
+
+567
+00:19:58,080 --> 00:20:03,439
+of async operations that are in
+
+568
+00:20:00,240 --> 00:20:04,559
+in flight so we probably have some
+
+569
+00:20:03,440 --> 00:20:07,039
+may need to consider doing some
+
+570
+00:20:04,559 --> 00:20:08,559
+throttling on this
+
+571
+00:20:07,039 --> 00:20:10,080
+uh and then also we can consider
+
+572
+00:20:08,559 --> 00:20:13,440
+batching up uh the
+
+573
+00:20:10,080 --> 00:20:16,559
+uh unlink operations as well
+
+574
+00:20:13,440 --> 00:20:17,600
+so that we so we can just uh if we could
+
+575
+00:20:16,559 --> 00:20:19,840
+batch a bunch of them up
+
+576
+00:20:17,600 --> 00:20:21,360
+fire them all off it in in a single call
+
+577
+00:20:19,840 --> 00:20:23,439
+that might be more efficient
+
+578
+00:20:21,360 --> 00:20:25,360
+i'm not convinced on this uh the lock
+
+579
+00:20:23,440 --> 00:20:26,720
+caching thing that jane has put in is
+
+580
+00:20:25,360 --> 00:20:29,199
+uh seems to me that that's where the
+
+581
+00:20:26,720 --> 00:20:31,520
+most of the slowdown would be uh so i'm
+
+582
+00:20:29,200 --> 00:20:33,360
+i'm suspecting that that may not be as
+
+583
+00:20:31,520 --> 00:20:34,158
+is useful but we may experiment with it
+
+584
+00:20:33,360 --> 00:20:35,918
+and find out
+
+585
+00:20:34,159 --> 00:20:37,280
+if if there is a benefit it's probably
+
+586
+00:20:35,919 --> 00:20:39,840
+with the mds journaling
+
+587
+00:20:37,280 --> 00:20:40,720
+we would we might expect to see the the
+
+588
+00:20:39,840 --> 00:20:42,158
+mds can
+
+589
+00:20:40,720 --> 00:20:43,840
+write the operations to the journal more
+
+590
+00:20:42,159 --> 00:20:47,679
+efficiently that's a good point yeah
+
+591
+00:20:43,840 --> 00:20:48,480
+so um okay now let's talk about async
+
+592
+00:20:47,679 --> 00:20:51,760
+create
+
+593
+00:20:48,480 --> 00:20:52,960
+so uh if we do uh so the requirements
+
+594
+00:20:51,760 --> 00:20:55,679
+for an async create
+
+595
+00:20:52,960 --> 00:20:56,480
+we need dx and dc caps again we've
+
+596
+00:20:55,679 --> 00:21:00,159
+overloaded the
+
+597
+00:20:56,480 --> 00:21:02,080
+file cache cap for this uh
+
+598
+00:21:00,159 --> 00:21:03,840
+we also need a known negative entry in
+
+599
+00:21:02,080 --> 00:21:05,199
+this case of course because if
+
+600
+00:21:03,840 --> 00:21:07,039
+there's already a file there we can't do
+
+601
+00:21:05,200 --> 00:21:09,280
+a create on top of it
+
+602
+00:21:07,039 --> 00:21:11,200
+uh and we so we need uh a either a
+
+603
+00:21:09,280 --> 00:21:13,440
+negative dense release on the thing
+
+604
+00:21:11,200 --> 00:21:14,480
+or we need uh you know we already have
+
+605
+00:21:13,440 --> 00:21:16,080
+bs on the parent
+
+606
+00:21:14,480 --> 00:21:18,880
+directory by virtue of the fact that we
+
+607
+00:21:16,080 --> 00:21:22,158
+have dx but we need completeness
+
+608
+00:21:18,880 --> 00:21:25,760
+otherwise if we don't have the lease
+
+609
+00:21:22,159 --> 00:21:27,760
+we also need a file layout so like
+
+610
+00:21:25,760 --> 00:21:30,320
+patrick pointed out file data goes
+
+611
+00:21:27,760 --> 00:21:31,919
+through directly to the osds
+
+612
+00:21:30,320 --> 00:21:35,600
+the clients need to know where to write
+
+613
+00:21:31,919 --> 00:21:37,440
+that data and so the file layout is what
+
+614
+00:21:35,600 --> 00:21:40,399
+is what tells them that when we do that
+
+615
+00:21:37,440 --> 00:21:42,320
+first synchronous create in a directory
+
+616
+00:21:40,400 --> 00:21:44,080
+then we copy that file layout because we
+
+617
+00:21:42,320 --> 00:21:46,240
+know that any uh new file
+
+618
+00:21:44,080 --> 00:21:49,360
+created in a directory will inherit the
+
+619
+00:21:46,240 --> 00:21:49,360
+file layout from the parent
+
+620
+00:21:49,840 --> 00:21:53,199
+and then we also need a delegated inode
+
+621
+00:21:52,720 --> 00:21:54,720
+number
+
+622
+00:21:53,200 --> 00:21:56,240
+uh whenever you do a create you know
+
+623
+00:21:54,720 --> 00:21:59,360
+we're creating an inode
+
+624
+00:21:56,240 --> 00:22:00,640
+we're creating an uh that inode uh but
+
+625
+00:21:59,360 --> 00:22:01,199
+we need to know what that i know number
+
+626
+00:22:00,640 --> 00:22:02,400
+is
+
+627
+00:22:01,200 --> 00:22:04,880
+uh i'll talk about that a little bit
+
+628
+00:22:02,400 --> 00:22:06,720
+more here in a minute so again we just
+
+629
+00:22:04,880 --> 00:22:08,400
+fire off the create call immediately
+
+630
+00:22:06,720 --> 00:22:10,400
+we set up the new inode plug it into the
+
+631
+00:22:08,400 --> 00:22:14,159
+entry and and move on
+
+632
+00:22:10,400 --> 00:22:15,520
+and return from the open uh
+
+633
+00:22:14,159 --> 00:22:17,760
+and we always assume that a newly
+
+634
+00:22:15,520 --> 00:22:20,639
+created inode gets a full set of caps
+
+635
+00:22:17,760 --> 00:22:22,320
+because we want the uh we know that the
+
+636
+00:22:20,640 --> 00:22:24,400
+typically whenever the you do a
+
+637
+00:22:22,320 --> 00:22:26,559
+synchronous create even you on a new
+
+638
+00:22:24,400 --> 00:22:28,640
+file we get back a full set of caps on
+
+639
+00:22:26,559 --> 00:22:28,639
+it
+
+640
+00:22:29,200 --> 00:22:32,320
+and we always set o exclusive in the
+
+641
+00:22:30,799 --> 00:22:34,080
+call just because
+
+642
+00:22:32,320 --> 00:22:36,080
+there should be should be no reason that
+
+643
+00:22:34,080 --> 00:22:37,199
+we can't uh you know that the file's not
+
+644
+00:22:36,080 --> 00:22:38,720
+there
+
+645
+00:22:37,200 --> 00:22:40,320
+the file turns out to be there we want
+
+646
+00:22:38,720 --> 00:22:41,919
+it to air out we don't want to over you
+
+647
+00:22:40,320 --> 00:22:47,280
+know open the file and
+
+648
+00:22:41,919 --> 00:22:49,440
+screw that up so inode number delegation
+
+649
+00:22:47,280 --> 00:22:50,559
+so in order to uh we need to know in
+
+650
+00:22:49,440 --> 00:22:52,400
+advance what the i node number is going
+
+651
+00:22:50,559 --> 00:22:54,720
+to be whenever we create this new inode
+
+652
+00:22:52,400 --> 00:22:56,240
+so we have to have that's in order to a
+
+653
+00:22:54,720 --> 00:22:57,280
+hash it properly in the kernel so we can
+
+654
+00:22:56,240 --> 00:23:00,080
+find it later
+
+655
+00:22:57,280 --> 00:23:01,520
+and also to allow for uh writes on into
+
+656
+00:23:00,080 --> 00:23:02,639
+the file before the open reply comes
+
+657
+00:23:01,520 --> 00:23:04,480
+back
+
+658
+00:23:02,640 --> 00:23:05,840
+uh so we hand out ranges of item numbers
+
+659
+00:23:04,480 --> 00:23:06,799
+and then create responses now so
+
+660
+00:23:05,840 --> 00:23:08,799
+whenever
+
+661
+00:23:06,799 --> 00:23:10,799
+a uh we do a synchronous create that
+
+662
+00:23:08,799 --> 00:23:12,960
+first synchronous create uh the
+
+663
+00:23:10,799 --> 00:23:14,320
+uh mds will shovel out a pile of i know
+
+664
+00:23:12,960 --> 00:23:15,840
+numbers to the client
+
+665
+00:23:14,320 --> 00:23:17,520
+and then it can go and use those i mean
+
+666
+00:23:15,840 --> 00:23:17,918
+so we have a new tunable in in the user
+
+667
+00:23:17,520 --> 00:23:21,440
+lan
+
+668
+00:23:17,919 --> 00:23:24,000
+mds now to uh
+
+669
+00:23:21,440 --> 00:23:25,120
+the mds also pre-allocates inodes for a
+
+670
+00:23:24,000 --> 00:23:27,679
+particular client on
+
+671
+00:23:25,120 --> 00:23:29,120
+and attaches it to its session and so
+
+672
+00:23:27,679 --> 00:23:30,960
+what we're doing is just delegating a
+
+673
+00:23:29,120 --> 00:23:34,239
+pile of those to the client
+
+674
+00:23:30,960 --> 00:23:35,440
+for use so this is tied currently to the
+
+675
+00:23:34,240 --> 00:23:36,960
+mbs session
+
+676
+00:23:35,440 --> 00:23:39,600
+i think we need some work in this area
+
+677
+00:23:36,960 --> 00:23:42,159
+still uh that right now if you
+
+678
+00:23:39,600 --> 00:23:43,678
+lose the session then the inodes go away
+
+679
+00:23:42,159 --> 00:23:46,320
+and it's not clear to me
+
+680
+00:23:43,679 --> 00:23:47,919
+how we're going to uh handle case where
+
+681
+00:23:46,320 --> 00:23:49,120
+we've like already fired off a request
+
+682
+00:23:47,919 --> 00:23:51,279
+and it didn't work
+
+683
+00:23:49,120 --> 00:23:53,918
+so error handling on this is all still a
+
+684
+00:23:51,279 --> 00:23:53,919
+little bit sketchy
+
+685
+00:23:54,320 --> 00:23:57,678
+so let's talk about performance um again
+
+686
+00:23:56,880 --> 00:23:59,279
+uh we're gonna
+
+687
+00:23:57,679 --> 00:24:01,679
+we're creating 10 000 files in a
+
+688
+00:23:59,279 --> 00:24:04,880
+directory here so doing a very simple
+
+689
+00:24:01,679 --> 00:24:05,600
+you know shell script loop to just write
+
+690
+00:24:04,880 --> 00:24:07,840
+to
+
+691
+00:24:05,600 --> 00:24:09,520
+all these files so without async direct
+
+692
+00:24:07,840 --> 00:24:11,120
+directory operations it takes about 11
+
+693
+00:24:09,520 --> 00:24:14,320
+seconds on this box
+
+694
+00:24:11,120 --> 00:24:19,199
+with it about half so that's
+
+695
+00:24:14,320 --> 00:24:20,158
+a slight improvement uh again histograms
+
+696
+00:24:19,200 --> 00:24:21,600
+um
+
+697
+00:24:20,159 --> 00:24:23,279
+again if you see this with bpf you'll
+
+698
+00:24:21,600 --> 00:24:25,360
+see like a nice bars out
+
+699
+00:24:23,279 --> 00:24:26,960
+by the you know text text bars but
+
+700
+00:24:25,360 --> 00:24:28,639
+outside but i've chopped those off here
+
+701
+00:24:26,960 --> 00:24:31,679
+just because i don't have uh
+
+702
+00:24:28,640 --> 00:24:33,120
+i didn't have room on the slide but here
+
+703
+00:24:31,679 --> 00:24:34,240
+you can see uh you know these are all
+
+704
+00:24:33,120 --> 00:24:36,000
+quite slow
+
+705
+00:24:34,240 --> 00:24:38,400
+uh up here you know most of them are in
+
+706
+00:24:36,000 --> 00:24:41,600
+this this range right here you know 512
+
+707
+00:24:38,400 --> 00:24:43,200
+k to 1 million um but over here with
+
+708
+00:24:41,600 --> 00:24:45,039
+async durops we can
+
+709
+00:24:43,200 --> 00:24:46,480
+you know we're down into the you know
+
+710
+00:24:45,039 --> 00:24:49,520
+thousands
+
+711
+00:24:46,480 --> 00:24:51,440
+uh we do have some outliers here again i
+
+712
+00:24:49,520 --> 00:24:53,039
+think with what's happening in that case
+
+713
+00:24:51,440 --> 00:24:54,960
+again i need to go do some analysis to
+
+714
+00:24:53,039 --> 00:24:55,919
+figure out why but i think the situation
+
+715
+00:24:54,960 --> 00:24:57,360
+there is that we
+
+716
+00:24:55,919 --> 00:24:59,120
+get to a situation where we run out of
+
+717
+00:24:57,360 --> 00:25:02,240
+inert numbers
+
+718
+00:24:59,120 --> 00:25:03,678
+and uh so when that happens the client
+
+719
+00:25:02,240 --> 00:25:06,640
+has to go synchronous
+
+720
+00:25:03,679 --> 00:25:09,360
+and some of these calls end up backed up
+
+721
+00:25:06,640 --> 00:25:10,720
+behind some of the previous async calls
+
+722
+00:25:09,360 --> 00:25:12,799
+and then they take a long time to come
+
+723
+00:25:10,720 --> 00:25:14,320
+back
+
+724
+00:25:12,799 --> 00:25:17,440
+so we probably have some work to do here
+
+725
+00:25:14,320 --> 00:25:17,439
+too again with throttling
+
+726
+00:25:18,000 --> 00:25:21,440
+the all-important kernel build test um
+
+727
+00:25:20,320 --> 00:25:24,240
+so i just did a
+
+728
+00:25:21,440 --> 00:25:25,520
+you know built a you know made a little
+
+729
+00:25:24,240 --> 00:25:28,880
+linux tarball
+
+730
+00:25:25,520 --> 00:25:32,320
+make a directory cd into it unturn it
+
+731
+00:25:28,880 --> 00:25:34,720
+and make it make the thing so here
+
+732
+00:25:32,320 --> 00:25:36,399
+just about five minutes to do the build
+
+733
+00:25:34,720 --> 00:25:38,960
+uh with async drops
+
+734
+00:25:36,400 --> 00:25:39,520
+we shave about 50 seconds off it's about
+
+735
+00:25:38,960 --> 00:25:43,840
+a 20
+
+736
+00:25:39,520 --> 00:25:43,840
+improvement not bad
+
+737
+00:25:44,000 --> 00:25:48,480
+so again opportunities we can to improve
+
+738
+00:25:46,640 --> 00:25:50,799
+this would be uh we could do
+
+739
+00:25:48,480 --> 00:25:52,240
+uh allow for in-place renames uh you
+
+740
+00:25:50,799 --> 00:25:54,000
+know again we may need to make an
+
+741
+00:25:52,240 --> 00:25:57,200
+asynchronous rename
+
+742
+00:25:54,000 --> 00:25:59,360
+we need to uh
+
+743
+00:25:57,200 --> 00:26:00,559
+we could also batch creates as well if
+
+744
+00:25:59,360 --> 00:26:01,760
+we buffer them for a little while we
+
+745
+00:26:00,559 --> 00:26:03,279
+don't necessarily have to fire them off
+
+746
+00:26:01,760 --> 00:26:04,480
+immediately
+
+747
+00:26:03,279 --> 00:26:06,880
+uh and then we could also do other
+
+748
+00:26:04,480 --> 00:26:08,159
+operations uh make their sim link
+
+749
+00:26:06,880 --> 00:26:10,000
+stuff like that would be kind of nice to
+
+750
+00:26:08,159 --> 00:26:12,080
+add probably
+
+751
+00:26:10,000 --> 00:26:13,760
+and of course of course error handling
+
+752
+00:26:12,080 --> 00:26:16,559
+which is the
+
+753
+00:26:13,760 --> 00:26:17,360
+bugaboo for this whole thing so if we
+
+754
+00:26:16,559 --> 00:26:18,879
+return
+
+755
+00:26:17,360 --> 00:26:21,439
+early right the error handling is where
+
+756
+00:26:18,880 --> 00:26:23,520
+the or this is all
+
+757
+00:26:21,440 --> 00:26:24,720
+iffy so if we return early from an
+
+758
+00:26:23,520 --> 00:26:26,480
+unlink or an open
+
+759
+00:26:24,720 --> 00:26:28,240
+and what do we do if these fail right i
+
+760
+00:26:26,480 --> 00:26:30,320
+mean that's the big question
+
+761
+00:26:28,240 --> 00:26:31,679
+uh for creates we've already closed we
+
+762
+00:26:30,320 --> 00:26:33,120
+could have already closed the
+
+763
+00:26:31,679 --> 00:26:34,559
+file by the time the reply come in i
+
+764
+00:26:33,120 --> 00:26:36,000
+mean we could have written written if
+
+765
+00:26:34,559 --> 00:26:37,678
+there are small files in particular we
+
+766
+00:26:36,000 --> 00:26:39,200
+could open them
+
+767
+00:26:37,679 --> 00:26:40,480
+written to them close them and then all
+
+768
+00:26:39,200 --> 00:26:41,840
+of a sudden the create reply comes in
+
+769
+00:26:40,480 --> 00:26:44,080
+and we found out it didn't work for some
+
+770
+00:26:41,840 --> 00:26:44,080
+reason
+
+771
+00:26:45,520 --> 00:26:48,400
+i'm not sure which failures are
+
+772
+00:26:46,799 --> 00:26:48,960
+permitted by the protocol i'm not sure i
+
+773
+00:26:48,400 --> 00:26:50,640
+think
+
+774
+00:26:48,960 --> 00:26:53,520
+patrick put that in you want to mention
+
+775
+00:26:50,640 --> 00:26:56,080
+what that was about
+
+776
+00:26:53,520 --> 00:26:56,080
+i think so
+
+777
+00:26:56,880 --> 00:27:00,880
+um so you know obviously there's a lot
+
+778
+00:26:58,880 --> 00:27:03,200
+of different types of failures for
+
+779
+00:27:00,880 --> 00:27:05,440
+an unlinked or open that could happen
+
+780
+00:27:03,200 --> 00:27:06,960
+and
+
+781
+00:27:05,440 --> 00:27:08,480
+part of the challenge with doing an
+
+782
+00:27:06,960 --> 00:27:10,720
+asynchronous for your unlink is
+
+783
+00:27:08,480 --> 00:27:13,039
+identifying what failures
+
+784
+00:27:10,720 --> 00:27:14,960
+entirely are the responsible the the
+
+785
+00:27:13,039 --> 00:27:17,279
+client and you would not
+
+786
+00:27:14,960 --> 00:27:18,720
+um it would not be permitted for the mds
+
+787
+00:27:17,279 --> 00:27:20,399
+to give you those failures as part of
+
+788
+00:27:18,720 --> 00:27:23,440
+the asynchronous call
+
+789
+00:27:20,399 --> 00:27:24,719
+versus failures that may occur at the
+
+790
+00:27:23,440 --> 00:27:27,520
+mds for example
+
+791
+00:27:24,720 --> 00:27:29,279
+enos space which the kernel client would
+
+792
+00:27:27,520 --> 00:27:30,879
+need to handle somehow
+
+793
+00:27:29,279 --> 00:27:32,720
+enos base actually in practice for
+
+794
+00:27:30,880 --> 00:27:34,000
+metadata mutations just doesn't happen
+
+795
+00:27:32,720 --> 00:27:36,799
+in ceph unless you have a
+
+796
+00:27:34,000 --> 00:27:38,159
+catastrophically out of space chef
+
+797
+00:27:36,799 --> 00:27:40,720
+cluster in which case you have many
+
+798
+00:27:38,159 --> 00:27:43,919
+other problems
+
+799
+00:27:40,720 --> 00:27:47,120
+but there's probably not very many
+
+800
+00:27:43,919 --> 00:27:48,720
+failures that the kernel client can't
+
+801
+00:27:47,120 --> 00:27:50,158
+actually handle itself so
+
+802
+00:27:48,720 --> 00:27:51,360
+but we still need to go through all the
+
+803
+00:27:50,159 --> 00:27:52,480
+different cases there and make sure
+
+804
+00:27:51,360 --> 00:27:53,678
+we're not missing anything
+
+805
+00:27:52,480 --> 00:27:55,760
+that's basically i think what that
+
+806
+00:27:53,679 --> 00:27:57,679
+bullet points for okay
+
+807
+00:27:55,760 --> 00:27:59,360
+so again you know when i started this
+
+808
+00:27:57,679 --> 00:28:00,320
+work you know i kind of hung the whole
+
+809
+00:27:59,360 --> 00:28:01,918
+thing on this
+
+810
+00:28:00,320 --> 00:28:03,520
+on this paragraph right that comes out
+
+811
+00:28:01,919 --> 00:28:05,200
+of the fsync man page right
+
+812
+00:28:03,520 --> 00:28:06,559
+and basically it just says calling fsync
+
+813
+00:28:05,200 --> 00:28:07,760
+does not necessarily ensure that the
+
+814
+00:28:06,559 --> 00:28:09,360
+entry in the directory
+
+815
+00:28:07,760 --> 00:28:11,360
+containing the file has also reached the
+
+816
+00:28:09,360 --> 00:28:12,879
+disk for that an explicit fsync on the
+
+817
+00:28:11,360 --> 00:28:14,000
+file descriptor for the directory is
+
+818
+00:28:12,880 --> 00:28:15,840
+also needed
+
+819
+00:28:14,000 --> 00:28:17,919
+so you know the upshot being that if you
+
+820
+00:28:15,840 --> 00:28:19,918
+don't that when you write a file
+
+821
+00:28:17,919 --> 00:28:21,919
+or create a file and write to it you
+
+822
+00:28:19,919 --> 00:28:23,200
+also need to fsync on the directory too
+
+823
+00:28:21,919 --> 00:28:24,480
+to ensure that the entry actually made
+
+824
+00:28:23,200 --> 00:28:27,120
+it to disk
+
+825
+00:28:24,480 --> 00:28:28,000
+in practice uh most file systems
+
+826
+00:28:27,120 --> 00:28:29,678
+nowadays
+
+827
+00:28:28,000 --> 00:28:31,360
+you don't need to do that anymore uh
+
+828
+00:28:29,679 --> 00:28:34,960
+this is was written i believe when
+
+829
+00:28:31,360 --> 00:28:37,600
+you know ext2 was prevalent uh and so
+
+830
+00:28:34,960 --> 00:28:38,720
+uh you know nowadays the uh almost all
+
+831
+00:28:37,600 --> 00:28:40,399
+modern file systems
+
+832
+00:28:38,720 --> 00:28:42,000
+journal to create before they return
+
+833
+00:28:40,399 --> 00:28:44,239
+back to user land and so if the
+
+834
+00:28:42,000 --> 00:28:46,799
+box crashes and comes back or whatever
+
+835
+00:28:44,240 --> 00:28:48,960
+uh the file will certainly exist
+
+836
+00:28:46,799 --> 00:28:50,879
+just to add on to that um you still see
+
+837
+00:28:48,960 --> 00:28:53,679
+the the remnants of
+
+838
+00:28:50,880 --> 00:28:55,840
+uh very cautious applications that are
+
+839
+00:28:53,679 --> 00:28:57,520
+written fsync on the database namely uh
+
+840
+00:28:55,840 --> 00:28:59,199
+sqlite which actually has some very
+
+841
+00:28:57,520 --> 00:29:02,799
+excellent documentation for
+
+842
+00:28:59,200 --> 00:29:04,960
+the entire rigor mold process of uh
+
+843
+00:29:02,799 --> 00:29:06,879
+synchronously writing the database
+
+844
+00:29:04,960 --> 00:29:07,679
+correctly such that it will survive any
+
+845
+00:29:06,880 --> 00:29:12,880
+kind of uh
+
+846
+00:29:07,679 --> 00:29:15,200
+crash or machine failure so the
+
+847
+00:29:12,880 --> 00:29:15,919
+they they did they do actually do the
+
+848
+00:29:15,200 --> 00:29:17,360
+the fsync
+
+849
+00:29:15,919 --> 00:29:19,520
+on the directory file descriptor but
+
+850
+00:29:17,360 --> 00:29:21,360
+you'll see as many
+
+851
+00:29:19,520 --> 00:29:23,440
+especially kernel developers bemoan you
+
+852
+00:29:21,360 --> 00:29:27,520
+know it's actually fairly rare for
+
+853
+00:29:23,440 --> 00:29:30,559
+applications to use fsync correctly
+
+854
+00:29:27,520 --> 00:29:31,840
+so uh yeah i mean in most cases
+
+855
+00:29:30,559 --> 00:29:33,600
+f-syncing on the directory is not
+
+856
+00:29:31,840 --> 00:29:35,120
+usually you know it's usually pretty
+
+857
+00:29:33,600 --> 00:29:37,840
+quick because there's not much
+
+858
+00:29:35,120 --> 00:29:37,840
+to be written back
+
+859
+00:29:38,320 --> 00:29:42,000
+but here at least in this implementation
+
+860
+00:29:40,240 --> 00:29:43,520
+too you know if you do an fsync on the
+
+861
+00:29:42,000 --> 00:29:44,080
+directory we will wait for all the
+
+862
+00:29:43,520 --> 00:29:45,840
+buffered
+
+863
+00:29:44,080 --> 00:29:47,600
+uh or wait for all the async operations
+
+864
+00:29:45,840 --> 00:29:49,279
+to come back so you can't
+
+865
+00:29:47,600 --> 00:29:51,840
+we can use that as a barrier to ensure
+
+866
+00:29:49,279 --> 00:29:55,520
+that things actually did hit the mds and
+
+867
+00:29:51,840 --> 00:29:56,480
+do the right thing so more more about
+
+868
+00:29:55,520 --> 00:29:58,399
+error handling um
+
+869
+00:29:56,480 --> 00:29:59,760
+so currently after failed unlink what we
+
+870
+00:29:58,399 --> 00:30:02,399
+do is uh we just
+
+871
+00:29:59,760 --> 00:30:03,520
+um we mark the directory non-complete
+
+872
+00:30:02,399 --> 00:30:05,520
+because we don't know what the heck
+
+873
+00:30:03,520 --> 00:30:07,120
+happened right uh we invalidate the
+
+874
+00:30:05,520 --> 00:30:10,000
+denture that was that was there
+
+875
+00:30:07,120 --> 00:30:11,520
+and to force the uh the client to have
+
+876
+00:30:10,000 --> 00:30:13,120
+to do a new lookup
+
+877
+00:30:11,520 --> 00:30:14,639
+and then we set a right back error on
+
+878
+00:30:13,120 --> 00:30:16,239
+the parent directory to show up
+
+879
+00:30:14,640 --> 00:30:18,000
+so that if you do that fsync you'll get
+
+880
+00:30:16,240 --> 00:30:20,080
+an error back
+
+881
+00:30:18,000 --> 00:30:22,480
+after fail create we again validate the
+
+882
+00:30:20,080 --> 00:30:25,918
+entry uh
+
+883
+00:30:22,480 --> 00:30:27,440
+we should also market non-complete uh
+
+884
+00:30:25,919 --> 00:30:28,960
+set writable and we set a right-back
+
+885
+00:30:27,440 --> 00:30:30,559
+error on the parent directory again and
+
+886
+00:30:28,960 --> 00:30:32,399
+we set a right back arrow on the created
+
+887
+00:30:30,559 --> 00:30:35,600
+inode
+
+888
+00:30:32,399 --> 00:30:36,080
+um so you know this is an area where i'm
+
+889
+00:30:35,600 --> 00:30:38,879
+still
+
+890
+00:30:36,080 --> 00:30:39,199
+exploring you know what we should do um
+
+891
+00:30:38,880 --> 00:30:41,600
+so
+
+892
+00:30:39,200 --> 00:30:42,960
+one idea might be to propagate errors uh
+
+893
+00:30:41,600 --> 00:30:43,678
+all the way back up to the top of the
+
+894
+00:30:42,960 --> 00:30:45,520
+mount
+
+895
+00:30:43,679 --> 00:30:47,120
+so that you could potentially open like
+
+896
+00:30:45,520 --> 00:30:50,399
+a high-level directory
+
+897
+00:30:47,120 --> 00:30:50,719
+uh call an f-sync on that and then find
+
+898
+00:30:50,399 --> 00:30:52,239
+out
+
+899
+00:30:50,720 --> 00:30:54,000
+and then get an error back and then if
+
+900
+00:30:52,240 --> 00:30:56,720
+you see that error then you know
+
+901
+00:30:54,000 --> 00:30:58,080
+uh something failed down below in the
+
+902
+00:30:56,720 --> 00:30:59,039
+modern world where we're doing a lot of
+
+903
+00:30:58,080 --> 00:31:00,639
+stuff in containers
+
+904
+00:30:59,039 --> 00:31:02,240
+spinning up temporary containers to do
+
+905
+00:31:00,640 --> 00:31:04,159
+builds and stuff like that
+
+906
+00:31:02,240 --> 00:31:05,760
+that may be sufficient right you know if
+
+907
+00:31:04,159 --> 00:31:07,519
+you if it falls over
+
+908
+00:31:05,760 --> 00:31:09,039
+if something fell over during the build
+
+909
+00:31:07,519 --> 00:31:10,720
+you can just throw that build away and
+
+910
+00:31:09,039 --> 00:31:11,840
+start again right
+
+911
+00:31:10,720 --> 00:31:13,919
+and we may need to consider new
+
+912
+00:31:11,840 --> 00:31:16,000
+interfaces
+
+913
+00:31:13,919 --> 00:31:17,840
+oh oh another idea might be to use
+
+914
+00:31:16,000 --> 00:31:21,200
+syncfs
+
+915
+00:31:17,840 --> 00:31:22,559
+in the kernel is has pretty lousy error
+
+916
+00:31:21,200 --> 00:31:24,399
+handling right now
+
+917
+00:31:22,559 --> 00:31:26,158
+uh basically the only error you can
+
+918
+00:31:24,399 --> 00:31:28,559
+reliably get back from sync of s
+
+919
+00:31:26,159 --> 00:31:29,919
+is uh ebat f so if you pass it a bad
+
+920
+00:31:28,559 --> 00:31:33,279
+file descriptor
+
+921
+00:31:29,919 --> 00:31:36,880
+but we could use that as well
+
+922
+00:31:33,279 --> 00:31:36,880
+and that's it questions
+
+923
+00:31:41,600 --> 00:31:47,840
+jeremy you had a question earlier
+
+924
+00:31:53,600 --> 00:31:57,199
+so my you kind of answered that later on
+
+925
+00:31:55,360 --> 00:31:58,158
+but i was wondering if the set protocol
+
+926
+00:31:57,200 --> 00:32:01,120
+had the equivalent
+
+927
+00:31:58,159 --> 00:32:02,799
+of the asynchronous uh the thing with
+
+928
+00:32:01,120 --> 00:32:04,000
+smb where you would basically chain
+
+929
+00:32:02,799 --> 00:32:05,918
+operations together
+
+930
+00:32:04,000 --> 00:32:07,120
+we have an asynchronous open with delete
+
+931
+00:32:05,919 --> 00:32:08,720
+and close marks
+
+932
+00:32:07,120 --> 00:32:10,639
+and then a close you chain the things
+
+933
+00:32:08,720 --> 00:32:13,360
+together and then you can issue those
+
+934
+00:32:10,640 --> 00:32:14,799
+asynchronously or together in one rpc
+
+935
+00:32:13,360 --> 00:32:16,240
+and and basically the server then
+
+936
+00:32:14,799 --> 00:32:17,440
+processes them in whatever order it
+
+937
+00:32:16,240 --> 00:32:18,159
+wants and you're just waiting for them
+
+938
+00:32:17,440 --> 00:32:20,640
+to come back
+
+939
+00:32:18,159 --> 00:32:21,760
+yeah yeah we don't do compounding okay
+
+940
+00:32:20,640 --> 00:32:23,120
+more than pity
+
+941
+00:32:21,760 --> 00:32:24,960
+yeah the compounding i mean there might
+
+942
+00:32:23,120 --> 00:32:25,918
+be a future enhancement yeah i would
+
+943
+00:32:24,960 --> 00:32:28,080
+love to see that
+
+944
+00:32:25,919 --> 00:32:28,080
+i think
+
+945
+00:32:29,360 --> 00:32:33,439
+i mean especially as if you're doing a
+
+946
+00:32:30,880 --> 00:32:35,919
+lot an open lot of operations close
+
+947
+00:32:33,440 --> 00:32:37,600
+the the ability to implicitly just
+
+948
+00:32:35,919 --> 00:32:39,279
+sequence all those and use the file
+
+949
+00:32:37,600 --> 00:32:40,080
+description implicitly from the open is
+
+950
+00:32:39,279 --> 00:32:41,840
+very powerful
+
+951
+00:32:40,080 --> 00:32:43,678
+yeah yeah i'd love to have that we don't
+
+952
+00:32:41,840 --> 00:32:46,399
+have it right today yeah so
+
+953
+00:32:43,679 --> 00:32:46,399
+any other questions
+
+954
+00:32:48,320 --> 00:32:52,158
+um we are working on an open source
+
+955
+00:32:50,080 --> 00:32:53,519
+backup software named barrios and
+
+956
+00:32:52,159 --> 00:32:56,720
+i'm sorry can you speak up a little
+
+957
+00:32:53,519 --> 00:32:59,440
+that's it oh can you speak up a little
+
+958
+00:32:56,720 --> 00:33:01,200
+okay um we are we are making open source
+
+959
+00:32:59,440 --> 00:33:03,039
+backup software named barrios and
+
+960
+00:33:01,200 --> 00:33:04,480
+um i hope this question isn't too off
+
+961
+00:33:03,039 --> 00:33:06,559
+topic um
+
+962
+00:33:04,480 --> 00:33:07,600
+glass fs has something named clusterfind
+
+963
+00:33:06,559 --> 00:33:10,879
+which can
+
+964
+00:33:07,600 --> 00:33:11,678
+give us a list of files and directories
+
+965
+00:33:10,880 --> 00:33:14,799
+changed since
+
+966
+00:33:11,679 --> 00:33:18,799
+a certain point in time does uh
+
+967
+00:33:14,799 --> 00:33:21,200
+self have cfs have anything like that
+
+968
+00:33:18,799 --> 00:33:21,840
+not that i'm aware of anybody or any
+
+969
+00:33:21,200 --> 00:33:25,039
+greg
+
+970
+00:33:21,840 --> 00:33:28,639
+you may know or patrick
+
+971
+00:33:25,039 --> 00:33:30,799
+okay yeah so steph has uh
+
+972
+00:33:28,640 --> 00:33:31,919
+cfs has this concept of recursive
+
+973
+00:33:30,799 --> 00:33:35,360
+statistics which
+
+974
+00:33:31,919 --> 00:33:37,600
+um one of the which is like uh stats on
+
+975
+00:33:35,360 --> 00:33:38,559
+an inode except it's recursive in nature
+
+976
+00:33:37,600 --> 00:33:41,279
+so like you can
+
+977
+00:33:38,559 --> 00:33:43,120
+do figure out how many um uh
+
+978
+00:33:41,279 --> 00:33:44,240
+hierarchically how many files are under
+
+979
+00:33:43,120 --> 00:33:47,279
+a directory tree
+
+980
+00:33:44,240 --> 00:33:48,080
+by just doing uh looking at a specific
+
+981
+00:33:47,279 --> 00:33:50,720
+extended stat
+
+982
+00:33:48,080 --> 00:33:51,918
+attribute of the of the directory one of
+
+983
+00:33:50,720 --> 00:33:52,720
+those things you can look at is the
+
+984
+00:33:51,919 --> 00:33:54,799
+version
+
+985
+00:33:52,720 --> 00:33:56,240
+of the file so you can actually see that
+
+986
+00:33:54,799 --> 00:33:58,480
+um and that trickles up
+
+987
+00:33:56,240 --> 00:34:00,559
+all the way to the root so if uh you
+
+988
+00:33:58,480 --> 00:34:02,159
+know file has been changed recently that
+
+989
+00:34:00,559 --> 00:34:04,720
+goes you can look at the recursive
+
+990
+00:34:02,159 --> 00:34:06,320
+statistics of the directory
+
+991
+00:34:04,720 --> 00:34:08,079
+to see that something under it's changed
+
+992
+00:34:06,320 --> 00:34:11,359
+and just keep going down and looking
+
+993
+00:34:08,079 --> 00:34:13,359
+examining the files um it's not quite as
+
+994
+00:34:11,359 --> 00:34:14,799
+efficient as the cluster fs where you
+
+995
+00:34:13,359 --> 00:34:16,639
+know you can get the entire diff and
+
+996
+00:34:14,800 --> 00:34:18,399
+i'll let's see all the files but you can
+
+997
+00:34:16,639 --> 00:34:20,480
+the mechanism is there to actually do it
+
+998
+00:34:18,399 --> 00:34:21,918
+yourself um
+
+999
+00:34:20,480 --> 00:34:23,760
+although in the future we do want to
+
+1000
+00:34:21,918 --> 00:34:27,279
+make it simpler by
+
+1001
+00:34:23,760 --> 00:34:29,200
+um building support of like glusterfest
+
+1002
+00:34:27,280 --> 00:34:31,119
+and this ffs and making it a first class
+
+1003
+00:34:29,199 --> 00:34:32,879
+citizen of the file system
+
+1004
+00:34:31,119 --> 00:34:35,679
+so not quite but you could do it
+
+1005
+00:34:32,879 --> 00:34:35,679
+yourself if you wanted
+
+1006
+00:34:36,560 --> 00:34:40,159
+any other questions jeremy again
+
+1007
+00:34:41,040 --> 00:34:44,079
+so for returning errors i thought that
+
+1008
+00:34:42,719 --> 00:34:45,359
+was interesting the only errors i can
+
+1009
+00:34:44,079 --> 00:34:47,839
+see other than sort of like the
+
+1010
+00:34:45,359 --> 00:34:49,598
+remote disk died as if someone does a
+
+1011
+00:34:47,839 --> 00:34:50,239
+rename of the directory out from under
+
+1012
+00:34:49,599 --> 00:34:52,079
+you
+
+1013
+00:34:50,239 --> 00:34:53,839
+or if someone changes the permissions on
+
+1014
+00:34:52,079 --> 00:34:55,520
+the directory so that your operations
+
+1015
+00:34:53,839 --> 00:34:58,160
+would get access denied
+
+1016
+00:34:55,520 --> 00:34:59,520
+i'm assuming that you would get a lease
+
+1017
+00:34:58,160 --> 00:35:01,920
+on the directory first
+
+1018
+00:34:59,520 --> 00:35:03,359
+such that they would be blocked or you
+
+1019
+00:35:01,920 --> 00:35:05,440
+would get a pending
+
+1020
+00:35:03,359 --> 00:35:06,799
+notification before that that's how you
+
+1021
+00:35:05,440 --> 00:35:08,000
+would handle that right right that's
+
+1022
+00:35:06,800 --> 00:35:08,400
+what those caps are all about they're
+
+1023
+00:35:08,000 --> 00:35:09,920
+like
+
+1024
+00:35:08,400 --> 00:35:11,680
+they're kind of similar to an op lock
+
+1025
+00:35:09,920 --> 00:35:12,720
+release yeah just on part of the
+
+1026
+00:35:11,680 --> 00:35:15,440
+metadata but the
+
+1027
+00:35:12,720 --> 00:35:16,560
+but yes that would not be allowed while
+
+1028
+00:35:15,440 --> 00:35:18,079
+we had exclusive
+
+1029
+00:35:16,560 --> 00:35:20,078
+caps on the direction okay and you can't
+
+1030
+00:35:18,079 --> 00:35:24,160
+do this unless you do so got it okay
+
+1031
+00:35:20,079 --> 00:35:27,280
+thanks any other questions
+
+1032
+00:35:24,160 --> 00:35:28,960
+so just to add on to that one we didn't
+
+1033
+00:35:27,280 --> 00:35:29,920
+really um get into this in too much
+
+1034
+00:35:28,960 --> 00:35:31,920
+detail but one of
+
+1035
+00:35:29,920 --> 00:35:33,280
+you heard jeff several times said you
+
+1036
+00:35:31,920 --> 00:35:36,000
+know the first synchronous creator the
+
+1037
+00:35:33,280 --> 00:35:38,640
+first synchronous unlink
+
+1038
+00:35:36,000 --> 00:35:39,440
+in it our diagram was actually a a bit
+
+1039
+00:35:38,640 --> 00:35:42,078
+wrong on that
+
+1040
+00:35:39,440 --> 00:35:42,560
+um that we showed that not all of the
+
+1041
+00:35:42,079 --> 00:35:44,640
+unlink
+
+1042
+00:35:42,560 --> 00:35:45,759
+requests are completely asynchronous the
+
+1043
+00:35:44,640 --> 00:35:47,598
+first one has to be
+
+1044
+00:35:45,760 --> 00:35:49,680
+synchronous and that's just so that mds
+
+1045
+00:35:47,599 --> 00:35:51,119
+can acquire all the necessary locks
+
+1046
+00:35:49,680 --> 00:35:52,720
+and also issue any necessary
+
+1047
+00:35:51,119 --> 00:35:54,480
+capabilities so that you can do any
+
+1048
+00:35:52,720 --> 00:35:56,319
+further unlinks yourself so that first
+
+1049
+00:35:54,480 --> 00:35:58,560
+request is actually synchronous
+
+1050
+00:35:56,320 --> 00:35:59,359
+and one of the reasons for that is you
+
+1051
+00:35:58,560 --> 00:36:02,078
+need to get the
+
+1052
+00:35:59,359 --> 00:36:02,400
+the file layout for the the create which
+
+1053
+00:36:02,079 --> 00:36:04,880
+um
+
+1054
+00:36:02,400 --> 00:36:06,960
+lets you know how to actually stripe the
+
+1055
+00:36:04,880 --> 00:36:07,280
+data blocks across multiple objects for
+
+1056
+00:36:06,960 --> 00:36:10,720
+the
+
+1057
+00:36:07,280 --> 00:36:11,520
+uh the new file um and then also ensures
+
+1058
+00:36:10,720 --> 00:36:13,439
+that the md
+
+1059
+00:36:11,520 --> 00:36:15,839
+that the because file layouts can also
+
+1060
+00:36:13,440 --> 00:36:17,920
+be set hierarchically on a subtree
+
+1061
+00:36:15,839 --> 00:36:19,680
+that you know that nothing no directory
+
+1062
+00:36:17,920 --> 00:36:20,160
+above you has had its file layout
+
+1063
+00:36:19,680 --> 00:36:23,200
+changed
+
+1064
+00:36:20,160 --> 00:36:25,279
+such that the file layout on a new
+
+1065
+00:36:23,200 --> 00:36:26,799
+file should be something else so the
+
+1066
+00:36:25,280 --> 00:36:29,280
+client can safely move forward knowing
+
+1067
+00:36:26,800 --> 00:36:32,240
+that the file layout hasn't been changed
+
+1068
+00:36:29,280 --> 00:36:35,280
+out from under it by by operations on a
+
+1069
+00:36:32,240 --> 00:36:35,279
+higher level directory
+
+1070
+00:36:36,160 --> 00:36:40,240
+and all that's protected by the the caps
+
+1071
+00:36:38,079 --> 00:36:42,560
+that the mds is issuing any other
+
+1072
+00:36:40,240 --> 00:36:42,560
+questions
+
+1073
+00:36:50,640 --> 00:36:53,759
+so this is all still experimental but
+
+1074
+00:36:53,119 --> 00:36:57,040
+part of this
+
+1075
+00:36:53,760 --> 00:37:01,119
+already in in the code um so
+
+1076
+00:36:57,040 --> 00:37:04,640
+when will this be available will this be
+
+1077
+00:37:01,119 --> 00:37:07,599
+16 or uh the next release
+
+1078
+00:37:04,640 --> 00:37:08,000
+let's go back not upcoming but the one
+
+1079
+00:37:07,599 --> 00:37:10,800
+after
+
+1080
+00:37:08,000 --> 00:37:12,640
+or is it like a multi-gear effort uh i
+
+1081
+00:37:10,800 --> 00:37:13,040
+think the user land part of it the mds
+
+1082
+00:37:12,640 --> 00:37:15,040
+part
+
+1083
+00:37:13,040 --> 00:37:16,160
+is in we had to get that part in before
+
+1084
+00:37:15,040 --> 00:37:18,240
+we could even figure out whether this
+
+1085
+00:37:16,160 --> 00:37:21,279
+was going to be worthwhile right
+
+1086
+00:37:18,240 --> 00:37:22,959
+and so we've got that part in
+
+1087
+00:37:21,280 --> 00:37:24,960
+mostly i think it is worthwhile we're
+
+1088
+00:37:22,960 --> 00:37:26,880
+going to keep pursuing it
+
+1089
+00:37:24,960 --> 00:37:29,119
+the kernel bits i have i mean i have
+
+1090
+00:37:26,880 --> 00:37:32,240
+prototype code of course that works
+
+1091
+00:37:29,119 --> 00:37:33,839
+but it has some rough edges it won't
+
+1092
+00:37:32,240 --> 00:37:36,240
+make this merge window
+
+1093
+00:37:33,839 --> 00:37:38,560
+so you know five seven would be the
+
+1094
+00:37:36,240 --> 00:37:42,000
+absolute earliest in the kernel part
+
+1095
+00:37:38,560 --> 00:37:43,599
+um but probably later i have a feeling
+
+1096
+00:37:42,000 --> 00:37:45,359
+i'm going to probably want to do
+
+1097
+00:37:43,599 --> 00:37:47,760
+a clean up of the syncfest code in the
+
+1098
+00:37:45,359 --> 00:37:50,160
+kernel and then turn around and
+
+1099
+00:37:47,760 --> 00:37:52,079
+and maybe plumb the air you know have
+
+1100
+00:37:50,160 --> 00:37:53,520
+that use that for the error handling
+
+1101
+00:37:52,079 --> 00:37:55,200
+you know we recommend that we use that
+
+1102
+00:37:53,520 --> 00:37:56,480
+for their hammer
+
+1103
+00:37:55,200 --> 00:37:58,560
+and that probably will be a bit of an
+
+1104
+00:37:56,480 --> 00:38:05,599
+effort uh because the syncifest code
+
+1105
+00:37:58,560 --> 00:38:09,200
+needs some work
+
+1106
+00:38:05,599 --> 00:38:10,800
+any other questions just to add on to
+
+1107
+00:38:09,200 --> 00:38:12,720
+the answer to that question um so the
+
+1108
+00:38:10,800 --> 00:38:14,880
+mds bits are actually going to be
+
+1109
+00:38:12,720 --> 00:38:16,319
+an octopus which will be released in
+
+1110
+00:38:14,880 --> 00:38:19,440
+march so
+
+1111
+00:38:16,320 --> 00:38:22,079
+um all the the groundwork is there um
+
+1112
+00:38:19,440 --> 00:38:23,839
+the the step fuse client um probably
+
+1113
+00:38:22,079 --> 00:38:26,079
+won't have support until the p
+
+1114
+00:38:23,839 --> 00:38:27,599
+release which we're calling pacific so
+
+1115
+00:38:26,079 --> 00:38:29,520
+in 2021
+
+1116
+00:38:27,599 --> 00:38:31,359
+uh that'll be available but the kernel
+
+1117
+00:38:29,520 --> 00:38:33,680
+client i think which is getting
+
+1118
+00:38:31,359 --> 00:38:35,040
+most of our focus right now should you
+
+1119
+00:38:33,680 --> 00:38:37,359
+know hopefully we'll have
+
+1120
+00:38:35,040 --> 00:38:39,040
+um something merged into mainline within
+
+1121
+00:38:37,359 --> 00:38:40,799
+a few months you know
+
+1122
+00:38:39,040 --> 00:38:43,359
+assuming everything is going as we
+
+1123
+00:38:40,800 --> 00:38:45,040
+expect yeah
+
+1124
+00:38:43,359 --> 00:38:46,799
+i think the unlink code probably can go
+
+1125
+00:38:45,040 --> 00:38:49,440
+in fairly soon
+
+1126
+00:38:46,800 --> 00:38:50,240
+i almost merged it i almost had the
+
+1127
+00:38:49,440 --> 00:38:52,720
+merge it for this
+
+1128
+00:38:50,240 --> 00:38:53,598
+coming merge window but i decided to
+
+1129
+00:38:52,720 --> 00:38:55,118
+wait
+
+1130
+00:38:53,599 --> 00:38:57,040
+because i'm going to have to rework some
+
+1131
+00:38:55,119 --> 00:38:59,520
+of the underlying code for um
+
+1132
+00:38:57,040 --> 00:39:00,560
+for the creates to be better and i
+
+1133
+00:38:59,520 --> 00:39:03,359
+wasn't comfortable
+
+1134
+00:39:00,560 --> 00:39:04,240
+merging the unlinked part until i felt
+
+1135
+00:39:03,359 --> 00:39:05,839
+better about what
+
+1136
+00:39:04,240 --> 00:39:07,598
+you know what that part would look like
+
+1137
+00:39:05,839 --> 00:39:10,078
+so i it's not quite there yet
+
+1138
+00:39:07,599 --> 00:39:12,079
+but maybe latter part of this year you
+
+1139
+00:39:10,079 --> 00:39:13,200
+know but
+
+1140
+00:39:12,079 --> 00:39:14,560
+my guess is that we'll probably have
+
+1141
+00:39:13,200 --> 00:39:15,759
+something in before too long and this
+
+1142
+00:39:14,560 --> 00:39:17,040
+will probably be like an optional
+
+1143
+00:39:15,760 --> 00:39:19,680
+feature too uh
+
+1144
+00:39:17,040 --> 00:39:20,560
+we right now i've got it set on a module
+
+1145
+00:39:19,680 --> 00:39:22,799
+parameter
+
+1146
+00:39:20,560 --> 00:39:24,240
+uh but we may eventually uh you know
+
+1147
+00:39:22,800 --> 00:39:24,640
+make an amount option or something like
+
+1148
+00:39:24,240 --> 00:39:28,240
+that
+
+1149
+00:39:24,640 --> 00:39:31,598
+so okay i think we're out of time now so
+
+1150
+00:39:28,240 --> 00:39:31,598
+if you've got any questions let me know
+
+1151
+00:39:34,320 --> 00:39:41,839
+thank you
+

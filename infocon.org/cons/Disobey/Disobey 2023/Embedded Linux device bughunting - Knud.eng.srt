@@ -1,0 +1,5144 @@
+﻿1
+00:00:00,079 --> 00:00:02,419
+hi guys
+
+2
+00:00:02,419 --> 00:00:04,259
+I work
+
+3
+00:00:04,259 --> 00:00:06,120
+at fractal and I'm going to talk about
+
+4
+00:00:06,120 --> 00:00:10,500
+some embedded Linux bug hunting
+
+5
+00:00:10,500 --> 00:00:12,179
+so what does that mean
+
+6
+00:00:12,179 --> 00:00:15,660
+well in this case it means how you would
+
+7
+00:00:15,660 --> 00:00:18,359
+identify and exploit a bunch of bugs in
+
+8
+00:00:18,359 --> 00:00:22,080
+a quite wide range of uniview IP cameras
+
+9
+00:00:22,080 --> 00:00:23,939
+so I'm going to talk about
+
+10
+00:00:23,939 --> 00:00:27,539
+how you get from having a camera in a
+
+11
+00:00:27,539 --> 00:00:28,380
+box
+
+12
+00:00:28,380 --> 00:00:31,500
+to Landing a shield on the actual camera
+
+13
+00:00:31,500 --> 00:00:33,600
+and where to go from there and then
+
+14
+00:00:33,600 --> 00:00:34,800
+maybe discuss some exploitation
+
+15
+00:00:34,800 --> 00:00:36,540
+strategies and why you would do
+
+16
+00:00:36,540 --> 00:00:40,320
+something and why not and in my opinion
+
+17
+00:00:40,320 --> 00:00:42,300
+the workflow is
+
+18
+00:00:42,300 --> 00:00:45,600
+applicable to most iot devices at least
+
+19
+00:00:45,600 --> 00:00:47,040
+um
+
+20
+00:00:47,040 --> 00:00:49,559
+I just did what I normally do when I get
+
+21
+00:00:49,559 --> 00:00:51,660
+something right so it doesn't matter
+
+22
+00:00:51,660 --> 00:00:55,160
+really matter that it's the camera
+
+23
+00:00:55,320 --> 00:00:58,680
+but a good reason for targeting cameras
+
+24
+00:00:58,680 --> 00:01:00,480
+in particular is that they're not gonna
+
+25
+00:01:00,480 --> 00:01:02,399
+go to the cloud
+
+26
+00:01:02,399 --> 00:01:05,099
+they have to stay on-prem at least for
+
+27
+00:01:05,099 --> 00:01:07,880
+the foreseeable future right
+
+28
+00:01:07,880 --> 00:01:11,700
+and Camera wires I have some red teaming
+
+29
+00:01:11,700 --> 00:01:13,140
+background and the camera wires they
+
+30
+00:01:13,140 --> 00:01:17,100
+often dangle aren't buildings and
+
+31
+00:01:17,100 --> 00:01:19,680
+that makes them in my opinion uh quite a
+
+32
+00:01:19,680 --> 00:01:21,119
+juicy Target
+
+33
+00:01:21,119 --> 00:01:24,119
+because you can cross the trust boundary
+
+34
+00:01:24,119 --> 00:01:25,979
+from you being on the outside of the
+
+35
+00:01:25,979 --> 00:01:27,360
+building to being on the internal
+
+36
+00:01:27,360 --> 00:01:30,720
+Network depending on how it's set up
+
+37
+00:01:30,720 --> 00:01:32,159
+and
+
+38
+00:01:32,159 --> 00:01:34,979
+I don't audit cameras for a living so
+
+39
+00:01:34,979 --> 00:01:36,780
+it's good to have a distraction from
+
+40
+00:01:36,780 --> 00:01:38,880
+actual work I don't know if any of you
+
+41
+00:01:38,880 --> 00:01:42,259
+are familiar but I I'm incredibly
+
+42
+00:01:42,259 --> 00:01:44,759
+productive when I procrastinate and do
+
+43
+00:01:44,759 --> 00:01:46,079
+something instead of the thing I'm
+
+44
+00:01:46,079 --> 00:01:48,060
+supposed to be doing right so I can
+
+45
+00:01:48,060 --> 00:01:49,560
+really get a lot of stuff done when I do
+
+46
+00:01:49,560 --> 00:01:51,240
+two things at the same time
+
+47
+00:01:51,240 --> 00:01:54,720
+uh I think it's nice to have
+
+48
+00:01:54,720 --> 00:01:56,579
+some soft targets to pull that because
+
+49
+00:01:56,579 --> 00:01:59,220
+it's good to get some wins once in a
+
+50
+00:01:59,220 --> 00:02:01,320
+while it doesn't always have to be
+
+51
+00:02:01,320 --> 00:02:02,880
+remote kernel exploits or something
+
+52
+00:02:02,880 --> 00:02:04,920
+sometimes it's nice to just get a shelf
+
+53
+00:02:04,920 --> 00:02:06,899
+and I think
+
+54
+00:02:06,899 --> 00:02:10,440
+um in this case practicing on something
+
+55
+00:02:10,440 --> 00:02:12,900
+like embedded Linux devices means that
+
+56
+00:02:12,900 --> 00:02:15,120
+you can
+
+57
+00:02:15,120 --> 00:02:17,599
+you can abstract away a lot of things
+
+58
+00:02:17,599 --> 00:02:20,459
+that you don't have to care about you
+
+59
+00:02:20,459 --> 00:02:22,260
+don't need to worry about weird
+
+60
+00:02:22,260 --> 00:02:24,720
+real-time operating systems or other
+
+61
+00:02:24,720 --> 00:02:26,220
+strange things that make things
+
+62
+00:02:26,220 --> 00:02:28,379
+complicated when
+
+63
+00:02:28,379 --> 00:02:30,840
+it's just Linux and it's just software
+
+64
+00:02:30,840 --> 00:02:32,819
+running on Linux right and that means
+
+65
+00:02:32,819 --> 00:02:34,739
+that you don't have to worry about a lot
+
+66
+00:02:34,739 --> 00:02:36,720
+of layers of complexity you can just say
+
+67
+00:02:36,720 --> 00:02:39,180
+for example the IP stack you don't have
+
+68
+00:02:39,180 --> 00:02:40,739
+to worry about it because it's just
+
+69
+00:02:40,739 --> 00:02:42,180
+there and it's the same as all the other
+
+70
+00:02:42,180 --> 00:02:43,560
+IP stacks and all the other Linux
+
+71
+00:02:43,560 --> 00:02:44,819
+devices right
+
+72
+00:02:44,819 --> 00:02:46,319
+and
+
+73
+00:02:46,319 --> 00:02:49,260
+it also allows you to get
+
+74
+00:02:49,260 --> 00:02:51,720
+to get some mileage right and you I
+
+75
+00:02:51,720 --> 00:02:52,500
+think
+
+76
+00:02:52,500 --> 00:02:53,400
+um
+
+77
+00:02:53,400 --> 00:02:55,980
+practice makes perfect obviously and
+
+78
+00:02:55,980 --> 00:02:58,980
+reading 10 write-ups about bugs on the
+
+79
+00:02:58,980 --> 00:03:01,260
+internet will not give you
+
+80
+00:03:01,260 --> 00:03:03,959
+a tiny bit as much experience as
+
+81
+00:03:03,959 --> 00:03:05,700
+actually finding some bugs in some
+
+82
+00:03:05,700 --> 00:03:07,140
+things and writing some exploits and
+
+83
+00:03:07,140 --> 00:03:08,580
+overcoming some challenges that way
+
+84
+00:03:08,580 --> 00:03:10,080
+instead of reading about how other
+
+85
+00:03:10,080 --> 00:03:12,840
+people did it and also I'm not really a
+
+86
+00:03:12,840 --> 00:03:15,060
+fan of cameras so I think they're a
+
+87
+00:03:15,060 --> 00:03:19,040
+great Target to screw around with
+
+88
+00:03:19,800 --> 00:03:22,200
+so what I normally do when I get an
+
+89
+00:03:22,200 --> 00:03:25,620
+unknown device or buy another device
+
+90
+00:03:25,620 --> 00:03:27,440
+um I open it up and take a look inside
+
+91
+00:03:27,440 --> 00:03:30,680
+and see what's
+
+92
+00:03:30,680 --> 00:03:32,580
+in this case
+
+93
+00:03:32,580 --> 00:03:35,040
+the camera looks like this it's a well
+
+94
+00:03:35,040 --> 00:03:37,920
+this model is called the bullet game you
+
+95
+00:03:37,920 --> 00:03:39,959
+take it apart very carefully I might add
+
+96
+00:03:39,959 --> 00:03:42,060
+because they're quite delicate ribbon
+
+97
+00:03:42,060 --> 00:03:44,099
+cables inside that can
+
+98
+00:03:44,099 --> 00:03:46,620
+break or become loose and then you need
+
+99
+00:03:46,620 --> 00:03:48,180
+to place your device in a very specific
+
+100
+00:03:48,180 --> 00:03:50,159
+way on the table for it to boot and not
+
+101
+00:03:50,159 --> 00:03:52,920
+time out all the time
+
+102
+00:03:52,920 --> 00:03:55,980
+it's a ball grid array mounted nightmare
+
+103
+00:03:55,980 --> 00:03:58,440
+which means that desoldering the chips
+
+104
+00:03:58,440 --> 00:03:59,640
+is
+
+105
+00:03:59,640 --> 00:04:03,060
+definitely out of my league because
+
+106
+00:04:03,060 --> 00:04:04,799
+well I can take them off but I cannot
+
+107
+00:04:04,799 --> 00:04:07,920
+put them back on and that's like
+
+108
+00:04:07,920 --> 00:04:10,439
+sort of just destroying things but when
+
+109
+00:04:10,439 --> 00:04:11,819
+you look at the chips you can see that
+
+110
+00:04:11,819 --> 00:04:15,060
+it's a high silicon IPC sock what does
+
+111
+00:04:15,060 --> 00:04:17,880
+high high silicon IPC soft mean it means
+
+112
+00:04:17,880 --> 00:04:21,000
+that it's an IP camera system on chip
+
+113
+00:04:21,000 --> 00:04:24,419
+and what is a system on chip well this
+
+114
+00:04:24,419 --> 00:04:28,380
+diagram actually shows what's inside the
+
+115
+00:04:28,380 --> 00:04:30,120
+black chip in the middle right so
+
+116
+00:04:30,120 --> 00:04:32,820
+there's some memory and some Hardware
+
+117
+00:04:32,820 --> 00:04:36,240
+um video decoders or encoders sorry some
+
+118
+00:04:36,240 --> 00:04:38,100
+hashing functions
+
+119
+00:04:38,100 --> 00:04:40,440
+um some uarts some general purpose I
+
+120
+00:04:40,440 --> 00:04:43,940
+opens and all that stuff so
+
+121
+00:04:44,520 --> 00:04:48,240
+basically a camera in a computer with a
+
+122
+00:04:48,240 --> 00:04:51,360
+bunch of Hardware doohickeys crammed in
+
+123
+00:04:51,360 --> 00:04:54,380
+very little package
+
+124
+00:04:54,560 --> 00:04:58,259
+so when
+
+125
+00:04:58,259 --> 00:05:00,000
+when you want to start looking at it you
+
+126
+00:05:00,000 --> 00:05:01,919
+need some sort of access to to look on
+
+127
+00:05:01,919 --> 00:05:03,479
+the thing and
+
+128
+00:05:03,479 --> 00:05:06,479
+I prefer well I I really like it if the
+
+129
+00:05:06,479 --> 00:05:09,419
+device has a UI console because they're
+
+130
+00:05:09,419 --> 00:05:12,120
+very easy to identify uh in this case
+
+131
+00:05:12,120 --> 00:05:14,639
+you can see in the bottom left corner of
+
+132
+00:05:14,639 --> 00:05:16,320
+the PCB there's
+
+133
+00:05:16,320 --> 00:05:20,580
+four pads that
+
+134
+00:05:20,580 --> 00:05:24,600
+probably is a uart it's a lot easier to
+
+135
+00:05:24,600 --> 00:05:25,500
+look
+
+136
+00:05:25,500 --> 00:05:28,560
+Ed the uart console than it is to
+
+137
+00:05:28,560 --> 00:05:32,340
+desolder The Flash and dump
+
+138
+00:05:32,340 --> 00:05:33,300
+um
+
+139
+00:05:33,300 --> 00:05:34,979
+dump the flash because there are no
+
+140
+00:05:34,979 --> 00:05:37,620
+rules for how the flash is laid out so
+
+141
+00:05:37,620 --> 00:05:40,680
+it could be encrypted and it it could be
+
+142
+00:05:40,680 --> 00:05:43,620
+all sorts of stuff if you can get a URL
+
+143
+00:05:43,620 --> 00:05:46,259
+on the thing then it's a very solid
+
+144
+00:05:46,259 --> 00:05:48,120
+start
+
+145
+00:05:48,120 --> 00:05:50,759
+I'm terrible it's soldering but that
+
+146
+00:05:50,759 --> 00:05:52,620
+doesn't really matter right because in
+
+147
+00:05:52,620 --> 00:05:54,960
+the top right corner as you can see I
+
+148
+00:05:54,960 --> 00:05:58,080
+have just attached some weird plant wire
+
+149
+00:05:58,080 --> 00:06:00,180
+to the PCB that's enough to make the
+
+150
+00:06:00,180 --> 00:06:05,280
+electrical connection and even if you
+
+151
+00:06:05,280 --> 00:06:07,500
+show them a bit or do other things I
+
+152
+00:06:07,500 --> 00:06:09,539
+mean you are less likely to screw up
+
+153
+00:06:09,539 --> 00:06:12,360
+anything than if you are bad at
+
+154
+00:06:12,360 --> 00:06:14,699
+shouldering like me right but this is
+
+155
+00:06:14,699 --> 00:06:16,139
+enough to make the electrical connection
+
+156
+00:06:16,139 --> 00:06:18,479
+and see that the UI console is working
+
+157
+00:06:18,479 --> 00:06:21,960
+and with that you can get a lot of debug
+
+158
+00:06:21,960 --> 00:06:23,940
+output and maybe sometimes if you're
+
+159
+00:06:23,940 --> 00:06:25,620
+lucky you can even get
+
+160
+00:06:25,620 --> 00:06:28,380
+the show on the device and that's a very
+
+161
+00:06:28,380 --> 00:06:31,460
+good opening
+
+162
+00:06:32,160 --> 00:06:35,400
+so uart is really
+
+163
+00:06:35,400 --> 00:06:38,520
+everywhere because I went to my junk
+
+164
+00:06:38,520 --> 00:06:40,620
+shelf and looked
+
+165
+00:06:40,620 --> 00:06:43,520
+at stuff I've accumulated over the years
+
+166
+00:06:43,520 --> 00:06:46,259
+that I no longer use but I've heard on
+
+167
+00:06:46,259 --> 00:06:48,840
+some of them and so on and I looked at
+
+168
+00:06:48,840 --> 00:06:51,419
+how many of them have uart and it told
+
+169
+00:06:51,419 --> 00:06:54,240
+me that everything on the Shelf has a
+
+170
+00:06:54,240 --> 00:06:57,360
+uart right they don't all lend you in a
+
+171
+00:06:57,360 --> 00:07:00,479
+usable shell or something but but
+
+172
+00:07:00,479 --> 00:07:03,740
+the uh chill is uh if you remember like
+
+173
+00:07:03,740 --> 00:07:06,840
+the old Cisco routers and sticking in a
+
+174
+00:07:06,840 --> 00:07:08,580
+Cisco console cable it's the same level
+
+175
+00:07:08,580 --> 00:07:10,380
+of access so that you may land in a
+
+176
+00:07:10,380 --> 00:07:12,840
+wheelchair or you may land in some
+
+177
+00:07:12,840 --> 00:07:15,960
+restricted garbage Shield that is not as
+
+178
+00:07:15,960 --> 00:07:18,660
+much fun but but it will definitely be
+
+179
+00:07:18,660 --> 00:07:21,419
+useful for troubleshooting and debugging
+
+180
+00:07:21,419 --> 00:07:24,479
+something right and in the case where
+
+181
+00:07:24,479 --> 00:07:25,979
+there is no
+
+182
+00:07:25,979 --> 00:07:28,380
+you are maybe you can do some other
+
+183
+00:07:28,380 --> 00:07:30,479
+things like JTAG interfaces with with
+
+184
+00:07:30,479 --> 00:07:32,460
+the chips and whatnot it's
+
+185
+00:07:32,460 --> 00:07:34,380
+I prefer the uart because it's easy and
+
+186
+00:07:34,380 --> 00:07:37,020
+the adapter costs five euro or something
+
+187
+00:07:37,020 --> 00:07:39,318
+right
+
+188
+00:07:39,479 --> 00:07:43,259
+so with all that talk about uart when I
+
+189
+00:07:43,259 --> 00:07:46,800
+got I ordered this camera and I didn't
+
+190
+00:07:46,800 --> 00:07:48,660
+end up using the uart because I was
+
+191
+00:07:48,660 --> 00:07:51,060
+looking at the firmware instead
+
+192
+00:07:51,060 --> 00:07:55,199
+and the window side is not open at all
+
+193
+00:07:55,199 --> 00:07:58,199
+you actually you can't go to the vendor
+
+194
+00:07:58,199 --> 00:08:00,240
+side and say I want a firmware update
+
+195
+00:08:00,240 --> 00:08:05,060
+for this and that specific model right
+
+196
+00:08:05,580 --> 00:08:08,099
+but some third-party sites do have
+
+197
+00:08:08,099 --> 00:08:11,280
+extensive collections for these cameras
+
+198
+00:08:11,280 --> 00:08:12,419
+um
+
+199
+00:08:12,419 --> 00:08:14,940
+and it's also good to be looking at the
+
+200
+00:08:14,940 --> 00:08:16,740
+firmware because as I said before maybe
+
+201
+00:08:16,740 --> 00:08:20,220
+there's no easy uart or a usable you are
+
+202
+00:08:20,220 --> 00:08:21,900
+right it could be that the boot
+
+203
+00:08:21,900 --> 00:08:23,220
+environment is
+
+204
+00:08:23,220 --> 00:08:25,680
+hardened it could be that there's a root
+
+205
+00:08:25,680 --> 00:08:27,180
+password that you don't know and you
+
+206
+00:08:27,180 --> 00:08:29,280
+cannot put it in single-use mode and so
+
+207
+00:08:29,280 --> 00:08:31,080
+on and so on and so on right so so it's
+
+208
+00:08:31,080 --> 00:08:33,240
+also good to be able to look at the
+
+209
+00:08:33,240 --> 00:08:34,500
+firmware
+
+210
+00:08:34,500 --> 00:08:37,440
+um pretty straightforward
+
+211
+00:08:37,440 --> 00:08:40,979
+for this particular case locally so when
+
+212
+00:08:40,979 --> 00:08:43,679
+you look at the uniview firmware
+
+213
+00:08:43,679 --> 00:08:45,060
+contents
+
+214
+00:08:45,060 --> 00:08:46,800
+it has
+
+215
+00:08:46,800 --> 00:08:48,720
+and this is also quite normal and
+
+216
+00:08:48,720 --> 00:08:50,220
+there's assume further than the inside
+
+217
+00:08:50,220 --> 00:08:52,680
+the suit file there's a blob and in that
+
+218
+00:08:52,680 --> 00:08:55,440
+blob you can run tools like a bin walk
+
+219
+00:08:55,440 --> 00:08:57,240
+or something to try and identify file
+
+220
+00:08:57,240 --> 00:08:59,279
+systems in it for this one you don't
+
+221
+00:08:59,279 --> 00:09:00,959
+even have to run pinwall because there's
+
+222
+00:09:00,959 --> 00:09:04,320
+just the program.pin which is a Ubi file
+
+223
+00:09:04,320 --> 00:09:06,300
+system that you can unpack
+
+224
+00:09:06,300 --> 00:09:09,600
+cleanly with tooling called you guy dump
+
+225
+00:09:09,600 --> 00:09:11,820
+but but it's you're going to end up with
+
+226
+00:09:11,820 --> 00:09:13,800
+the same as if you ran bin walk on on
+
+227
+00:09:13,800 --> 00:09:16,260
+the thing so it unpacks it and you can
+
+228
+00:09:16,260 --> 00:09:19,560
+start probing or looking and figuring
+
+229
+00:09:19,560 --> 00:09:20,820
+out how
+
+230
+00:09:20,820 --> 00:09:22,860
+how things work right and and in this
+
+231
+00:09:22,860 --> 00:09:25,380
+case there's a script called init.sh
+
+232
+00:09:25,380 --> 00:09:27,000
+that's a pretty
+
+233
+00:09:27,000 --> 00:09:29,459
+telling name looking in that one it
+
+234
+00:09:29,459 --> 00:09:31,440
+spawns some other script and that one
+
+235
+00:09:31,440 --> 00:09:35,240
+spawns some binary right and then
+
+236
+00:09:35,300 --> 00:09:38,760
+and that looks like the main service or
+
+237
+00:09:38,760 --> 00:09:41,160
+the device startup point where
+
+238
+00:09:41,160 --> 00:09:42,839
+it's going to hand over execution to
+
+239
+00:09:42,839 --> 00:09:44,279
+that one and then the device will be
+
+240
+00:09:44,279 --> 00:09:46,820
+operational
+
+241
+00:09:47,899 --> 00:09:49,620
+so
+
+242
+00:09:49,620 --> 00:09:52,320
+easiest thing in iot reversing I find
+
+243
+00:09:52,320 --> 00:09:54,180
+references to
+
+244
+00:09:54,180 --> 00:09:57,800
+system or other wrapper functions right
+
+245
+00:09:57,800 --> 00:10:01,200
+in this case I just
+
+246
+00:10:01,200 --> 00:10:03,959
+put this huge binary into a guitar
+
+247
+00:10:03,959 --> 00:10:07,920
+look for calls to System of which they
+
+248
+00:10:07,920 --> 00:10:10,560
+weren't a lot but that turns out that
+
+249
+00:10:10,560 --> 00:10:13,500
+it's because they made their own Rebel
+
+250
+00:10:13,500 --> 00:10:15,839
+function which then calls system instead
+
+251
+00:10:15,839 --> 00:10:17,279
+and that's
+
+252
+00:10:17,279 --> 00:10:19,680
+very common in this case there's
+
+253
+00:10:19,680 --> 00:10:21,839
+actually a few different routes to
+
+254
+00:10:21,839 --> 00:10:23,580
+system with different names but in the
+
+255
+00:10:23,580 --> 00:10:26,100
+end they all call system don't ask me
+
+256
+00:10:26,100 --> 00:10:29,519
+why it's just how it is but um looking
+
+257
+00:10:29,519 --> 00:10:32,519
+at this uh if you know the iscosity
+
+258
+00:10:32,519 --> 00:10:35,760
+admin command the things after the dash
+
+259
+00:10:35,760 --> 00:10:38,100
+T and the SP are normally usually
+
+260
+00:10:38,100 --> 00:10:39,779
+specified because you can do some Isis
+
+261
+00:10:39,779 --> 00:10:43,019
+Administration and and use it as storage
+
+262
+00:10:43,019 --> 00:10:44,640
+for your
+
+263
+00:10:44,640 --> 00:10:46,800
+camera so you can
+
+264
+00:10:46,800 --> 00:10:48,800
+offload the video
+
+265
+00:10:48,800 --> 00:10:51,360
+so pretty good I'm ready to compromise
+
+266
+00:10:51,360 --> 00:10:53,880
+the device as soon as it lands right
+
+267
+00:10:53,880 --> 00:10:56,820
+but I get the camera and I connect it
+
+268
+00:10:56,820 --> 00:11:00,120
+and I'm so ready
+
+269
+00:11:00,120 --> 00:11:03,019
+running from the mailbox to my computer
+
+270
+00:11:03,019 --> 00:11:05,760
+and I can find out how to trigger the
+
+271
+00:11:05,760 --> 00:11:09,240
+bug and it turns out that my El Cheapo
+
+272
+00:11:09,240 --> 00:11:12,060
+bullet game is clearly not meant for
+
+273
+00:11:12,060 --> 00:11:14,160
+Enterprise environments where ice
+
+274
+00:11:14,160 --> 00:11:16,260
+glasses setups are going
+
+275
+00:11:16,260 --> 00:11:18,720
+so it doesn't support ice Crossing for
+
+276
+00:11:18,720 --> 00:11:21,959
+the storage and
+
+277
+00:11:22,200 --> 00:11:26,940
+very sad and when you look at well I'm
+
+278
+00:11:26,940 --> 00:11:28,079
+not going to go into detail with that
+
+279
+00:11:28,079 --> 00:11:30,540
+but but the way it's built the software
+
+280
+00:11:30,540 --> 00:11:32,839
+architecture is a bit weird so it's not
+
+281
+00:11:32,839 --> 00:11:35,160
+very easy to find out how to actually
+
+282
+00:11:35,160 --> 00:11:36,480
+trigger
+
+283
+00:11:36,480 --> 00:11:39,300
+the the bug without
+
+284
+00:11:39,300 --> 00:11:41,160
+doing a bunch more reversing which I
+
+285
+00:11:41,160 --> 00:11:43,440
+wasn't that interested in at that point
+
+286
+00:11:43,440 --> 00:11:45,720
+uh
+
+287
+00:11:45,720 --> 00:11:49,200
+looking at that web UI I get some hints
+
+288
+00:11:49,200 --> 00:11:50,940
+that it supports some other things right
+
+289
+00:11:50,940 --> 00:11:54,300
+so it has Nas storage and then you look
+
+290
+00:11:54,300 --> 00:11:56,160
+at how do they handle
+
+291
+00:11:56,160 --> 00:11:58,800
+storing data on the nest well they do
+
+292
+00:11:58,800 --> 00:12:01,019
+pretty much the same because they take
+
+293
+00:12:01,019 --> 00:12:02,579
+your user input and they feed it to
+
+294
+00:12:02,579 --> 00:12:03,779
+system
+
+295
+00:12:03,779 --> 00:12:07,079
+and then you in your next test you give
+
+296
+00:12:07,079 --> 00:12:08,760
+this specific payload where you put
+
+297
+00:12:08,760 --> 00:12:10,560
+something in the password file and then
+
+298
+00:12:10,560 --> 00:12:12,240
+you spawn the tillner demon which is not
+
+299
+00:12:12,240 --> 00:12:14,279
+running by default
+
+300
+00:12:14,279 --> 00:12:16,920
+and then it's uh spawned and you get a
+
+301
+00:12:16,920 --> 00:12:18,240
+virtual when you turn it to the device
+
+302
+00:12:18,240 --> 00:12:22,640
+so good start of course it's
+
+303
+00:12:22,800 --> 00:12:26,459
+well first thing next thing to do when
+
+304
+00:12:26,459 --> 00:12:28,019
+you pop the chill
+
+305
+00:12:28,019 --> 00:12:30,779
+is don't just blindly click firmware
+
+306
+00:12:30,779 --> 00:12:32,940
+upgrade because you might get locked out
+
+307
+00:12:32,940 --> 00:12:35,459
+of the device in case they fix that bug
+
+308
+00:12:35,459 --> 00:12:38,640
+so the software update for this
+
+309
+00:12:38,640 --> 00:12:41,459
+particular camera luckily has a feature
+
+310
+00:12:41,459 --> 00:12:43,560
+called Cloud upgrade so you click that
+
+311
+00:12:43,560 --> 00:12:45,300
+button it's going to send a plain text
+
+312
+00:12:45,300 --> 00:12:47,339
+request to the internet but you can
+
+313
+00:12:47,339 --> 00:12:49,740
+sniff it and see that this is where it's
+
+314
+00:12:49,740 --> 00:12:52,920
+going to get the latest firmware from
+
+315
+00:12:52,920 --> 00:12:54,540
+and then when you look at the naming
+
+316
+00:12:54,540 --> 00:12:56,100
+scheme
+
+317
+00:12:56,100 --> 00:12:59,839
+it's not trivial which may had it been
+
+318
+00:12:59,839 --> 00:13:02,040
+simpler maybe you could have harvested a
+
+319
+00:13:02,040 --> 00:13:04,019
+bunch of Frameworks that way but
+
+320
+00:13:04,019 --> 00:13:07,500
+no dice in in this case but anyway
+
+321
+00:13:07,500 --> 00:13:08,940
+take the new firmware apart before
+
+322
+00:13:08,940 --> 00:13:11,040
+applying it see that your bug is still
+
+323
+00:13:11,040 --> 00:13:12,360
+present
+
+324
+00:13:12,360 --> 00:13:13,980
+and then apply the latest firmware
+
+325
+00:13:13,980 --> 00:13:15,300
+because
+
+326
+00:13:15,300 --> 00:13:17,579
+from experience there is nothing said
+
+327
+00:13:17,579 --> 00:13:20,339
+than bug hunting on Old releases and
+
+328
+00:13:20,339 --> 00:13:23,040
+thinking that you pop chills and you're
+
+329
+00:13:23,040 --> 00:13:24,959
+the master hacker and then you update
+
+330
+00:13:24,959 --> 00:13:27,180
+the firmware and nothing works
+
+331
+00:13:27,180 --> 00:13:30,300
+because sorry um everybody all the bugs
+
+332
+00:13:30,300 --> 00:13:32,880
+are fixed already right it's
+
+333
+00:13:32,880 --> 00:13:36,899
+very sad and a huge waste of time so try
+
+334
+00:13:36,899 --> 00:13:40,820
+to work on latest greatest instead
+
+335
+00:13:41,279 --> 00:13:42,839
+so
+
+336
+00:13:42,839 --> 00:13:45,420
+um post authentication chills so I had
+
+337
+00:13:45,420 --> 00:13:48,060
+to log in to to exploit that bug it's
+
+338
+00:13:48,060 --> 00:13:49,560
+not
+
+339
+00:13:49,560 --> 00:13:52,800
+it's not the best right because
+
+340
+00:13:52,800 --> 00:13:55,860
+the admin can do bad things to the thing
+
+341
+00:13:55,860 --> 00:13:59,339
+I mean he probably came anyway in in one
+
+342
+00:13:59,339 --> 00:14:01,760
+way or another
+
+343
+00:14:02,160 --> 00:14:03,180
+um
+
+344
+00:14:03,180 --> 00:14:04,560
+so
+
+345
+00:14:04,560 --> 00:14:06,120
+at the same time
+
+346
+00:14:06,120 --> 00:14:09,060
+if you look at web interface books they
+
+347
+00:14:09,060 --> 00:14:12,779
+are a little bit shallow
+
+348
+00:14:12,779 --> 00:14:15,660
+um because you can run burp and
+
+349
+00:14:15,660 --> 00:14:18,300
+find some command injection box
+
+350
+00:14:18,300 --> 00:14:20,339
+as a side note that's also incredibly
+
+351
+00:14:20,339 --> 00:14:22,980
+dangerous if you just do spider and scan
+
+352
+00:14:22,980 --> 00:14:24,839
+with verb on these devices because you
+
+353
+00:14:24,839 --> 00:14:27,600
+can most likely ruin it and then you
+
+354
+00:14:27,600 --> 00:14:30,540
+have to buy a new one because if you put
+
+355
+00:14:30,540 --> 00:14:32,579
+in
+
+356
+00:14:32,579 --> 00:14:36,180
+some bad input in some of the fields and
+
+357
+00:14:36,180 --> 00:14:38,339
+it gets written to nvram and it tries to
+
+358
+00:14:38,339 --> 00:14:40,320
+read some garbage value at boot and it
+
+359
+00:14:40,320 --> 00:14:41,639
+doesn't um
+
+360
+00:14:41,639 --> 00:14:44,220
+read what it expects and then it reboots
+
+361
+00:14:44,220 --> 00:14:45,779
+and so on and so on and so on then
+
+362
+00:14:45,779 --> 00:14:47,279
+you've basically destroyed the device
+
+363
+00:14:47,279 --> 00:14:51,420
+that is very much a possibility so
+
+364
+00:14:51,420 --> 00:14:53,760
+I would be very careful before just
+
+365
+00:14:53,760 --> 00:14:55,680
+doing spider and skin to find these bugs
+
+366
+00:14:55,680 --> 00:14:57,600
+anyway they're shallow and they're easy
+
+367
+00:14:57,600 --> 00:14:59,160
+to find
+
+368
+00:14:59,160 --> 00:15:00,839
+which means that
+
+369
+00:15:00,839 --> 00:15:04,260
+your Gradebook could be known to many
+
+370
+00:15:04,260 --> 00:15:06,240
+other people and that's never very nice
+
+371
+00:15:06,240 --> 00:15:09,540
+so to get better understanding of the
+
+372
+00:15:09,540 --> 00:15:10,920
+device you do some attack service
+
+373
+00:15:10,920 --> 00:15:13,579
+analysis
+
+374
+00:15:15,240 --> 00:15:18,060
+it's not essential to have the real
+
+375
+00:15:18,060 --> 00:15:20,639
+device so far everything I've done could
+
+376
+00:15:20,639 --> 00:15:21,779
+have been done
+
+377
+00:15:21,779 --> 00:15:25,079
+just by looking at the firmware but
+
+378
+00:15:25,079 --> 00:15:27,660
+it is a lot better to have the actual
+
+379
+00:15:27,660 --> 00:15:30,980
+device because maybe you've missed
+
+380
+00:15:30,980 --> 00:15:33,060
+something if you just look at the
+
+381
+00:15:33,060 --> 00:15:34,980
+firmware and you say here's an uh
+
+382
+00:15:34,980 --> 00:15:36,420
+there's a bug in this service running in
+
+383
+00:15:36,420 --> 00:15:38,220
+this port maybe it's firewalled off when
+
+384
+00:15:38,220 --> 00:15:39,899
+it's running on the actual device right
+
+385
+00:15:39,899 --> 00:15:40,920
+so
+
+386
+00:15:40,920 --> 00:15:43,139
+a real device and a real Shield is
+
+387
+00:15:43,139 --> 00:15:45,660
+extremely useful and at the same time
+
+388
+00:15:45,660 --> 00:15:47,760
+when you look at the uniview firmware
+
+389
+00:15:47,760 --> 00:15:50,579
+Updates this program that's been has
+
+390
+00:15:50,579 --> 00:15:52,260
+programs and stuff but it doesn't
+
+391
+00:15:52,260 --> 00:15:54,899
+contain the base Linux system
+
+392
+00:15:54,899 --> 00:15:57,180
+and where would you place a backdoor
+
+393
+00:15:57,180 --> 00:15:58,860
+account well in the base Linux system
+
+394
+00:15:58,860 --> 00:15:59,880
+right or
+
+395
+00:15:59,880 --> 00:16:02,880
+other mistakes so
+
+396
+00:16:02,880 --> 00:16:05,579
+it is definitely best to have the real
+
+397
+00:16:05,579 --> 00:16:07,320
+device and it's a lot easier to do that
+
+398
+00:16:07,320 --> 00:16:08,940
+sort of analysis dynamically in a
+
+399
+00:16:08,940 --> 00:16:09,959
+running environment instead of
+
+400
+00:16:09,959 --> 00:16:13,500
+statically on a bunch of files also
+
+401
+00:16:13,500 --> 00:16:16,920
+comparing netstat to nmap If You
+
+402
+00:16:16,920 --> 00:16:18,420
+broadcast this camera you will see that
+
+403
+00:16:18,420 --> 00:16:21,360
+there's two open UDP ports and a bunch
+
+404
+00:16:21,360 --> 00:16:23,639
+of those filtered or unknown services
+
+405
+00:16:23,639 --> 00:16:25,440
+that we all know and hate from the
+
+406
+00:16:25,440 --> 00:16:26,820
+internet output
+
+407
+00:16:26,820 --> 00:16:29,519
+but when you look with netstead on the
+
+408
+00:16:29,519 --> 00:16:31,199
+running device you will see that there's
+
+409
+00:16:31,199 --> 00:16:35,719
+actually six open UDP ports so
+
+410
+00:16:35,760 --> 00:16:38,459
+if you look at the TCP services from the
+
+411
+00:16:38,459 --> 00:16:40,199
+device as part of mapping out the attack
+
+412
+00:16:40,199 --> 00:16:42,000
+surface because well we want remote
+
+413
+00:16:42,000 --> 00:16:44,899
+attacks right
+
+414
+00:16:45,300 --> 00:16:46,920
+there's a bunch of services listening on
+
+415
+00:16:46,920 --> 00:16:49,019
+localhost and other weirdness but those
+
+416
+00:16:49,019 --> 00:16:51,480
+who just fill it out and say this is the
+
+417
+00:16:51,480 --> 00:16:53,639
+actual attack surface from
+
+418
+00:16:53,639 --> 00:16:55,680
+a TCP service point of view so there's
+
+419
+00:16:55,680 --> 00:16:56,639
+some
+
+420
+00:16:56,639 --> 00:16:59,040
+probably a web interface on Port 80 and
+
+421
+00:16:59,040 --> 00:17:02,459
+then some rtsp on 554 and and so on and
+
+422
+00:17:02,459 --> 00:17:04,319
+so on so some of the ports are well
+
+423
+00:17:04,319 --> 00:17:06,900
+known some of them are a bit more of in
+
+424
+00:17:06,900 --> 00:17:09,000
+the air like what's on Port 81 well
+
+425
+00:17:09,000 --> 00:17:11,400
+probably another web-based interface
+
+426
+00:17:11,400 --> 00:17:12,660
+right but
+
+427
+00:17:12,660 --> 00:17:14,400
+that's for you to find out somewhere
+
+428
+00:17:14,400 --> 00:17:15,599
+down the line
+
+429
+00:17:15,599 --> 00:17:16,980
+so
+
+430
+00:17:16,980 --> 00:17:20,040
+looking at the UDP services
+
+431
+00:17:20,040 --> 00:17:23,280
+it's still This mware Server running a
+
+432
+00:17:23,280 --> 00:17:25,740
+lot of listeners on a lot of ports
+
+433
+00:17:25,740 --> 00:17:27,540
+and then there's something called main
+
+434
+00:17:27,540 --> 00:17:30,419
+chain running some Service as well
+
+435
+00:17:30,419 --> 00:17:32,940
+so when you look at the mware server
+
+436
+00:17:32,940 --> 00:17:34,679
+there's
+
+437
+00:17:34,679 --> 00:17:36,960
+not necessarily any good way of finding
+
+438
+00:17:36,960 --> 00:17:40,919
+out what each Port is well you can
+
+439
+00:17:40,919 --> 00:17:42,840
+you can run in map and try to do some
+
+440
+00:17:42,840 --> 00:17:44,760
+service identification and it'll say
+
+441
+00:17:44,760 --> 00:17:47,340
+this is an HTTP interface maybe but that
+
+442
+00:17:47,340 --> 00:17:49,140
+could also mean that it's some weird
+
+443
+00:17:49,140 --> 00:17:52,620
+soap service or other protocols on top
+
+444
+00:17:52,620 --> 00:17:54,660
+of http
+
+445
+00:17:54,660 --> 00:17:55,980
+uh
+
+446
+00:17:55,980 --> 00:18:00,799
+and if you do service identification of
+
+447
+00:18:01,200 --> 00:18:03,240
+one of these I don't remember which one
+
+448
+00:18:03,240 --> 00:18:05,700
+um he did in my service identification
+
+449
+00:18:05,700 --> 00:18:07,380
+is going to crash the inwards of a
+
+450
+00:18:07,380 --> 00:18:09,960
+binary and it's gonna cause the device
+
+451
+00:18:09,960 --> 00:18:11,700
+to reboot and that will give you very
+
+452
+00:18:11,700 --> 00:18:14,460
+inconsistent results when it crashes in
+
+453
+00:18:14,460 --> 00:18:17,460
+the middle of your fingerprinting so a
+
+454
+00:18:17,460 --> 00:18:20,100
+bit of probing of the different services
+
+455
+00:18:20,100 --> 00:18:21,660
+will
+
+456
+00:18:21,660 --> 00:18:25,140
+lead you to a list like this that the on
+
+457
+00:18:25,140 --> 00:18:26,940
+Wheel service is running on top of the
+
+458
+00:18:26,940 --> 00:18:28,860
+HTTP interface and that it runs two more
+
+459
+00:18:28,860 --> 00:18:31,080
+other services that are just broken
+
+460
+00:18:31,080 --> 00:18:33,120
+slash non-functional and cannot be
+
+461
+00:18:33,120 --> 00:18:35,580
+configured in the UI
+
+462
+00:18:35,580 --> 00:18:37,520
+and when you look at the UDP Services
+
+463
+00:18:37,520 --> 00:18:40,020
+it's a little bit
+
+464
+00:18:40,020 --> 00:18:40,799
+um
+
+465
+00:18:40,799 --> 00:18:43,620
+it's a little bit easier and you can
+
+466
+00:18:43,620 --> 00:18:45,660
+quickly find out that well it's SNMP and
+
+467
+00:18:45,660 --> 00:18:48,299
+some other things right so that's
+
+468
+00:18:48,299 --> 00:18:50,460
+easier than the TCP Services because
+
+469
+00:18:50,460 --> 00:18:53,280
+what you can do when you want to look at
+
+470
+00:18:53,280 --> 00:18:55,760
+the
+
+471
+00:18:56,100 --> 00:18:58,380
+UDP Services is that you can set see the
+
+472
+00:18:58,380 --> 00:19:00,240
+breakpoint on the receive from function
+
+473
+00:19:00,240 --> 00:19:03,419
+which is one of the ways to receive UDP
+
+474
+00:19:03,419 --> 00:19:06,240
+data and then just send some UDP data to
+
+475
+00:19:06,240 --> 00:19:07,080
+the port
+
+476
+00:19:07,080 --> 00:19:08,820
+with the Bridge Point set and then view
+
+477
+00:19:08,820 --> 00:19:10,260
+the batteries and then you can see that
+
+478
+00:19:10,260 --> 00:19:14,160
+this port is clearly tied to this module
+
+479
+00:19:14,160 --> 00:19:16,980
+in the call stack and then
+
+480
+00:19:16,980 --> 00:19:19,320
+you'll find out that this weirdly named
+
+481
+00:19:19,320 --> 00:19:22,380
+module is actually a net SNMP compiled
+
+482
+00:19:22,380 --> 00:19:24,840
+as a shared object and called from the
+
+483
+00:19:24,840 --> 00:19:26,220
+binary right
+
+484
+00:19:26,220 --> 00:19:28,740
+but the inverse server itself is a big
+
+485
+00:19:28,740 --> 00:19:31,140
+monolith Master app which runs
+
+486
+00:19:31,140 --> 00:19:35,220
+everything on the camera and then it has
+
+487
+00:19:35,220 --> 00:19:38,400
+some stuff inline and some stuff in
+
+488
+00:19:38,400 --> 00:19:40,440
+shared objects but
+
+489
+00:19:40,440 --> 00:19:42,780
+once you start making lists and finding
+
+490
+00:19:42,780 --> 00:19:44,460
+out what's what then you can just focus
+
+491
+00:19:44,460 --> 00:19:46,860
+on the individual component and just
+
+492
+00:19:46,860 --> 00:19:51,000
+start doing regular auditing right which
+
+493
+00:19:51,000 --> 00:19:53,340
+means understanding how things work and
+
+494
+00:19:53,340 --> 00:19:55,679
+taking notes and so on
+
+495
+00:19:55,679 --> 00:19:59,039
+the on with interface it's open Network
+
+496
+00:19:59,039 --> 00:20:04,140
+video interface Forum it's an XML based
+
+497
+00:20:04,140 --> 00:20:07,740
+protocol running over http
+
+498
+00:20:07,740 --> 00:20:10,380
+and you can call a few unauthenticated
+
+499
+00:20:10,380 --> 00:20:12,960
+options or operations on the service
+
+500
+00:20:12,960 --> 00:20:14,460
+like
+
+501
+00:20:14,460 --> 00:20:16,620
+it has to support the get Services call
+
+502
+00:20:16,620 --> 00:20:18,780
+because that's how it says what services
+
+503
+00:20:18,780 --> 00:20:20,580
+it provides and then you can get some
+
+504
+00:20:20,580 --> 00:20:22,980
+capabilities and some system data time
+
+505
+00:20:22,980 --> 00:20:26,220
+so nothing too interesting from an
+
+506
+00:20:26,220 --> 00:20:28,020
+attacker perspective
+
+507
+00:20:28,020 --> 00:20:30,900
+accept assistant end time can be useful
+
+508
+00:20:30,900 --> 00:20:34,380
+for the next one at least because
+
+509
+00:20:34,380 --> 00:20:38,120
+when you look at the web interface
+
+510
+00:20:38,280 --> 00:20:41,760
+something like this the option two here
+
+511
+00:20:41,760 --> 00:20:44,640
+should get your spider senses tingling
+
+512
+00:20:44,640 --> 00:20:46,500
+because when it says that you can email
+
+513
+00:20:46,500 --> 00:20:49,799
+the device serial number and date
+
+514
+00:20:49,799 --> 00:20:52,080
+to somebody and get a temporary password
+
+515
+00:20:52,080 --> 00:20:56,580
+that means that this temporary password
+
+516
+00:20:56,580 --> 00:20:58,740
+that you can get from them the device
+
+517
+00:20:58,740 --> 00:21:00,900
+has a way of validating whether this
+
+518
+00:21:00,900 --> 00:21:02,700
+password is correct right and if the
+
+519
+00:21:02,700 --> 00:21:04,380
+device can validate it it means that it
+
+520
+00:21:04,380 --> 00:21:06,960
+can also generate the equivalent locally
+
+521
+00:21:06,960 --> 00:21:09,120
+which means that you can take it apart
+
+522
+00:21:09,120 --> 00:21:10,799
+find out how it generates the password
+
+523
+00:21:10,799 --> 00:21:13,559
+and then you can generate the passwords
+
+524
+00:21:13,559 --> 00:21:14,460
+for
+
+525
+00:21:14,460 --> 00:21:15,960
+the device
+
+526
+00:21:15,960 --> 00:21:17,160
+so
+
+527
+00:21:17,160 --> 00:21:20,280
+you can do WS discover and it will give
+
+528
+00:21:20,280 --> 00:21:23,240
+you the serial number
+
+529
+00:21:23,240 --> 00:21:27,780
+unauthenticated of course and now
+
+530
+00:21:27,780 --> 00:21:31,559
+the post auth book that I didn't like
+
+531
+00:21:31,559 --> 00:21:33,299
+too much before is actually useful again
+
+532
+00:21:33,299 --> 00:21:35,100
+because now I can
+
+533
+00:21:35,100 --> 00:21:38,400
+bypass authentication right I I can make
+
+534
+00:21:38,400 --> 00:21:40,380
+my own password with this and and get in
+
+535
+00:21:40,380 --> 00:21:42,179
+and exploit command injections in the
+
+536
+00:21:42,179 --> 00:21:44,760
+web UI without knowing the real password
+
+537
+00:21:44,760 --> 00:21:47,400
+uh looking at how the algorithm is
+
+538
+00:21:47,400 --> 00:21:49,200
+implemented is not too interesting but
+
+539
+00:21:49,200 --> 00:21:50,940
+it does use the device serial and the
+
+540
+00:21:50,940 --> 00:21:53,159
+system date for this function and it
+
+541
+00:21:53,159 --> 00:21:54,419
+generates
+
+542
+00:21:54,419 --> 00:21:56,640
+six character lowercase and digit
+
+543
+00:21:56,640 --> 00:21:58,380
+passwords so they're not even that
+
+544
+00:21:58,380 --> 00:22:00,120
+interesting add it
+
+545
+00:22:00,120 --> 00:22:02,340
+if you had
+
+546
+00:22:02,340 --> 00:22:04,620
+a very fast link and a very fast camera
+
+547
+00:22:04,620 --> 00:22:07,020
+well there's a bit over 2 billion
+
+548
+00:22:07,020 --> 00:22:10,039
+candidates right so
+
+549
+00:22:10,320 --> 00:22:12,620
+so
+
+550
+00:22:12,720 --> 00:22:16,200
+VMware server also supports SMP and if
+
+551
+00:22:16,200 --> 00:22:17,039
+you
+
+552
+00:22:17,039 --> 00:22:19,799
+think about SNMP which is simple Network
+
+553
+00:22:19,799 --> 00:22:22,260
+management protocol something that you
+
+554
+00:22:22,260 --> 00:22:24,179
+normally use to pull statistics of
+
+555
+00:22:24,179 --> 00:22:25,919
+interface counters in order to draw
+
+556
+00:22:25,919 --> 00:22:28,799
+traffic graphs and things like that at
+
+557
+00:22:28,799 --> 00:22:31,500
+least that's what I normally use it for
+
+558
+00:22:31,500 --> 00:22:33,659
+and you put on your thinking ahead and
+
+559
+00:22:33,659 --> 00:22:36,299
+say what could go wrong with SNMP well
+
+560
+00:22:36,299 --> 00:22:38,159
+something that could go wrong is that
+
+561
+00:22:38,159 --> 00:22:41,940
+normally you communicate with it with
+
+562
+00:22:41,940 --> 00:22:44,640
+uh let's call it a shared secret just to
+
+563
+00:22:44,640 --> 00:22:47,820
+make it basic um and you need to know
+
+564
+00:22:47,820 --> 00:22:51,480
+the secret to be able to get the data so
+
+565
+00:22:51,480 --> 00:22:54,000
+how can you do that in a bad way well
+
+566
+00:22:54,000 --> 00:22:56,039
+you can have a pre-configured secret
+
+567
+00:22:56,039 --> 00:22:57,659
+that's the same for all the devices
+
+568
+00:22:57,659 --> 00:23:02,720
+right and yes they have decided to do so
+
+569
+00:23:02,760 --> 00:23:07,260
+if you go back one firmware version
+
+570
+00:23:07,260 --> 00:23:09,539
+there is no option to configure the SNMP
+
+571
+00:23:09,539 --> 00:23:12,659
+in the UI it's just enabled and you
+
+572
+00:23:12,659 --> 00:23:14,220
+cannot turn it off and you cannot
+
+573
+00:23:14,220 --> 00:23:16,620
+configure it but they have decided to
+
+574
+00:23:16,620 --> 00:23:18,960
+shave it and not let you do anything
+
+575
+00:23:18,960 --> 00:23:21,900
+with it for some reason
+
+576
+00:23:21,900 --> 00:23:23,520
+uh
+
+577
+00:23:23,520 --> 00:23:26,280
+what else can go wrong with SNMP well it
+
+578
+00:23:26,280 --> 00:23:28,080
+could be spilling secrets that it's not
+
+579
+00:23:28,080 --> 00:23:29,520
+supposed to spill
+
+580
+00:23:29,520 --> 00:23:32,100
+and
+
+581
+00:23:32,100 --> 00:23:33,840
+it also does that because when you're
+
+582
+00:23:33,840 --> 00:23:36,780
+using p-walk this
+
+583
+00:23:36,780 --> 00:23:39,120
+uh just the device and say give me all
+
+584
+00:23:39,120 --> 00:23:41,280
+your counters it in the output it gives
+
+585
+00:23:41,280 --> 00:23:44,299
+this ISO 3614
+
+586
+00:23:44,299 --> 00:23:47,760
+and then you try and walk that one with
+
+587
+00:23:47,760 --> 00:23:50,100
+a few outsets shaved off and it will
+
+588
+00:23:50,100 --> 00:23:51,840
+lead you to something else which will
+
+589
+00:23:51,840 --> 00:23:54,659
+give you the admin or the individual of
+
+590
+00:23:54,659 --> 00:23:56,520
+the admin password
+
+591
+00:23:56,520 --> 00:23:59,460
+and that is not a part of the knit
+
+592
+00:23:59,460 --> 00:24:02,460
+Snoopy source code I can tell you that
+
+593
+00:24:02,460 --> 00:24:05,940
+much uh if you look at the console it at
+
+594
+00:24:05,940 --> 00:24:09,120
+some point says that it is adding uh a
+
+595
+00:24:09,120 --> 00:24:13,140
+read-only user to the SNB config that's
+
+596
+00:24:13,140 --> 00:24:17,100
+a lie it is read right so you can
+
+597
+00:24:17,100 --> 00:24:19,679
+actually if you're so inclined you can
+
+598
+00:24:19,679 --> 00:24:22,740
+walk you can walk it to make sure that
+
+599
+00:24:22,740 --> 00:24:25,559
+the box there and then you can SNP set a
+
+600
+00:24:25,559 --> 00:24:28,020
+new password to that oid you can log in
+
+601
+00:24:28,020 --> 00:24:30,179
+do your thing explode your post
+
+602
+00:24:30,179 --> 00:24:32,460
+authentication command injection box and
+
+603
+00:24:32,460 --> 00:24:35,220
+then set back the real password and the
+
+604
+00:24:35,220 --> 00:24:37,380
+admin will be non-devices because even
+
+605
+00:24:37,380 --> 00:24:38,940
+though you've reset the password to
+
+606
+00:24:38,940 --> 00:24:40,799
+something you know you've also said back
+
+607
+00:24:40,799 --> 00:24:44,000
+the old one right
+
+608
+00:24:44,159 --> 00:24:46,020
+um
+
+609
+00:24:46,020 --> 00:24:49,620
+and then something very important uh
+
+610
+00:24:49,620 --> 00:24:53,100
+looking at the UDP service it's on on
+
+611
+00:24:53,100 --> 00:24:54,419
+this port it's implemented in something
+
+612
+00:24:54,419 --> 00:24:56,400
+called the ppp.so which holds a lot of
+
+613
+00:24:56,400 --> 00:24:58,740
+core functionality from the camera and I
+
+614
+00:24:58,740 --> 00:25:00,480
+looked at it and it's
+
+615
+00:25:00,480 --> 00:25:02,760
+some IPC mechanism where the programs
+
+616
+00:25:02,760 --> 00:25:04,500
+talk to each other and for some reason
+
+617
+00:25:04,500 --> 00:25:07,140
+it's Network bound and I looked at it
+
+618
+00:25:07,140 --> 00:25:09,179
+and it was
+
+619
+00:25:09,179 --> 00:25:11,460
+not too interesting and it was also
+
+620
+00:25:11,460 --> 00:25:13,620
+pretty complex to find out how it worked
+
+621
+00:25:13,620 --> 00:25:15,860
+because
+
+622
+00:25:16,020 --> 00:25:17,820
+some of the code had been in line in
+
+623
+00:25:17,820 --> 00:25:19,980
+some weird ways so I I definitely
+
+624
+00:25:19,980 --> 00:25:21,539
+didn't want to spend too much time on it
+
+625
+00:25:21,539 --> 00:25:23,760
+luckily I compared it across a few
+
+626
+00:25:23,760 --> 00:25:25,620
+different firmware versions and it
+
+627
+00:25:25,620 --> 00:25:27,600
+wasn't present in all of them and not in
+
+628
+00:25:27,600 --> 00:25:29,460
+all device models so I could just give
+
+629
+00:25:29,460 --> 00:25:31,919
+up on it right and that can be okay
+
+630
+00:25:31,919 --> 00:25:35,720
+depending on your objectives because
+
+631
+00:25:36,120 --> 00:25:38,640
+it depends what your goals are are you
+
+632
+00:25:38,640 --> 00:25:41,460
+auditing this device for money or are
+
+633
+00:25:41,460 --> 00:25:43,380
+you auditing it for fun because if it's
+
+634
+00:25:43,380 --> 00:25:46,320
+for fun you can just give up and
+
+635
+00:25:46,320 --> 00:25:48,419
+do you want to find all the bugs in it
+
+636
+00:25:48,419 --> 00:25:50,159
+you should if you're getting paid to
+
+637
+00:25:50,159 --> 00:25:52,380
+order it right but but if you're doing
+
+638
+00:25:52,380 --> 00:25:54,240
+it for fun maybe it's enough to just
+
+639
+00:25:54,240 --> 00:25:56,520
+find one book and write one exploit and
+
+640
+00:25:56,520 --> 00:25:58,980
+pop one Chill on the camera so
+
+641
+00:25:58,980 --> 00:26:00,900
+I think it's definitely okay to give up
+
+642
+00:26:00,900 --> 00:26:03,799
+once in a while
+
+643
+00:26:03,840 --> 00:26:06,379
+so
+
+644
+00:26:06,419 --> 00:26:08,159
+putting that
+
+645
+00:26:08,159 --> 00:26:11,580
+terrible big binary behind us looking at
+
+646
+00:26:11,580 --> 00:26:14,460
+the the one outlying service called
+
+647
+00:26:14,460 --> 00:26:16,200
+maintain
+
+648
+00:26:16,200 --> 00:26:18,240
+I think a few good reasons for targeting
+
+649
+00:26:18,240 --> 00:26:20,460
+it is that it's a weird name so it's not
+
+650
+00:26:20,460 --> 00:26:22,140
+a standard process it's something that
+
+651
+00:26:22,140 --> 00:26:24,240
+they have implemented right so it's it's
+
+652
+00:26:24,240 --> 00:26:26,580
+uniview specific
+
+653
+00:26:26,580 --> 00:26:28,620
+it sounds like something somebody left
+
+654
+00:26:28,620 --> 00:26:31,699
+behind by accident
+
+655
+00:26:32,640 --> 00:26:34,980
+it's a very small service so it's easier
+
+656
+00:26:34,980 --> 00:26:36,179
+to
+
+657
+00:26:36,179 --> 00:26:37,620
+do some
+
+658
+00:26:37,620 --> 00:26:40,460
+static analysis on the binary without
+
+659
+00:26:40,460 --> 00:26:43,559
+going crazy because it is you can
+
+660
+00:26:43,559 --> 00:26:45,299
+actually finish
+
+661
+00:26:45,299 --> 00:26:47,700
+before The Sun Burns Out
+
+662
+00:26:47,700 --> 00:26:49,020
+um
+
+663
+00:26:49,020 --> 00:26:51,840
+it's udps you can spoof sources and send
+
+664
+00:26:51,840 --> 00:26:55,260
+PPU packets without them knowing who
+
+665
+00:26:55,260 --> 00:26:58,760
+is hanging them or is taking the camera
+
+666
+00:26:58,760 --> 00:27:00,900
+nmap doesn't know what it is that's also
+
+667
+00:27:00,900 --> 00:27:03,419
+a very good sign because that means that
+
+668
+00:27:03,419 --> 00:27:07,740
+you can't just blindly go towards it and
+
+669
+00:27:07,740 --> 00:27:09,539
+expect anything meaningful so you'll
+
+670
+00:27:09,539 --> 00:27:12,539
+actually need to to apply some thinking
+
+671
+00:27:12,539 --> 00:27:15,600
+to to order it and that means that the
+
+672
+00:27:15,600 --> 00:27:18,240
+bugs are less shallow and less findable
+
+673
+00:27:18,240 --> 00:27:21,120
+using standard let's find all the bugs
+
+674
+00:27:21,120 --> 00:27:22,620
+tooling right
+
+675
+00:27:22,620 --> 00:27:24,179
+uh
+
+676
+00:27:24,179 --> 00:27:28,039
+so doing that
+
+677
+00:27:28,080 --> 00:27:32,400
+pulling this is pseudocode decompletion
+
+678
+00:27:32,400 --> 00:27:34,260
+view which
+
+679
+00:27:34,260 --> 00:27:36,600
+is nsa's greatest gift to the internet
+
+680
+00:27:36,600 --> 00:27:38,880
+if you ask me
+
+681
+00:27:38,880 --> 00:27:42,600
+so what you're looking at here is just a
+
+682
+00:27:42,600 --> 00:27:44,220
+very common network service pattern so
+
+683
+00:27:44,220 --> 00:27:46,020
+it runs
+
+684
+00:27:46,020 --> 00:27:48,480
+an infinite Loop where it says is there
+
+685
+00:27:48,480 --> 00:27:51,659
+any data if there is regardless Loop and
+
+686
+00:27:51,659 --> 00:27:54,179
+if not then sleep and then look for that
+
+687
+00:27:54,179 --> 00:27:55,860
+again and then
+
+688
+00:27:55,860 --> 00:27:57,659
+when you look at
+
+689
+00:27:57,659 --> 00:27:59,940
+the function call to received from this
+
+690
+00:27:59,940 --> 00:28:01,740
+is what I mentioned before as well where
+
+691
+00:28:01,740 --> 00:28:05,700
+it's this is how it's receiving the
+
+692
+00:28:05,700 --> 00:28:07,679
+UDP data right
+
+693
+00:28:07,679 --> 00:28:11,220
+and looking at these it's all a bit
+
+694
+00:28:11,220 --> 00:28:15,179
+confusing and nonsensical of course but
+
+695
+00:28:15,179 --> 00:28:18,480
+it is the one proper reversing tip or
+
+696
+00:28:18,480 --> 00:28:19,980
+the real reversing tape I'm going to
+
+697
+00:28:19,980 --> 00:28:21,779
+give you as soon as you understand what
+
+698
+00:28:21,779 --> 00:28:24,299
+something is you just rename it in the
+
+699
+00:28:24,299 --> 00:28:26,340
+pseudocode view you can press engage
+
+700
+00:28:26,340 --> 00:28:28,980
+writing it's l or in or something
+
+701
+00:28:28,980 --> 00:28:31,460
+because
+
+702
+00:28:32,700 --> 00:28:35,640
+then all of a sudden if you compare
+
+703
+00:28:35,640 --> 00:28:37,100
+these two
+
+704
+00:28:37,100 --> 00:28:41,520
+the my my input is landing
+
+705
+00:28:41,520 --> 00:28:43,620
+in this receive phone call so it's no
+
+706
+00:28:43,620 --> 00:28:47,159
+longer called a use the x4464 now I have
+
+707
+00:28:47,159 --> 00:28:49,860
+labeled it my input right because when
+
+708
+00:28:49,860 --> 00:28:51,179
+you look at
+
+709
+00:28:51,179 --> 00:28:53,520
+they received from function prototype
+
+710
+00:28:53,520 --> 00:28:55,440
+you will see that it expects a file
+
+711
+00:28:55,440 --> 00:28:57,960
+descriptor and the input data and uh
+
+712
+00:28:57,960 --> 00:29:01,460
+some links and some flags and
+
+713
+00:29:01,500 --> 00:29:04,380
+but now you can just see my input right
+
+714
+00:29:04,380 --> 00:29:06,659
+and then
+
+715
+00:29:06,659 --> 00:29:09,059
+because I renamed the top one going down
+
+716
+00:29:09,059 --> 00:29:11,520
+I can see that another function is going
+
+717
+00:29:11,520 --> 00:29:15,240
+to do something with my input right so
+
+718
+00:29:15,240 --> 00:29:17,700
+because I just keep reading the pseudo
+
+719
+00:29:17,700 --> 00:29:18,299
+code
+
+720
+00:29:18,299 --> 00:29:20,700
+and I go down here I can see okay it's
+
+721
+00:29:20,700 --> 00:29:23,760
+actually my input again so I can
+
+722
+00:29:23,760 --> 00:29:26,700
+safely say that this is processing my
+
+723
+00:29:26,700 --> 00:29:28,440
+input in some ways so I'll just call the
+
+724
+00:29:28,440 --> 00:29:31,559
+function parse input
+
+725
+00:29:31,559 --> 00:29:33,860
+and then when you look at the actual
+
+726
+00:29:33,860 --> 00:29:37,140
+message parsing code the calls after
+
+727
+00:29:37,140 --> 00:29:39,299
+received from
+
+728
+00:29:39,299 --> 00:29:42,260
+the answer is
+
+729
+00:29:42,620 --> 00:29:45,779
+function prototype for the actual Parts
+
+730
+00:29:45,779 --> 00:29:48,600
+input function is just going to show you
+
+731
+00:29:48,600 --> 00:29:50,340
+those names will not propagate because
+
+732
+00:29:50,340 --> 00:29:52,740
+they're local to the
+
+733
+00:29:52,740 --> 00:29:55,980
+to the utmost the other function yes
+
+734
+00:29:55,980 --> 00:29:57,179
+um
+
+735
+00:29:57,179 --> 00:30:01,740
+but just renaming in the function
+
+736
+00:30:01,740 --> 00:30:04,880
+prototype in English
+
+737
+00:30:04,880 --> 00:30:08,179
+I know is my input when I rename it
+
+738
+00:30:08,179 --> 00:30:11,580
+there the names are gonna propagate down
+
+739
+00:30:11,580 --> 00:30:14,340
+and as you can see here there's a
+
+740
+00:30:14,340 --> 00:30:16,380
+function called log func that is
+
+741
+00:30:16,380 --> 00:30:17,760
+actually from
+
+742
+00:30:17,760 --> 00:30:20,640
+out here where I have uh renamed
+
+743
+00:30:20,640 --> 00:30:24,440
+something the one that is fun
+
+744
+00:30:24,440 --> 00:30:27,539
+000112 that's clearly logging function
+
+745
+00:30:27,539 --> 00:30:29,700
+because it writes some text to something
+
+746
+00:30:29,700 --> 00:30:31,559
+it doesn't matter if you pinch it on the
+
+747
+00:30:31,559 --> 00:30:34,260
+console or in a file or whatever it's
+
+748
+00:30:34,260 --> 00:30:35,700
+clearly some sort of logging function
+
+749
+00:30:35,700 --> 00:30:39,080
+and moving on to the next function this
+
+750
+00:30:39,080 --> 00:30:41,640
+this renaming has already propagated
+
+751
+00:30:41,640 --> 00:30:43,380
+further on because it's the same
+
+752
+00:30:43,380 --> 00:30:45,419
+function being used
+
+753
+00:30:45,419 --> 00:30:48,539
+to log data in this other function
+
+754
+00:30:48,539 --> 00:30:51,360
+and as soon as you can see what
+
+755
+00:30:51,360 --> 00:30:53,460
+something is the left is the original
+
+756
+00:30:53,460 --> 00:30:56,460
+code and the right is
+
+757
+00:30:56,460 --> 00:30:59,760
+after a bit of fix up right
+
+758
+00:30:59,760 --> 00:31:02,400
+down here where it has the default
+
+759
+00:31:02,400 --> 00:31:04,140
+[Music]
+
+760
+00:31:04,140 --> 00:31:07,080
+the default fall through it says error
+
+761
+00:31:07,080 --> 00:31:10,919
+UC code C C blah blah blah and then this
+
+762
+00:31:10,919 --> 00:31:13,260
+Local 25 arrival right but that means
+
+763
+00:31:13,260 --> 00:31:14,820
+that from the programmer point of view
+
+764
+00:31:14,820 --> 00:31:18,539
+the this variable is actually called UC
+
+765
+00:31:18,539 --> 00:31:20,399
+code so you can just rename it and
+
+766
+00:31:20,399 --> 00:31:23,460
+follow his naming pattern and then
+
+767
+00:31:23,460 --> 00:31:26,940
+names will propagate and things start to
+
+768
+00:31:26,940 --> 00:31:29,039
+make sense because you when you scroll
+
+769
+00:31:29,039 --> 00:31:30,659
+further down in the code and the things
+
+770
+00:31:30,659 --> 00:31:32,399
+are named nicely it's a lot easier to
+
+771
+00:31:32,399 --> 00:31:34,320
+understand than when they have weird
+
+772
+00:31:34,320 --> 00:31:38,580
+names like Local 25 right
+
+773
+00:31:38,580 --> 00:31:41,520
+and then uh well keep renaming things
+
+774
+00:31:41,520 --> 00:31:44,039
+because everything will make sense all
+
+775
+00:31:44,039 --> 00:31:47,520
+of a sudden this uh functionality you
+
+776
+00:31:47,520 --> 00:31:49,320
+can see that it's used for submitting
+
+777
+00:31:49,320 --> 00:31:51,000
+some IP import computation because it
+
+778
+00:31:51,000 --> 00:31:53,779
+says get IP import fail
+
+779
+00:31:53,779 --> 00:31:57,419
+and if you look at the call to ISO c99
+
+780
+00:31:57,419 --> 00:31:59,520
+scan if
+
+781
+00:31:59,520 --> 00:32:01,679
+you can see that um
+
+782
+00:32:01,679 --> 00:32:03,360
+somebody has made a mistake because they
+
+783
+00:32:03,360 --> 00:32:05,880
+have read They're reading the length
+
+784
+00:32:05,880 --> 00:32:07,500
+from
+
+785
+00:32:07,500 --> 00:32:09,779
+a tlv object that I specify over the
+
+786
+00:32:09,779 --> 00:32:13,440
+network and they don't use it as
+
+787
+00:32:13,440 --> 00:32:16,140
+a bounce for the copy operation the the
+
+788
+00:32:16,140 --> 00:32:19,260
+scan if call will just override
+
+789
+00:32:19,260 --> 00:32:23,419
+everything and smash the stack so
+
+790
+00:32:23,460 --> 00:32:25,320
+to be able to trigger this bug you need
+
+791
+00:32:25,320 --> 00:32:27,840
+to be protocol compliant right so you
+
+792
+00:32:27,840 --> 00:32:29,520
+need to speak the correct language to be
+
+793
+00:32:29,520 --> 00:32:31,100
+able to reach the vulnerable location
+
+794
+00:32:31,100 --> 00:32:34,020
+but because I've renamed everything like
+
+795
+00:32:34,020 --> 00:32:36,720
+the good reversal IM
+
+796
+00:32:36,720 --> 00:32:38,460
+it's pretty easy to understand how it
+
+797
+00:32:38,460 --> 00:32:41,760
+actually works so making a mental map of
+
+798
+00:32:41,760 --> 00:32:43,500
+the product of the protocol is something
+
+799
+00:32:43,500 --> 00:32:45,120
+like an OP code and something unknown
+
+800
+00:32:45,120 --> 00:32:47,159
+and then some link Fields with itself
+
+801
+00:32:47,159 --> 00:32:48,840
+included and some authentication data
+
+802
+00:32:48,840 --> 00:32:51,480
+and some other stuff and the other stuff
+
+803
+00:32:51,480 --> 00:32:54,899
+is also pretty easy to understand so
+
+804
+00:32:54,899 --> 00:32:57,480
+the tlv construct is something that you
+
+805
+00:32:57,480 --> 00:32:59,159
+will encounter quite often when looking
+
+806
+00:32:59,159 --> 00:33:02,039
+at Network protocols
+
+807
+00:33:02,039 --> 00:33:04,860
+so it it means type length value right
+
+808
+00:33:04,860 --> 00:33:06,600
+so you have like an opcode and then
+
+809
+00:33:06,600 --> 00:33:08,880
+length and then some values very common
+
+810
+00:33:08,880 --> 00:33:11,460
+and once you've seen it a few times you
+
+811
+00:33:11,460 --> 00:33:13,260
+will see it everywhere
+
+812
+00:33:13,260 --> 00:33:15,179
+so
+
+813
+00:33:15,179 --> 00:33:17,700
+for fun and or practice I think it's a
+
+814
+00:33:17,700 --> 00:33:19,080
+good idea too right the first one for
+
+815
+00:33:19,080 --> 00:33:22,140
+the protocol you don't have to but
+
+816
+00:33:22,140 --> 00:33:25,100
+Maybe
+
+817
+00:33:25,380 --> 00:33:27,000
+because I understand the protocol and
+
+818
+00:33:27,000 --> 00:33:28,799
+converter for that maybe there are other
+
+819
+00:33:28,799 --> 00:33:31,200
+bugs in the same area that are less
+
+820
+00:33:31,200 --> 00:33:34,679
+trivial to spot because API misuse is
+
+821
+00:33:34,679 --> 00:33:36,720
+produced into sport but maybe it's it
+
+822
+00:33:36,720 --> 00:33:40,080
+could also be some inline memory copies
+
+823
+00:33:40,080 --> 00:33:42,960
+or something that can be a lot harder to
+
+824
+00:33:42,960 --> 00:33:44,460
+spot where you actually have to think a
+
+825
+00:33:44,460 --> 00:33:45,899
+lot to see if they're doing something
+
+826
+00:33:45,899 --> 00:33:47,159
+wrong so
+
+827
+00:33:47,159 --> 00:33:49,559
+I like to ride further once I understand
+
+828
+00:33:49,559 --> 00:33:50,820
+something
+
+829
+00:33:50,820 --> 00:33:52,500
+for
+
+830
+00:33:52,500 --> 00:33:54,659
+proofers which is like the
+
+831
+00:33:54,659 --> 00:33:56,820
+successor to the solid fasting framework
+
+832
+00:33:56,820 --> 00:33:58,740
+you can
+
+833
+00:33:58,740 --> 00:34:01,440
+make a pretty easy skeleton where you
+
+834
+00:34:01,440 --> 00:34:03,659
+say connect to this one using this
+
+835
+00:34:03,659 --> 00:34:06,960
+request and then this is the protocol
+
+836
+00:34:06,960 --> 00:34:08,399
+model
+
+837
+00:34:08,399 --> 00:34:09,359
+um
+
+838
+00:34:09,359 --> 00:34:11,280
+and the grammar that you can use with
+
+839
+00:34:11,280 --> 00:34:13,139
+woofers to
+
+840
+00:34:13,139 --> 00:34:17,219
+make it generate valid but malformed
+
+841
+00:34:17,219 --> 00:34:20,879
+requests that are protocol compliant to
+
+842
+00:34:20,879 --> 00:34:24,060
+this protocol right so for all the
+
+843
+00:34:24,060 --> 00:34:25,859
+for all the values like the byte value
+
+844
+00:34:25,859 --> 00:34:29,940
+in top where it says yes by Oxo one it's
+
+845
+00:34:29,940 --> 00:34:32,219
+gonna substitute and put in
+
+846
+00:34:32,219 --> 00:34:35,520
+a lot of known beds and random byte
+
+847
+00:34:35,520 --> 00:34:37,679
+values and so on and where it encounters
+
+848
+00:34:37,679 --> 00:34:41,040
+strings it has a long library of
+
+849
+00:34:41,040 --> 00:34:44,760
+known badge string values and the good
+
+850
+00:34:44,760 --> 00:34:46,859
+part is that if it
+
+851
+00:34:46,859 --> 00:34:47,460
+um
+
+852
+00:34:47,460 --> 00:34:48,899
+so
+
+853
+00:34:48,899 --> 00:34:53,699
+the S size online for is gonna update
+
+854
+00:34:53,699 --> 00:34:57,000
+automatically once the fossil is
+
+855
+00:34:57,000 --> 00:34:59,580
+inserted mail form data further down in
+
+856
+00:34:59,580 --> 00:35:01,020
+the in the
+
+857
+00:35:01,020 --> 00:35:03,859
+in the packet
+
+858
+00:35:07,859 --> 00:35:10,619
+and then you can just trigger the bug
+
+859
+00:35:10,619 --> 00:35:11,940
+because you know exactly how to speak
+
+860
+00:35:11,940 --> 00:35:16,099
+the protocol and then you have some
+
+861
+00:35:16,380 --> 00:35:18,359
+another thing for the embedded devices
+
+862
+00:35:18,359 --> 00:35:21,180
+is that you need probably GDB servers
+
+863
+00:35:21,180 --> 00:35:24,000
+for mips and arm and whatever but
+
+864
+00:35:24,000 --> 00:35:27,599
+luckily you can then connect from your
+
+865
+00:35:27,599 --> 00:35:29,880
+real computer using GDB multi-arh
+
+866
+00:35:29,880 --> 00:35:31,859
+because that one understands that the
+
+867
+00:35:31,859 --> 00:35:34,380
+debugged process is some exotic
+
+868
+00:35:34,380 --> 00:35:35,940
+architecture
+
+869
+00:35:35,940 --> 00:35:38,820
+so triggering the the bug
+
+870
+00:35:38,820 --> 00:35:41,579
+you can
+
+871
+00:35:41,579 --> 00:35:43,380
+put some of the client protocol stuff
+
+872
+00:35:43,380 --> 00:35:45,060
+the correct link field very important
+
+873
+00:35:45,060 --> 00:35:46,859
+that it's correct some junk and then
+
+874
+00:35:46,859 --> 00:35:49,619
+this malformed till we pack it with the
+
+875
+00:35:49,619 --> 00:35:52,800
+fake length field which is below 43
+
+876
+00:35:52,800 --> 00:35:55,260
+because otherwise it doesn't do the
+
+877
+00:35:55,260 --> 00:35:57,839
+Kirby and then you have the long string
+
+878
+00:35:57,839 --> 00:35:59,640
+and then you have smashed the stack and
+
+879
+00:35:59,640 --> 00:36:02,400
+overwritten the instruction pointer
+
+880
+00:36:02,400 --> 00:36:05,180
+so
+
+881
+00:36:06,060 --> 00:36:07,920
+after all that protocol understanding
+
+882
+00:36:07,920 --> 00:36:10,020
+and all that stuff I figured out that
+
+883
+00:36:10,020 --> 00:36:11,760
+you can actually also just
+
+884
+00:36:11,760 --> 00:36:13,740
+copy all the pseudocode from from Google
+
+885
+00:36:13,740 --> 00:36:15,440
+and then
+
+886
+00:36:15,440 --> 00:36:18,000
+fix some of the type definitions in the
+
+887
+00:36:18,000 --> 00:36:19,800
+pseudocode and comment out some calls to
+
+888
+00:36:19,800 --> 00:36:21,180
+some external functions and then you can
+
+889
+00:36:21,180 --> 00:36:22,800
+actually just make it compile and then
+
+890
+00:36:22,800 --> 00:36:26,460
+do it with AFL and then seed it with 400
+
+891
+00:36:26,460 --> 00:36:28,920
+A's and then as you will see it will
+
+892
+00:36:28,920 --> 00:36:30,780
+give you a trigger for the crash in
+
+893
+00:36:30,780 --> 00:36:34,859
+about 14 minutes and with this you can
+
+894
+00:36:34,859 --> 00:36:36,660
+actually just start operating on the
+
+895
+00:36:36,660 --> 00:36:39,480
+roll packet instead as long as you don't
+
+896
+00:36:39,480 --> 00:36:41,760
+change the length but only change the
+
+897
+00:36:41,760 --> 00:36:44,760
+actual payload then your
+
+898
+00:36:44,760 --> 00:36:46,800
+pass the protocol understanding yourself
+
+899
+00:36:46,800 --> 00:36:49,920
+and and can just work within the packet
+
+900
+00:36:49,920 --> 00:36:51,599
+that this one has generated for you so
+
+901
+00:36:51,599 --> 00:36:53,400
+there's thinking and more making the
+
+902
+00:36:53,400 --> 00:36:55,560
+computer do the work for you big fan of
+
+903
+00:36:55,560 --> 00:36:58,040
+that as well
+
+904
+00:36:58,260 --> 00:37:02,880
+so looking at it and how to exploit this
+
+905
+00:37:02,880 --> 00:37:05,099
+memory corruption it's pretty easy to
+
+906
+00:37:05,099 --> 00:37:07,260
+trigger it you just need to redirect to
+
+907
+00:37:07,260 --> 00:37:09,180
+the Shell Code right
+
+908
+00:37:09,180 --> 00:37:12,900
+um so very iot like it's a bit like
+
+909
+00:37:12,900 --> 00:37:14,780
+taking a time machine Back to Before
+
+910
+00:37:14,780 --> 00:37:18,240
+exploitation mitigations was the thing
+
+911
+00:37:18,240 --> 00:37:20,280
+back when I started hacking computers
+
+912
+00:37:20,280 --> 00:37:23,880
+and everything was easy and fun
+
+913
+00:37:23,880 --> 00:37:25,619
+um
+
+914
+00:37:25,619 --> 00:37:28,260
+the heater's addresses are not
+
+915
+00:37:28,260 --> 00:37:29,820
+randomized or anything
+
+916
+00:37:29,820 --> 00:37:32,880
+very sad there's one call to melog in
+
+917
+00:37:32,880 --> 00:37:35,700
+the entire binary and you cannot spray
+
+918
+00:37:35,700 --> 00:37:37,500
+or place any data there you cannot
+
+919
+00:37:37,500 --> 00:37:40,380
+influence what the curb is so
+
+920
+00:37:40,380 --> 00:37:43,500
+as a surprise the device actually has
+
+921
+00:37:43,500 --> 00:37:45,180
+address space layout randomization
+
+922
+00:37:45,180 --> 00:37:47,220
+enabled which means it reorders some
+
+923
+00:37:47,220 --> 00:37:49,040
+things in memory
+
+924
+00:37:49,040 --> 00:37:52,140
+something I
+
+925
+00:37:52,140 --> 00:37:53,820
+cannot stress enough that you should
+
+926
+00:37:53,820 --> 00:37:56,280
+always check is that even though it says
+
+927
+00:37:56,280 --> 00:37:59,720
+that isli is enabled
+
+928
+00:37:59,760 --> 00:38:01,619
+you didn't build the kernel so you don't
+
+929
+00:38:01,619 --> 00:38:03,599
+know if it actually is enabled or if
+
+930
+00:38:03,599 --> 00:38:04,920
+somebody has
+
+931
+00:38:04,920 --> 00:38:07,380
+weakened it when they built the kernel
+
+932
+00:38:07,380 --> 00:38:09,060
+in in some weird way because there is
+
+933
+00:38:09,060 --> 00:38:10,260
+something that you will encounter as
+
+934
+00:38:10,260 --> 00:38:11,640
+well that even though it says it's
+
+935
+00:38:11,640 --> 00:38:14,160
+enabled maybe it's not
+
+936
+00:38:14,160 --> 00:38:17,520
+so as an experiment I also wanted to see
+
+937
+00:38:17,520 --> 00:38:18,780
+if if
+
+938
+00:38:18,780 --> 00:38:22,079
+I could find the ideal Landing address
+
+939
+00:38:22,079 --> 00:38:24,180
+that maybe pops up
+
+940
+00:38:24,180 --> 00:38:27,180
+more often or after every device reboot
+
+941
+00:38:27,180 --> 00:38:29,040
+or something right
+
+942
+00:38:29,040 --> 00:38:31,920
+um so I did some statistical analysis on
+
+943
+00:38:31,920 --> 00:38:35,760
+the stack addresses and
+
+944
+00:38:35,760 --> 00:38:38,220
+my first run I get a 100 000 chains of
+
+945
+00:38:38,220 --> 00:38:39,960
+success which is better than completely
+
+946
+00:38:39,960 --> 00:38:42,540
+random not very good but then I run a
+
+947
+00:38:42,540 --> 00:38:45,060
+bigger sample set and you can actually
+
+948
+00:38:45,060 --> 00:38:47,579
+see that this number coincides with
+
+949
+00:38:47,579 --> 00:38:49,579
+the actual
+
+950
+00:38:49,579 --> 00:38:54,060
+space of this
+
+951
+00:38:54,060 --> 00:38:56,339
+the randomization space because it's
+
+952
+00:38:56,339 --> 00:39:00,240
+only these the ones are listed as red
+
+953
+00:39:00,240 --> 00:39:01,680
+here is the only things that are going
+
+954
+00:39:01,680 --> 00:39:03,900
+to be randomized right so it is random
+
+955
+00:39:03,900 --> 00:39:05,700
+and you cannot
+
+956
+00:39:05,700 --> 00:39:07,500
+magically guess it you would need to
+
+957
+00:39:07,500 --> 00:39:08,940
+find some other bug where you could leak
+
+958
+00:39:08,940 --> 00:39:11,700
+so memory but I wasn't in the mood for
+
+959
+00:39:11,700 --> 00:39:13,619
+that exactly
+
+960
+00:39:13,619 --> 00:39:16,160
+so
+
+961
+00:39:16,320 --> 00:39:18,240
+it's only the stack layout that's
+
+962
+00:39:18,240 --> 00:39:19,800
+randomized which means that you can do
+
+963
+00:39:19,800 --> 00:39:22,260
+these uh return to leave CE style
+
+964
+00:39:22,260 --> 00:39:24,300
+attacks where because the Base address
+
+965
+00:39:24,300 --> 00:39:26,820
+of the binary itself isn't randomized
+
+966
+00:39:26,820 --> 00:39:29,640
+you can actually just land in one static
+
+967
+00:39:29,640 --> 00:39:32,099
+location in the binary and then make it
+
+968
+00:39:32,099 --> 00:39:34,980
+do something which is beneficial to you
+
+969
+00:39:34,980 --> 00:39:39,560
+right so in this case looking at
+
+970
+00:39:39,560 --> 00:39:42,200
+somewhere good to length
+
+971
+00:39:42,200 --> 00:39:45,780
+uh because I've rename things everything
+
+972
+00:39:45,780 --> 00:39:47,880
+is very readable and there's something
+
+973
+00:39:47,880 --> 00:39:51,420
+which will some functionality which is
+
+974
+00:39:51,420 --> 00:39:53,280
+post authentication in the service
+
+975
+00:39:53,280 --> 00:39:54,900
+because it also has some authentication
+
+976
+00:39:54,900 --> 00:39:56,339
+module but
+
+977
+00:39:56,339 --> 00:39:58,560
+so I I cannot just interface with the
+
+978
+00:39:58,560 --> 00:40:00,300
+protocol and say call this function
+
+979
+00:40:00,300 --> 00:40:01,320
+where you start utility treatment
+
+980
+00:40:01,320 --> 00:40:02,760
+because then I would need to pass the
+
+981
+00:40:02,760 --> 00:40:05,160
+authentication check which I cannot but
+
+982
+00:40:05,160 --> 00:40:07,020
+doing memory corruption I can actually
+
+983
+00:40:07,020 --> 00:40:09,599
+redirect the execution flow to the place
+
+984
+00:40:09,599 --> 00:40:12,420
+in the binary where it launches the
+
+985
+00:40:12,420 --> 00:40:14,700
+children demon
+
+986
+00:40:14,700 --> 00:40:17,339
+um and then access it that way right
+
+987
+00:40:17,339 --> 00:40:19,680
+but it's a small binary and there are no
+
+988
+00:40:19,680 --> 00:40:21,900
+good pointers and so on and so on anyway
+
+989
+00:40:21,900 --> 00:40:25,260
+the best way in my opinion is to see if
+
+990
+00:40:25,260 --> 00:40:26,940
+you can find some functionality that you
+
+991
+00:40:26,940 --> 00:40:30,480
+can land in and then that way you have
+
+992
+00:40:30,480 --> 00:40:32,940
+taken care of his lab because the base
+
+993
+00:40:32,940 --> 00:40:34,920
+binary is not randomized with that
+
+994
+00:40:34,920 --> 00:40:36,480
+setting
+
+995
+00:40:36,480 --> 00:40:39,079
+so
+
+996
+00:40:39,260 --> 00:40:42,780
+I thought I had my show but I did not
+
+997
+00:40:42,780 --> 00:40:46,320
+because s-lock will have it the
+
+998
+00:40:46,320 --> 00:40:48,060
+function
+
+999
+00:40:48,060 --> 00:40:50,700
+calling responding Channel D is actually
+
+1000
+00:40:50,700 --> 00:40:53,700
+a map add the one
+
+1001
+00:40:53,700 --> 00:40:56,940
+address range in memory that I don't
+
+1002
+00:40:56,940 --> 00:40:58,800
+want it to be at because
+
+1003
+00:40:58,800 --> 00:41:01,160
+the function is at
+
+1004
+00:41:01,160 --> 00:41:05,160
+013a58 and 3A means colon and the scanf
+
+1005
+00:41:05,160 --> 00:41:07,140
+pattern is actually looking for the
+
+1006
+00:41:07,140 --> 00:41:08,820
+colon in the input so if I Supply that
+
+1007
+00:41:08,820 --> 00:41:11,520
+as part of the return it's going to get
+
+1008
+00:41:11,520 --> 00:41:14,520
+swallowed by the thing and not pop my
+
+1009
+00:41:14,520 --> 00:41:15,480
+shell
+
+1010
+00:41:15,480 --> 00:41:17,700
+so
+
+1011
+00:41:17,700 --> 00:41:20,940
+that was pretty bad but since it's
+
+1012
+00:41:20,940 --> 00:41:24,300
+actually an arm processor and looking at
+
+1013
+00:41:24,300 --> 00:41:27,240
+some more documents and whatnot you can
+
+1014
+00:41:27,240 --> 00:41:30,060
+actually pop on arm you can put multiple
+
+1015
+00:41:30,060 --> 00:41:33,480
+registers in one instruction so the pop
+
+1016
+00:41:33,480 --> 00:41:36,420
+instruction is actually an alias for
+
+1017
+00:41:36,420 --> 00:41:38,280
+load multiple and then some bass
+
+1018
+00:41:38,280 --> 00:41:40,380
+register and then register said what
+
+1019
+00:41:40,380 --> 00:41:43,020
+that means is that I can land I have a
+
+1020
+00:41:43,020 --> 00:41:46,260
+one shot of redirecting the execution
+
+1021
+00:41:46,260 --> 00:41:48,420
+flow to somewhere useful right where it
+
+1022
+00:41:48,420 --> 00:41:50,220
+does something I want with some
+
+1023
+00:41:50,220 --> 00:41:52,560
+constraints but I can land at one
+
+1024
+00:41:52,560 --> 00:41:54,660
+address where it will do
+
+1025
+00:41:54,660 --> 00:41:56,700
+Pub where it reads a bunch of data from
+
+1026
+00:41:56,700 --> 00:42:00,180
+the stack and reads into actually the
+
+1027
+00:42:00,180 --> 00:42:02,940
+program counter register and then I
+
+1028
+00:42:02,940 --> 00:42:05,700
+found out that the first 20 bytes of the
+
+1029
+00:42:05,700 --> 00:42:08,280
+packet that I have cleverly labeled auth
+
+1030
+00:42:08,280 --> 00:42:11,220
+data in in the previous stuff is not
+
+1031
+00:42:11,220 --> 00:42:13,680
+subject to the scanf constraints because
+
+1032
+00:42:13,680 --> 00:42:16,260
+it's not part of that part of the code
+
+1033
+00:42:16,260 --> 00:42:17,520
+flow right
+
+1034
+00:42:17,520 --> 00:42:21,000
+so I can land at this particular address
+
+1035
+00:42:21,000 --> 00:42:23,700
+and have it redirect execution to the
+
+1036
+00:42:23,700 --> 00:42:26,460
+beginning of the data that I sent and
+
+1037
+00:42:26,460 --> 00:42:28,560
+then from there jump to the location
+
+1038
+00:42:28,560 --> 00:42:30,839
+where I actually want to land and
+
+1039
+00:42:30,839 --> 00:42:34,619
+success the utility demon is spawned the
+
+1040
+00:42:34,619 --> 00:42:36,540
+service crisis but it restarts on its
+
+1041
+00:42:36,540 --> 00:42:37,440
+own
+
+1042
+00:42:37,440 --> 00:42:39,240
+so
+
+1043
+00:42:39,240 --> 00:42:40,920
+you're not supposed to turn it to these
+
+1044
+00:42:40,920 --> 00:42:42,420
+devices right
+
+1045
+00:42:42,420 --> 00:42:44,160
+um
+
+1046
+00:42:44,160 --> 00:42:46,320
+at least it's
+
+1047
+00:42:46,320 --> 00:42:47,880
+there are some ways to do it but but
+
+1048
+00:42:47,880 --> 00:42:49,380
+anyway the Children Service isn't
+
+1049
+00:42:49,380 --> 00:42:52,079
+running which means that changing the
+
+1050
+00:42:52,079 --> 00:42:54,119
+admin password in the UI will not change
+
+1051
+00:42:54,119 --> 00:42:56,220
+the root password it is one two three
+
+1052
+00:42:56,220 --> 00:42:57,599
+four five six
+
+1053
+00:42:57,599 --> 00:43:00,660
+you cannot change it from a regular user
+
+1054
+00:43:00,660 --> 00:43:02,160
+context you have to hack the device to
+
+1055
+00:43:02,160 --> 00:43:04,800
+be able to change the group password
+
+1056
+00:43:04,800 --> 00:43:08,400
+and then you land in a restricted window
+
+1057
+00:43:08,400 --> 00:43:10,500
+shell called ubsh which is probably
+
+1058
+00:43:10,500 --> 00:43:13,819
+uniview shell
+
+1059
+00:43:14,880 --> 00:43:16,859
+and of course
+
+1060
+00:43:16,859 --> 00:43:18,540
+the first thing you type in those is
+
+1061
+00:43:18,540 --> 00:43:20,160
+help and then you look at the commands
+
+1062
+00:43:20,160 --> 00:43:21,900
+and you can see that there's an equal
+
+1063
+00:43:21,900 --> 00:43:24,060
+command and you can do command injection
+
+1064
+00:43:24,060 --> 00:43:27,060
+in it so very classic
+
+1065
+00:43:27,060 --> 00:43:29,760
+and then you can add
+
+1066
+00:43:29,760 --> 00:43:33,359
+a real Road user that called toot in
+
+1067
+00:43:33,359 --> 00:43:35,700
+this case that has a password of one two
+
+1068
+00:43:35,700 --> 00:43:37,980
+three four five six but which spawns a
+
+1069
+00:43:37,980 --> 00:43:39,839
+real chill so that next time you turn it
+
+1070
+00:43:39,839 --> 00:43:41,880
+to it and Supply two as the user you get
+
+1071
+00:43:41,880 --> 00:43:44,280
+a wheelchair instead of this gift vendor
+
+1072
+00:43:44,280 --> 00:43:46,740
+show right so
+
+1073
+00:43:46,740 --> 00:43:49,079
+in the latest firmware that one is fixed
+
+1074
+00:43:49,079 --> 00:43:50,520
+and the root password is still one two
+
+1075
+00:43:50,520 --> 00:43:53,280
+three four five six but uh but they
+
+1076
+00:43:53,280 --> 00:43:55,200
+fixed this one uh
+
+1077
+00:43:55,200 --> 00:43:58,879
+but the eagle command
+
+1078
+00:43:59,220 --> 00:44:02,099
+is a monstrosity of the real Lego
+
+1079
+00:44:02,099 --> 00:44:04,079
+command so it actually if you do Echo
+
+1080
+00:44:04,079 --> 00:44:05,579
+Dash e it's going to evaluate your
+
+1081
+00:44:05,579 --> 00:44:07,140
+characters and explain them so you can
+
+1082
+00:44:07,140 --> 00:44:08,160
+actually
+
+1083
+00:44:08,160 --> 00:44:10,099
+still redirect output for some reason
+
+1084
+00:44:10,099 --> 00:44:14,220
+and only in slash GMP but as log would
+
+1085
+00:44:14,220 --> 00:44:15,359
+have it there is actually production
+
+1086
+00:44:15,359 --> 00:44:17,819
+code in the temp folder
+
+1087
+00:44:17,819 --> 00:44:19,859
+so you can override a script called kill
+
+1088
+00:44:19,859 --> 00:44:22,800
+watch Dock and then from the gimped
+
+1089
+00:44:22,800 --> 00:44:25,380
+windowsill you can try to do a system
+
+1090
+00:44:25,380 --> 00:44:29,520
+update of the firmware using tftp which
+
+1091
+00:44:29,520 --> 00:44:32,520
+will fail but then it's gonna spawn a
+
+1092
+00:44:32,520 --> 00:44:34,440
+reboot Shields grid which will spawn the
+
+1093
+00:44:34,440 --> 00:44:37,200
+kill Watchdog which doesn't reboot the
+
+1094
+00:44:37,200 --> 00:44:38,900
+device anymore because I destroyed it
+
+1095
+00:44:38,900 --> 00:44:41,040
+and then
+
+1096
+00:44:41,040 --> 00:44:45,540
+you have a real chill instead and the
+
+1097
+00:44:45,540 --> 00:44:47,400
+Watchdog is killed and now it's no
+
+1098
+00:44:47,400 --> 00:44:48,960
+longer a camera it's just a computer
+
+1099
+00:44:48,960 --> 00:44:52,040
+under your control
+
+1100
+00:44:52,560 --> 00:44:55,260
+so looking at how many shells you could
+
+1101
+00:44:55,260 --> 00:44:57,119
+put up with this uh
+
+1102
+00:44:57,119 --> 00:44:59,220
+download all the firmware to some
+
+1103
+00:44:59,220 --> 00:45:01,020
+monstrosity like this where you just
+
+1104
+00:45:01,020 --> 00:45:02,640
+answer everything pin walk everything
+
+1105
+00:45:02,640 --> 00:45:05,400
+grip for the bite patterns and then you
+
+1106
+00:45:05,400 --> 00:45:06,960
+can make a list of vulnerable camera
+
+1107
+00:45:06,960 --> 00:45:09,480
+models and software releases right and
+
+1108
+00:45:09,480 --> 00:45:11,280
+then when you look at these there's a
+
+1109
+00:45:11,280 --> 00:45:13,740
+few offsets for
+
+1110
+00:45:13,740 --> 00:45:17,339
+um for the desired offsets for the
+
+1111
+00:45:17,339 --> 00:45:19,920
+desired Landing address but try a few
+
+1112
+00:45:19,920 --> 00:45:21,960
+times because the demon Auto restarts so
+
+1113
+00:45:21,960 --> 00:45:25,500
+it doesn't really matter
+
+1114
+00:45:25,500 --> 00:45:27,900
+so I did an internet survey because you
+
+1115
+00:45:27,900 --> 00:45:29,880
+can actually provoke the device to give
+
+1116
+00:45:29,880 --> 00:45:31,740
+you a response without exporting
+
+1117
+00:45:31,740 --> 00:45:33,540
+anything
+
+1118
+00:45:33,540 --> 00:45:34,680
+um
+
+1119
+00:45:34,680 --> 00:45:37,619
+and then well we just did an internet
+
+1120
+00:45:37,619 --> 00:45:39,900
+survey of the entire internet to find
+
+1121
+00:45:39,900 --> 00:45:41,579
+out how many of these are on the
+
+1122
+00:45:41,579 --> 00:45:42,900
+internet
+
+1123
+00:45:42,900 --> 00:45:46,319
+when using the packets 2 Port 7788 UDP
+
+1124
+00:45:46,319 --> 00:45:48,119
+packets on the internet you get it and
+
+1125
+00:45:48,119 --> 00:45:49,619
+there's a lot of weird stuff out there
+
+1126
+00:45:49,619 --> 00:45:51,359
+because some
+
+1127
+00:45:51,359 --> 00:45:53,280
+computers just send you back the same
+
+1128
+00:45:53,280 --> 00:45:56,700
+response so I'm saying beg well God
+
+1129
+00:45:56,700 --> 00:45:58,920
+knows what right but but uh
+
+1130
+00:45:58,920 --> 00:46:02,520
+but passing the data we got back you can
+
+1131
+00:46:02,520 --> 00:46:04,980
+see which ones are protocol compliant
+
+1132
+00:46:04,980 --> 00:46:08,400
+and give you the answer you expect so
+
+1133
+00:46:08,400 --> 00:46:10,339
+so we found
+
+1134
+00:46:10,339 --> 00:46:13,260
+3373 of these cameras on the actual
+
+1135
+00:46:13,260 --> 00:46:16,339
+internet and
+
+1136
+00:46:16,619 --> 00:46:18,359
+you can't really do much with it without
+
+1137
+00:46:18,359 --> 00:46:19,980
+committing crimes because what are you
+
+1138
+00:46:19,980 --> 00:46:24,359
+going to do log into them export them no
+
+1139
+00:46:24,359 --> 00:46:27,960
+I think putting 3000 of these very cheap
+
+1140
+00:46:27,960 --> 00:46:30,000
+cameras on the internet
+
+1141
+00:46:30,000 --> 00:46:32,040
+could mean that we have enough ibv4
+
+1142
+00:46:32,040 --> 00:46:34,920
+addresses at least if you can spare 3
+
+1143
+00:46:34,920 --> 00:46:37,380
+000 of them for stuff like this then I
+
+1144
+00:46:37,380 --> 00:46:40,760
+don't think we have a shortage just yet
+
+1145
+00:46:41,280 --> 00:46:42,900
+they're placed very much what you would
+
+1146
+00:46:42,900 --> 00:46:44,280
+expect
+
+1147
+00:46:44,280 --> 00:46:45,119
+um
+
+1148
+00:46:45,119 --> 00:46:46,920
+let's hope that they're not in
+
+1149
+00:46:46,920 --> 00:46:48,980
+government buildings in America because
+
+1150
+00:46:48,980 --> 00:46:51,839
+going back to the one of the original
+
+1151
+00:46:51,839 --> 00:46:55,200
+slides it's actually not ndaa compliant
+
+1152
+00:46:55,200 --> 00:46:57,839
+because the chip is
+
+1153
+00:46:57,839 --> 00:47:00,839
+made the high silicon chip is made from
+
+1154
+00:47:00,839 --> 00:47:02,819
+some higvision subsidiary or something
+
+1155
+00:47:02,819 --> 00:47:04,859
+which means that it's banned in the
+
+1156
+00:47:04,859 --> 00:47:07,619
+government in America
+
+1157
+00:47:07,619 --> 00:47:09,180
+if you look at who put yourself
+
+1158
+00:47:09,180 --> 00:47:10,980
+internally
+
+1159
+00:47:10,980 --> 00:47:13,880
+a lot of people have put them up like
+
+1160
+00:47:13,880 --> 00:47:16,740
+ports and casinos and God knows what
+
+1161
+00:47:16,740 --> 00:47:18,180
+else so
+
+1162
+00:47:18,180 --> 00:47:20,400
+I hope that these guys didn't put them
+
+1163
+00:47:20,400 --> 00:47:23,040
+on the actual internet but of course the
+
+1164
+00:47:23,040 --> 00:47:25,500
+the vendor would like to
+
+1165
+00:47:25,500 --> 00:47:27,240
+tell you how great it is so they show
+
+1166
+00:47:27,240 --> 00:47:28,740
+all the success stories that's quite
+
+1167
+00:47:28,740 --> 00:47:30,660
+common as well when you audit products
+
+1168
+00:47:30,660 --> 00:47:32,280
+like this that you can find who has
+
+1169
+00:47:32,280 --> 00:47:33,720
+deployed them just by looking at the
+
+1170
+00:47:33,720 --> 00:47:35,760
+vendor side
+
+1171
+00:47:35,760 --> 00:47:40,200
+and other interesting conundrum
+
+1172
+00:47:40,520 --> 00:47:43,800
+uniview works as a wide label camera
+
+1173
+00:47:43,800 --> 00:47:47,160
+reseller as well so if you have a
+
+1174
+00:47:47,160 --> 00:47:49,500
+Panasonic at video camera it's not a
+
+1175
+00:47:49,500 --> 00:47:51,540
+Panasonic camera it's a uniview camera
+
+1176
+00:47:51,540 --> 00:47:54,060
+with
+
+1177
+00:47:54,060 --> 00:47:55,800
+a Panasonic sticker on it because
+
+1178
+00:47:55,800 --> 00:47:58,140
+Panasonic didn't want to
+
+1179
+00:47:58,140 --> 00:47:59,819
+go through all the hassle of riding
+
+1180
+00:47:59,819 --> 00:48:02,160
+camera software themselves apparently at
+
+1181
+00:48:02,160 --> 00:48:04,740
+least for this range
+
+1182
+00:48:04,740 --> 00:48:06,599
+so
+
+1183
+00:48:06,599 --> 00:48:08,579
+it's clearly not just uniview cameras
+
+1184
+00:48:08,579 --> 00:48:10,800
+that are vulnerable it's also all these
+
+1185
+00:48:10,800 --> 00:48:11,700
+guys
+
+1186
+00:48:11,700 --> 00:48:12,540
+um
+
+1187
+00:48:12,540 --> 00:48:14,880
+so different logos and contents if you
+
+1188
+00:48:14,880 --> 00:48:16,920
+want to see if somebody hacked your
+
+1189
+00:48:16,920 --> 00:48:18,359
+camera well
+
+1190
+00:48:18,359 --> 00:48:21,300
+very very complicated because you cannot
+
+1191
+00:48:21,300 --> 00:48:23,220
+see if the system is doing good or doing
+
+1192
+00:48:23,220 --> 00:48:26,220
+bad and you have no runtime forensics
+
+1193
+00:48:26,220 --> 00:48:28,980
+capabilities you have a not so good web
+
+1194
+00:48:28,980 --> 00:48:31,319
+UI but that one doesn't show if there
+
+1195
+00:48:31,319 --> 00:48:34,140
+are hackers lose in it you are logged
+
+1196
+00:48:34,140 --> 00:48:36,000
+out from the raw devices so you actually
+
+1197
+00:48:36,000 --> 00:48:37,500
+need to hack it to see if you've been
+
+1198
+00:48:37,500 --> 00:48:40,099
+hacked so that's a common in my opinion
+
+1199
+00:48:40,099 --> 00:48:43,140
+uh problem with iot devices that you
+
+1200
+00:48:43,140 --> 00:48:45,300
+have no idea what's going on inside it's
+
+1201
+00:48:45,300 --> 00:48:47,700
+just I think with the network plug
+
+1202
+00:48:47,700 --> 00:48:50,760
+things I skipped on purpose anything
+
+1203
+00:48:50,760 --> 00:48:52,740
+that requires user interaction or man in
+
+1204
+00:48:52,740 --> 00:48:54,720
+the middle capabilities it doesn't
+
+1205
+00:48:54,720 --> 00:48:56,760
+interest me as much because I prefer to
+
+1206
+00:48:56,760 --> 00:48:58,440
+be able to
+
+1207
+00:48:58,440 --> 00:49:00,180
+hack the thing on my own time and not
+
+1208
+00:49:00,180 --> 00:49:01,740
+wait for somebody to push some button
+
+1209
+00:49:01,740 --> 00:49:05,160
+right and I also didn't look at
+
+1210
+00:49:05,160 --> 00:49:06,780
+the peer-to-peer communication because
+
+1211
+00:49:06,780 --> 00:49:08,220
+the cameras can actually communicate
+
+1212
+00:49:08,220 --> 00:49:09,599
+with each other if you have multiple and
+
+1213
+00:49:09,599 --> 00:49:11,280
+then they can do some hopeless progress
+
+1214
+00:49:11,280 --> 00:49:13,440
+it's normally quite a good place to look
+
+1215
+00:49:13,440 --> 00:49:15,000
+for books because that's also very
+
+1216
+00:49:15,000 --> 00:49:16,800
+vendor specific and not
+
+1217
+00:49:16,800 --> 00:49:17,579
+um
+
+1218
+00:49:17,579 --> 00:49:19,560
+not just some common component that they
+
+1219
+00:49:19,560 --> 00:49:21,900
+listed from the internet
+
+1220
+00:49:21,900 --> 00:49:25,619
+so I reported the first did I maintain
+
+1221
+00:49:25,619 --> 00:49:27,119
+overflow to some third-party bug
+
+1222
+00:49:27,119 --> 00:49:28,800
+boundary platform and I got four
+
+1223
+00:49:28,800 --> 00:49:30,540
+thousand dollars pretty good I gave them
+
+1224
+00:49:30,540 --> 00:49:32,400
+to some cat Theory also pretty good
+
+1225
+00:49:32,400 --> 00:49:35,880
+because I like it and I reported the
+
+1226
+00:49:35,880 --> 00:49:37,440
+rest of the issues I found straight to
+
+1227
+00:49:37,440 --> 00:49:38,819
+the window they also have a bug Bounty
+
+1228
+00:49:38,819 --> 00:49:42,060
+program pretty good money but one year
+
+1229
+00:49:42,060 --> 00:49:44,099
+of non-disclosure ties means that I well
+
+1230
+00:49:44,099 --> 00:49:45,480
+I wouldn't be standing here for example
+
+1231
+00:49:45,480 --> 00:49:48,800
+and I would have to keep it a secret or
+
+1232
+00:49:48,800 --> 00:49:51,300
+sort of a long list of consequences
+
+1233
+00:49:51,300 --> 00:49:53,400
+which means that I didn't get any money
+
+1234
+00:49:53,400 --> 00:49:55,260
+because I don't want to have to keep
+
+1235
+00:49:55,260 --> 00:49:57,540
+something secret for a year for a little
+
+1236
+00:49:57,540 --> 00:49:59,579
+bit of money right it's of course
+
+1237
+00:49:59,579 --> 00:50:01,560
+totally up to you if you do something
+
+1238
+00:50:01,560 --> 00:50:03,180
+like this what you want to do with it
+
+1239
+00:50:03,180 --> 00:50:05,460
+but for me it's definitely not worth not
+
+1240
+00:50:05,460 --> 00:50:07,760
+being able to discuss what I do for fun
+
+1241
+00:50:07,760 --> 00:50:10,740
+for some money right
+
+1242
+00:50:10,740 --> 00:50:14,359
+so in conclusion
+
+1243
+00:50:14,760 --> 00:50:16,920
+it's quite some work to be able to look
+
+1244
+00:50:16,920 --> 00:50:19,859
+inside the device but
+
+1245
+00:50:19,859 --> 00:50:22,079
+it's also a necessity and I think it
+
+1246
+00:50:22,079 --> 00:50:23,819
+hopefully it's something that will get
+
+1247
+00:50:23,819 --> 00:50:25,140
+better
+
+1248
+00:50:25,140 --> 00:50:27,420
+with time that that you actually are
+
+1249
+00:50:27,420 --> 00:50:28,980
+able to look inside the devices without
+
+1250
+00:50:28,980 --> 00:50:30,900
+hanging them first
+
+1251
+00:50:30,900 --> 00:50:33,780
+you should buy the devices they're not I
+
+1252
+00:50:33,780 --> 00:50:36,599
+think this particular camera I paid 200
+
+1253
+00:50:36,599 --> 00:50:38,280
+euro but I talked to a guy who's
+
+1254
+00:50:38,280 --> 00:50:40,020
+actually at least a lot of them and he
+
+1255
+00:50:40,020 --> 00:50:42,119
+says he pays maybe 50 so they're not
+
+1256
+00:50:42,119 --> 00:50:44,160
+super expensive
+
+1257
+00:50:44,160 --> 00:50:46,200
+if you're going to buy some camera stuff
+
+1258
+00:50:46,200 --> 00:50:48,180
+I would actually distill Advocate that
+
+1259
+00:50:48,180 --> 00:50:49,619
+you buy something like this you
+
+1260
+00:50:49,619 --> 00:50:52,740
+interview stuff instead of Hikvision or
+
+1261
+00:50:52,740 --> 00:50:55,440
+tahua where they the firmware is
+
+1262
+00:50:55,440 --> 00:50:56,880
+encrypted and inside that encrypted
+
+1263
+00:50:56,880 --> 00:50:58,559
+firmware there's another encrypted blob
+
+1264
+00:50:58,559 --> 00:51:00,059
+and just encryption encryption
+
+1265
+00:51:00,059 --> 00:51:02,400
+encryption and they will tell you that
+
+1266
+00:51:02,400 --> 00:51:03,780
+it's to protect their intellectual
+
+1267
+00:51:03,780 --> 00:51:06,059
+property but I don't buy that anymore
+
+1268
+00:51:06,059 --> 00:51:07,619
+because there is no intellectual
+
+1269
+00:51:07,619 --> 00:51:10,380
+property involved in making an IP camera
+
+1270
+00:51:10,380 --> 00:51:12,960
+it's a camera and a web interface right
+
+1271
+00:51:12,960 --> 00:51:15,319
+so
+
+1272
+00:51:15,960 --> 00:51:17,099
+um
+
+1273
+00:51:17,099 --> 00:51:18,780
+the attack surface is not too easy
+
+1274
+00:51:18,780 --> 00:51:20,640
+unless you have a device it's not too
+
+1275
+00:51:20,640 --> 00:51:22,079
+easy to map
+
+1276
+00:51:22,079 --> 00:51:24,780
+I like the custom protocols it's much
+
+1277
+00:51:24,780 --> 00:51:27,660
+more fun than web applications or the
+
+1278
+00:51:27,660 --> 00:51:29,160
+common components
+
+1279
+00:51:29,160 --> 00:51:32,760
+and one last takeaway I think that the
+
+1280
+00:51:32,760 --> 00:51:35,040
+osis components you know and love such
+
+1281
+00:51:35,040 --> 00:51:37,800
+as net as an MP they can have been
+
+1282
+00:51:37,800 --> 00:51:40,440
+tampered with right in this case it's
+
+1283
+00:51:40,440 --> 00:51:42,000
+leaking the password that's not a
+
+1284
+00:51:42,000 --> 00:51:43,800
+default setting uh
+
+1285
+00:51:43,800 --> 00:51:48,850
+trust but verify and that was it
+
+1286
+00:51:48,850 --> 00:51:52,889
+[Applause]
+

@@ -1,0 +1,5016 @@
+﻿1
+00:00:01,620 --> 00:00:02,453
+- Hello, everyone.
+
+2
+00:00:02,453 --> 00:00:03,330
+My name is Christopher Wade,
+
+3
+00:00:03,330 --> 00:00:04,340
+and today I'm gonna be talking about
+
+4
+00:00:04,340 --> 00:00:06,360
+breaking secure bootloaders.
+
+5
+00:00:06,360 --> 00:00:08,480
+The purpose of this talk is
+to outline how smartphones
+
+6
+00:00:08,480 --> 00:00:10,060
+use signature verification mechanisms
+
+7
+00:00:10,060 --> 00:00:11,340
+to protect their firmware,
+
+8
+00:00:11,340 --> 00:00:13,920
+both the core chips and
+the peripheral hardware.
+
+9
+00:00:13,920 --> 00:00:15,470
+This is implemented at
+the bootloader level,
+
+10
+00:00:15,470 --> 00:00:17,930
+which provides facilities
+for firmware updates as well,
+
+11
+00:00:17,930 --> 00:00:20,830
+and often other interfaces
+for management of the device.
+
+12
+00:00:20,830 --> 00:00:22,100
+We're gonna be outlining two weaknesses
+
+13
+00:00:22,100 --> 00:00:24,230
+in two different chips used by smartphones
+
+14
+00:00:24,230 --> 00:00:25,119
+which can be exploited to bypass
+
+15
+00:00:25,119 --> 00:00:27,384
+these signature protections.
+
+16
+00:00:27,384 --> 00:00:28,490
+A bit about me before we start.
+
+17
+00:00:28,490 --> 00:00:29,450
+My name is Christopher Wade,
+
+18
+00:00:29,450 --> 00:00:31,260
+and I'm a security consultant
+at Pen Test Partners,
+
+19
+00:00:31,260 --> 00:00:33,660
+where I mainly work in
+hardware and IoT testing.
+
+20
+00:00:34,760 --> 00:00:36,440
+So the first project we'll be discussing
+
+21
+00:00:36,440 --> 00:00:39,440
+is the Qualcomm Snapdragon 660 bootloader.
+
+22
+00:00:39,440 --> 00:00:41,710
+I purchased an Android phone
+to do some mobile research
+
+23
+00:00:41,710 --> 00:00:44,030
+which contained a similar chip to this
+
+24
+00:00:44,030 --> 00:00:45,260
+and I realized that I needed root access
+
+25
+00:00:45,260 --> 00:00:47,630
+in order to use all of my testing tools.
+
+26
+00:00:47,630 --> 00:00:49,210
+Now, root access on an Android smartphone
+
+27
+00:00:49,210 --> 00:00:51,570
+can only really be achieved
+in a meaningful way
+
+28
+00:00:51,570 --> 00:00:53,860
+by unlocking the bootloader
+by which disables
+
+29
+00:00:53,860 --> 00:00:55,740
+signature verification mechanisms
+
+30
+00:00:55,740 --> 00:00:59,190
+and allows you to modify
+the Android boot image
+
+31
+00:00:59,190 --> 00:01:01,250
+in order to add your own functionality.
+
+32
+00:01:01,250 --> 00:01:02,200
+This required an unlock tool
+
+33
+00:01:02,200 --> 00:01:03,570
+from the manufacturer in this case,
+
+34
+00:01:03,570 --> 00:01:05,793
+which had some different
+limitations on it.
+
+35
+00:01:06,840 --> 00:01:10,810
+So manufacturers often add
+protections to the bootloaders
+
+36
+00:01:10,810 --> 00:01:12,220
+on top of what Qualcomm provides
+
+37
+00:01:12,220 --> 00:01:14,880
+in order to require custom
+tooling provided by them
+
+38
+00:01:14,880 --> 00:01:17,000
+to allow for bootloader unlocking
+
+39
+00:01:17,000 --> 00:01:20,170
+or to remove the ability to
+unlock the bootloader entirely.
+
+40
+00:01:20,170 --> 00:01:22,130
+So this often requires
+creating a user account
+
+41
+00:01:22,130 --> 00:01:23,730
+for that particular brand
+
+42
+00:01:23,730 --> 00:01:25,400
+and waiting for a period of time,
+
+43
+00:01:25,400 --> 00:01:27,430
+between seven to 28 days.
+
+44
+00:01:27,430 --> 00:01:29,990
+Unlocks are performed using
+custom USB fastboot commands,
+
+45
+00:01:29,990 --> 00:01:32,100
+fastboot being the USB protocol
+
+46
+00:01:32,100 --> 00:01:33,770
+used for Android bootloaders,
+
+47
+00:01:33,770 --> 00:01:35,350
+which we'll be discussing in a second.
+
+48
+00:01:35,350 --> 00:01:36,910
+And there are a few reasons
+why they would do this,
+
+49
+00:01:36,910 --> 00:01:39,060
+such as preventing inexperienced users
+
+50
+00:01:39,060 --> 00:01:41,530
+from being tricked into
+deliberately deploying
+
+51
+00:01:41,530 --> 00:01:43,100
+malicious software to their phones,
+
+52
+00:01:43,100 --> 00:01:45,440
+stopping third parties from
+deploying malicious software
+
+53
+00:01:45,440 --> 00:01:47,520
+to their phones as part
+of the supply chain,
+
+54
+00:01:47,520 --> 00:01:49,840
+or allowing the manufacturer
+to track who is unlocking
+
+55
+00:01:49,840 --> 00:01:51,590
+that bootloader in the first place.
+
+56
+00:01:52,500 --> 00:01:54,060
+So in my case,
+
+57
+00:01:54,060 --> 00:01:57,290
+I found that the manufacturer
+had implemented bootloader
+
+58
+00:01:57,290 --> 00:01:59,420
+unlocking production
+in a very standard way,
+
+59
+00:01:59,420 --> 00:02:02,290
+which was to add a signature
+verification mechanism.
+
+60
+00:02:02,290 --> 00:02:03,970
+So using the USBPCAP tool,
+
+61
+00:02:03,970 --> 00:02:05,590
+which allows you to man in the middle USB
+
+62
+00:02:05,590 --> 00:02:08,770
+from a Windows host to USB devices,
+
+63
+00:02:08,770 --> 00:02:10,580
+I analyzed how this was performed
+
+64
+00:02:10,580 --> 00:02:12,840
+and I identified that what
+happened was using the tool,
+
+65
+00:02:12,840 --> 00:02:15,340
+it would send fastboot commands,
+
+66
+00:02:15,340 --> 00:02:18,430
+which included a 256-byte signature
+
+67
+00:02:18,430 --> 00:02:21,230
+downloaded from the manufacturer
+servers after the timeout,
+
+68
+00:02:21,230 --> 00:02:22,840
+which was found to be matched against
+
+69
+00:02:22,840 --> 00:02:25,260
+some internal data on the phone.
+
+70
+00:02:25,260 --> 00:02:26,150
+When this was verified,
+
+71
+00:02:26,150 --> 00:02:27,780
+it unlocked the bootloader
+
+72
+00:02:27,780 --> 00:02:29,610
+and allowed the device to be used.
+
+73
+00:02:29,610 --> 00:02:30,640
+I decided because it had this timeout,
+
+74
+00:02:30,640 --> 00:02:32,260
+it would be very interesting to see
+
+75
+00:02:32,260 --> 00:02:33,820
+if I could bypass this restriction
+
+76
+00:02:33,820 --> 00:02:36,070
+in order to unlock the
+bootloader before the timeout.
+
+77
+00:02:36,070 --> 00:02:37,620
+So after sort of seven days,
+
+78
+00:02:37,620 --> 00:02:40,240
+I decided to set myself a
+challenge to break the bootloader
+
+79
+00:02:40,240 --> 00:02:42,000
+on an older smartphone in this series
+
+80
+00:02:42,000 --> 00:02:44,350
+before the end of the
+seven-day waiting period.
+
+81
+00:02:45,570 --> 00:02:48,060
+So the target device I went
+for was a mid-range phone
+
+82
+00:02:48,060 --> 00:02:49,110
+released in 2017,
+
+83
+00:02:49,110 --> 00:02:51,600
+which used the Qualcomm
+Snapdragon 660 chipset
+
+84
+00:02:51,600 --> 00:02:53,810
+and the ARM64 architecture.
+
+85
+00:02:53,810 --> 00:02:55,687
+I'd previously unlocked the
+bootloader on this phone
+
+86
+00:02:55,687 --> 00:02:56,590
+via the same manner,
+
+87
+00:02:56,590 --> 00:02:58,350
+but because I could lock
+it again for the project
+
+88
+00:02:58,350 --> 00:02:59,470
+just using fastboot commands,
+
+89
+00:02:59,470 --> 00:03:01,610
+I decided to use it as a target.
+
+90
+00:03:01,610 --> 00:03:04,580
+The bootloader had been modified
+with the same functionality
+
+91
+00:03:04,580 --> 00:03:06,233
+as the phone that I started with.
+
+92
+00:03:07,500 --> 00:03:09,310
+So fastboot is a command interface used
+
+93
+00:03:09,310 --> 00:03:11,050
+by most Android bootloaders.
+
+94
+00:03:11,050 --> 00:03:12,370
+It's a basic USB interface
+
+95
+00:03:12,370 --> 00:03:14,830
+which sends raw text commands to the phone
+
+96
+00:03:14,830 --> 00:03:16,560
+and gets raw text commands back,
+
+97
+00:03:16,560 --> 00:03:19,340
+in general, apart from in
+very specific circumstances.
+
+98
+00:03:19,340 --> 00:03:21,180
+These include commands like reboot,
+
+99
+00:03:21,180 --> 00:03:23,320
+flash data, write data,
+
+100
+00:03:23,320 --> 00:03:25,620
+and some specific OEM functionality
+
+101
+00:03:25,620 --> 00:03:28,200
+that can be added by OEMs
+just by virtue of the fact
+
+102
+00:03:28,200 --> 00:03:29,850
+that the bootloaders are open source
+
+103
+00:03:29,850 --> 00:03:31,250
+and can be modified by them.
+
+104
+00:03:32,610 --> 00:03:34,240
+It can be implemented very simply
+
+105
+00:03:34,240 --> 00:03:35,630
+using standard USB libraries.
+
+106
+00:03:35,630 --> 00:03:36,895
+You can send bulk requests,
+
+107
+00:03:36,895 --> 00:03:39,060
+including the ASCII commands,
+
+108
+00:03:39,060 --> 00:03:41,340
+and get human-readable responses back
+
+109
+00:03:41,340 --> 00:03:44,470
+via asynchronous reads
+via the bulk interface.
+
+110
+00:03:44,470 --> 00:03:46,400
+There are libraries that
+exist for this purpose,
+
+111
+00:03:46,400 --> 00:03:48,163
+but most of them are unnecessary.
+
+112
+00:03:49,510 --> 00:03:52,850
+The ABL bootloader provides
+this fastboot USB interface
+
+113
+00:03:52,850 --> 00:03:54,090
+and verifies and executes
+
+114
+00:03:54,090 --> 00:03:55,420
+the Android operating system, as well.
+
+115
+00:03:55,420 --> 00:03:57,450
+So it's part of a
+multi-stage boot process,
+
+116
+00:03:57,450 --> 00:03:59,070
+which starts with the phone booting,
+
+117
+00:03:59,070 --> 00:04:00,630
+loading this bootloader into RAM,
+
+118
+00:04:00,630 --> 00:04:02,450
+which then verifies the Android boot image
+
+119
+00:04:02,450 --> 00:04:03,770
+and gets things going.
+
+120
+00:04:03,770 --> 00:04:05,090
+It can be accessed via ADB
+
+121
+00:04:05,090 --> 00:04:07,050
+during ADB reboot bootloader
+
+122
+00:04:07,050 --> 00:04:08,870
+or using button combinations on boot,
+
+123
+00:04:08,870 --> 00:04:11,450
+which is usually the volume
+down button and power.
+
+124
+00:04:11,450 --> 00:04:14,440
+It's stored in the ABL
+partition on the device.
+
+125
+00:04:14,440 --> 00:04:16,420
+Qualcomm's base bootloader for this
+
+126
+00:04:16,420 --> 00:04:17,380
+has source code available,
+
+127
+00:04:17,380 --> 00:04:18,213
+which can be analyzed,
+
+128
+00:04:18,213 --> 00:04:19,940
+but because vendors often modify this,
+
+129
+00:04:19,940 --> 00:04:21,210
+this can only be used as a reference
+
+130
+00:04:21,210 --> 00:04:22,910
+rather than building from scratch.
+
+131
+00:04:24,410 --> 00:04:26,200
+So the bootloader itself
+is stored as an ELF
+
+132
+00:04:26,200 --> 00:04:29,050
+in the ABL partition as outlined,
+
+133
+00:04:29,050 --> 00:04:30,780
+but contains no executable code.
+
+134
+00:04:30,780 --> 00:04:33,570
+Instead it contains a UEFI filesystem.
+
+135
+00:04:33,570 --> 00:04:36,152
+Using the tool uefi-firmware-parser,
+
+136
+00:04:36,152 --> 00:04:39,430
+I could find a portable
+executable called Linux loader,
+
+137
+00:04:39,430 --> 00:04:42,353
+which could be loaded directly
+into IDA for analysis.
+
+138
+00:04:44,150 --> 00:04:46,900
+Fastboot commands in this
+were stored in a table
+
+139
+00:04:46,900 --> 00:04:48,930
+for function callbacks.
+
+140
+00:04:48,930 --> 00:04:51,270
+So it'd be a text command
+followed by function callback
+
+141
+00:04:51,270 --> 00:04:52,230
+just in order,
+
+142
+00:04:52,230 --> 00:04:54,400
+which allowed me to analyze
+every single command
+
+143
+00:04:54,400 --> 00:04:55,643
+that was available on the phone
+
+144
+00:04:55,643 --> 00:04:58,640
+and identifying custom ones, hidden ones,
+
+145
+00:04:58,640 --> 00:05:00,470
+or any non-standard
+functionality that would be
+
+146
+00:05:00,470 --> 00:05:02,650
+in the functions that were already there.
+
+147
+00:05:02,650 --> 00:05:04,200
+Because this is quite a verbose bootloader
+
+148
+00:05:04,200 --> 00:05:05,410
+which sends a lot of strings back,
+
+149
+00:05:05,410 --> 00:05:07,030
+it was really easy to
+analyze what each part
+
+150
+00:05:07,030 --> 00:05:08,540
+of the boot data was
+doing just by analyzing
+
+151
+00:05:08,540 --> 00:05:09,990
+what the strings were saying.
+
+152
+00:05:12,350 --> 00:05:13,940
+I'd identified that the flash command,
+
+153
+00:05:13,940 --> 00:05:16,350
+which usually only allows for flashing
+
+154
+00:05:16,350 --> 00:05:18,470
+of data partitions on the Android phone,
+
+155
+00:05:18,470 --> 00:05:21,370
+had been modified so that
+on this particular phone,
+
+156
+00:05:21,370 --> 00:05:23,360
+it could flash a specific
+extra bootloader,
+
+157
+00:05:23,360 --> 00:05:26,970
+a specific extra partition called crclist.
+
+158
+00:05:26,970 --> 00:05:28,360
+These partitions were handled differently
+
+159
+00:05:28,360 --> 00:05:29,230
+and did some parsing
+
+160
+00:05:29,230 --> 00:05:31,290
+and all sorts of things
+on string data sent to it
+
+161
+00:05:31,290 --> 00:05:34,950
+and were not standard as
+directly created by Qualcomm.
+
+162
+00:05:34,950 --> 00:05:36,400
+As such, I thought there'd be potential
+
+163
+00:05:36,400 --> 00:05:37,600
+for some kind of memory corruption
+
+164
+00:05:37,600 --> 00:05:40,130
+or partition overwrite in
+this custom functionality,
+
+165
+00:05:40,130 --> 00:05:41,980
+so I decided to start my focus there.
+
+166
+00:05:43,090 --> 00:05:45,830
+I'd made some assumptions
+when I was building my flash,
+
+167
+00:05:45,830 --> 00:05:46,740
+my fastboot tool,
+
+168
+00:05:46,740 --> 00:05:49,940
+which meant that my command
+sequence wasn't exactly correct.
+
+169
+00:05:49,940 --> 00:05:52,390
+What's meant to happen is that
+you send a download command
+
+170
+00:05:52,390 --> 00:05:53,630
+with a payload size,
+
+171
+00:05:53,630 --> 00:05:55,540
+then send the raw binary of the payload
+
+172
+00:05:55,540 --> 00:05:56,410
+and then the flash
+
+173
+00:05:56,410 --> 00:05:58,510
+and then the partition
+you want to send to.
+
+174
+00:05:58,510 --> 00:05:59,343
+I didn't quite understand this
+
+175
+00:05:59,343 --> 00:06:01,130
+because I hadn't read the
+documentation at this point,
+
+176
+00:06:01,130 --> 00:06:03,337
+so what I tried was
+sending the flash command
+
+177
+00:06:03,337 --> 00:06:05,280
+and the partition I wanted to go to
+
+178
+00:06:05,280 --> 00:06:07,280
+and then sending a payload.
+
+179
+00:06:07,280 --> 00:06:08,350
+Also, in my code,
+
+180
+00:06:08,350 --> 00:06:09,720
+I'd left an incorrect flash command
+
+181
+00:06:09,720 --> 00:06:12,400
+after that payload in
+the command sequence.
+
+182
+00:06:12,400 --> 00:06:14,010
+This resulted in the bootloader crashing
+
+183
+00:06:14,010 --> 00:06:16,580
+after sending the second flash command.
+
+184
+00:06:16,580 --> 00:06:17,570
+The lack of a download command
+
+185
+00:06:17,570 --> 00:06:18,950
+was deemed to be the reason for this,
+
+186
+00:06:18,950 --> 00:06:20,500
+meaning that it was likely
+that because I was sending
+
+187
+00:06:20,500 --> 00:06:24,020
+a huge buffer without any
+data previous to that,
+
+188
+00:06:24,020 --> 00:06:27,100
+it was not handling it as data
+
+189
+00:06:27,100 --> 00:06:29,750
+and was actually handling
+it as a very large command.
+
+190
+00:06:31,030 --> 00:06:33,247
+So analysis of the crash showed
+that the USB connectivity
+
+191
+00:06:33,247 --> 00:06:35,490
+on the phone stopped functioning entirely.
+
+192
+00:06:35,490 --> 00:06:38,030
+I could unplug the phone
+and plug it back in again,
+
+193
+00:06:38,030 --> 00:06:39,150
+and it wouldn't enumerate over USB,
+
+194
+00:06:39,150 --> 00:06:41,880
+and it required a hard reset
+back to the bootloader.
+
+195
+00:06:41,880 --> 00:06:45,980
+So holding down volume
+and power for 10 seconds.
+
+196
+00:06:45,980 --> 00:06:48,420
+I sent a smaller payload
+size in the same manner,
+
+197
+00:06:48,420 --> 00:06:49,970
+but this didn't crash the phone.
+
+198
+00:06:49,970 --> 00:06:51,460
+So what I attempted to do was provide
+
+199
+00:06:51,460 --> 00:06:53,517
+a binary search approach
+where I'd take a large payload
+
+200
+00:06:53,517 --> 00:06:55,030
+and a small payload
+
+201
+00:06:55,030 --> 00:06:58,170
+and half the size in
+between of those and send it
+
+202
+00:06:58,170 --> 00:06:59,500
+and try and find the maximum size
+
+203
+00:06:59,500 --> 00:07:01,980
+that would be sent without a crash.
+
+204
+00:07:01,980 --> 00:07:03,840
+By rebooting and sending
+sizes between the minimum
+
+205
+00:07:03,840 --> 00:07:04,800
+and maximum value,
+
+206
+00:07:04,800 --> 00:07:07,783
+I found that the maximum
+size would be 0x11bae0.
+
+207
+00:07:10,840 --> 00:07:12,940
+Because of this unusual memory size,
+
+208
+00:07:12,940 --> 00:07:14,890
+I assumed that this was
+going to be a buffer overflow
+
+209
+00:07:14,890 --> 00:07:16,820
+which I could probably exploit to a bypass
+
+210
+00:07:16,820 --> 00:07:18,360
+some of the functionality
+on the bootloader
+
+211
+00:07:18,360 --> 00:07:20,180
+or add my own functionality.
+
+212
+00:07:20,180 --> 00:07:21,960
+However, with no debugging functionality
+
+213
+00:07:21,960 --> 00:07:22,793
+available on the phone,
+
+214
+00:07:22,793 --> 00:07:25,210
+identifying what memory
+region was being written to
+
+215
+00:07:25,210 --> 00:07:27,690
+or anything like that
+would be very difficult.
+
+216
+00:07:27,690 --> 00:07:30,010
+The bootloader was found
+to also use stack canaries
+
+217
+00:07:30,010 --> 00:07:32,360
+which could be identified
+using the strings in the code
+
+218
+00:07:32,360 --> 00:07:35,230
+and looking at the source
+code of the bootloader,
+
+219
+00:07:35,230 --> 00:07:37,720
+which could be potentially
+triggered by this.
+
+220
+00:07:37,720 --> 00:07:40,310
+I decided to manually
+increment the next byte,
+
+221
+00:07:40,310 --> 00:07:43,860
+so sending 0x11bae1 bytes of data,
+
+222
+00:07:43,860 --> 00:07:46,380
+and setting that last bite
+to different bytes of data
+
+223
+00:07:46,380 --> 00:07:47,380
+to see what'd happen,
+
+224
+00:07:47,380 --> 00:07:51,690
+and I found that the last
+byte was meant to be 0xff.
+
+225
+00:07:51,690 --> 00:07:53,910
+So I looped through until I got to ff
+
+226
+00:07:53,910 --> 00:07:55,850
+and I found that that
+didn't crash the phone
+
+227
+00:07:55,850 --> 00:07:56,940
+when I sent that payload,
+
+228
+00:07:56,940 --> 00:07:58,940
+or at least didn't crash it immediately.
+
+229
+00:08:00,420 --> 00:08:01,740
+By constantly power cycling,
+
+230
+00:08:01,740 --> 00:08:02,700
+incrementing that byte value,
+
+231
+00:08:02,700 --> 00:08:04,410
+and moving to the next byte
+when I found a valid one
+
+232
+00:08:04,410 --> 00:08:05,280
+that didn't crash the phone,
+
+233
+00:08:05,280 --> 00:08:07,240
+I can probably create
+a reasonable facsimile
+
+234
+00:08:07,240 --> 00:08:11,080
+of the memory that was in
+the bootloader at that point.
+
+235
+00:08:11,080 --> 00:08:12,730
+It wouldn't be an exact
+memory necessarily,
+
+236
+00:08:12,730 --> 00:08:14,480
+but it would be enough not
+to crash the bootloader,
+
+237
+00:08:14,480 --> 00:08:17,450
+and I can probably use that to
+find what kind of data it was
+
+238
+00:08:17,450 --> 00:08:20,010
+and possibly modify it
+to gain code execution.
+
+239
+00:08:20,010 --> 00:08:21,990
+But I required a way of
+automating this process
+
+240
+00:08:21,990 --> 00:08:22,930
+rather than doing it by hand
+
+241
+00:08:22,930 --> 00:08:24,980
+by manually turning the power on and off.
+
+242
+00:08:26,170 --> 00:08:27,400
+It was suggested by my colleagues
+
+243
+00:08:27,400 --> 00:08:28,830
+that I could take the
+battery out of the phone
+
+244
+00:08:28,830 --> 00:08:31,510
+and use a USB relay to
+turn the power on and off
+
+245
+00:08:31,510 --> 00:08:33,660
+while automating power
+cycling on the phone.
+
+246
+00:08:33,660 --> 00:08:36,610
+However, this would require
+removing glue from the case
+
+247
+00:08:36,610 --> 00:08:37,830
+to access the battery,
+
+248
+00:08:37,830 --> 00:08:39,610
+and hardware attacks
+like that were something
+
+249
+00:08:39,610 --> 00:08:41,580
+I just didn't wanna go for at this point.
+
+250
+00:08:41,580 --> 00:08:43,760
+Instead, I wrapped a
+hair tie around the power
+
+251
+00:08:43,760 --> 00:08:44,991
+and volume down buttons of the phone,
+
+252
+00:08:44,991 --> 00:08:46,600
+which caused the boot loop.
+
+253
+00:08:46,600 --> 00:08:49,140
+So it would constantly
+loop reboot the phone
+
+254
+00:08:49,140 --> 00:08:51,620
+while allowing enough time
+for the USB to be enumerated
+
+255
+00:08:51,620 --> 00:08:53,120
+and for a payload to be sent.
+
+256
+00:08:53,120 --> 00:08:54,480
+So it's sufficient time to test
+
+257
+00:08:54,480 --> 00:08:56,030
+whether the overflow was valid.
+
+258
+00:08:57,810 --> 00:08:59,660
+My custom fastboot tool
+was modified to do this.
+
+259
+00:08:59,660 --> 00:09:00,880
+So it would loop around,
+
+260
+00:09:00,880 --> 00:09:02,320
+wait for the thing to crash,
+
+261
+00:09:02,320 --> 00:09:03,210
+and then start again,
+
+262
+00:09:03,210 --> 00:09:05,010
+and made it verify two key events.
+
+263
+00:09:05,010 --> 00:09:07,880
+First, I wanted it to send
+a flashing failed response.
+
+264
+00:09:07,880 --> 00:09:11,910
+So because I sent an incorrect
+partition as my last command,
+
+265
+00:09:11,910 --> 00:09:13,660
+which was causing the crash,
+
+266
+00:09:13,660 --> 00:09:15,660
+it would tell me that
+flashing was not allowed
+
+267
+00:09:15,660 --> 00:09:17,800
+on a locked bootloader.
+
+268
+00:09:17,800 --> 00:09:19,160
+I also checked whether the bootloader
+
+269
+00:09:19,160 --> 00:09:21,330
+would crash after this.
+
+270
+00:09:21,330 --> 00:09:22,270
+Each iteration of this
+
+271
+00:09:22,270 --> 00:09:24,790
+took about 10 to 30 seconds on reboots,
+
+272
+00:09:24,790 --> 00:09:26,390
+but eventually this would allow me
+
+273
+00:09:26,390 --> 00:09:27,940
+to create some kind of payload.
+
+274
+00:09:29,250 --> 00:09:31,100
+So I left the phone overnight
+performing this loop,
+
+275
+00:09:31,100 --> 00:09:32,660
+and by the end of the,
+
+276
+00:09:32,660 --> 00:09:33,650
+by the morning the next day,
+
+277
+00:09:33,650 --> 00:09:35,750
+I'd got 0x34 bytes of data
+
+278
+00:09:35,750 --> 00:09:37,550
+which didn't crash the phone.
+
+279
+00:09:37,550 --> 00:09:39,330
+Because there were repeated word values
+
+280
+00:09:39,330 --> 00:09:41,230
+and lack of any default stack canary,
+
+281
+00:09:41,230 --> 00:09:42,930
+which I identified in the code,
+
+282
+00:09:42,930 --> 00:09:45,450
+I probably thought that
+this was probably not likely
+
+283
+00:09:45,450 --> 00:09:46,610
+to be the stack.
+
+284
+00:09:46,610 --> 00:09:49,260
+However, I did notice that
+all of the 32-bit words
+
+285
+00:09:49,260 --> 00:09:52,653
+that were outlined were
+actually valid ARM64 opcodes.
+
+286
+00:09:54,300 --> 00:09:55,990
+Most opcodes, while valid operations,
+
+287
+00:09:55,990 --> 00:09:57,290
+would probably not be
+the same as a bootloader,
+
+288
+00:09:57,290 --> 00:09:58,760
+just due to the fact that things like
+
+289
+00:09:58,760 --> 00:10:00,080
+stack handling in general,
+
+290
+00:10:00,080 --> 00:10:02,010
+the management of how the code is running,
+
+291
+00:10:02,010 --> 00:10:03,830
+doesn't necessarily need
+to be exactly right.
+
+292
+00:10:03,830 --> 00:10:06,770
+For instance, if there's
+things relating to stacks
+
+293
+00:10:06,770 --> 00:10:08,130
+that's not actually handled
+
+294
+00:10:08,130 --> 00:10:10,920
+or if there's registers that
+are set but never read from,
+
+295
+00:10:10,920 --> 00:10:12,117
+they could be whatever we wanted to be
+
+296
+00:10:12,117 --> 00:10:14,020
+and it wouldn't really cause a problem.
+
+297
+00:10:14,020 --> 00:10:16,870
+However, pushing the stack pointer down
+
+298
+00:10:16,870 --> 00:10:18,420
+and any brunch and link operations
+
+299
+00:10:18,420 --> 00:10:20,250
+would probably have to be pretty accurate.
+
+300
+00:10:20,250 --> 00:10:23,530
+So I decided to search for
+those in IDA using the values
+
+301
+00:10:23,530 --> 00:10:26,093
+that have been generated by my code.
+
+302
+00:10:27,543 --> 00:10:29,780
+There's a few reasons why this
+search didn't work, however.
+
+303
+00:10:29,780 --> 00:10:31,670
+So there's often unused bits
+
+304
+00:10:31,670 --> 00:10:33,640
+that can be flipped on operations
+
+305
+00:10:33,640 --> 00:10:35,420
+which don't alter functionality
+
+306
+00:10:35,420 --> 00:10:37,940
+or only alter it superficially.
+
+307
+00:10:37,940 --> 00:10:40,930
+Also, registers can be accessed
+in both 32 and 64-bit mode,
+
+308
+00:10:40,930 --> 00:10:42,770
+meaning that if a register was being used
+
+309
+00:10:42,770 --> 00:10:43,850
+as a 32-bit register
+
+310
+00:10:43,850 --> 00:10:47,300
+but accessed in the code
+as a 64-bit register,
+
+311
+00:10:47,300 --> 00:10:49,070
+accidentally setting it as a 32-bit one
+
+312
+00:10:49,070 --> 00:10:50,120
+wouldn't cause any problems
+
+313
+00:10:50,120 --> 00:10:52,830
+and everything would work as intended.
+
+314
+00:10:52,830 --> 00:10:56,220
+Also, branch instructions can
+have conditions for jumping
+
+315
+00:10:56,220 --> 00:10:58,110
+like zero, not zero, et cetera,
+
+316
+00:10:58,110 --> 00:11:01,330
+and if these were identified
+but didn't cause any issues,
+
+317
+00:11:01,330 --> 00:11:03,420
+then also this would
+mean that text searching
+
+318
+00:11:03,420 --> 00:11:05,433
+for these opcodes just wouldn't work.
+
+319
+00:11:07,000 --> 00:11:09,070
+So I decided to identify
+similar instructions.
+
+320
+00:11:09,070 --> 00:11:11,350
+I decided to use the branch
+and link construction
+
+321
+00:11:11,350 --> 00:11:14,800
+because it was most likely
+to be unique in the code.
+
+322
+00:11:14,800 --> 00:11:15,940
+Because stack pointing,
+
+323
+00:11:15,940 --> 00:11:19,310
+stack pushing is often very accurate,
+
+324
+00:11:19,310 --> 00:11:21,570
+but also about the same on most functions
+
+325
+00:11:21,570 --> 00:11:23,540
+that are compiled in ARM64,
+
+326
+00:11:23,540 --> 00:11:24,920
+I thought a branch and link construction
+
+327
+00:11:24,920 --> 00:11:27,760
+which would jump to
+specific relative addresses
+
+328
+00:11:27,760 --> 00:11:29,530
+would probably be easier to note.
+
+329
+00:11:29,530 --> 00:11:30,806
+I performed a text search while removing
+
+330
+00:11:30,806 --> 00:11:33,307
+the first nybble from the opcode
+
+331
+00:11:33,307 --> 00:11:35,710
+to see if I could find any branches
+
+332
+00:11:35,710 --> 00:11:37,960
+that were in a similar
+relative address space to it.
+
+333
+00:11:37,960 --> 00:11:40,650
+For instance, if there were
+two string comparison functions
+
+334
+00:11:40,650 --> 00:11:41,840
+that were next to each other
+
+335
+00:11:41,840 --> 00:11:44,130
+and I was jumping to
+one and not the other.
+
+336
+00:11:44,130 --> 00:11:45,990
+I identified a single valid instruction
+
+337
+00:11:45,990 --> 00:11:48,390
+with this branch and link
+
+338
+00:11:48,390 --> 00:11:50,220
+without the first nybble being the same,
+
+339
+00:11:50,220 --> 00:11:53,410
+and this was in the parser
+for the crclist partition,
+
+340
+00:11:53,410 --> 00:11:55,180
+which was the partition
+that we were gonna access
+
+341
+00:11:55,180 --> 00:11:57,170
+at the start of this whole process.
+
+342
+00:11:57,170 --> 00:11:59,230
+And I found that the
+opcodes were very similar
+
+343
+00:11:59,230 --> 00:12:00,490
+in both the start and end
+
+344
+00:12:00,490 --> 00:12:01,790
+and pretty much everything in between,
+
+345
+00:12:01,790 --> 00:12:04,233
+apart from a few very superficial things.
+
+346
+00:12:06,160 --> 00:12:08,210
+So analysis of the offsets in IDA
+
+347
+00:12:08,210 --> 00:12:10,860
+compared to the buffer
+overflow I performed
+
+348
+00:12:10,860 --> 00:12:12,530
+found that it was overwriting
+
+349
+00:12:12,530 --> 00:12:14,757
+the entire bootloader at 101000,
+
+350
+00:12:15,800 --> 00:12:17,130
+which was possible because the bootloader
+
+351
+00:12:17,130 --> 00:12:18,940
+was executed from RAM,
+
+352
+00:12:18,940 --> 00:12:20,180
+as demonstrated by the overflow.
+
+353
+00:12:20,180 --> 00:12:22,330
+Because I could overwrite
+code as it was running,
+
+354
+00:12:22,330 --> 00:12:24,820
+it meant that I was
+probably overwriting memory
+
+355
+00:12:24,820 --> 00:12:27,150
+that could be modified as needed.
+
+356
+00:12:27,150 --> 00:12:28,570
+I took the original bootloader binary,
+
+357
+00:12:28,570 --> 00:12:30,500
+which I found in the ABL partition,
+
+358
+00:12:30,500 --> 00:12:32,040
+and extracted for this purpose
+
+359
+00:12:32,040 --> 00:12:33,440
+and could overwrite it
+
+360
+00:12:33,440 --> 00:12:35,410
+over the partition that was already in,
+
+361
+00:12:35,410 --> 00:12:37,570
+or rather, the RAM that was already there,
+
+362
+00:12:37,570 --> 00:12:39,200
+meaning that I could
+perform a buffer overflow
+
+363
+00:12:39,200 --> 00:12:40,930
+without actually breaking the bootloader
+
+364
+00:12:40,930 --> 00:12:42,680
+and keeping everything working.
+
+365
+00:12:42,680 --> 00:12:43,513
+Because of this,
+
+366
+00:12:43,513 --> 00:12:46,050
+I was essentially overwriting
+it with unsigned code
+
+367
+00:12:46,050 --> 00:12:48,090
+and could modify any
+aspect of the bootloader
+
+368
+00:12:48,090 --> 00:12:49,623
+to run anything I wanted to.
+
+369
+00:12:51,020 --> 00:12:52,320
+So I wanted to unlock the bootloader,
+
+370
+00:12:52,320 --> 00:12:55,370
+which was the entire
+purpose of this project.
+
+371
+00:12:55,370 --> 00:12:58,810
+So what I first did was looked into
+
+372
+00:12:58,810 --> 00:13:00,170
+how it was performing the unlock.
+
+373
+00:13:00,170 --> 00:13:02,500
+So what it would do was
+verify the RSA signature,
+
+374
+00:13:02,500 --> 00:13:03,390
+as outlined at the start,
+
+375
+00:13:03,390 --> 00:13:05,673
+and then send a fastboot unlock command.
+
+376
+00:13:05,673 --> 00:13:07,720
+What I wanted to do was
+make it so it jumped past
+
+377
+00:13:07,720 --> 00:13:10,080
+the RSA check as part of
+the signature verification
+
+378
+00:13:10,080 --> 00:13:12,150
+and just jumped straight into that unlock.
+
+379
+00:13:12,150 --> 00:13:13,630
+I could use a simple branch instruction,
+
+380
+00:13:13,630 --> 00:13:17,180
+even from the crclist code that I was in,
+
+381
+00:13:17,180 --> 00:13:18,184
+to jump to the relative address
+
+382
+00:13:18,184 --> 00:13:20,610
+of the bootloader unlock function.
+
+383
+00:13:20,610 --> 00:13:22,980
+Online ARM64 assemblers
+such as shell-storm
+
+384
+00:13:22,980 --> 00:13:23,813
+can be used to do this
+
+385
+00:13:23,813 --> 00:13:25,730
+and generate very quick rapid code
+
+386
+00:13:25,730 --> 00:13:27,120
+that will just allow you to jump
+
+387
+00:13:27,120 --> 00:13:29,400
+from one piece of code to another.
+
+388
+00:13:29,400 --> 00:13:30,610
+It would be difficult to debug this,
+
+389
+00:13:30,610 --> 00:13:32,640
+but if I had achieved
+unlocking the bootloader,
+
+390
+00:13:32,640 --> 00:13:35,320
+I'd know fairly simply because
+the phone would reboot,
+
+391
+00:13:35,320 --> 00:13:37,450
+and then it would tell me that
+the partitions had corrupted
+
+392
+00:13:37,450 --> 00:13:39,200
+because I was going
+from a locked bootloader
+
+393
+00:13:39,200 --> 00:13:40,710
+to an unlocked one.
+
+394
+00:13:40,710 --> 00:13:42,533
+And we'll be discussing that again soon.
+
+395
+00:13:43,550 --> 00:13:46,130
+So here's a quick outline
+of this attack going.
+
+396
+00:13:46,130 --> 00:13:48,540
+So it's just a piece of C code that runs
+
+397
+00:13:50,030 --> 00:13:52,990
+and send the buffer overflow,
+
+398
+00:13:52,990 --> 00:13:55,550
+send the flash:crclist command,
+
+399
+00:13:55,550 --> 00:13:56,740
+and then send an okay response.
+
+400
+00:13:56,740 --> 00:13:59,890
+Now, that okay response was
+actually from the unlock command
+
+401
+00:13:59,890 --> 00:14:01,600
+and not from the flash:crclist command,
+
+402
+00:14:01,600 --> 00:14:05,150
+'cause I'd essentially jumped
+from one function to another.
+
+403
+00:14:05,150 --> 00:14:06,320
+And then because I hadn't handled
+
+404
+00:14:06,320 --> 00:14:07,300
+the stack properly at this point,
+
+405
+00:14:07,300 --> 00:14:10,460
+I also got a big chunk
+of data which was invalid
+
+406
+00:14:10,460 --> 00:14:12,490
+just due to the fact that
+this was very quickly
+
+407
+00:14:12,490 --> 00:14:14,490
+and rapidly implemented from what I had.
+
+408
+00:14:16,050 --> 00:14:18,260
+So because I could root the phone,
+
+409
+00:14:18,260 --> 00:14:20,060
+I could deploy custom
+recovery images to it
+
+410
+00:14:20,060 --> 00:14:21,850
+and root the phone itself.
+
+411
+00:14:21,850 --> 00:14:24,000
+However, because Qualcomm
+chips can encrypt
+
+412
+00:14:24,000 --> 00:14:28,263
+the user data partition
+using internal keys,
+
+413
+00:14:29,130 --> 00:14:30,980
+if I went from a locked
+to an unlocked bootloader,
+
+414
+00:14:30,980 --> 00:14:32,880
+I would not actually be
+able to access my old data.
+
+415
+00:14:32,880 --> 00:14:35,120
+So essentially I'd have
+to erase my entire phone
+
+416
+00:14:35,120 --> 00:14:36,380
+in order to unlock it
+
+417
+00:14:36,380 --> 00:14:38,930
+and then use root access.
+
+418
+00:14:38,930 --> 00:14:41,210
+I did find that with a few code changes,
+
+419
+00:14:41,210 --> 00:14:43,480
+I could dump RAM off the phone
+
+420
+00:14:43,480 --> 00:14:45,530
+and some of the memory address spaces.
+
+421
+00:14:45,530 --> 00:14:46,780
+However, I couldn't use this for things
+
+422
+00:14:46,780 --> 00:14:48,150
+like a cold boot attack
+
+423
+00:14:48,150 --> 00:14:50,040
+because I couldn't access any RAM
+
+424
+00:14:50,040 --> 00:14:51,770
+outside of what was
+specifically partitioned
+
+425
+00:14:51,770 --> 00:14:54,730
+for the second stage
+bootloader we were attacking.
+
+426
+00:14:54,730 --> 00:14:57,170
+I achieved this entire
+process over four days,
+
+427
+00:14:57,170 --> 00:14:59,910
+which was just short of the seven days
+
+428
+00:14:59,910 --> 00:15:01,257
+that would be required for this bootloader
+
+429
+00:15:01,257 --> 00:15:02,923
+unlocking using the tool.
+
+430
+00:15:04,080 --> 00:15:06,370
+But also I attempted to
+replicate this vulnerability
+
+431
+00:15:06,370 --> 00:15:07,203
+on the newer phone,
+
+432
+00:15:07,203 --> 00:15:09,100
+which used an SDM665,
+
+433
+00:15:09,100 --> 00:15:12,870
+so just the next chip up from what I had.
+
+434
+00:15:12,870 --> 00:15:14,120
+However, these weren't effective,
+
+435
+00:15:14,120 --> 00:15:17,720
+meaning that this vulnerability
+was probably only workable
+
+436
+00:15:17,720 --> 00:15:18,793
+on the phone I had.
+
+437
+00:15:20,800 --> 00:15:23,240
+However, I was able to
+procure a second smartphone
+
+438
+00:15:23,240 --> 00:15:25,390
+which also used the SDM660.
+
+439
+00:15:25,390 --> 00:15:27,370
+This was from a different manufacturer
+
+440
+00:15:27,370 --> 00:15:28,750
+and released at a different time
+
+441
+00:15:28,750 --> 00:15:30,327
+and had actually had all bootloader
+
+442
+00:15:30,327 --> 00:15:33,360
+unlocking functionality
+disabled completely.
+
+443
+00:15:33,360 --> 00:15:34,920
+So even though you could access fastboot,
+
+444
+00:15:34,920 --> 00:15:38,280
+you couldn't do fastboot unlock
+with any tools available.
+
+445
+00:15:38,280 --> 00:15:39,360
+I found that it was using a similar
+
+446
+00:15:39,360 --> 00:15:41,830
+signature verification
+mechanism to the original phone.
+
+447
+00:15:41,830 --> 00:15:43,810
+However, the keys and
+all the tools for this
+
+448
+00:15:43,810 --> 00:15:45,663
+were not available publicly.
+
+449
+00:15:47,500 --> 00:15:49,380
+Using an OTA image of this phone, however,
+
+450
+00:15:49,380 --> 00:15:50,480
+I could analyze the bootloader again.
+
+451
+00:15:50,480 --> 00:15:51,993
+So rather than getting
+it from the partition,
+
+452
+00:15:51,993 --> 00:15:55,830
+I could download it from
+the Android zip image
+
+453
+00:15:55,830 --> 00:15:57,150
+that was used for updates
+
+454
+00:15:57,150 --> 00:15:58,773
+and just extract it that way.
+
+455
+00:15:59,650 --> 00:16:00,880
+This meant that I could find the code
+
+456
+00:16:00,880 --> 00:16:01,790
+which blocked the bootloader unlock
+
+457
+00:16:01,790 --> 00:16:04,160
+and it just had a response that said
+
+458
+00:16:04,160 --> 00:16:05,120
+cannot unlock bootloader
+
+459
+00:16:05,120 --> 00:16:07,200
+without having the correct signature.
+
+460
+00:16:07,200 --> 00:16:08,440
+And I also found that there were no
+
+461
+00:16:08,440 --> 00:16:10,660
+hidden bootloader commands
+identifying the device,
+
+462
+00:16:10,660 --> 00:16:12,070
+meaning I couldn't just
+unlock the bootloader
+
+463
+00:16:12,070 --> 00:16:13,270
+to find anything secret.
+
+464
+00:16:14,810 --> 00:16:16,980
+So initially, I tried
+the old crash attempt,
+
+465
+00:16:16,980 --> 00:16:18,640
+so sending the same data I'd sent before
+
+466
+00:16:18,640 --> 00:16:19,610
+to see if it crashed.
+
+467
+00:16:19,610 --> 00:16:20,920
+However, the device still functioned,
+
+468
+00:16:20,920 --> 00:16:22,980
+implying that the vulnerability
+may not be present.
+
+469
+00:16:22,980 --> 00:16:25,220
+However, I then sent a
+much larger payload size,
+
+470
+00:16:25,220 --> 00:16:26,670
+eight megabytes worth.
+
+471
+00:16:26,670 --> 00:16:27,503
+This crashed the phone,
+
+472
+00:16:27,503 --> 00:16:29,397
+implying that the
+vulnerability was still there,
+
+473
+00:16:29,397 --> 00:16:30,470
+but the memory layout
+
+474
+00:16:30,470 --> 00:16:32,640
+may have been different to the original.
+
+475
+00:16:32,640 --> 00:16:33,730
+I did some manual analysis,
+
+476
+00:16:33,730 --> 00:16:34,563
+as I did before,
+
+477
+00:16:34,563 --> 00:16:37,370
+using smaller and larger payload sizes,
+
+478
+00:16:37,370 --> 00:16:42,070
+and found that it was
+overwritten after 403000 bytes
+
+479
+00:16:42,070 --> 00:16:47,000
+rather than the 101000 bytes
+used by the original phone.
+
+480
+00:16:47,000 --> 00:16:49,140
+With this, I could really quickly create
+
+481
+00:16:49,140 --> 00:16:50,583
+a bootloader unlock tool.
+
+482
+00:16:52,120 --> 00:16:54,180
+So a single brunch
+instruction was identified
+
+483
+00:16:54,180 --> 00:16:56,610
+which sent an error response
+when unlocking the bootloader
+
+484
+00:16:56,610 --> 00:16:59,230
+saying whether you couldn't
+verify the signature
+
+485
+00:16:59,230 --> 00:17:01,350
+or whether you could just
+unlock the bootloader.
+
+486
+00:17:01,350 --> 00:17:03,350
+I could replace this with
+a single NOP instruction
+
+487
+00:17:03,350 --> 00:17:06,360
+in the bootloader and bypass this check.
+
+488
+00:17:06,360 --> 00:17:08,520
+I could then root the phone using Magisk
+
+489
+00:17:08,520 --> 00:17:11,780
+and have full access to
+all of its capabilities.
+
+490
+00:17:11,780 --> 00:17:14,610
+Because this vulnerability was
+found on two different phones
+
+491
+00:17:14,610 --> 00:17:17,270
+from different manufacturers
+using the same Qualcomm chip,
+
+492
+00:17:17,270 --> 00:17:19,240
+I disclosed it directly to Qualcomm
+
+493
+00:17:19,240 --> 00:17:20,900
+because it was likely to be on every phone
+
+494
+00:17:20,900 --> 00:17:22,443
+that used the SDM660.
+
+495
+00:17:24,520 --> 00:17:27,400
+Now, bootloader access isn't
+required for users in contexts
+
+496
+00:17:27,400 --> 00:17:28,970
+where unlocking isn't permitted.
+
+497
+00:17:28,970 --> 00:17:30,600
+A lot of phone manufacturers nowadays,
+
+498
+00:17:30,600 --> 00:17:32,810
+they just don't allow you to
+unlock your bootloader at all,
+
+499
+00:17:32,810 --> 00:17:35,770
+just 'cause they don't
+want you to do research.
+
+500
+00:17:35,770 --> 00:17:37,650
+It's possible to just
+disable fastboot access
+
+501
+00:17:37,650 --> 00:17:38,750
+because it is open source
+
+502
+00:17:38,750 --> 00:17:40,150
+and they can modify it as they want to,
+
+503
+00:17:40,150 --> 00:17:41,545
+to bypass all the USB interfaces
+
+504
+00:17:41,545 --> 00:17:44,140
+or prevent attacks against it.
+
+505
+00:17:44,140 --> 00:17:45,830
+What someone manufacturers now do
+
+506
+00:17:45,830 --> 00:17:47,100
+is allow it to be reactivated
+
+507
+00:17:47,100 --> 00:17:48,760
+via signed engineering apps,
+
+508
+00:17:48,760 --> 00:17:49,910
+which have system access
+
+509
+00:17:49,910 --> 00:17:51,120
+within the Android operating system,
+
+510
+00:17:51,120 --> 00:17:53,130
+which allows you to
+boot back into fastboot.
+
+511
+00:17:53,130 --> 00:17:54,300
+However, without that,
+
+512
+00:17:54,300 --> 00:17:56,980
+you can't get back into the bootloader.
+
+513
+00:17:56,980 --> 00:17:59,440
+Manufacturers who disable the bootloader
+
+514
+00:17:59,440 --> 00:18:01,570
+unlocking functionality
+often use this approach
+
+515
+00:18:01,570 --> 00:18:03,150
+just 'cause it's much
+quicker to implement.
+
+516
+00:18:03,150 --> 00:18:05,340
+You can just cut out all
+the USB functionality
+
+517
+00:18:05,340 --> 00:18:07,090
+until you want it to be accessible.
+
+518
+00:18:09,100 --> 00:18:11,070
+So one of the fun things that
+I mentioned earlier is that
+
+519
+00:18:11,070 --> 00:18:12,590
+I wanted to read back memory.
+
+520
+00:18:12,590 --> 00:18:14,083
+So the download command,
+
+521
+00:18:15,150 --> 00:18:16,760
+which is used to send data to the phone,
+
+522
+00:18:16,760 --> 00:18:20,190
+could be patched to parse the hex value
+
+523
+00:18:20,190 --> 00:18:23,180
+used for reading data for
+certain payload sizes,
+
+524
+00:18:23,180 --> 00:18:25,100
+rather, to make it read data.
+
+525
+00:18:25,100 --> 00:18:26,670
+I could use this to read
+back the bootloader code,
+
+526
+00:18:26,670 --> 00:18:27,503
+the stack memory,
+
+527
+00:18:27,503 --> 00:18:29,390
+and everything for a
+bit of minor debugging,
+
+528
+00:18:29,390 --> 00:18:32,160
+but I couldn't read any arbitrary memory.
+
+529
+00:18:32,160 --> 00:18:34,820
+This really restricts the ability
+for any cold boot attacks.
+
+530
+00:18:34,820 --> 00:18:36,230
+It meant that memory was protected,
+
+531
+00:18:36,230 --> 00:18:38,003
+even if I had this buffer overflow.
+
+532
+00:18:39,580 --> 00:18:41,250
+However, what I really
+wanted to do at this point,
+
+533
+00:18:41,250 --> 00:18:42,230
+because I'd gone so far,
+
+534
+00:18:42,230 --> 00:18:43,660
+is bypass the encryption
+
+535
+00:18:43,660 --> 00:18:46,210
+on the user data protection on the phone.
+
+536
+00:18:46,210 --> 00:18:48,680
+So Qualcomm's chips encrypt
+the user data partition,
+
+537
+00:18:48,680 --> 00:18:51,050
+which contains all the
+data users have available
+
+538
+00:18:51,050 --> 00:18:53,620
+and is erased on factory resets,
+
+539
+00:18:53,620 --> 00:18:55,410
+even when there's no
+passwords or pins used,
+
+540
+00:18:55,410 --> 00:18:59,740
+using an internal security
+mechanism on the chip.
+
+541
+00:18:59,740 --> 00:19:01,700
+This prevents forensic
+analysis of the chip,
+
+542
+00:19:01,700 --> 00:19:04,780
+and means that if you unlock
+your bootloader a phone,
+
+543
+00:19:04,780 --> 00:19:07,100
+you either get told that
+the partition is corrupted
+
+544
+00:19:07,100 --> 00:19:10,330
+or it just deletes the
+partition itself on reboot.
+
+545
+00:19:10,330 --> 00:19:12,700
+Bypassing this protection
+meant that we could access
+
+546
+00:19:12,700 --> 00:19:14,260
+user data via physical access,
+
+547
+00:19:14,260 --> 00:19:17,123
+but be able to do other few fun things.
+
+548
+00:19:18,610 --> 00:19:20,020
+So using Qualcomm's source code,
+
+549
+00:19:20,020 --> 00:19:22,160
+I decided to see how
+this encryption process
+
+550
+00:19:22,160 --> 00:19:25,760
+could be implemented while
+protecting the device,
+
+551
+00:19:25,760 --> 00:19:26,940
+and found that the encryption keys
+
+552
+00:19:26,940 --> 00:19:28,180
+were intentionally inaccessible
+
+553
+00:19:28,180 --> 00:19:30,270
+even with this code execution.
+
+554
+00:19:30,270 --> 00:19:32,290
+I also found that it used an internal API
+
+555
+00:19:32,290 --> 00:19:33,830
+which I couldn't access with this code.
+
+556
+00:19:33,830 --> 00:19:36,100
+It could jump to the code
+and execute certain things,
+
+557
+00:19:36,100 --> 00:19:38,360
+but I couldn't modify it with my exploits.
+
+558
+00:19:38,360 --> 00:19:40,080
+This API was found to verify
+
+559
+00:19:40,080 --> 00:19:41,080
+whether the phone was unlocked
+
+560
+00:19:41,080 --> 00:19:43,210
+and whether the image
+was appropriately signed
+
+561
+00:19:43,210 --> 00:19:45,823
+before decrypting the
+partition for user data.
+
+562
+00:19:47,380 --> 00:19:49,260
+So the boot fastboot command loads
+
+563
+00:19:49,260 --> 00:19:51,441
+and executes Android images
+that are deployed via USB.
+
+564
+00:19:51,441 --> 00:19:52,460
+So in fastboot,
+
+565
+00:19:52,460 --> 00:19:54,340
+you can say try and boot this image.
+
+566
+00:19:54,340 --> 00:19:56,900
+Now, if the phone is locked,
+
+567
+00:19:56,900 --> 00:19:58,380
+then it tells you can't do that.
+
+568
+00:19:58,380 --> 00:19:59,213
+But if it's unlocked,
+
+569
+00:19:59,213 --> 00:20:01,070
+it will start booting the phone.
+
+570
+00:20:01,070 --> 00:20:02,920
+I noted that in this code,
+
+571
+00:20:02,920 --> 00:20:05,010
+the verification functionality
+
+572
+00:20:05,010 --> 00:20:07,770
+and the booting functionality
+were two separate functions
+
+573
+00:20:07,770 --> 00:20:09,950
+separated by quite a
+lot of different code.
+
+574
+00:20:09,950 --> 00:20:11,380
+So there's a high
+likelihood that I'd be able
+
+575
+00:20:11,380 --> 00:20:13,090
+to swap two images,
+
+576
+00:20:13,090 --> 00:20:14,350
+a signed one and an unsigned one,
+
+577
+00:20:14,350 --> 00:20:16,763
+in order to bypass these protections.
+
+578
+00:20:18,390 --> 00:20:21,143
+So the boot command receives
+the full Android boot image
+
+579
+00:20:21,143 --> 00:20:22,550
+via the fastboot download command,
+
+580
+00:20:22,550 --> 00:20:23,690
+which is then loaded into RAM,
+
+581
+00:20:23,690 --> 00:20:25,430
+verified and executed.
+
+582
+00:20:25,430 --> 00:20:26,263
+By patching it,
+
+583
+00:20:26,263 --> 00:20:27,430
+I could then alter it to perform
+
+584
+00:20:27,430 --> 00:20:29,680
+this time of check to time of use attack,
+
+585
+00:20:29,680 --> 00:20:30,890
+and instead of sending one image,
+
+586
+00:20:30,890 --> 00:20:32,640
+I can send two.
+
+587
+00:20:32,640 --> 00:20:34,920
+So what I did is I
+decided to modify the tool
+
+588
+00:20:34,920 --> 00:20:36,830
+I'd already written to
+perform this functionality.
+
+589
+00:20:36,830 --> 00:20:39,256
+So what I did is instead of
+sending just one boot image,
+
+590
+00:20:39,256 --> 00:20:42,130
+I configured it to send
+three pieces of data,
+
+591
+00:20:42,130 --> 00:20:45,230
+a four byte offset to an unsigned image,
+
+592
+00:20:45,230 --> 00:20:46,063
+the signed image,
+
+593
+00:20:46,063 --> 00:20:48,830
+and then the unsigned malicious image.
+
+594
+00:20:48,830 --> 00:20:49,800
+What this would do is mean
+
+595
+00:20:49,800 --> 00:20:51,840
+that I'd have the functionality to then,
+
+596
+00:20:51,840 --> 00:20:54,230
+if I modified the bootloader
+to swap between a signed
+
+597
+00:20:54,230 --> 00:20:55,330
+and an unsigned image.
+
+598
+00:20:57,150 --> 00:20:58,590
+So as I said before,
+
+599
+00:20:58,590 --> 00:21:00,960
+the boot command does not
+function on a locked bootloader.
+
+600
+00:21:00,960 --> 00:21:03,690
+So the first thing I need
+to do was bypass that check
+
+601
+00:21:03,690 --> 00:21:05,190
+by patching the code.
+
+602
+00:21:05,190 --> 00:21:07,100
+So the check for the
+lock state was replaced
+
+603
+00:21:07,100 --> 00:21:09,600
+by an operation which moved
+from the image pointer
+
+604
+00:21:10,800 --> 00:21:12,570
+from the offset to the unsigned image
+
+605
+00:21:12,570 --> 00:21:13,900
+to the signed image.
+
+606
+00:21:13,900 --> 00:21:15,990
+This meant that the verification
+could then be formed
+
+607
+00:21:15,990 --> 00:21:18,840
+without anything really changing
+about the functionality.
+
+608
+00:21:20,240 --> 00:21:22,400
+I then noted that the
+function calls that occurred
+
+609
+00:21:22,400 --> 00:21:24,260
+between the verification
+
+610
+00:21:24,260 --> 00:21:26,680
+and the booting were unnecessary
+for actual functionality.
+
+611
+00:21:26,680 --> 00:21:27,600
+So if I knocked these out,
+
+612
+00:21:27,600 --> 00:21:29,970
+the device would still
+boot and reboot as needed
+
+613
+00:21:29,970 --> 00:21:31,500
+and do everything else it needed to.
+
+614
+00:21:31,500 --> 00:21:33,290
+They're pretty much there for
+
+615
+00:21:33,290 --> 00:21:35,490
+just cleaning up everything
+before starting the Linux image
+
+616
+00:21:35,490 --> 00:21:37,160
+or the Android image.
+
+617
+00:21:37,160 --> 00:21:38,290
+Because I could cut these out,
+
+618
+00:21:38,290 --> 00:21:40,220
+I got about five spare
+instructions I could use
+
+619
+00:21:40,220 --> 00:21:42,517
+to then swap around the
+two images as needed.
+
+620
+00:21:43,720 --> 00:21:45,730
+So I needed four additional
+instructions for this
+
+621
+00:21:45,730 --> 00:21:46,850
+on top of the first instruction
+
+622
+00:21:46,850 --> 00:21:48,600
+in which I moved the pointer.
+
+623
+00:21:48,600 --> 00:21:50,460
+The first thing I had to do
+was move the pointer back
+
+624
+00:21:50,460 --> 00:21:52,410
+from the signed image back to the offset
+
+625
+00:21:52,410 --> 00:21:54,900
+at the start of the data I'd sent,
+
+626
+00:21:54,900 --> 00:21:56,220
+read that offset value,
+
+627
+00:21:56,220 --> 00:21:58,020
+jump to that offset value,
+
+628
+00:21:58,020 --> 00:22:00,970
+and then point this pointer the structure
+
+629
+00:22:00,970 --> 00:22:02,350
+that sent for booting
+
+630
+00:22:02,350 --> 00:22:05,990
+to the new unsigned malicious code.
+
+631
+00:22:05,990 --> 00:22:07,650
+This would be sufficient
+to swap between the signed
+
+632
+00:22:07,650 --> 00:22:08,483
+and unsigned image,
+
+633
+00:22:08,483 --> 00:22:11,140
+and meant I could facilitate
+this time of check
+
+634
+00:22:11,140 --> 00:22:12,570
+to time of use attack.
+
+635
+00:22:12,570 --> 00:22:13,840
+And I found this to be effective,
+
+636
+00:22:13,840 --> 00:22:16,290
+allowing me to run unsigned Android images
+
+637
+00:22:16,290 --> 00:22:18,683
+without unlocking the bootloader at all.
+
+638
+00:22:19,670 --> 00:22:21,110
+So there's a few certain
+things you can do with this.
+
+639
+00:22:21,110 --> 00:22:22,960
+The first one is running tethered root.
+
+640
+00:22:22,960 --> 00:22:25,040
+So unlocking the bootloader
+
+641
+00:22:25,040 --> 00:22:27,480
+obviously wipes all the user data,
+
+642
+00:22:27,480 --> 00:22:29,280
+and permanently rooting the phone
+
+643
+00:22:29,280 --> 00:22:31,200
+exposes it to quite a lot of risk.
+
+644
+00:22:31,200 --> 00:22:32,420
+A device being permanently rooted
+
+645
+00:22:32,420 --> 00:22:33,480
+is not something that's necessary
+
+646
+00:22:33,480 --> 00:22:35,920
+unless you're constantly
+using it for research,
+
+647
+00:22:35,920 --> 00:22:37,410
+especially for most phone users.
+
+648
+00:22:37,410 --> 00:22:38,243
+If you wanna play around
+
+649
+00:22:38,243 --> 00:22:40,420
+with the internals of
+your phone, that's fine.
+
+650
+00:22:40,420 --> 00:22:41,480
+But if you want to go back
+
+651
+00:22:41,480 --> 00:22:44,270
+to the phone functioning normally,
+
+652
+00:22:44,270 --> 00:22:45,260
+that's something you can't really do
+
+653
+00:22:45,260 --> 00:22:46,590
+without then locking the bootloader
+
+654
+00:22:46,590 --> 00:22:48,080
+and doing a lot of other things.
+
+655
+00:22:48,080 --> 00:22:50,600
+But by deploying a rooted
+Android image using Magisk
+
+656
+00:22:50,600 --> 00:22:52,310
+or any other rooting tool you like,
+
+657
+00:22:52,310 --> 00:22:54,770
+but Magisk is definitely the best one,
+
+658
+00:22:54,770 --> 00:22:57,520
+you can use this time of
+check to time of use attack
+
+659
+00:22:57,520 --> 00:23:01,000
+and then boot into a
+image with root access,
+
+660
+00:23:01,000 --> 00:23:02,620
+but then reboot when you want to
+
+661
+00:23:02,620 --> 00:23:04,090
+and remove all these root capabilities,
+
+662
+00:23:04,090 --> 00:23:05,390
+just 'cause they're stored in a boot image
+
+663
+00:23:05,390 --> 00:23:06,690
+that was running from RAM.
+
+664
+00:23:08,420 --> 00:23:10,840
+However, you can also use this
+to bypass the lock screen.
+
+665
+00:23:10,840 --> 00:23:15,020
+So by accessing unencrypted
+user data via this attack,
+
+666
+00:23:15,020 --> 00:23:16,580
+one can remove the lock
+screen restrictions.
+
+667
+00:23:16,580 --> 00:23:19,108
+There's a file that's used
+for implementing lock screens,
+
+668
+00:23:19,108 --> 00:23:21,290
+and by using a custom recovery image
+
+669
+00:23:21,290 --> 00:23:23,120
+or any other functionality,
+
+670
+00:23:23,120 --> 00:23:25,790
+you could just modify this and remove it
+
+671
+00:23:25,790 --> 00:23:27,460
+or remove the lock screen entirely
+
+672
+00:23:27,460 --> 00:23:29,260
+from the Android image you're deploying
+
+673
+00:23:29,260 --> 00:23:31,623
+and get access to all
+the user data directly.
+
+674
+00:23:33,020 --> 00:23:35,593
+So here's a quick outline
+of how this time of check
+
+675
+00:23:35,593 --> 00:23:37,590
+to time of use attack is performed.
+
+676
+00:23:37,590 --> 00:23:39,220
+So again, it's just
+make and run like before
+
+677
+00:23:39,220 --> 00:23:40,750
+from my C++ code.
+
+678
+00:23:40,750 --> 00:23:43,100
+It uploads the two
+images just via fastboot
+
+679
+00:23:43,100 --> 00:23:44,980
+and then starts booting.
+
+680
+00:23:44,980 --> 00:23:46,350
+And then from here,
+
+681
+00:23:46,350 --> 00:23:48,240
+it will just swap between the two images,
+
+682
+00:23:48,240 --> 00:23:51,860
+not requiring any signing verification,
+
+683
+00:23:51,860 --> 00:23:55,240
+and boot into the unsigned
+image on the locked bootloader.
+
+684
+00:23:56,837 --> 00:23:57,990
+Further to this,
+
+685
+00:23:57,990 --> 00:23:59,870
+with developer functionality
+enabled on a phone,
+
+686
+00:23:59,870 --> 00:24:01,220
+you can add further encryption.
+
+687
+00:24:01,220 --> 00:24:02,960
+Rather than just using the internal keys
+
+688
+00:24:02,960 --> 00:24:04,220
+provided by Qualcomm,
+
+689
+00:24:04,220 --> 00:24:06,380
+you can also add your own passwords
+
+690
+00:24:06,380 --> 00:24:09,160
+or PIN numbers to your phone
+
+691
+00:24:09,160 --> 00:24:11,580
+in order to increase the
+amount of encryption there.
+
+692
+00:24:11,580 --> 00:24:13,610
+So rather than just having
+that one layer of encryption,
+
+693
+00:24:13,610 --> 00:24:16,740
+you also can require a
+password to be input on boot,
+
+694
+00:24:16,740 --> 00:24:19,360
+which means that it won't
+decrypt the user data partition
+
+695
+00:24:19,360 --> 00:24:21,780
+without adding extra functionality.
+
+696
+00:24:21,780 --> 00:24:26,010
+So this can be bypassed by
+taking the Android boot image,
+
+697
+00:24:26,010 --> 00:24:26,990
+which you have,
+
+698
+00:24:26,990 --> 00:24:28,280
+and sticking the back door on it.
+
+699
+00:24:28,280 --> 00:24:33,280
+So taking a user's phone off
+them for a short amount of time
+
+700
+00:24:33,950 --> 00:24:36,830
+or having access to it for
+a short amount of time,
+
+701
+00:24:36,830 --> 00:24:38,660
+you can deploy this exploit
+of the time of check
+
+702
+00:24:38,660 --> 00:24:41,180
+to time of use attack with a reverse shell
+
+703
+00:24:41,180 --> 00:24:42,860
+built into the Android boot image
+
+704
+00:24:42,860 --> 00:24:44,340
+and put there by yourself
+
+705
+00:24:44,340 --> 00:24:46,070
+and then reboot the phone.
+
+706
+00:24:46,070 --> 00:24:48,210
+What will happen then is the
+person will put in their PIN
+
+707
+00:24:48,210 --> 00:24:49,527
+and it will boot that phone,
+
+708
+00:24:49,527 --> 00:24:50,580
+and when that's booted,
+
+709
+00:24:50,580 --> 00:24:52,280
+you will have full access
+to all of the user data
+
+710
+00:24:52,280 --> 00:24:54,140
+via a reverse shell.
+
+711
+00:24:54,140 --> 00:24:55,900
+So updated in the same way,
+
+712
+00:24:55,900 --> 00:24:57,230
+taking a init script,
+
+713
+00:24:57,230 --> 00:24:59,180
+which are usually part of the boot image,
+
+714
+00:24:59,180 --> 00:25:01,520
+and then just for this
+particular demonstration,
+
+715
+00:25:01,520 --> 00:25:03,120
+putting an interpreter shell in.
+
+716
+00:25:05,090 --> 00:25:07,740
+So this attack was disclosed
+to Qualcomm, as well,
+
+717
+00:25:07,740 --> 00:25:10,000
+but because it was only possible
+
+718
+00:25:10,000 --> 00:25:11,610
+via the initial buffer overflow,
+
+719
+00:25:11,610 --> 00:25:13,760
+there's not huge amount of
+risk by this being here.
+
+720
+00:25:13,760 --> 00:25:17,250
+If someone could perform this
+buffer overflow on that phone
+
+721
+00:25:17,250 --> 00:25:18,890
+and then perform this attack, it's bad,
+
+722
+00:25:18,890 --> 00:25:19,810
+but it's an attack chain
+
+723
+00:25:19,810 --> 00:25:22,290
+that's not always going to be viable.
+
+724
+00:25:22,290 --> 00:25:23,660
+Patching the phone to prevent this attack
+
+725
+00:25:23,660 --> 00:25:24,760
+would be extremely difficult, as well,
+
+726
+00:25:24,760 --> 00:25:26,690
+because it would require modifying code
+
+727
+00:25:26,690 --> 00:25:29,643
+that isn't directly performed
+by the Android bootloader.
+
+728
+00:25:30,490 --> 00:25:33,130
+However, these could allow an
+attacker with physical access
+
+729
+00:25:33,130 --> 00:25:35,810
+to an SDM660-based phone
+that hadn't been patched
+
+730
+00:25:35,810 --> 00:25:38,270
+now that this has been patched by Qualcomm
+
+731
+00:25:38,270 --> 00:25:41,653
+to bypass all of these
+bootloader locking mechanisms.
+
+732
+00:25:43,360 --> 00:25:44,963
+So let's move on to project two.
+
+733
+00:25:45,800 --> 00:25:48,920
+So the NXP PN series is
+a series of NFC chips
+
+734
+00:25:48,920 --> 00:25:51,730
+used for basically NFC
+communication on both smartphones
+
+735
+00:25:51,730 --> 00:25:53,660
+and some embedded electronics.
+
+736
+00:25:53,660 --> 00:25:55,490
+By breaking the firmware
+protections on these chips,
+
+737
+00:25:55,490 --> 00:25:58,270
+one could add new NFC
+capabilities to both that phone
+
+738
+00:25:58,270 --> 00:25:59,350
+with root access
+
+739
+00:25:59,350 --> 00:26:00,620
+or to their embedded products
+
+740
+00:26:00,620 --> 00:26:03,610
+which use this particular
+chip sets series.
+
+741
+00:26:03,610 --> 00:26:04,880
+It's extremely popular.
+
+742
+00:26:04,880 --> 00:26:07,240
+It's not understating it
+to say that these chips
+
+743
+00:26:07,240 --> 00:26:09,350
+are used in millions and
+millions of smartphones
+
+744
+00:26:09,350 --> 00:26:11,870
+and any exploits in them
+would be transferable
+
+745
+00:26:11,870 --> 00:26:13,810
+between a large number of devices
+
+746
+00:26:13,810 --> 00:26:15,360
+if you had root access to them.
+
+747
+00:26:16,890 --> 00:26:18,040
+So in this particular instance,
+
+748
+00:26:18,040 --> 00:26:20,350
+I was using the NXP PN553,
+
+749
+00:26:20,350 --> 00:26:23,640
+which is an NFC chip used
+solely in mobile devices.
+
+750
+00:26:23,640 --> 00:26:25,720
+It bears similarity to similar chips
+
+751
+00:26:25,720 --> 00:26:28,150
+in embedded devices and smartphones,
+
+752
+00:26:28,150 --> 00:26:31,890
+such as PN547, PN548, PN551,
+
+753
+00:26:31,890 --> 00:26:34,090
+and PN5180.
+
+754
+00:26:34,090 --> 00:26:35,220
+They all were found to use
+
+755
+00:26:35,220 --> 00:26:36,940
+a similar firmware update mechanism,
+
+756
+00:26:36,940 --> 00:26:40,390
+and they were all found to
+use the Cortex-M architecture.
+
+757
+00:26:40,390 --> 00:26:42,820
+There's other chips in the PN series,
+
+758
+00:26:42,820 --> 00:26:44,700
+such as the PN544,
+
+759
+00:26:44,700 --> 00:26:48,490
+which don't use ARM
+Cortex-M architectures,
+
+760
+00:26:48,490 --> 00:26:50,070
+but instead use 8051,
+
+761
+00:26:50,070 --> 00:26:51,470
+other things like that.
+
+762
+00:26:51,470 --> 00:26:52,440
+I also found that these chips
+
+763
+00:26:52,440 --> 00:26:54,540
+had very little public research available.
+
+764
+00:26:55,810 --> 00:26:57,340
+So on smartphones,
+
+765
+00:26:57,340 --> 00:27:00,380
+these chips are communicated
+with via the I2C interface.
+
+766
+00:27:00,380 --> 00:27:03,190
+For the PN series,
+
+767
+00:27:03,190 --> 00:27:06,830
+this is on the /dev/nq-nci device file,
+
+768
+00:27:06,830 --> 00:27:10,240
+which uses NCI for NFC communication
+
+769
+00:27:10,240 --> 00:27:11,330
+the standard NFC protocol,
+
+770
+00:27:11,330 --> 00:27:13,110
+and then a custom protocol
+for firmware updates,
+
+771
+00:27:13,110 --> 00:27:15,410
+which we're gonna attack for this project.
+
+772
+00:27:15,410 --> 00:27:17,750
+I could trace all
+communication from the phone
+
+773
+00:27:17,750 --> 00:27:19,837
+to this chip via ADB logcat.
+
+774
+00:27:21,620 --> 00:27:23,580
+So what I really wanted to
+do is force firmware updates
+
+775
+00:27:23,580 --> 00:27:24,900
+so I could see how they could function
+
+776
+00:27:24,900 --> 00:27:27,140
+and then analyze any weaknesses in them.
+
+777
+00:27:27,140 --> 00:27:32,140
+So what I did is I took
+the two firmware images
+
+778
+00:27:32,670 --> 00:27:33,503
+that were on the phones,
+
+779
+00:27:33,503 --> 00:27:38,090
+the libpn553_fw.so and libpn553_rec.so,
+
+780
+00:27:38,090 --> 00:27:40,550
+which are the recovery image
+and the main firmware image,
+
+781
+00:27:40,550 --> 00:27:42,160
+and swapped their two file names.
+
+782
+00:27:42,160 --> 00:27:43,980
+And what would happen
+is when you started up
+
+783
+00:27:43,980 --> 00:27:45,770
+the NFC functionality,
+
+784
+00:27:45,770 --> 00:27:49,080
+the phone would then verify
+which firmware it was,
+
+785
+00:27:49,080 --> 00:27:49,969
+verify the version number,
+
+786
+00:27:49,969 --> 00:27:50,802
+and see if it was different
+
+787
+00:27:50,802 --> 00:27:52,970
+to what was on the device itself.
+
+788
+00:27:52,970 --> 00:27:53,803
+Swapping these files meant
+
+789
+00:27:53,803 --> 00:27:56,300
+that I could force the
+update to occur, trace it,
+
+790
+00:27:56,300 --> 00:27:57,380
+and analyze how it worked,
+
+791
+00:27:57,380 --> 00:28:00,280
+and also trace it against some
+aspects of the source code.
+
+792
+00:28:01,200 --> 00:28:03,050
+So the bootloader update critical
+
+793
+00:28:03,050 --> 00:28:04,940
+was found to be unique to NXP chips,
+
+794
+00:28:04,940 --> 00:28:07,340
+and I think unique to that PN series.
+
+795
+00:28:07,340 --> 00:28:09,300
+It consists of a one-byte status,
+
+796
+00:28:09,300 --> 00:28:11,290
+a one-byte size, a one-byte command,
+
+797
+00:28:11,290 --> 00:28:14,010
+and then a variable size of parameters,
+
+798
+00:28:14,010 --> 00:28:15,780
+and then a CRC at the end.
+
+799
+00:28:15,780 --> 00:28:18,720
+This was encapsulated
+into 0xfc byte chunks
+
+800
+00:28:18,720 --> 00:28:19,553
+for large payloads,
+
+801
+00:28:19,553 --> 00:28:21,900
+meaning you could send
+large payloads of data
+
+802
+00:28:21,900 --> 00:28:24,343
+while only having a size of one byte.
+
+803
+00:28:25,620 --> 00:28:28,640
+Reads and writes to /dev/nq-nci directly
+
+804
+00:28:28,640 --> 00:28:30,620
+translated to I2C commands.
+
+805
+00:28:30,620 --> 00:28:33,710
+So because Android devices are essentially
+
+806
+00:28:33,710 --> 00:28:35,110
+embedded Linux devices,
+
+807
+00:28:35,110 --> 00:28:38,370
+it would send I2C communication
+via this interface.
+
+808
+00:28:38,370 --> 00:28:41,200
+I also found that using
+IO control functions,
+
+809
+00:28:41,200 --> 00:28:42,780
+I could turn the chip on and off
+
+810
+00:28:42,780 --> 00:28:45,130
+and also set it into
+bootloader mode as needed.
+
+811
+00:28:47,010 --> 00:28:47,910
+So the firmware files were found
+
+812
+00:28:47,910 --> 00:28:52,070
+to be kept in ELF files
+like libpn553_fw.so.
+
+813
+00:28:52,070 --> 00:28:53,500
+However, these ELF files were found
+
+814
+00:28:53,500 --> 00:28:54,690
+to only contained one sector,
+
+815
+00:28:54,690 --> 00:28:57,370
+which contained binary formatted data,
+
+816
+00:28:57,370 --> 00:28:59,720
+but not the code actually being executed
+
+817
+00:28:59,720 --> 00:29:01,363
+in any meaningful capacity.
+
+818
+00:29:02,510 --> 00:29:04,810
+It actually contained commands
+
+819
+00:29:04,810 --> 00:29:06,100
+which needed to be run in sequence
+
+820
+00:29:06,100 --> 00:29:07,810
+for firmware updates to occur,
+
+821
+00:29:07,810 --> 00:29:09,520
+and these commands could be updated
+
+822
+00:29:09,520 --> 00:29:11,080
+to rebuild the firmware image as needed
+
+823
+00:29:11,080 --> 00:29:13,073
+to do some cursory analysis in IDA.
+
+824
+00:29:14,240 --> 00:29:16,460
+So the CO write command
+was found to be used,
+
+825
+00:29:16,460 --> 00:29:18,990
+the only command that was
+used for this process,
+
+826
+00:29:18,990 --> 00:29:21,060
+and the first command in
+the sequence contained
+
+827
+00:29:21,060 --> 00:29:22,650
+a lot of unknown high entropy data,
+
+828
+00:29:22,650 --> 00:29:24,810
+which was likely to be a kind of checksum
+
+829
+00:29:24,810 --> 00:29:26,220
+or signature or anything.
+
+830
+00:29:26,220 --> 00:29:28,100
+All subsequent payloads
+were found to contain
+
+831
+00:29:28,100 --> 00:29:30,670
+a 24-bit address, a 16-bit size,
+
+832
+00:29:30,670 --> 00:29:32,900
+and a data payload with an unknown hash.
+
+833
+00:29:32,900 --> 00:29:35,250
+These commands were all
+required to be sent in sequence
+
+834
+00:29:35,250 --> 00:29:36,780
+as they were stored in this update file
+
+835
+00:29:36,780 --> 00:29:38,530
+or they wouldn't function properly.
+
+836
+00:29:40,100 --> 00:29:42,040
+So because memory addresses
+at the start of commands
+
+837
+00:29:42,040 --> 00:29:43,410
+aided the reconstruction of the firmware,
+
+838
+00:29:43,410 --> 00:29:44,950
+I could generate a firmware binary
+
+839
+00:29:44,950 --> 00:29:47,020
+containing all the firmware
+data that was there.
+
+840
+00:29:47,020 --> 00:29:49,270
+However, I did note that the
+firmware that was created
+
+841
+00:29:49,270 --> 00:29:50,920
+from this was extremely small,
+
+842
+00:29:50,920 --> 00:29:52,883
+definitely not enough to perform
+all the NFC functionality
+
+843
+00:29:52,883 --> 00:29:55,240
+that these chips were capable of.
+
+844
+00:29:55,240 --> 00:29:56,850
+I also found multiple code references
+
+845
+00:29:56,850 --> 00:30:01,120
+to memory that wasn't accessible
+via my firmware updates,
+
+846
+00:30:01,120 --> 00:30:02,850
+meaning that the core system functionality
+
+847
+00:30:02,850 --> 00:30:04,780
+was likely to be stored
+further in the bootloader
+
+848
+00:30:04,780 --> 00:30:07,480
+or as part of some kind of
+immutable data on the chip.
+
+849
+00:30:08,510 --> 00:30:10,300
+I found that there were two
+commands in the bootloader
+
+850
+00:30:10,300 --> 00:30:12,730
+for allowing for readback
+of memory, A2 and E0.
+
+851
+00:30:12,730 --> 00:30:14,780
+A2 was just the standard
+read memory command,
+
+852
+00:30:14,780 --> 00:30:16,130
+which allowed you to read memory
+
+853
+00:30:16,130 --> 00:30:17,570
+from some arbitrary addresses,
+
+854
+00:30:17,570 --> 00:30:20,620
+but only limited to the memory
+that could also be written to
+
+855
+00:30:20,620 --> 00:30:21,950
+via firmware updates,
+
+856
+00:30:21,950 --> 00:30:24,410
+and could mean I could directly
+read back the bootloader.
+
+857
+00:30:24,410 --> 00:30:26,060
+However, the E0 command was found
+
+858
+00:30:26,060 --> 00:30:27,560
+to calculate checksums of memory
+
+859
+00:30:27,560 --> 00:30:30,300
+and also provide four
+bytes of configuration data
+
+860
+00:30:30,300 --> 00:30:31,550
+from an EEPROM,
+
+861
+00:30:31,550 --> 00:30:34,173
+which I could then reconstruct
+from these four bytes.
+
+862
+00:30:35,390 --> 00:30:37,267
+So I found in this EEPROM data
+
+863
+00:30:37,267 --> 00:30:39,720
+that there was a large
+chunk of randomized data
+
+864
+00:30:39,720 --> 00:30:41,327
+size of xC0,
+
+865
+00:30:41,327 --> 00:30:46,083
+ending with what looked like a
+standard RSA exponent, 10001.
+
+866
+00:30:47,380 --> 00:30:48,950
+This meant that it was
+likely to be the modulus
+
+867
+00:30:48,950 --> 00:30:50,550
+and exponent of the public RSA key
+
+868
+00:30:50,550 --> 00:30:52,900
+used by the chip for
+signature verification,
+
+869
+00:30:52,900 --> 00:30:54,130
+which meant that when I went back
+
+870
+00:30:54,130 --> 00:30:55,410
+to looking at the firmware updates,
+
+871
+00:30:55,410 --> 00:30:58,110
+it'd be easier for me to
+spot where the signature was.
+
+872
+00:30:59,610 --> 00:31:01,850
+I also found an additional
+write command over the C01,
+
+873
+00:31:01,850 --> 00:31:03,190
+which was found to allow a writing
+
+874
+00:31:03,190 --> 00:31:07,120
+of 64 bytes of configuration
+data to this EEPROM.
+
+875
+00:31:07,120 --> 00:31:08,880
+This memory had no bearing
+on any functionality
+
+876
+00:31:08,880 --> 00:31:10,820
+and its size was only
+restricted to those 64 bytes,
+
+877
+00:31:10,820 --> 00:31:12,950
+meaning that I couldn't
+use it for any attacks,
+
+878
+00:31:12,950 --> 00:31:15,613
+but it was likely to be used
+for some kind of logging data.
+
+879
+00:31:17,120 --> 00:31:18,210
+As outlined before,
+
+880
+00:31:18,210 --> 00:31:19,500
+the block write commands all ended
+
+881
+00:31:19,500 --> 00:31:21,920
+with an unknown 256-bit hash.
+
+882
+00:31:21,920 --> 00:31:23,260
+I assumed it was SHA-256,
+
+883
+00:31:23,260 --> 00:31:26,200
+but because it didn't match the contents
+
+884
+00:31:26,200 --> 00:31:27,840
+of the packet I was looking at,
+
+885
+00:31:27,840 --> 00:31:30,150
+I wasn't quite sure if that was correct.
+
+886
+00:31:30,150 --> 00:31:32,630
+Multiple other hashing
+algorithms were tried for this,
+
+887
+00:31:32,630 --> 00:31:34,810
+but with no valid results.
+
+888
+00:31:34,810 --> 00:31:35,643
+After a while,
+
+889
+00:31:35,643 --> 00:31:37,050
+I discovered this was actually the hash
+
+890
+00:31:37,050 --> 00:31:39,200
+for the next block in the sequence,
+
+891
+00:31:39,200 --> 00:31:40,940
+and I'll explain that now.
+
+892
+00:31:40,940 --> 00:31:43,330
+So the first CO command
+contains a version number,
+
+893
+00:31:43,330 --> 00:31:44,480
+the SHA-256 hash,
+
+894
+00:31:44,480 --> 00:31:46,480
+and a signature of that specific hash
+
+895
+00:31:46,480 --> 00:31:47,630
+and the version number.
+
+896
+00:31:49,120 --> 00:31:50,380
+This is the hash of the next block,
+
+897
+00:31:50,380 --> 00:31:52,120
+which also contains a hash.
+
+898
+00:31:52,120 --> 00:31:54,760
+So what happens is each block has a hash,
+
+899
+00:31:54,760 --> 00:31:57,430
+which is then hashed for
+the next block in its hash,
+
+900
+00:31:57,430 --> 00:31:58,670
+creating a sort of hash chain,
+
+901
+00:31:58,670 --> 00:32:00,890
+which means that you only
+need to verify the signature
+
+902
+00:32:00,890 --> 00:32:03,140
+at the start while also only being able
+
+903
+00:32:03,140 --> 00:32:05,550
+to write valid blocks of data
+
+904
+00:32:05,550 --> 00:32:08,520
+if they match that hash sequence.
+
+905
+00:32:08,520 --> 00:32:11,870
+I also noted that the
+final block in the sequence
+
+906
+00:32:11,870 --> 00:32:13,960
+had no hash because it
+had no subsequent block,
+
+907
+00:32:13,960 --> 00:32:15,810
+and that became very important later.
+
+908
+00:32:17,340 --> 00:32:19,040
+I performed some targeted
+fuzzing on a chip
+
+909
+00:32:19,040 --> 00:32:20,450
+on both the firmware update functionality
+
+910
+00:32:20,450 --> 00:32:21,990
+and the NCI interfaces.
+
+911
+00:32:21,990 --> 00:32:23,530
+I'd taken quite a lot
+of time in this project
+
+912
+00:32:23,530 --> 00:32:25,360
+trying to look through each aspect
+
+913
+00:32:25,360 --> 00:32:27,260
+of how this chip functions.
+
+914
+00:32:27,260 --> 00:32:29,780
+So I looked at both the
+firmware update protocol
+
+915
+00:32:29,780 --> 00:32:30,950
+and the NCI protocol,
+
+916
+00:32:30,950 --> 00:32:33,280
+and what I found was
+that the chip was found
+
+917
+00:32:33,280 --> 00:32:35,670
+to contain some vendor-specific conflicts
+
+918
+00:32:35,670 --> 00:32:37,950
+that are only accessible via NCI
+
+919
+00:32:37,950 --> 00:32:39,640
+using the configuration write command.
+
+920
+00:32:39,640 --> 00:32:42,310
+What I did was send
+incrementing bitwise values
+
+921
+00:32:42,310 --> 00:32:45,380
+while rebooting the chip to
+see if it did anything strange
+
+922
+00:32:45,380 --> 00:32:48,110
+to both the NCI interface
+
+923
+00:32:48,110 --> 00:32:49,880
+or the firmware updates itself.
+
+924
+00:32:49,880 --> 00:32:51,320
+But what I found would actually happen
+
+925
+00:32:51,320 --> 00:32:53,630
+was that it bricked the chip itself,
+
+926
+00:32:53,630 --> 00:32:55,060
+but only on the firmware side.
+
+927
+00:32:55,060 --> 00:32:56,230
+The bootloader still functioned,
+
+928
+00:32:56,230 --> 00:32:59,120
+but I couldn't now rewrite
+that configuration data
+
+929
+00:32:59,120 --> 00:32:59,953
+to unbrick the chip
+
+930
+00:32:59,953 --> 00:33:02,183
+'cause it was only
+accessible from the firmware.
+
+931
+00:33:04,180 --> 00:33:07,450
+But I decided to persevere
+with the bootloader side
+
+932
+00:33:07,450 --> 00:33:09,040
+rather than the NCI side 'cause I felt
+
+933
+00:33:09,040 --> 00:33:11,085
+that there was probably
+something usable there.
+
+934
+00:33:11,085 --> 00:33:13,120
+It was noted that the last
+block of the firmware update
+
+935
+00:33:13,120 --> 00:33:15,060
+could be written multiple
+times despite this hash chain.
+
+936
+00:33:15,060 --> 00:33:16,410
+So I could send the same block,
+
+937
+00:33:16,410 --> 00:33:18,290
+the last block several times over,
+
+938
+00:33:18,290 --> 00:33:20,320
+and it would still take
+it and still write it,
+
+939
+00:33:20,320 --> 00:33:21,190
+which implied that the hash
+
+940
+00:33:21,190 --> 00:33:22,417
+of the previous block remained in memory
+
+941
+00:33:22,417 --> 00:33:25,100
+and meant that this sequence was using
+
+942
+00:33:25,100 --> 00:33:28,470
+very static global
+memory as it went along.
+
+943
+00:33:28,470 --> 00:33:30,510
+There was a potential
+opportunity here for me here
+
+944
+00:33:30,510 --> 00:33:31,810
+to overwrite this hash in memory
+
+945
+00:33:31,810 --> 00:33:33,660
+using some kind of memory corruption,
+
+946
+00:33:34,550 --> 00:33:36,370
+such as an invalid command.
+
+947
+00:33:36,370 --> 00:33:37,770
+So I sent an invalid command
+
+948
+00:33:37,770 --> 00:33:39,160
+the same size of the
+firmware update block,
+
+949
+00:33:39,160 --> 00:33:40,450
+including that SHA-256,
+
+950
+00:33:40,450 --> 00:33:41,950
+to see what would happen.
+
+951
+00:33:41,950 --> 00:33:44,630
+At the end of the sequence
+after sending this block,
+
+952
+00:33:44,630 --> 00:33:45,950
+before the last packet,
+
+953
+00:33:45,950 --> 00:33:48,390
+the last block was prevented
+from being written,
+
+954
+00:33:48,390 --> 00:33:49,810
+implying that the hash
+had been overwritten
+
+955
+00:33:49,810 --> 00:33:51,433
+in the static RAM.
+
+956
+00:33:53,350 --> 00:33:54,530
+So because of this,
+
+957
+00:33:54,530 --> 00:33:56,210
+I could create a modified hash
+
+958
+00:33:56,210 --> 00:33:58,830
+and stick it at the end
+of my custom command
+
+959
+00:33:58,830 --> 00:34:00,550
+or my corrupted command
+
+960
+00:34:00,550 --> 00:34:02,460
+and use this to override the hash chain.
+
+961
+00:34:02,460 --> 00:34:03,820
+So because I could overwrite this hash,
+
+962
+00:34:03,820 --> 00:34:07,010
+I could modify what the
+last block contained
+
+963
+00:34:07,010 --> 00:34:09,840
+and use this to essentially
+write arbitrary memory
+
+964
+00:34:09,840 --> 00:34:10,780
+to the chip.
+
+965
+00:34:10,780 --> 00:34:12,450
+And I could do this to bypass
+
+966
+00:34:12,450 --> 00:34:14,120
+all the secretary verification mechanisms
+
+967
+00:34:14,120 --> 00:34:15,920
+and bypass the entire hash chain
+
+968
+00:34:15,920 --> 00:34:17,150
+just by adding my own hashes
+
+969
+00:34:17,150 --> 00:34:19,070
+and doing this override over
+and over and over again,
+
+970
+00:34:19,070 --> 00:34:21,453
+meaning I could modify
+any aspect of the code.
+
+971
+00:34:23,040 --> 00:34:24,139
+First thing I wanted to do with this
+
+972
+00:34:24,139 --> 00:34:26,970
+as I had signature bypass,
+
+973
+00:34:26,970 --> 00:34:28,240
+signature verification bypass,
+
+974
+00:34:28,240 --> 00:34:29,630
+was repair the firmware.
+
+975
+00:34:29,630 --> 00:34:31,380
+So using a dump of the
+working configuration,
+
+976
+00:34:31,380 --> 00:34:33,490
+which I got at the start
+of this whole process,
+
+977
+00:34:33,490 --> 00:34:38,360
+I took it and tried to write it
+
+978
+00:34:38,360 --> 00:34:42,460
+to the correct portion
+of memory in the EEPROM.
+
+979
+00:34:42,460 --> 00:34:43,293
+This repaired the chip
+
+980
+00:34:43,293 --> 00:34:45,670
+and meant that I could also prove
+
+981
+00:34:45,670 --> 00:34:47,560
+that these arbitrary
+memory writes took hold
+
+982
+00:34:47,560 --> 00:34:48,393
+and worked appropriately,
+
+983
+00:34:48,393 --> 00:34:50,710
+meaning that I could then
+repair the chip if I needed to,
+
+984
+00:34:50,710 --> 00:34:52,300
+but I could also add custom functionality.
+
+985
+00:34:52,300 --> 00:34:55,200
+So the next goal was to dump
+the bootloader from the chip.
+
+986
+00:34:56,740 --> 00:34:58,520
+All standard functions were
+stored in the bootloader
+
+987
+00:34:58,520 --> 00:35:00,110
+with limited functionality
+and firmware updates,
+
+988
+00:35:00,110 --> 00:35:02,150
+such as mem copies and things like that.
+
+989
+00:35:02,150 --> 00:35:04,730
+However, I noted that the
+NCI version number command,
+
+990
+00:35:04,730 --> 00:35:06,610
+which was part of the firmware update,
+
+991
+00:35:06,610 --> 00:35:10,150
+so the version number used by the firmware
+
+992
+00:35:10,150 --> 00:35:12,150
+would be changed when the code changed
+
+993
+00:35:12,150 --> 00:35:13,910
+rather than it being some
+kind of static memory
+
+994
+00:35:13,910 --> 00:35:15,210
+that was written.
+
+995
+00:35:15,210 --> 00:35:18,120
+Because this version number
+was easy to identify in memory
+
+996
+00:35:18,120 --> 00:35:19,420
+and it's function meant (indistinct)
+
+997
+00:35:19,420 --> 00:35:21,320
+were easy to identify alongside it,
+
+998
+00:35:21,320 --> 00:35:24,060
+I could override this in order
+to alter the functionality.
+
+999
+00:35:24,060 --> 00:35:27,970
+So I noted that after
+getting the version number,
+
+1000
+00:35:27,970 --> 00:35:32,970
+it would call a function as
+part of the NCI configuration
+
+1001
+00:35:33,170 --> 00:35:34,850
+version number read command.
+
+1002
+00:35:34,850 --> 00:35:36,820
+I decided to see if I could alter this,
+
+1003
+00:35:36,820 --> 00:35:38,670
+and what I noted was this was likely to be
+
+1004
+00:35:38,670 --> 00:35:40,383
+a mem copy function.
+
+1005
+00:35:42,090 --> 00:35:45,030
+So the branch instruction to the function
+
+1006
+00:35:45,030 --> 00:35:47,560
+could be overwritten
+using the signature bypass
+
+1007
+00:35:47,560 --> 00:35:49,610
+and taking a bit of C code
+
+1008
+00:35:49,610 --> 00:35:51,050
+and the gcc -c flag,
+
+1009
+00:35:51,050 --> 00:35:52,750
+I could write a custom function
+
+1010
+00:35:52,750 --> 00:35:53,980
+and modify it as I went along
+
+1011
+00:35:53,980 --> 00:35:55,520
+as performing firmware updates
+
+1012
+00:35:55,520 --> 00:35:57,460
+to alter what could be read.
+
+1013
+00:35:57,460 --> 00:35:59,400
+So I could then observe its effect
+
+1014
+00:35:59,400 --> 00:36:00,760
+on this version number command
+
+1015
+00:36:00,760 --> 00:36:03,170
+and see what the responses were like.
+
+1016
+00:36:03,170 --> 00:36:04,690
+Because I had overwritten the function,
+
+1017
+00:36:04,690 --> 00:36:06,640
+not added any functionality to it,
+
+1018
+00:36:06,640 --> 00:36:09,950
+I saw that the lack of data in
+the response after doing this
+
+1019
+00:36:09,950 --> 00:36:12,460
+implied that the mem copy
+was part of that return
+
+1020
+00:36:12,460 --> 00:36:14,650
+and meant I had a decent way to return
+
+1021
+00:36:14,650 --> 00:36:16,200
+arbitrary memory from the chip.
+
+1022
+00:36:17,450 --> 00:36:19,180
+So I assumed the location of RAM
+
+1023
+00:36:19,180 --> 00:36:20,447
+was gonna be at 10000
+
+1024
+00:36:20,447 --> 00:36:22,750
+due to the fact that the firmware
+was referencing this space
+
+1025
+00:36:22,750 --> 00:36:23,690
+for reads and writes
+
+1026
+00:36:23,690 --> 00:36:26,740
+and parts of all sorts
+of global memory access.
+
+1027
+00:36:26,740 --> 00:36:30,260
+In the overridden memory
+and copy function,
+
+1028
+00:36:30,260 --> 00:36:32,640
+I changed it to search
+for a unique value in RAM.
+
+1029
+00:36:32,640 --> 00:36:36,270
+I sent the value FACFAC in NCI
+
+1030
+00:36:36,270 --> 00:36:39,150
+and then searched for it
+in RAM when it was sent.
+
+1031
+00:36:39,150 --> 00:36:40,590
+This provided a global pointer
+
+1032
+00:36:40,590 --> 00:36:43,880
+right to the start of RAM 10007.
+
+1033
+00:36:43,880 --> 00:36:45,870
+I could set this pointer to be,
+
+1034
+00:36:45,870 --> 00:36:49,320
+this value to now store an
+arbitrary memory address,
+
+1035
+00:36:49,320 --> 00:36:52,890
+which I could then use to
+dump the bootloader directly.
+
+1036
+00:36:52,890 --> 00:36:54,630
+So by constantly resetting the chip
+
+1037
+00:36:54,630 --> 00:36:57,230
+and re-sending the version
+number read command,
+
+1038
+00:36:57,230 --> 00:37:00,320
+which can only be done at the
+start of the chip starting up,
+
+1039
+00:37:00,320 --> 00:37:04,420
+I could use this to dump the
+bootloader from the chip.
+
+1040
+00:37:04,420 --> 00:37:06,590
+Of course, this functionality
+could then be extended
+
+1041
+00:37:06,590 --> 00:37:08,780
+to modify other core NFC functionality,
+
+1042
+00:37:08,780 --> 00:37:11,503
+but I decided to leave it
+here and disclose it to NXP.
+
+1043
+00:37:13,120 --> 00:37:14,900
+So I decided to replicate
+this vulnerability, as well,
+
+1044
+00:37:14,900 --> 00:37:16,160
+to prove that it was on other chips.
+
+1045
+00:37:16,160 --> 00:37:19,210
+I decided to go for a chip
+mainly used in embedded devices
+
+1046
+00:37:19,210 --> 00:37:20,570
+rather than smartphones
+
+1047
+00:37:20,570 --> 00:37:22,570
+for this particular part of the project.
+
+1048
+00:37:22,570 --> 00:37:24,560
+So the PN5180 is a chip often used
+
+1049
+00:37:24,560 --> 00:37:25,727
+by hobbyists for NFC connectivity,
+
+1050
+00:37:25,727 --> 00:37:27,405
+and you can buy them very cheaply online,
+
+1051
+00:37:27,405 --> 00:37:29,150
+and they come with all
+sorts of accessories,
+
+1052
+00:37:29,150 --> 00:37:31,000
+and they're very, quite easy to work with,
+
+1053
+00:37:31,000 --> 00:37:32,770
+lots of libraries available.
+
+1054
+00:37:32,770 --> 00:37:35,070
+I found that it had a similar
+architecture to the PN553,
+
+1055
+00:37:35,070 --> 00:37:37,700
+but used a custom communication protocol
+
+1056
+00:37:37,700 --> 00:37:40,760
+instead of NCI for the core firmware.
+
+1057
+00:37:40,760 --> 00:37:43,020
+It can be communicated
+with via an SPI interface
+
+1058
+00:37:43,020 --> 00:37:44,400
+and GPIO pins.
+
+1059
+00:37:44,400 --> 00:37:46,880
+And I used a Raspberry
+PI for this project.
+
+1060
+00:37:46,880 --> 00:37:48,560
+The firmware update process was the same
+
+1061
+00:37:48,560 --> 00:37:50,920
+apart from adding a byte at
+the start because it was using
+
+1062
+00:37:50,920 --> 00:37:52,820
+a slightly different
+communication protocol,
+
+1063
+00:37:52,820 --> 00:37:54,680
+SPI rather than I2C.
+
+1064
+00:37:54,680 --> 00:37:58,763
+But this allowed me to
+replicate the signature bypass.
+
+1065
+00:38:00,250 --> 00:38:03,780
+So a command in the chip's
+communication protocol
+
+1066
+00:38:03,780 --> 00:38:07,470
+was found to read memory from
+a specific part of the EEPROM.
+
+1067
+00:38:07,470 --> 00:38:09,920
+Basically the version number, again.
+
+1068
+00:38:09,920 --> 00:38:11,720
+This point was found in
+the firmware payload,
+
+1069
+00:38:11,720 --> 00:38:13,940
+and I found that I could just
+override the entire firmware
+
+1070
+00:38:13,940 --> 00:38:16,010
+and modify this pointer in read memory
+
+1071
+00:38:16,010 --> 00:38:18,770
+in order to dump the bootloader
+from this chip, as well.
+
+1072
+00:38:18,770 --> 00:38:20,650
+I could read it without
+any functional code changes
+
+1073
+00:38:20,650 --> 00:38:22,310
+and just modifying this memory pointer.
+
+1074
+00:38:22,310 --> 00:38:24,400
+Obviously, though, this took a lot longer
+
+1075
+00:38:24,400 --> 00:38:26,800
+than just doing it via
+arbitrary code execution.
+
+1076
+00:38:28,770 --> 00:38:30,410
+The vulnerability was
+likely to be available
+
+1077
+00:38:30,410 --> 00:38:31,750
+on all of the similar chipsets,
+
+1078
+00:38:31,750 --> 00:38:35,530
+not just the PN5180 and the PN553.
+
+1079
+00:38:35,530 --> 00:38:37,420
+It's likely to be on all the other ones
+
+1080
+00:38:37,420 --> 00:38:41,330
+apart from the later
+versions of the series,
+
+1081
+00:38:41,330 --> 00:38:43,490
+like such as the NXP SN series,
+
+1082
+00:38:43,490 --> 00:38:44,780
+which are completely immune to this,
+
+1083
+00:38:44,780 --> 00:38:45,760
+and also use encryption
+
+1084
+00:38:45,760 --> 00:38:47,960
+on top of their signature verification,
+
+1085
+00:38:47,960 --> 00:38:50,960
+adding some quite strong protections.
+
+1086
+00:38:50,960 --> 00:38:52,420
+These could allow an attack with access
+
+1087
+00:38:52,420 --> 00:38:53,380
+to the firmware updates, though,
+
+1088
+00:38:53,380 --> 00:38:56,410
+to completely take over the chips,
+
+1089
+00:38:56,410 --> 00:38:57,300
+the vulnerable chips,
+
+1090
+00:38:57,300 --> 00:38:58,380
+and modify the functionality
+
+1091
+00:38:58,380 --> 00:38:59,770
+or add NFC functionality,
+
+1092
+00:38:59,770 --> 00:39:01,460
+add some kind of NFC backdoor,
+
+1093
+00:39:01,460 --> 00:39:04,860
+or just to add functionality
+to a hobbyist product
+
+1094
+00:39:04,860 --> 00:39:06,460
+where you want to use this chip,
+
+1095
+00:39:06,460 --> 00:39:09,440
+but didn't have the capability
+to do certain things
+
+1096
+00:39:09,440 --> 00:39:12,020
+just because of limitations
+of the firmware.
+
+1097
+00:39:12,020 --> 00:39:13,020
+On smartphones, of course,
+
+1098
+00:39:13,020 --> 00:39:14,570
+it's required for root access,
+
+1099
+00:39:14,570 --> 00:39:16,210
+which isn't always available,
+
+1100
+00:39:16,210 --> 00:39:18,240
+but it can add some functionality
+
+1101
+00:39:18,240 --> 00:39:21,003
+such as NFC chip emulation.
+
+1102
+00:39:22,940 --> 00:39:25,940
+The vulnerability was
+disclosed to NXP in June 2020,
+
+1103
+00:39:25,940 --> 00:39:27,640
+and they confirmed that
+it affected multiple chips
+
+1104
+00:39:27,640 --> 00:39:28,980
+in their product line.
+
+1105
+00:39:28,980 --> 00:39:30,810
+They requested a long remediation period,
+
+1106
+00:39:30,810 --> 00:39:31,930
+which I agreed to,
+
+1107
+00:39:31,930 --> 00:39:34,720
+with a public release of August 2021,
+
+1108
+00:39:34,720 --> 00:39:36,760
+due to the fact that modifying
+
+1109
+00:39:36,760 --> 00:39:40,150
+a single stage bootloader like
+this is incredibly dangerous.
+
+1110
+00:39:40,150 --> 00:39:43,330
+When you're altering a primary bootloader
+
+1111
+00:39:43,330 --> 00:39:45,690
+from the core firmware running from it,
+
+1112
+00:39:45,690 --> 00:39:47,910
+if anything goes wrong
+during this process,
+
+1113
+00:39:47,910 --> 00:39:49,530
+you essentially brick your chip.
+
+1114
+00:39:49,530 --> 00:39:51,330
+And because these chips are so pervasive,
+
+1115
+00:39:51,330 --> 00:39:54,380
+there's no way to really unbrick
+them via any other means.
+
+1116
+00:39:54,380 --> 00:39:56,470
+It's something they wanted
+to be very careful with.
+
+1117
+00:39:56,470 --> 00:39:58,060
+So it was done in phased rollouts
+
+1118
+00:39:58,060 --> 00:40:01,210
+and it was done in quite
+an impressive manner.
+
+1119
+00:40:01,210 --> 00:40:03,700
+The current generation
+of NXP NFC products,
+
+1120
+00:40:03,700 --> 00:40:04,610
+including the SN series,
+
+1121
+00:40:04,610 --> 00:40:06,140
+are definitely not affected.
+
+1122
+00:40:06,140 --> 00:40:07,720
+I've checked this myself
+
+1123
+00:40:07,720 --> 00:40:09,310
+and found that the encryption in place
+
+1124
+00:40:09,310 --> 00:40:10,660
+and the modifications to the code means
+
+1125
+00:40:10,660 --> 00:40:13,460
+that this particular
+vulnerability does not allow
+
+1126
+00:40:13,460 --> 00:40:15,090
+for this initial bypass.
+
+1127
+00:40:15,090 --> 00:40:17,750
+And remediation across
+all the affected chipsets
+
+1128
+00:40:17,750 --> 00:40:18,900
+has now been performed.
+
+1129
+00:40:20,560 --> 00:40:21,457
+Special thanks to Qualcomm
+
+1130
+00:40:21,457 --> 00:40:23,623
+and NXP for remediating these findings.
+
+1131
+00:40:24,510 --> 00:40:26,080
+They did a really good
+job being communicative
+
+1132
+00:40:26,080 --> 00:40:27,130
+throughout this entire process
+
+1133
+00:40:27,130 --> 00:40:28,920
+and were very helpful
+in helping me understand
+
+1134
+00:40:28,920 --> 00:40:31,248
+some of the vulnerabilities I found.
+
+1135
+00:40:31,248 --> 00:40:32,850
+Firmware signature protection
+
+1136
+00:40:32,850 --> 00:40:34,420
+is only good as its implementation,
+
+1137
+00:40:34,420 --> 00:40:36,520
+and because there were slight weaknesses
+
+1138
+00:40:36,520 --> 00:40:37,570
+in these implementations,
+
+1139
+00:40:37,570 --> 00:40:39,610
+I could use these to
+bypass them completely
+
+1140
+00:40:39,610 --> 00:40:44,330
+and gain quite privileged
+access to quite pervasive chips.
+
+1141
+00:40:44,330 --> 00:40:45,163
+Common chips, however,
+
+1142
+00:40:45,163 --> 00:40:46,920
+are great targets as
+they have a high impact
+
+1143
+00:40:46,920 --> 00:40:47,980
+and they don't always have
+
+1144
+00:40:47,980 --> 00:40:50,910
+all of their weaknesses remediated.
+
+1145
+00:40:50,910 --> 00:40:52,700
+And of course, bootloader
+vulnerabilities are common,
+
+1146
+00:40:52,700 --> 00:40:53,950
+even in popular hardware.
+
+1147
+00:40:54,900 --> 00:40:56,163
+Thank you very much.
+

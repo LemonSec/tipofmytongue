@@ -1,0 +1,2084 @@
+1
+00:00:00,110 --> 00:00:03,899
+ My name is Robert Stucke, I'm a security
+consultant from Phoenix, Arizona. I work mostly
+
+2
+00:00:03,899 --> 00:00:10,589
+doing pen testing, incident response, architecture.
+I've been coming to DEF CON since 1996, and
+
+3
+00:00:10,589 --> 00:00:16,680
+I'm a big fan of high altitude photography.
+Also this weekend is my 11th anniversary,
+
+4
+00:00:16,680 --> 00:00:20,960
+and I want to thank my amazing and understanding
+wife, Linda --
+
+5
+00:00:20,960 --> 00:00:24,140
+(Applause)
+-- who didn't realize that marrying me at
+
+6
+00:00:24,140 --> 00:00:27,460
+DEF CON meant that I'd be in Vegas every year
+on our anniversary.
+
+7
+00:00:27,460 --> 00:00:30,789
+(Laughter)
+And I'm very sorry about that.
+
+8
+00:00:30,789 --> 00:00:35,490
+So I'm going to present on a variety of topics
+relating to research that I've been working
+
+9
+00:00:35,490 --> 00:00:38,900
+on over the past few years.
+The common theme that you'll see is that if
+
+10
+00:00:38,900 --> 00:00:42,270
+you aren't monitoring your DNS traffic and
+understanding just how things behave when
+
+11
+00:00:42,270 --> 00:00:46,200
+everything is normal, you're probably not
+going to notice when bad things happen.
+
+12
+00:00:46,200 --> 00:00:50,850
+So I've been abusing DNS for a few years now,
+and it's always been one of my favorite attack
+
+13
+00:00:50,850 --> 00:00:56,320
+vectors to play with. You can spend a fortune
+hardening your perimeter, but if I can get
+
+14
+00:00:56,320 --> 00:01:00,790
+one of your devices to trust me, it's game
+over and no vulnerability scanner in the market
+
+15
+00:01:00,790 --> 00:01:04,860
+is going to find the kinds of misconfigurations
+that will always lead to me getting that foot
+
+16
+00:01:04,860 --> 00:01:07,470
+in the door.
+So these are the various topics that I'll
+
+17
+00:01:07,470 --> 00:01:12,680
+be covering today. First is my adventures
+in DNS bit squading. And some fun with people
+
+18
+00:01:12,680 --> 00:01:18,110
+and misunderstood end point behavior, people
+who don't register their domains, and some
+
+19
+00:01:18,110 --> 00:01:25,110
+malicious domain high jinx.
+Arnhem Dynamburg spoke at DEF CON in 2011
+
+20
+00:01:26,690 --> 00:01:31,159
+about something he called domain bit squading.
+For anyone who is not familiar with his research,
+
+21
+00:01:31,159 --> 00:01:35,700
+and if you're interested in DNS mayhem, I'd
+suggest you download the video of his talk.
+
+22
+00:01:35,700 --> 00:01:39,880
+When I read the summary of the talk published
+before Black Hat, I was excited to get started
+
+23
+00:01:39,880 --> 00:01:46,330
+into how I could abuse it. So I'm not going
+to rehash his talk, but I'm going to quickly
+
+24
+00:01:46,330 --> 00:01:51,380
+cover some of the relevant details, explain
+what it is, why it happens, and then I'll
+
+25
+00:01:51,380 --> 00:01:56,479
+show some examples of things that I've seen
+and what kind of risk it presents.
+
+26
+00:01:56,479 --> 00:02:00,750
+So sometimes a single bit in memory will encounter
+an error that causes it to flip its state.
+
+27
+00:02:00,750 --> 00:02:05,630
+A one will flip to a zero or a zero will flip
+to a one. And without ECC memory this will
+
+28
+00:02:05,630 --> 00:02:10,470
+be uncorrected. And every once in a while
+that bit will get flipped in the middle of
+
+29
+00:02:10,470 --> 00:02:15,980
+interesting strings of data.
+Arnhem explored the phenomenon where single
+
+30
+00:02:15,980 --> 00:02:20,290
+bit errors in the right part of memory at
+just the right moment would cause a client
+
+31
+00:02:20,290 --> 00:02:25,620
+to query a completely legal, valid, and yet
+incorrect name. His talk revolved more around
+
+32
+00:02:25,620 --> 00:02:29,690
+explaining the likelihood of this happening
+and its causes, and I continued where he left
+
+33
+00:02:29,690 --> 00:02:33,590
+off and exploring all the ways that I could
+abuse this for malicious purposes.
+
+34
+00:02:33,590 --> 00:02:39,310
+So DNS bit squading is anticipating the ways
+in which these errors will mangle DNS names,
+
+35
+00:02:39,310 --> 00:02:44,489
+registering those domains, and answering those
+misdirected requests.
+
+36
+00:02:44,489 --> 00:02:48,330
+So in memory of the domain name for Google.Com
+that just got past your resolver, it looks
+
+37
+00:02:48,330 --> 00:02:53,060
+like this. Let's say a high energy proton
+strikes one of the individual bits of memory
+
+38
+00:02:53,060 --> 00:02:57,780
+here, flipping its state so instead of being
+a one, it's now a zero. Your browser just
+
+39
+00:02:57,780 --> 00:03:02,769
+asked DNS to resolve Goofle.com and it will
+happily go get the answer for you. DNS SEC
+
+40
+00:03:02,769 --> 00:03:06,030
+isn't going to help you here and in fact there
+is very little that could have prevented this
+
+41
+00:03:06,030 --> 00:03:11,879
+from happening in a completely invisible way,
+other than ECC memory, of course, though in
+
+42
+00:03:11,879 --> 00:03:16,440
+high end servers ECC isn't really very common.
+And even if you had ECC, there are plenty
+
+43
+00:03:16,440 --> 00:03:20,170
+of places that this could have occurred where
+it's never used, like on your NIC or in the
+
+44
+00:03:20,170 --> 00:03:25,830
+DRAM cache on your hard drive.
+So Dynamburg's talk covers the causes of these
+
+45
+00:03:25,830 --> 00:03:30,650
+details in a lot more detail. But what's important
+is memory errors happen and sometimes they
+
+46
+00:03:30,650 --> 00:03:36,140
+corrupt memory and sometimes that affects
+DNS.
+
+47
+00:03:36,140 --> 00:03:38,349
+Common causes are heat, electrical problems
+--
+
+48
+00:03:38,349 --> 00:03:45,349
+(Applause)
+ A shot.
+
+49
+00:03:48,580 --> 00:03:55,580
+ AUDIENCE: Double!
+ It's after 5 o'clock somewhere. Wait. That's
+
+50
+00:03:57,819 --> 00:04:01,290
+here.
+You know the drill.
+
+51
+00:04:01,290 --> 00:04:07,209
+They're new, we need somebody from the audience.
+Is there somebody here today who it's their
+
+52
+00:04:07,209 --> 00:04:14,209
+11th anniversary? Anybody? Oh, all right.
+(Applause)
+
+53
+00:04:16,369 --> 00:04:22,400
+Is this your first time on the DEF CON stage?
+ Oh, yeah.
+
+54
+00:04:22,400 --> 00:04:28,009
+ I'd like to introduce you to 2500 of my
+closest friends. What is your name?
+
+55
+00:04:28,009 --> 00:04:30,369
+ Linda.
+ Everybody, this is Linda. Linda, this is
+
+56
+00:04:30,369 --> 00:04:37,369
+everybody.
+ Happy anniversary.
+
+57
+00:04:38,629 --> 00:04:45,629
+(Shouts and applause)
+ Good luck.
+
+58
+00:04:52,409 --> 00:04:59,409
+(Shouts and applause)
+ Hey, you guys, why don't you get a room?
+
+59
+00:05:05,499 --> 00:05:08,800
+(Laughter)
+ ROBERT STUCKE: Where was I?
+
+60
+00:05:08,800 --> 00:05:12,150
+ The talk's been canceled.
+(Laughter)
+
+61
+00:05:12,150 --> 00:05:17,899
+ ROBERT STUCKE: Okay. So where was I?
+Common causes of these memory errors. Heat,
+
+62
+00:05:17,899 --> 00:05:22,499
+electrical problems, radioactive contamination
+and cosmic rays. I found the most interesting
+
+63
+00:05:22,499 --> 00:05:27,279
+were the heat and the cosmic rays. So you're
+probably thinking that this is a pretty rare
+
+64
+00:05:27,279 --> 00:05:31,740
+phenomenon, and you'd be right. If you're
+thinking that this hasn't already affected
+
+65
+00:05:31,740 --> 00:05:38,740
+you in a serious way, I still have more slides.
+So with heat being a major factor in these
+
+66
+00:05:39,539 --> 00:05:43,669
+memory errors, and I have observed that smart
+phones are especially vulnerable to this because
+
+67
+00:05:43,669 --> 00:05:49,059
+of the extreme operating conditions that they
+are exposed to. Most other devices have adequate
+
+68
+00:05:49,059 --> 00:05:55,939
+cooling to prevent this, but sometimes people
+intentionally run their devices too hot.
+
+69
+00:05:55,939 --> 00:05:59,729
+Not long ago Google released a lot of information
+about the way that they run their secret data
+
+70
+00:05:59,729 --> 00:06:04,960
+centers. One of the interesting things that
+I learned was that in an effort to save energy,
+
+71
+00:06:04,960 --> 00:06:09,119
+they run their data centers a bit hotter than
+most of us would find reasonable. Typical
+
+72
+00:06:09,119 --> 00:06:14,909
+data centers operate between 60 to 70 degrees,
+but they advise companies to approach 80 degrees.
+
+73
+00:06:14,909 --> 00:06:19,229
+Google themselves center some of their data
+centers, like the one in Belgium, as high
+
+74
+00:06:19,229 --> 00:06:24,839
+as 95 degrees. Intel and Microsoft say that
+servers do just fine at higher temperatures.
+
+75
+00:06:24,839 --> 00:06:29,839
+And Dell will warranty their service to run
+in environments up to 115 degrees. I think
+
+76
+00:06:29,839 --> 00:06:35,289
+that this might just be a bad idea.
+So with heat being a major factor in memory
+
+77
+00:06:35,289 --> 00:06:39,849
+stability, and Google operating their data
+centers at fiery temperatures, is there anything
+
+78
+00:06:39,849 --> 00:06:44,740
+that we can do to take advantage of this?
+It turns out that there is.
+
+79
+00:06:44,740 --> 00:06:49,169
+When I began exploring domains that might
+be especially vulnerable to this, I wanted
+
+80
+00:06:49,169 --> 00:06:53,300
+to find the most commonly queried domain names
+to increase the likelihood that I'd encounter
+
+81
+00:06:53,300 --> 00:06:57,749
+a bit error. Now I've been collecting Adinas
+logs for a large company who had a database,
+
+82
+00:06:57,749 --> 00:07:01,619
+so I queried it to find the most common domains
+our clients were asking for.
+
+83
+00:07:01,619 --> 00:07:05,479
+Removing local names and names queried by
+third-party software, I found the most commonly
+
+84
+00:07:05,479 --> 00:07:10,819
+queried name was Gstatic.Com. That's one of
+the names that Google serves, static.com come
+
+85
+00:07:10,819 --> 00:07:17,819
+from, like CSS, images, Javascript, XML files.
+So I wrote a script to enumerate all the bit
+
+86
+00:07:18,639 --> 00:07:24,399
+flipped possibilities for Gstatic. Of the
+34, 5 are registered for legitimate purposes,
+
+87
+00:07:24,399 --> 00:07:28,679
+and 29 others were available. So I bought
+them all.
+
+88
+00:07:28,679 --> 00:07:34,469
+(Applause)
+I immediately get my first hit. Here somebody
+
+89
+00:07:34,469 --> 00:07:38,849
+was doing a Google image search and the content
+returned to them somewhere along the way was
+
+90
+00:07:38,849 --> 00:07:44,110
+corrupted and their browser asked me to serve
+one of the images. In the request I see their
+
+91
+00:07:44,110 --> 00:07:48,729
+source address, I see the mangled name they
+queried, I see the resource they were trying
+
+92
+00:07:48,729 --> 00:07:53,659
+to retrieve, I see the page that was referencing
+that content, and I see what kind of client
+
+93
+00:07:53,659 --> 00:07:58,289
+it was. But going back to the referencing
+page, you see an interesting artifact. It
+
+94
+00:07:58,289 --> 00:08:03,689
+contains the original query. The requests
+were pouring in, more sources, more mangled
+
+95
+00:08:03,689 --> 00:08:10,139
+names, more image requests and more refers
+containing the original query.
+
+96
+00:08:10,139 --> 00:08:15,389
+(Laughter)
+So I've collected over 50,000 unique queries.
+
+97
+00:08:15,389 --> 00:08:20,789
+This was the most common.
+(Laughter)
+
+98
+00:08:20,789 --> 00:08:25,189
+So sometimes this happens at just the right
+moment to screw with one of your queries.
+
+99
+00:08:25,189 --> 00:08:31,169
+Big deal. The odds of that happening are so
+small, do we really care? Maybe. But sometimes
+
+100
+00:08:31,169 --> 00:08:35,599
+this happens at just the right moment. Something
+is right about to be stored permanently to
+
+101
+00:08:35,599 --> 00:08:40,370
+disk and that's a bit more interesting. I
+don't know what kind of odds we're looking
+
+102
+00:08:40,370 --> 00:08:45,949
+at there, but I bet it's a lot more likely
+to happen in a 95 degree data center. Now
+
+103
+00:08:45,949 --> 00:08:50,139
+by now my logs are full of a lot of --> they're
+full of a lot of noise. I'm getting so many
+
+104
+00:08:50,139 --> 00:08:54,500
+requests a day that I can't review them all
+by hand. So I'm writing scripts, trying to
+
+105
+00:08:54,500 --> 00:08:58,750
+find patterns.
+This is the biggest one that jumped out. I
+
+106
+00:08:58,750 --> 00:09:03,490
+was getting a lot of requests for the exact
+same image with the exact same mangled domain
+
+107
+00:09:03,490 --> 00:09:07,610
+name. All of the requests were coming from
+phones, and I was getting the request every
+
+108
+00:09:07,610 --> 00:09:12,720
+few seconds. So these phones were trying to
+go to the Google mobile site and they were
+
+109
+00:09:12,720 --> 00:09:18,750
+asking me to serve that tiny Google logo.
+I found a single Web server out of the entire
+
+110
+00:09:18,750 --> 00:09:22,779
+Google cloud that was serving content that
+had a permanently mangled domain pointing
+
+111
+00:09:22,779 --> 00:09:28,560
+to the logo. Coincidentally, I happened to
+have an image in that exact path on my server
+
+112
+00:09:28,560 --> 00:09:34,279
+and Googles clients were fetching it instead.
+So when they meant to fetch that little logo,
+
+113
+00:09:34,279 --> 00:09:41,279
+they got this one.
+(Applause)
+
+114
+00:09:47,139 --> 00:09:50,029
+For two years.
+(Laughter)
+
+115
+00:09:50,029 --> 00:09:56,050
+Hundreds of thousands of requests came to
+me for that logo, and instead of what Google
+
+116
+00:09:56,050 --> 00:10:00,879
+had intended, this is what they saw.
+Then one day they all stopped. Google pushed
+
+117
+00:10:00,879 --> 00:10:05,680
+out a content change for mobile sites and
+it was overwritten.
+
+118
+00:10:05,680 --> 00:10:11,310
+So now I'm finding more patterns in the logs.
+And I started working on trying to figure
+
+119
+00:10:11,310 --> 00:10:15,750
+out what they all were. Another one of them
+turned out to be very regular. But this time
+
+120
+00:10:15,750 --> 00:10:21,040
+it was clearly a naturally bit flip in memory
+instead of something stored. I was receiving
+
+121
+00:10:21,040 --> 00:10:25,310
+requests like these at a rate of about one
+an hour. They didn't look familiar and the
+
+122
+00:10:25,310 --> 00:10:29,899
+user agent string said the client was Google
+feed fetcher. The requests were all coming
+
+123
+00:10:29,899 --> 00:10:34,160
+from devices in the same network. All of them
+were feed fetcher, and all of the requests
+
+124
+00:10:34,160 --> 00:10:37,459
+were for XML files.
+So I did some poking around and I found that
+
+125
+00:10:37,459 --> 00:10:42,709
+feed fetcher is the mechanism that Google
+uses for grabbing updated content for iGoogle.
+
+126
+00:10:42,709 --> 00:10:49,709
+And I found that those source IP addresses
+were in Belgium.
+
+127
+00:10:49,980 --> 00:10:55,069
+So those requests are Google's own servers,
+fetching updated content for the various widgets
+
+128
+00:10:55,069 --> 00:11:00,290
+that make up the iGoogle personalized home
+page. Each widget is an XML file that finds
+
+129
+00:11:00,290 --> 00:11:07,290
+its content, and Google was asking me to serve
+that content to their presentation servers.
+
+130
+00:11:07,470 --> 00:11:14,470
+(Laughter and applause)
+So I wondered, would Google serve content
+
+131
+00:11:16,959 --> 00:11:22,800
+to their users that they accidentally received
+from me? It turns out that they will.
+
+132
+00:11:22,800 --> 00:11:26,149
+So I grabbed the XML files that Google was
+asking me for, and I picked them apart. So
+
+133
+00:11:26,149 --> 00:11:30,019
+there were two sections, a header describing
+the module and a C data section that is packed
+
+134
+00:11:30,019 --> 00:11:35,209
+with the HTML and TSS and Javascript that
+make up the widget. So I just modified the
+
+135
+00:11:35,209 --> 00:11:41,579
+link to the background image. And I changed
+them all from Gstatic to GRtatic.Com and left
+
+136
+00:11:41,579 --> 00:11:45,350
+everything else alone. Put the XML files in
+the path where feed fetcher would pick it
+
+137
+00:11:45,350 --> 00:11:51,499
+up at, and I waited. Almost immediately feed
+fetcher asked me for one of the XML files.
+
+138
+00:11:51,499 --> 00:11:57,319
+And once it did, I immediately started receiving
+requests for that background image. So I removed
+
+139
+00:11:57,319 --> 00:12:02,170
+the XML files I modified and waited for the
+requests to stop. And they didn't. And for
+
+140
+00:12:02,170 --> 00:12:08,100
+35 days straight, the same 61 devices continued
+to ask me for that background image, every
+
+141
+00:12:08,100 --> 00:12:11,879
+day.
+What was also interesting was that every single
+
+142
+00:12:11,879 --> 00:12:18,879
+one of those devices are clients and virgin
+media in the UK. So one grabbed that XML file,
+
+143
+00:12:20,499 --> 00:12:25,819
+Google served it to 61 people. And over the
+past year 500 unique feed fetcher source site
+
+144
+00:12:25,819 --> 00:12:31,399
+entites have asked me to serve that module
+over 15,000 times. So I could have touched
+
+145
+00:12:31,399 --> 00:12:35,240
+quite a few of their users with something
+a little more malicious than a modified background
+
+146
+00:12:35,240 --> 00:12:42,240
+image.
+Here is some more fun with Google. If you
+
+147
+00:12:47,720 --> 00:12:53,040
+haven't heard of Postini, they were bought
+by Google. And they do antispam, antisecurity,
+
+148
+00:12:53,040 --> 00:12:58,100
+email archiving and so on. And the way that
+their service works is you modify your DNS
+
+149
+00:12:58,100 --> 00:13:02,560
+to point your MX record to their domain. The
+MX you point to will be your domain dot some
+
+150
+00:13:02,560 --> 00:13:07,819
+four characters dot PSMPT dot com. One of
+the interesting things here is that the domain
+
+151
+00:13:07,819 --> 00:13:12,209
+is so short that you could easily register
+all of the possible bit flipped versions.
+
+152
+00:13:12,209 --> 00:13:15,579
+The other interesting thing here is that so
+many companies point their MX records to a
+
+153
+00:13:15,579 --> 00:13:21,910
+single domain, and nobody thought that was
+a bad idea. So I registered just three possible
+
+154
+00:13:21,910 --> 00:13:27,199
+bit flips for that name. And PRMTP.Com seemed
+to be the busiest. Now these are the queries
+
+155
+00:13:27,199 --> 00:13:34,199
+that I received in a single month for a single
+bit flip of the PSMPT.com domain. And these.
+
+156
+00:13:35,240 --> 00:13:41,230
+And these. And these.
+If you use Postini, your mail has probably
+
+157
+00:13:41,230 --> 00:13:47,769
+come to me at some point. So I don't think
+that anybody can say that Google doesn't take
+
+158
+00:13:47,769 --> 00:13:52,470
+security seriously. But if anybody had considered
+what kinds of problems can result from heat
+
+159
+00:13:52,470 --> 00:13:56,649
+inducement errors, they might consider compensating
+for these kinds of things.
+
+160
+00:13:56,649 --> 00:14:01,749
+Don't let single short domains be such a factor
+in so much of your business like Postini.
+
+161
+00:14:01,749 --> 00:14:05,470
+If your domain is popular, you're probably
+already buying the typos, and you might want
+
+162
+00:14:05,470 --> 00:14:09,740
+to consider the bit flips as well.
+I highly recommend that people use response
+
+163
+00:14:09,740 --> 00:14:16,740
+policy zones internally to correct mangled
+queries for your own domains. If you own Gstatic.com
+
+164
+00:14:17,220 --> 00:14:21,279
+and you operate a 95 degree data center, you
+probably want to make sure that every possible
+
+165
+00:14:21,279 --> 00:14:25,620
+way that domain could be mangled doesn't allow
+a client to attempt to reach it externally
+
+166
+00:14:25,620 --> 00:14:29,980
+to your network.
+By the way, of all the domains that I explored,
+
+167
+00:14:29,980 --> 00:14:36,980
+the only company to actually preregister all
+of theirs was Yahoo.
+
+168
+00:14:39,720 --> 00:14:43,300
+So in this next session I'm going to demonstrate
+some behavior that many people don't seem
+
+169
+00:14:43,300 --> 00:14:48,309
+to understand entirely. And in all honesty,
+Microsoft has done a very poor job of documenting
+
+170
+00:14:48,309 --> 00:14:53,819
+it, and especially as it changes, and some
+of that behavior really just is inconsistent.
+
+171
+00:14:53,819 --> 00:14:57,920
+I'm just going to start by making sure that
+everyone understands how we have been told
+
+172
+00:14:57,920 --> 00:15:02,189
+to expect devices to behave when querying
+DNS. And then I'll explain how that behavior
+
+173
+00:15:02,189 --> 00:15:06,620
+becomes somewhat more unpredictable when we
+use search paths, and then I talk about some
+
+174
+00:15:06,620 --> 00:15:10,490
+of the more misunderstood behavior, and then
+I'll bring it all together to demonstrate
+
+175
+00:15:10,490 --> 00:15:16,600
+how dangerous this can be.
+So you type www.Google.Com in your address
+
+176
+00:15:16,600 --> 00:15:21,160
+bar. Your computer sends a query to your local
+DNS server, and the job of finding and returning
+
+177
+00:15:21,160 --> 00:15:27,639
+an answer now belongs to that guy. It asks
+a route, which refers it to a dot com server,
+
+178
+00:15:27,639 --> 00:15:32,709
+which refers it to the authority for Google.Com,
+where it finally gets an answer which it sends
+
+179
+00:15:32,709 --> 00:15:35,259
+to you. This is the normal behavior that everyone
+expects.
+
+180
+00:15:35,259 --> 00:15:38,459
+Your device had a question which it sends
+to your local DNS server o do all the hard
+
+181
+00:15:38,459 --> 00:15:43,579
+work to get an answer. In reality, all of
+this is only happening after some very important
+
+182
+00:15:43,579 --> 00:15:49,649
+steps. Your device was trying to find an answer
+to www.Google.Com. But that process we just
+
+183
+00:15:49,649 --> 00:15:55,379
+saw is only what would have happened if you
+had typed www.Google.com with a trailing period,
+
+184
+00:15:55,379 --> 00:15:59,499
+explicitly telling it that this was a fully
+qualified domain, meaning that the relation
+
+185
+00:15:59,499 --> 00:16:04,220
+to the root of DNS is defined. Many people
+believe that a fully qualified domain would
+
+186
+00:16:04,220 --> 00:16:09,889
+end at the com, which is incorrect. Without
+a trailing dot, everything is just assumed,
+
+187
+00:16:09,889 --> 00:16:14,319
+which is where we get into trouble. And have
+fun.
+
+188
+00:16:14,319 --> 00:16:20,759
+So whether you typed in www.Google.Com, just
+Google.Com, just www, or www.Google.Com with
+
+189
+00:16:20,759 --> 00:16:25,720
+a trailing dot, these will all result in completely
+different behaviors. Much of this is configurable
+
+190
+00:16:25,720 --> 00:16:29,220
+but almost never is.
+So let's explore what actually happens in
+
+191
+00:16:29,220 --> 00:16:33,499
+these situations. There are multiple features
+that influence decision-making on the part
+
+192
+00:16:33,499 --> 00:16:38,430
+of the client before it ever decides to send
+a DNS query. Two of these features are suffix
+
+193
+00:16:38,430 --> 00:16:43,709
+search paths and DNS devolution. Both of these
+have numerous configurable options that influence
+
+194
+00:16:43,709 --> 00:16:49,259
+their behavior and act very differently between
+every versions of Windows and Service Pack.
+
+195
+00:16:49,259 --> 00:16:54,059
+So this is how most people would use suffix
+search paths. If your company name is Foo
+
+196
+00:16:54,059 --> 00:16:59,889
+and you own foo.com, and your active directory
+is AD.foo.com, you might put ad.foo.com and
+
+197
+00:16:59,889 --> 00:17:03,850
+foo.com in your suffix search path and either
+push that to the clients as part of the system
+
+198
+00:17:03,850 --> 00:17:10,240
+build or in group policy. If one of your clients
+tried to resolve the short name, www, the
+
+199
+00:17:10,240 --> 00:17:16,549
+default XP behavior would first append ad.foo.com,
+then foo.com, and then it sends a net bios
+
+200
+00:17:16,549 --> 00:17:20,589
+query.
+If your device was querying www.PHX, the default
+
+201
+00:17:20,589 --> 00:17:26,360
+behavior would be the first query, www.phx
+itself, because it has two labels. Then attend
+
+202
+00:17:26,360 --> 00:17:30,460
+the suffix search path, and then because the
+entire name is less than 15 bytes it will
+
+203
+00:17:30,460 --> 00:17:36,990
+again attempt a net bios.
+Everything after xpSP3 will try to resolve
+
+204
+00:17:36,990 --> 00:17:43,860
+www.phx with DNS, then with net bios, and
+then stop. No suffix search paths are appended,
+
+205
+00:17:43,860 --> 00:17:48,080
+and so of course since most people make design
+decisions based upon what was at one point
+
+206
+00:17:48,080 --> 00:17:53,010
+expected behavior, this broke things. This
+is when people start playing with all the
+
+207
+00:17:53,010 --> 00:17:58,049
+registry and group policy settings to fix
+these compatibility issues.
+
+208
+00:17:58,049 --> 00:18:03,809
+Then Microsoft broke DNS evolution. Before
+XP and until Microsoft changed the behavior
+
+209
+00:18:03,809 --> 00:18:09,529
+in XP, in the absence of a search path, Windows
+would use DNS devolution to find an answer.
+
+210
+00:18:09,529 --> 00:18:14,450
+So without a search path, if the client was
+querying www, Windows appends the only domain
+
+211
+00:18:14,450 --> 00:18:19,110
+it knows. The connection specific domain it
+got from DHCP or being a member of active
+
+212
+00:18:19,110 --> 00:18:25,450
+directory.
+The first query is www.phx.ad.foo.com, and
+
+213
+00:18:25,450 --> 00:18:31,090
+then it begins walking up the domain and removing
+labels. The query is www.ad.foo.com, it removes
+
+214
+00:18:31,090 --> 00:18:37,090
+another label and finally queries www.foo.com
+and stops. It assumes your organizational
+
+215
+00:18:37,090 --> 00:18:40,799
+boundary is Foo.Com and that you wouldn't
+want to query www.com.
+
+216
+00:18:40,799 --> 00:18:47,470
+Microsoft changed this behavior. Because obviously
+not all organizational boundaries are two
+
+217
+00:18:47,470 --> 00:18:54,470
+levels. And if your top level was CO.UK, with
+a connection specific domain of Ad.Foo.Co.Uk,
+
+218
+00:18:54,779 --> 00:19:01,399
+the default behavior would have included querying
+www.co.uk, which would have fallen outside
+
+219
+00:19:01,399 --> 00:19:07,029
+of your organizational boundaries. So the
+fix introduced by a random security hot fix
+
+220
+00:19:07,029 --> 00:19:12,830
+was to change the number of levels that must
+be in the name to three. So devolution in
+
+221
+00:19:12,830 --> 00:19:17,549
+this case stops at foo.co.uk, which would
+have been desired here.
+
+222
+00:19:17,549 --> 00:19:23,360
+But in our example of foo.com, the new behavior
+introduced by that random hot fix was to stop
+
+223
+00:19:23,360 --> 00:19:28,450
+at ad.foo.com, and this broke hundreds of
+thousands of clients at companies where their
+
+224
+00:19:28,450 --> 00:19:33,950
+designs depended on that original behavior.
+So what did these companies do? Did they change
+
+225
+00:19:33,950 --> 00:19:40,080
+their infrastructure design to fit the behavior
+of a random hot fix? No. They changed the
+
+226
+00:19:40,080 --> 00:19:46,340
+behavior back to the way it was. This is the
+decision tree that Microsoft uses before making
+
+227
+00:19:46,340 --> 00:19:48,940
+a DNS query. I know it looks simple.
+(Laughter)
+
+228
+00:19:48,940 --> 00:19:53,940
+And you're wondering how anybody could ever
+misunderstand this. But there have been dozens
+
+229
+00:19:53,940 --> 00:20:00,110
+of updates to this behavior from version to
+version and they have documented it once.
+
+230
+00:20:00,110 --> 00:20:04,429
+If one of these branches changes and breaks
+the way that you're using DNS, you'd have
+
+231
+00:20:04,429 --> 00:20:08,779
+to push out modified settings to restore that
+original behavior. Then you have the problem
+
+232
+00:20:08,779 --> 00:20:14,470
+where new updates change the way that settings
+you applied behave. Maybe next time it doesn't
+
+233
+00:20:14,470 --> 00:20:20,000
+break anything, it just changes the behavior
+enough to do something you wouldn't expect.
+
+234
+00:20:20,000 --> 00:20:24,409
+So either through registry changes or group
+policy, companies push out changes to restore
+
+235
+00:20:24,409 --> 00:20:29,890
+the original behavior, and some of them don't
+get it right. Or the behavior of those modifications
+
+236
+00:20:29,890 --> 00:20:35,100
+are changed by another hot fix.
+They push out changes to restore that lost
+
+237
+00:20:35,100 --> 00:20:39,890
+behavior because they want clients to look
+in foo.com again. But what happens in many
+
+238
+00:20:39,890 --> 00:20:45,190
+cases is they don't just restore the two level
+devolution, they remove the original two-level
+
+239
+00:20:45,190 --> 00:20:50,460
+limitation that existed in the first place.
+Thank you, Microsoft.
+
+240
+00:20:50,460 --> 00:20:54,429
+Starting in Windows 7, though, it defaults
+to three levels, will let you to change it
+
+241
+00:20:54,429 --> 00:21:00,200
+to two but will not allow it to devolve to
+one level. So that means it's fixed. Right?
+
+242
+00:21:00,200 --> 00:21:06,640
+No. What about BYOD, mobile devices and all
+those previously broken Windows XP configurations?
+
+243
+00:21:06,640 --> 00:21:11,929
+So I set out to test how many broken configurations
+might still be out there. I registered some
+
+244
+00:21:11,929 --> 00:21:17,260
+dot com domains that I thought might be commonly
+used in enterprise environments.
+
+245
+00:21:17,260 --> 00:21:20,720
+The first domain is the short name the Office
+communicator will query when looking for its
+
+246
+00:21:20,720 --> 00:21:25,880
+SIP server. The next two are short names I
+found by Googling for the name of the registry
+
+247
+00:21:25,880 --> 00:21:31,490
+key that holds the Web proxy. And so I point
+these names to my server and I waited to see
+
+248
+00:21:31,490 --> 00:21:37,510
+if clients would contact me. And they did.
+After registering SIP internal, I began receiving
+
+249
+00:21:37,510 --> 00:21:43,620
+requests from Office communicator clients.
+This example was from a DHL asset, and there
+
+250
+00:21:43,620 --> 00:21:47,860
+are thousands of random devices all over the
+world trying to register with me. I only did
+
+251
+00:21:47,860 --> 00:21:51,059
+a little playing with it, but it certainly
+looks like there are a few attacks that a
+
+252
+00:21:51,059 --> 00:21:56,659
+malicious SIP server could have on a communicator
+client. So that's going to be my next talk.
+
+253
+00:21:56,659 --> 00:22:01,380
+For proxy-phoenix, there is some random end
+points from IBM and HP that began asking me
+
+254
+00:22:01,380 --> 00:22:06,700
+to be their proxy. Now they both share a client
+in Phoenix that pushes proxy-Phoenix as a
+
+255
+00:22:06,700 --> 00:22:10,929
+short name, to their clients. I thought that
+was interesting.
+
+256
+00:22:10,929 --> 00:22:16,110
+But set-proxy-com turned out to be very interesting.
+So the first hits that I received for it were
+
+257
+00:22:16,110 --> 00:22:21,299
+for thousands of Windows clients attempting
+to download a proxy pack file. So investigating
+
+258
+00:22:21,299 --> 00:22:25,370
+that source IP, I found that it was registered
+to Arthur Andersen, the failed accounting
+
+259
+00:22:25,370 --> 00:22:30,890
+firm that went down with Enron. So Accenture
+was spun off from their consultancy group,
+
+260
+00:22:30,890 --> 00:22:36,120
+which makes more sense with the next part.
+This traffic was from Accenture, and it looks
+
+261
+00:22:36,120 --> 00:22:42,610
+like their mobile device policy sucks.
+(Laughter)
+
+262
+00:22:42,610 --> 00:22:47,570
+They're pushing a configuration that references
+a location for their proxy pack file by short
+
+263
+00:22:47,570 --> 00:22:53,279
+name. And there are thousands of iPhones and
+iPads appending a dot com to that short name
+
+264
+00:22:53,279 --> 00:22:58,320
+and asking me for their pack files. And even
+though they are pushing a proxy configuration,
+
+265
+00:22:58,320 --> 00:23:02,980
+that the clients are clearly not getting,
+they're still allowed to go out directly to
+
+266
+00:23:02,980 --> 00:23:09,980
+the Internet to ask me for it.
+So looking closer, I see that not only am
+
+267
+00:23:10,210 --> 00:23:14,350
+I getting requests from Accenture, the employees
+that they have on site at their customers
+
+268
+00:23:14,350 --> 00:23:20,490
+are contacting me as well. So Accenture through
+poor DNS configuration had not only opened
+
+269
+00:23:20,490 --> 00:23:24,710
+themselves up to having every one of their
+devices hijacked, but introduced a foothold
+
+270
+00:23:24,710 --> 00:23:30,190
+into all of their customers' networks. I had
+devices contacting me directly from IBM, GE,
+
+271
+00:23:30,190 --> 00:23:36,899
+HP, Dow, Nokia, Merck, Medco, all asking me
+to be their proxies. I would have expected
+
+272
+00:23:36,899 --> 00:23:43,899
+a little better from Accenture, but not much.
+The lesson here is watch your DNS traffic.
+
+273
+00:23:44,360 --> 00:23:47,980
+Just because Windows behaved one way doesn't
+mean it will behave the same way after the
+
+274
+00:23:47,980 --> 00:23:54,559
+second Tuesday of the month.
+(Applause)
+
+275
+00:23:54,559 --> 00:24:01,559
+You need to understand what normal traffic
+looks like before you make changes, so you
+
+276
+00:24:03,820 --> 00:24:10,820
+have something to compare it to.
+This one is my favorite.
+
+277
+00:24:16,260 --> 00:24:21,409
+So I've demonstrated some fairly unique ways
+that DNS can be dangerous. Bit squading is
+
+278
+00:24:21,409 --> 00:24:25,789
+not a huge threat, but it is an interesting
+one to play with.
+
+279
+00:24:25,789 --> 00:24:30,250
+Unexpected behavior introduced by Microsoft
+patches combined with unique configuration
+
+280
+00:24:30,250 --> 00:24:35,230
+is somewhat understandable, but one of the
+worst things that I've seen companies do from
+
+281
+00:24:35,230 --> 00:24:41,110
+a DNS perspective is 100 percent self-inflicted
+and careless. What I'm about to demonstrate
+
+282
+00:24:41,110 --> 00:24:46,669
+to you I've seen companies do repeatedly over
+the years. Sometimes it's an accident. Sometimes
+
+283
+00:24:46,669 --> 00:24:51,350
+it's just willful disregard. But it always
+invites an attacker to completely own every
+
+284
+00:24:51,350 --> 00:24:56,230
+piece of infrastructure you have. And those
+invitations even get left around forums all
+
+285
+00:24:56,230 --> 00:25:00,210
+over the Internet, waiting for someone to
+accept.
+
+286
+00:25:00,210 --> 00:25:04,919
+So the problem I'm talking about is when companies
+use domains that they don't own. Those domains
+
+287
+00:25:04,919 --> 00:25:09,730
+get put into suffix search paths and they
+are pushed to all of their clients and inevitably
+
+288
+00:25:09,730 --> 00:25:13,220
+posted all over the Internet when somebody
+needs technical support.
+
+289
+00:25:13,220 --> 00:25:17,269
+So I set out to explore how many companies
+I could easily find that were doing this,
+
+290
+00:25:17,269 --> 00:25:22,440
+and it wasn't hard. I started with a little
+help from Google. So searching for the name
+
+291
+00:25:22,440 --> 00:25:27,590
+of the registry key that stores the search
+list over the output of an IP config, this
+
+292
+00:25:27,590 --> 00:25:32,720
+will return thousands of hits from bleepingcomputer.com
+and other technical support forums that encourage
+
+293
+00:25:32,720 --> 00:25:37,679
+users to post information about the work station
+configuration to help troubleshoot.
+
+294
+00:25:37,679 --> 00:25:41,279
+So I scraped Google for the results of these
+searches, and created a unique list of all
+
+295
+00:25:41,279 --> 00:25:47,919
+the domains, then began registering them.
+I stumbled upon this config output and the
+
+296
+00:25:47,919 --> 00:25:54,250
+name RSQuanta.com made it into my list of
+domains to register. Immediately after registering
+
+297
+00:25:54,250 --> 00:25:58,630
+that domain, I began receiving a flood of
+requests for it from thousands of devices.
+
+298
+00:25:58,630 --> 00:26:03,870
+I had no idea who this company was, but I
+was eager to find out.
+
+299
+00:26:03,870 --> 00:26:08,320
+So it turns out this company is called Quanta
+Computer. They are a massive Taiwan based
+
+300
+00:26:08,320 --> 00:26:13,279
+manufacturer of electronic hardware. They
+have 60,000 employees worldwide, and they
+
+301
+00:26:13,279 --> 00:26:20,279
+build hardware for Amazon, Apple, Cisco, Dell,
+LG, HP, IBM, rackspace, Cloud Flare, and others.
+
+302
+00:26:21,429 --> 00:26:26,850
+They built the OLPC $100 laptop and they worked
+with FaceBook to design and build their new
+
+303
+00:26:26,850 --> 00:26:30,899
+servers.
+So from their devices I was receiving queries
+
+304
+00:26:30,899 --> 00:26:37,149
+for proxy outer detection, various proxy names,
+SMS, WSUS, mail servers, file transfer servers.
+
+305
+00:26:37,149 --> 00:26:42,860
+There are dozens of ways that I could silently
+hijack these devices, inject exploits, steal
+
+306
+00:26:42,860 --> 00:26:47,580
+credentials or intercept file transfers.
+When they're asking me to help them locate
+
+307
+00:26:47,580 --> 00:26:52,090
+resources, a man in te middle attack would
+be trivial. Then I noticed the source of all
+
+308
+00:26:52,090 --> 00:26:56,120
+the requests I was getting, and that's what
+really blew me away.
+
+309
+00:26:56,120 --> 00:27:01,990
+I was seeing regular traffic from their assets
+sourced from their customers' networks. Now
+
+310
+00:27:01,990 --> 00:27:08,690
+these queries prove that there are Quanta
+assets on-site at Cisco, Apple, 3M and Dell.
+
+311
+00:27:08,690 --> 00:27:14,840
+So they must have employees onsite helping
+to design their hardware. And these are just
+
+312
+00:27:14,840 --> 00:27:18,010
+some of the customers that I know that they
+have employees located on-site at because
+
+313
+00:27:18,010 --> 00:27:24,100
+they query me for everything that they are
+trying to access. Those assets could be a
+
+314
+00:27:24,100 --> 00:27:27,970
+foothold into these companies. And what are
+the odds that those devices have access to
+
+315
+00:27:27,970 --> 00:27:34,840
+sensitive intellectual property? They're pretty
+good.
+
+316
+00:27:34,840 --> 00:27:38,669
+So there is a --> plenty of paths of information
+that I can gather from the traffic as well.
+
+317
+00:27:38,669 --> 00:27:43,309
+I've enumerated every device name on their
+networks. I can see traffic from companies
+
+318
+00:27:43,309 --> 00:27:48,029
+that they don't publicly do business with,
+possibly indicating a new contract. I can
+
+319
+00:27:48,029 --> 00:27:53,250
+see traffic may suddenly stop from a company,
+indicating they lost a contract. I can track
+
+320
+00:27:53,250 --> 00:27:57,500
+wherever they go. I can see when they're traveling.
+I see that there must be an open WiFi at a
+
+321
+00:27:57,500 --> 00:28:00,960
+dry cleaners near one of their offices, because
+hundreds of the devices have come from there
+
+322
+00:28:00,960 --> 00:28:06,370
+from time to time. And I can even see that
+they have people in town for Black Hat and
+
+323
+00:28:06,370 --> 00:28:09,559
+DEF CON.
+(Laughter)
+
+324
+00:28:09,559 --> 00:28:16,149
+We'll talk later, guys.
+So this kind of mistake is serious. Don't
+
+325
+00:28:16,149 --> 00:28:21,610
+let this be you. Verify your internal configurations.
+Monitor the Internet for details of your internal
+
+326
+00:28:21,610 --> 00:28:25,100
+configurations being leaked.
+Places like pastebin and bleeping computer
+
+327
+00:28:25,100 --> 00:28:29,940
+are notorious. Monitor your DNS logs to verify
+your clients and the clients of your onsite
+
+328
+00:28:29,940 --> 00:28:34,220
+vendors are querying what you expect.
+If you collect your DNS logs, look for the
+
+329
+00:28:34,220 --> 00:28:39,250
+most commonly queried domain per individual
+device. You can easily identify every one
+
+330
+00:28:39,250 --> 00:28:43,309
+of your corporate assets given the fact that
+each of the most commonly queried domains
+
+331
+00:28:43,309 --> 00:28:48,620
+are going to be what is in their suffix search
+paths. The domains that are in your onsite
+
+332
+00:28:48,620 --> 00:28:55,370
+vendor search list are going to be their most
+commonly queried domains.
+
+333
+00:28:55,370 --> 00:28:59,630
+So a couple years ago I started buying expired
+domains that were previously used as commanding
+
+334
+00:28:59,630 --> 00:29:06,630
+control servers.
+It's been a lot of fun.
+
+335
+00:29:07,139 --> 00:29:10,700
+(Laughter)
+So first I wanted to understand how much residual
+
+336
+00:29:10,700 --> 00:29:14,700
+infection was still out there. But second
+I wanted to understand what kinds of devices
+
+337
+00:29:14,700 --> 00:29:19,649
+were still infected and where. So finding
+lists of blacklisted domains is easy. So I
+
+338
+00:29:19,649 --> 00:29:26,070
+had thousands to choose from. And with a 99
+cent sale of domains at my register, I started
+
+339
+00:29:26,070 --> 00:29:32,440
+buying a few. This was the first one I got.
+MicrosoftWindowssecurity.Com. This was the
+
+340
+00:29:32,440 --> 00:29:38,990
+CTU server for a spy iVariant. This bot hooks
+various functions to grab URI and post data,
+
+341
+00:29:38,990 --> 00:29:43,330
+and then just sends them to this domain as
+an unencrypted post. I don't have to do anything.
+
+342
+00:29:43,330 --> 00:29:46,470
+I send it a 404 every time it talks to me.
+But it just wants to keep sending me stolen
+
+343
+00:29:46,470 --> 00:29:53,470
+credentials.
+This bot reports its unique ID, the process
+
+344
+00:29:54,380 --> 00:30:01,340
+name, the function was hooked, and the payload.
+Now, bots like this are a bit unique from
+
+345
+00:30:01,340 --> 00:30:06,139
+others because many of them will phone home
+and check into their command control servers,
+
+346
+00:30:06,139 --> 00:30:10,590
+but they only deliver payloads if they're
+instructed to. This one blindly posts the
+
+347
+00:30:10,590 --> 00:30:14,750
+payload whenever it's collected.
+Now I've registered dozens of domains like
+
+348
+00:30:14,750 --> 00:30:19,669
+this one, with thousands of devices still
+infected. And even though these botnets were
+
+349
+00:30:19,669 --> 00:30:25,419
+taken down by various groups, they just allow
+the domains to expire. So what's the point
+
+350
+00:30:25,419 --> 00:30:30,070
+of investing all that effort into taking down
+a botnet when you just allow the domain to
+
+351
+00:30:30,070 --> 00:30:37,070
+expire and the original botnet master can
+go reregister it. So for my first $6, I had
+
+352
+00:30:38,440 --> 00:30:45,440
+23,000 devices reporting into my server.
+(Laughter and applause)
+
+353
+00:30:52,549 --> 00:30:58,340
+So these domains were all taken from published
+black lists. So why are so many companies
+
+354
+00:30:58,340 --> 00:31:03,690
+allowing clients to contact domains that have
+long been considered malicious? We can all
+
+355
+00:31:03,690 --> 00:31:09,929
+do a better job of controlling one of the
+easiest mechanisms we have to prevent this.
+
+356
+00:31:09,929 --> 00:31:16,929
+So from minding my DNS logs, I stumbled upon
+a domain that looked really unusual. One client
+
+357
+00:31:18,000 --> 00:31:24,440
+out of 82,000 devices on my network were querying
+it, regularly. And when I investigated it,
+
+358
+00:31:24,440 --> 00:31:30,299
+I found that it had been expired for six months.
+The domain was not on any black list and there
+
+359
+00:31:30,299 --> 00:31:37,299
+wasn't a single hit on Google. But it just
+looked too suspicious. So I bought it.
+
+360
+00:31:38,039 --> 00:31:44,200
+And the clients started flooding in. So this
+was just a basic form grabber. It was sending
+
+361
+00:31:44,200 --> 00:31:50,279
+its payload unencrypted as a post. There were
+10,000 infected devices all over the world.
+
+362
+00:31:50,279 --> 00:31:54,929
+Some of them were in very highly secured areas.
+And I found that one of the infected devices
+
+363
+00:31:54,929 --> 00:31:58,960
+was at a wastewater treatment facility in
+Phoenix. So I reached out to somebody there
+
+364
+00:31:58,960 --> 00:32:03,820
+so I could get a sample of this. Now it was
+difficult to identify the infection, bit once
+
+365
+00:32:03,820 --> 00:32:09,330
+they did and sent me a sample, I uploaded
+it to virus total to see what it was. Out
+
+366
+00:32:09,330 --> 00:32:14,539
+of 82 AV scanners, not a single one had a
+signature for it. And this malware was two
+
+367
+00:32:14,539 --> 00:32:20,129
+years old at this point. And I thought it
+was strange that nobody would have the signature,
+
+368
+00:32:20,129 --> 00:32:24,940
+but what was even more strange was why had
+it been abandoned? It was still completely
+
+369
+00:32:24,940 --> 00:32:28,889
+invisible to AV and it had some really high-valued
+devices infected.
+
+370
+00:32:28,889 --> 00:32:35,889
+And here is one of the ironic examples. This
+is a QA engineer at Symantec.
+
+371
+00:32:37,519 --> 00:32:44,519
+(Groans and claps)
+I hope he's not here.
+
+372
+00:32:45,850 --> 00:32:52,850
+(Applause)
+So here I can see him working in their web-based
+
+373
+00:32:53,730 --> 00:32:58,289
+ticketing system. In this case, he is closing
+out a ticket about a security issue with their
+
+374
+00:32:58,289 --> 00:33:03,009
+Sym product. I think it's somewhat sad that
+a piece of malware that's two years old is
+
+375
+00:33:03,009 --> 00:33:06,759
+still on an antivirus company's PC assigned
+to an engineer who is working on a security
+
+376
+00:33:06,759 --> 00:33:12,929
+defect in a security product.
+And before submitting the sample to all of
+
+377
+00:33:12,929 --> 00:33:18,759
+the AV companies, it required a few inspected
+devices that would be considered high value.
+
+378
+00:33:18,759 --> 00:33:23,590
+They were devices belonging to court clerks,
+devices at the US house of representatives,
+
+379
+00:33:23,590 --> 00:33:28,500
+money transfer offices, newspapers, even a
+teller at the Federal Employee Credit Union
+
+380
+00:33:28,500 --> 00:33:33,700
+in Langley.
+This was definitely the best 99 cents I've
+
+381
+00:33:33,700 --> 00:33:40,700
+ever spent.
+(Laughter and applause)
+
+382
+00:33:43,289 --> 00:33:48,039
+So a frightening thing to consider is that
+there are likely millions of infected devices
+
+383
+00:33:48,039 --> 00:33:53,039
+trying to reach command and control servers
+that no longer resolve.
+
+384
+00:33:53,039 --> 00:33:58,970
+If you use open DNS or the local DNS for almost
+any large ISP, they will give infected devices
+
+385
+00:33:58,970 --> 00:34:02,200
+an answer for anything that they are trying
+to resolve. It doesn't matter if it doesn't
+
+386
+00:34:02,200 --> 00:34:07,129
+exist. They spoof a reply for anything that
+doesn't resolve, and point you to the IP address
+
+387
+00:34:07,129 --> 00:34:12,720
+of a default landing page because they want
+to serve you ads. The logs on that server
+
+388
+00:34:12,720 --> 00:34:18,510
+that host that page contains untold amounts
+of stolen data. Do you think they're doing
+
+389
+00:34:18,510 --> 00:34:23,720
+anything to protect that? They're trying to
+monetize misdirected traffic with ads and
+
+390
+00:34:23,720 --> 00:34:29,040
+they are inadvertently stealing private data.
+You'd expect that is a piece of malware tried
+
+391
+00:34:29,040 --> 00:34:33,430
+to resolve a command and control server that
+had been taken down, it wouldn't go anywhere.
+
+392
+00:34:33,430 --> 00:34:38,590
+Sorry. Open DNS, most ISPs are a little bit
+more helpful. It will give you an answer for
+
+393
+00:34:38,590 --> 00:34:42,950
+anything that doesn't resolve. It doesn't
+matter. And then that malware happily posts
+
+394
+00:34:42,950 --> 00:34:49,940
+it still on payload to that server. So I've
+registered quite a few domains now that aren't
+
+395
+00:34:49,940 --> 00:34:55,340
+on any black lists. If I can manage to get
+my hands on a sample, I commonly find that's
+
+396
+00:34:55,340 --> 00:35:02,150
+it's undetected by most of the major AV vendors.
+All of them I found by mining logs that people
+
+397
+00:35:02,150 --> 00:35:07,000
+give to me. And I hope everybody considers
+mining their own logs. Some of the easier
+
+398
+00:35:07,000 --> 00:35:11,430
+things that you can look for: Domains being
+queried for the first time. Any domains that
+
+399
+00:35:11,430 --> 00:35:15,340
+are new should have the registration dates
+logged. Log the name of the person who registered
+
+400
+00:35:15,340 --> 00:35:20,610
+it. The country that they're in. The authoritative
+name servers, Look for domains that resolve
+
+401
+00:35:20,610 --> 00:35:25,270
+to 127.0.0.1. They're probably botnets that
+have recently been taken down.
+
+402
+00:35:25,270 --> 00:35:29,960
+Look for domains only being queried by one
+person on your network. It's pretty easy to
+
+403
+00:35:29,960 --> 00:35:34,220
+find things that stand out as unusual. You
+can generate a list every day that is small
+
+404
+00:35:34,220 --> 00:35:38,800
+enough to manually investigate.
+Here are resources you should check out if
+
+405
+00:35:38,800 --> 00:35:43,720
+you want to get started with DNS intelligence.
+Bro supports logging DNS queries it sees.
+
+406
+00:35:43,720 --> 00:35:48,700
+I highly recommend that. The DNS anomaly detection
+script is a simple thing that will look at
+
+407
+00:35:48,700 --> 00:35:53,180
+your top domains from yesterday and compare
+it to the top domains today. And when something
+
+408
+00:35:53,180 --> 00:35:59,860
+changes, the next Microsoft patch that gets
+rolled out, you'll see a big change in that
+
+409
+00:35:59,860 --> 00:36:05,370
+the day after. So that's a good one.
+Passive DNS allows you to capture queries
+
+410
+00:36:05,370 --> 00:36:12,150
+and answers from a PCAT file or an interface.
+And response policy zones are a great feature
+
+411
+00:36:12,150 --> 00:36:16,780
+and buy-in that will allow you a fine-grained
+approach to blocking and redirecting queries
+
+412
+00:36:16,780 --> 00:36:22,500
+for specific domains, based on the answers
+or the authoritative servers for the domain.
+
+413
+00:36:22,500 --> 00:36:27,440
+When used with DNS sinkholes, you can impersonate
+the remote server so you can log exactly what
+
+414
+00:36:27,440 --> 00:36:33,450
+your clients were trying to send.
+And these are some whitepapers you might find
+
+415
+00:36:33,450 --> 00:36:40,450
+inspiring. Start mining your DNS traffic.
+You going to find much more than you expect.
+
+416
+00:36:40,840 --> 00:36:44,230
+And thank you for your time. Please feel free
+to contact me.
+
+417
+00:36:44,230 --> 00:36:45,210
+(Applause)
+

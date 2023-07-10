@@ -1,0 +1,2523 @@
+﻿00:00:00.033 --> 00:00:04.004
+Thank you for coming today were
+going to be talking about ECFS
+
+00:00:04.004 --> 00:00:08.642
+extended core file snapshot
+technology how many people here
+
+00:00:08.642 --> 00:00:15.682
+know what a Linux elf core file
+looks like so today were talking
+
+00:00:15.682 --> 00:00:20.921
+about extended core files this
+is a technology that helps aid
+
+00:00:20.921 --> 00:00:28.562
+and process memory forensics in
+Linux so what that is is a an
+
+00:00:28.562 --> 00:00:32.232
+extended version of a typical
+core file that is specifically
+
+00:00:32.232 --> 00:00:38.171
+designed for memory analysis and
+that is what will be discussing
+
+00:00:38.171 --> 00:00:42.910
+I've taken everything that I
+know about the elf binary format
+
+00:00:42.910 --> 00:00:47.214
+reverse engineering process
+infection Linux viruses
+
+00:00:47.214 --> 00:00:52.986
+exploitation and imbue that
+knowledge into the design of
+
+00:00:52.986 --> 00:00:59.293
+this software for technology or
+core file format so quick
+
+00:00:59.293 --> 00:01:05.299
+history in 2011 I I designed a
+prototype for a DARPA CFT called
+
+00:01:08.201 --> 00:01:12.472
+VMA voodoo for life process
+analysis and Linux and it
+
+00:01:12.472 --> 00:01:16.376
+detected runtime infection so
+that could be anything a memory
+
+00:01:16.376 --> 00:01:21.715
+resident virus shared library
+injection PLT got hooks strange
+
+00:01:21.715 --> 00:01:26.286
+segment permissions anything
+that would constitute a process
+
+00:01:26.286 --> 00:01:31.558
+that being infected any type of
+VMA anomalies Anthony VMA voodoo
+
+00:01:31.558 --> 00:01:36.129
+was just a prototype and it
+worked on 32 bit Linux but five
+
+00:01:36.129 --> 00:01:40.601
+years ago and fast forwarding in
+time about six months ago I was
+
+00:01:40.601 --> 00:01:44.538
+thinking it would be really cool
+to rewrite that software put it
+
+00:01:44.538 --> 00:01:47.107
+in more of a production ready
+state but I thought it would be
+
+00:01:47.107 --> 00:01:51.745
+cool to have a need of a
+snapshot format because the way
+
+00:01:51.745 --> 00:01:55.916
+VMA work does it analyze live
+process memory or its of these
+
+00:01:55.916 --> 00:02:00.420
+raw memory snapshots of the
+process nothing real special so
+
+00:02:00.420 --> 00:02:04.424
+seeking a native snapshot format
+specifically designed for
+
+00:02:04.424 --> 00:02:10.897
+forensics analysis of a process
+and so I wrote ECFS about six
+
+00:02:10.897 --> 00:02:15.635
+months ago and I quickly
+realized that it was very useful
+
+00:02:15.635 --> 00:02:20.474
+even on its own and especially
+he could be used with other
+
+00:02:20.474 --> 00:02:23.877
+people's technologies is already
+a lot of forensics technology
+
+00:02:23.877 --> 00:02:29.316
+out there and this is kind of a
+complementary piece a low 10 is
+
+00:02:29.316 --> 00:02:32.853
+a product this is in advanced
+technology for detecting
+
+00:02:32.853 --> 00:02:37.357
+exploitation through crash dump
+analysis so this actually looks
+
+00:02:37.357 --> 00:02:43.430
+at many dumps in Windows or core
+files in Linux and is able to
+
+00:02:43.430 --> 00:02:48.769
+detect whether or not I was a
+result of an exploit so ECFS is
+
+00:02:48.769 --> 00:02:51.505
+actually now in the process of
+being merged into the Linux
+
+00:02:51.505 --> 00:02:56.476
+component of this product so it
+is being used end so check that
+
+00:02:56.476 --> 00:03:02.315
+out to get a chance very cool
+stuff so moving on discount
+
+00:03:02.315 --> 00:03:06.353
+getting into the problem space
+here so a process address space
+
+00:03:06.353 --> 00:03:10.490
+is it's like a little but it's
+very complicated on its own you
+
+00:03:10.490 --> 00:03:14.261
+your full system memory got
+kernel memory what about just a
+
+00:03:14.261 --> 00:03:18.732
+singular process because a
+process especially these days
+
+00:03:18.732 --> 00:03:22.302
+and Linux is relatively
+complicated it is heavily
+
+00:03:22.302 --> 00:03:25.372
+constructed from the elf binary
+format of course because you
+
+00:03:25.372 --> 00:03:30.711
+have health executable you got
+the shared libraries there are a
+
+00:03:30.711 --> 00:03:35.148
+lot of structural nuances within
+elf say it's dynamically link
+
+00:03:35.148 --> 00:03:38.085
+you got then you got the dynamic
+segment which exist within the
+
+00:03:38.085 --> 00:03:42.089
+data segment at the Global
+offset table you got a lot of
+
+00:03:42.089 --> 00:03:45.625
+different types of data
+structures and not everybody
+
+00:03:45.625 --> 00:03:49.062
+knows how all of these work so
+you have to be a real expert in
+
+00:03:49.062 --> 00:03:52.232
+the area of understanding how
+processes laid out in
+
+00:03:52.232 --> 00:03:56.503
+understanding the elf format to
+be really successful in reverse
+
+00:03:56.503 --> 00:04:00.073
+engineering a process a process
+is a little different than just
+
+00:04:00.073 --> 00:04:02.909
+an executable because it's got
+the executable and then
+
+00:04:02.909 --> 00:04:08.748
+everything else mapped into it
+so ECFS as we'll see brings a
+
+00:04:08.748 --> 00:04:12.752
+lot of this stuff together and
+it makes navigating a process
+
+00:04:12.752 --> 00:04:19.693
+image extremely easy so no
+secret that hackers of been
+
+00:04:19.693 --> 00:04:22.863
+infecting processes for a long
+time so of course you have
+
+00:04:22.863 --> 00:04:26.566
+hackers infecting a kernel
+memory kernel rickets but there
+
+00:04:26.566 --> 00:04:30.303
+a lot of hackers who infect
+processes and there's not a lot
+
+00:04:30.303 --> 00:04:33.039
+of automated stuff to detect
+this stuff I can think of a few
+
+00:04:33.039 --> 00:04:37.511
+cases from the last couple years
+in particular but that these
+
+00:04:37.511 --> 00:04:41.815
+processes can get infected and
+it still it's typically more
+
+00:04:41.815 --> 00:04:44.251
+stuff and if you're infecting
+the binary because it's only
+
+00:04:44.251 --> 00:04:49.222
+resident in memory and just a
+few examples of these types of
+
+00:04:49.222 --> 00:04:52.926
+infections would be memory
+resident viruses so maybe a a
+
+00:04:52.926 --> 00:04:56.496
+virus that copies itself from
+process to process will stealing
+
+00:04:56.496 --> 00:05:01.468
+credit card information from
+Firefox maybe a virus infects
+
+00:05:01.468 --> 00:05:05.572
+the LDAP Damon and siphons
+information now about users so
+
+00:05:05.572 --> 00:05:09.309
+for reasons to infect the
+process root kits as well people
+
+00:05:09.309 --> 00:05:12.345
+are familiar with Jinks or his
+Azle these are like LD preload
+
+00:05:12.345 --> 00:05:18.585
+root kits Packers use these and
+any type of backdoor so later we
+
+00:05:18.585 --> 00:05:22.088
+use an anti-forensics exec to
+inject a vac a backdoor into a
+
+00:05:22.088 --> 00:05:25.692
+process address space and of
+course exploitation which
+
+00:05:25.692 --> 00:05:29.062
+tenderly behind residuals may be
+a patch see tours or detours
+
+00:05:29.062 --> 00:05:35.435
+section modified got corrupted
+he and these are all things that
+
+00:05:35.435 --> 00:05:40.607
+we want to be able to look at
+and very quickly identify so
+
+00:05:40.607 --> 00:05:43.210
+there are a lot of process
+friend there a lot of forensics
+
+00:05:43.210 --> 00:05:47.380
+tools available that also do
+some process stuff so the three
+
+00:05:47.380 --> 00:05:51.551
+major ones you got volatility
+recall and then second luck
+
+00:05:51.551 --> 00:05:55.055
+which is commercial and
+primarily these do full system
+
+00:05:55.055 --> 00:06:00.060
+memory dumps and course in full
+system memory dumps eventually
+
+00:06:00.060 --> 00:06:03.129
+the process is in there
+somewhere but they tend to get
+
+00:06:03.129 --> 00:06:07.267
+really nice structural access to
+the kernel through something
+
+00:06:07.267 --> 00:06:12.472
+like Dorf debugging symbols well
+you don't have dorky banks most
+
+00:06:12.472 --> 00:06:16.243
+for every single process so
+these full system memory dump
+
+00:06:16.243 --> 00:06:19.279
+analyzers tend to lose
+resolution the closer they get
+
+00:06:19.279 --> 00:06:23.583
+down to the process level so
+ECFS is a mentor of Plessis's
+
+00:06:23.583 --> 00:06:26.519
+tools it's hopefully a
+supplementary thing or something
+
+00:06:26.519 --> 00:06:30.890
+that could be integrated within
+them for specific to process
+
+00:06:30.890 --> 00:06:35.629
+analysis course EMP trace GDB
+and just regular core dumps and
+
+00:06:35.629 --> 00:06:41.167
+these are all tools they can be
+used so I originally had a few
+
+00:06:41.167 --> 00:06:44.204
+slides to discuss volatility
+more depth but because of time
+
+00:06:44.204 --> 00:06:47.841
+constraints on have to skip past
+those but they are in the slide
+
+00:06:47.841 --> 00:06:52.078
+deck so that you know so
+extended core file snapshot
+
+00:06:52.078 --> 00:06:56.917
+technology so it is a custom
+core file format and L format
+
+00:06:56.917 --> 00:07:00.387
+based on original core files is
+backwards compatible with
+
+00:07:00.387 --> 00:07:03.923
+original core files you can
+still use them for debugging so
+
+00:07:03.923 --> 00:07:07.327
+if you have this thing hooked up
+on your system like I do you can
+
+00:07:07.327 --> 00:07:10.297
+still use the core files for
+debugging you can also use them
+
+00:07:10.297 --> 00:07:14.567
+for detection and malware and
+analysis as we'll see later you
+
+00:07:14.567 --> 00:07:17.704
+can even relaunch the snapshots
+back in the memory another word
+
+00:07:17.704 --> 00:07:20.407
+you can posit a process and
+restart it where it left off two
+
+00:07:20.407 --> 00:07:27.514
+weeks later so quick little
+diagram here to get people
+
+00:07:27.514 --> 00:07:31.251
+reacquainted with a process this
+is a really high level overview
+
+00:07:31.251 --> 00:07:35.088
+but course you have in memory
+you got the executable which has
+
+00:07:35.088 --> 00:07:39.693
+a tech segment data segment BSS
+at the end of the day to segment
+
+00:07:39.693 --> 00:07:44.030
+the heap then the functions are
+in the text segment a.k.a. the
+
+00:07:44.030 --> 00:07:48.101
+code segment and the data
+segment of the PLT got to the
+
+00:07:48.101 --> 00:07:50.904
+Global offset table gets patched
+with function pointers as you
+
+00:07:50.904 --> 00:07:54.240
+can see the arrow points down to
+the functions in the lives see
+
+00:07:54.240 --> 00:07:58.144
+shared library and that this
+slips you shared library has a
+
+00:07:58.144 --> 00:08:03.783
+tech segment data segment of its
+own all separate mappings and in
+
+00:08:03.783 --> 00:08:07.687
+the glitzy Cisco wrappers which
+point to the VDS OMB call page
+
+00:08:07.687 --> 00:08:10.824
+mapped into the process
+Ukrainian anonymous memory
+
+00:08:10.824 --> 00:08:14.627
+mappings file mapping stack
+segment and and there's other
+
+00:08:14.627 --> 00:08:18.665
+stuff but this is just a
+high-level overview to that you
+
+00:08:18.665 --> 00:08:23.103
+visualize a little bit what were
+to be looking out so quick
+
+00:08:23.103 --> 00:08:28.942
+overview of our attack surface
+so these attacks are kind of
+
+00:08:28.942 --> 00:08:31.845
+like that there is a myriad of
+different ways to attack a
+
+00:08:31.845 --> 00:08:35.048
+process but a lot of what were
+looking at is different types of
+
+00:08:35.048 --> 00:08:39.986
+injection so dynamic injections
+that would be injecting shared
+
+00:08:39.986 --> 00:08:43.423
+objects into a process or a
+position independent executable
+
+00:08:43.423 --> 00:08:47.427
+into a process a relocatable
+code injection so injecting an
+
+00:08:47.427 --> 00:08:51.731
+object file into a process then
+Acker would patch all the
+
+00:08:51.731 --> 00:08:55.702
+relocations and to be like
+runtime relinking I and you can
+
+00:08:55.702 --> 00:08:58.538
+even execute fully dynamically
+linked executables into an
+
+00:08:58.538 --> 00:09:01.674
+existing processes is an
+anti-forensics exec technique
+
+00:09:01.674 --> 00:09:04.044
+that will look at later
+oftentimes these types of
+
+00:09:04.044 --> 00:09:07.280
+injections are accomplished
+through means like LD preload
+
+00:09:07.280 --> 00:09:09.282
+the real basic one Lib CDL open
+mode which is a yellow Burnett
+
+00:09:09.282 --> 00:09:12.419
+is resident in live CD always
+and tends to be used for
+
+00:09:12.419 --> 00:09:19.325
+injection cis P trace of course
+which is often used as a means
+
+00:09:19.325 --> 00:09:25.065
+to accomplish some of these
+other things that you show code
+
+00:09:25.065 --> 00:09:29.869
+based loading BDS O manipulation
+and once we get this code once
+
+00:09:29.869 --> 00:09:32.906
+the parasite code is inserted
+into the process through
+
+00:09:32.906 --> 00:09:37.010
+whatever means oftentimes
+control flow needs to be
+
+00:09:37.010 --> 00:09:39.979
+hijacked so this could be
+redirecting of functions through
+
+00:09:39.979 --> 00:09:44.984
+the PLT got through in-line
+hooks like trampolines a
+
+00:09:44.984 --> 00:09:48.021
+patching function pointers so
+sometimes people patch
+
+00:09:48.021 --> 00:09:51.691
+constructors and destructors
+also known as in it array Infini
+
+00:09:51.691 --> 00:09:56.062
+array on 64-bit architecture in
+any type of modification to the
+
+00:09:56.062 --> 00:10:00.266
+code segment and any anomalies
+sought beyond this of course as
+
+00:10:00.266 --> 00:10:02.869
+well such a strange segment
+permissions maybe the text
+
+00:10:02.869 --> 00:10:06.206
+segment gets marked writable or
+the data segment gets marked
+
+00:10:06.206 --> 00:10:10.109
+executable to defeat death
+course packs and protect would
+
+00:10:10.109 --> 00:10:13.580
+stop this book there's just a
+lot of different types of
+
+00:10:13.580 --> 00:10:19.118
+attacks were looking at and this
+is the general building blocks
+
+00:10:19.118 --> 00:10:24.657
+so here is a ugly diagram that I
+together a long time ago and it
+
+00:10:24.657 --> 00:10:27.627
+just kinda shows you visually
+what we just looked at this is
+
+00:10:27.627 --> 00:10:31.798
+essentially right here a binary
+in memory you got the text
+
+00:10:31.798 --> 00:10:34.767
+segment data segment course the
+section header table doesn't get
+
+00:10:34.767 --> 00:10:37.604
+mapped in the memory but and you
+can see and read the different
+
+00:10:37.604 --> 00:10:40.807
+infection point so the procedure
+linkage table the gems could be
+
+00:10:40.807 --> 00:10:46.012
+hooked function trampolines get
+placed in the code function
+
+00:10:46.012 --> 00:10:48.481
+pointers can be overridden in
+the constructors global off the
+
+00:10:48.481 --> 00:10:54.020
+table can be patched Global data
+variables these things it varies
+
+00:10:54.020 --> 00:10:57.690
+whatever's in there but could be
+interesting things that the
+
+00:10:57.690 --> 00:11:02.795
+attacker may modify such as
+function pointers and of course
+
+00:11:02.795 --> 00:11:05.298
+he of the BSS role the
+uninitialized global data goes
+
+00:11:05.298 --> 00:11:08.034
+but not one thing that's missing
+from here and it's not in red
+
+00:11:08.034 --> 00:11:11.204
+but see the dynamic section the
+name then dynamic section has
+
+00:11:11.204 --> 00:11:15.708
+tag selected DT needed tag that
+can be modified as well for
+
+00:11:15.708 --> 00:11:21.247
+another form a shared library
+injection so the definition of
+
+00:11:21.247 --> 00:11:23.716
+process memory forensics and
+analysis and this is pretty
+
+00:11:23.716 --> 00:11:27.820
+broad but people want to do this
+to either understand the process
+
+00:11:27.820 --> 00:11:30.523
+layout and structure for
+whatever reason it might not
+
+00:11:30.523 --> 00:11:33.826
+even be because they're trying
+to detect an attacker but it is
+
+00:11:33.826 --> 00:11:37.297
+necessary when we are doing that
+and we want to learn the runtime
+
+00:11:37.297 --> 00:11:40.800
+characteristic so is there
+dynamic linking involved if so
+
+00:11:40.800 --> 00:11:43.536
+then okay whatever relocations
+we can be looking at whatever
+
+00:11:43.536 --> 00:11:48.141
+symbol tables we want to
+reconstruct typically forensics
+
+00:11:48.141 --> 00:11:51.744
+analyst want to identify
+anomalous code or data and there
+
+00:11:51.744 --> 00:11:55.381
+many different ways to do that
+ECFS actually does a lot of her
+
+00:11:55.381 --> 00:11:59.152
+sticks on the back and then
+we'll see that does a lot of the
+
+00:11:59.152 --> 00:12:02.522
+work for us but dumb ultimately
+we want to identify process
+
+00:12:02.522 --> 00:12:06.025
+infection which could be a
+backdoor root kits like as a
+
+00:12:06.025 --> 00:12:10.730
+solar jinx keyloggers memory
+resident viruses or even be a
+
+00:12:10.730 --> 00:12:14.934
+virus infected the binary but
+and it shows up in memory and in
+
+00:12:14.934 --> 00:12:17.704
+protected binary so ECFS is
+actually really useful for
+
+00:12:17.704 --> 00:12:20.974
+helping reverse engineer
+encrypted binaries as it can
+
+00:12:20.974 --> 00:12:23.710
+reconstruct symbol tables and
+help you map out the entire
+
+00:12:23.710 --> 00:12:27.880
+process and of course malware
+oftentimes is protected or
+
+00:12:27.880 --> 00:12:30.850
+packed has a lot of obfuscation
+layers and things of that nature
+
+00:12:30.850 --> 00:12:35.655
+not ECFS is useful for this as
+well‚Ä¶ Take a quick look at
+
+00:12:35.655 --> 00:12:40.360
+what a traditional core file
+looks like so regular core files
+
+00:12:40.360 --> 00:12:44.330
+essentially what snapshot of a
+process it's an L file has an L
+
+00:12:44.330 --> 00:12:47.767
+file header from the old file
+header refine the program
+
+00:12:47.767 --> 00:12:51.938
+segments program segments are of
+type PT loaded reloadable
+
+00:12:51.938 --> 00:12:54.674
+segments and they just represent
+all the different memory
+
+00:12:54.674 --> 00:12:58.678
+mappings in the entire process
+so the tech segment data heaps
+
+00:12:58.678 --> 00:13:04.484
+stack shared library mappings
+and so forth but there's not a
+
+00:13:04.484 --> 00:13:08.087
+lot of metadata associated with
+these just has the raw segments
+
+00:13:08.087 --> 00:13:12.992
+not super useful for forensics
+analysis and in addition to the
+
+00:13:12.992 --> 00:13:17.563
+PT load segment there's one
+segment is a PT note the note
+
+00:13:17.563 --> 00:13:20.466
+segment contains all the
+metadata about the core file
+
+00:13:20.466 --> 00:13:26.539
+that say GDB uses when debugging
+such as what the register stay
+
+00:13:26.539 --> 00:13:30.410
+was the auxiliary vector which
+is what the top of the stack
+
+00:13:30.410 --> 00:13:35.014
+looks like when a process starts
+signal information and the past
+
+00:13:35.014 --> 00:13:40.219
+to the shared libraries that are
+mapped in now these core files
+
+00:13:40.219 --> 00:13:43.523
+are generally created when a
+process crashes when it's
+
+00:13:43.523 --> 00:13:48.327
+delivered a set fee or a sick
+bus different signals will cause
+
+00:13:48.327 --> 00:13:52.131
+a core dump to look and see how
+the cord on code is created you
+
+00:13:52.131 --> 00:13:57.937
+can look at been FNT_elf.ca this
+is a kernel source file which is
+
+00:13:57.937 --> 00:14:00.273
+pretty interesting all the
+health loading code is in there
+
+00:14:00.273 --> 00:14:04.977
+and in particular the code
+creates a core file so arguably
+
+00:14:04.977 --> 00:14:09.549
+at best core files are useful
+for debugging some people will
+
+00:14:09.549 --> 00:14:13.386
+state otherwise now they're not
+particularly useful for
+
+00:14:13.386 --> 00:14:18.057
+forensics and here's why they
+are highly dependent on the
+
+00:14:18.057 --> 00:14:21.427
+original executable and shared
+library files still being on
+
+00:14:21.427 --> 00:14:24.363
+your computer when you load a
+core file into a debugger you
+
+00:14:24.363 --> 00:14:27.867
+have to have the original
+executable right and you have to
+
+00:14:27.867 --> 00:14:31.037
+hope that executable has symbols
+and maybe even some door for
+
+00:14:31.037 --> 00:14:36.075
+debugging information now the
+other problem is that the tech
+
+00:14:36.075 --> 00:14:40.546
+segments are truncated and this
+is to save space so the tech
+
+00:14:40.546 --> 00:14:43.282
+segment of the executable the
+text segment of all the shared
+
+00:14:43.282 --> 00:14:47.854
+libraries are all truncated to
+4K and I know Linus says this is
+
+00:14:47.854 --> 00:14:51.190
+to save space now makes a lot of
+sense because the text segments
+
+00:14:51.190 --> 00:14:54.460
+are still in the original files
+which is fine for debugging but
+
+00:14:54.460 --> 00:14:57.296
+as we don't forensics many times
+the tech segment gets marked
+
+00:14:57.296 --> 00:15:00.767
+writable and itself modifying
+and it changes so we need
+
+00:15:00.767 --> 00:15:03.669
+actually have the full text
+segment as it was reflected in
+
+00:15:03.669 --> 00:15:09.642
+memory on disk so ECFS make sure
+to do that optionally and
+
+00:15:09.642 --> 00:15:12.745
+overall core files just to give
+you the kind of high resolution
+
+00:15:12.745 --> 00:15:15.915
+insight into a process that that
+would be nice for forensics
+
+00:15:15.915 --> 00:15:20.887
+analysis so just do a quick
+recap here on the forensics
+
+00:15:20.887 --> 00:15:26.626
+goals overview of course detect
+shared library injection we want
+
+00:15:26.626 --> 00:15:30.163
+to be able to detect any type of
+control flow hijacking this can
+
+00:15:30.163 --> 00:15:33.933
+be done to the PLT got hooks we
+want to detect any type of
+
+00:15:33.933 --> 00:15:37.904
+injected L file could be an
+object file shared library
+
+00:15:37.904 --> 00:15:42.608
+injection the executable
+injection pie injection on any
+
+00:15:42.608 --> 00:15:46.512
+type of show code that's been
+inserted into the process which
+
+00:15:46.512 --> 00:15:50.116
+could then in turn load in L
+file I any strain segment
+
+00:15:50.116 --> 00:15:53.386
+permission such as a writable
+data set are writable code
+
+00:15:53.386 --> 00:15:58.157
+segment for an executable data
+segment and the list goes on but
+
+00:15:58.157 --> 00:16:01.494
+once again these are kinda some
+of the building blocks we want
+
+00:16:01.494 --> 00:16:05.031
+to be to quickly identify the
+stuff typically is not very easy
+
+00:16:05.031 --> 00:16:10.436
+to identify just the raw process
+so in the end we might be
+
+00:16:10.436 --> 00:16:13.806
+looking for UserLand memory
+Rickettsia jinxes Azle more
+
+00:16:13.806 --> 00:16:18.411
+sophisticated ones that are out
+there I exploitation residuals
+
+00:16:18.411 --> 00:16:24.417
+and I run time malware or memory
+resident viruses so the ECFS
+
+00:16:27.286 --> 00:16:31.924
+technology essentially it can
+either a snapshot of process and
+
+00:16:31.924 --> 00:16:34.994
+keep the process running with
+any of a snapshot of it in EFS
+
+00:16:34.994 --> 00:16:39.198
+core file of it or as we'll see
+in a minute can hook into the
+
+00:16:39.198 --> 00:16:44.103
+core handler and essentially it
+transforms the core file into a
+
+00:16:44.103 --> 00:16:47.273
+very special type of core file
+specifically for this type of
+
+00:16:47.273 --> 00:16:52.411
+analysis and the analogy here
+with these images is at the core
+
+00:16:52.411 --> 00:16:55.615
+file is this kind of
+black-and-white or monochrome
+
+00:16:55.615 --> 00:17:00.486
+image of a process so it's kind
+of flat zeros and ones and on
+
+00:17:00.486 --> 00:17:05.224
+the other side got the high
+resolution core file is the ECFS
+
+00:17:05.224 --> 00:17:11.697
+file and that's just a little
+analogy so what are the ECFS use
+
+00:17:11.697 --> 00:17:14.800
+cases and this is kind of
+redundant here but dumb to live
+
+00:17:14.800 --> 00:17:18.037
+in our analysis there's a a
+suspicious piece of malware
+
+00:17:18.037 --> 00:17:21.707
+that's running and you want to
+snapshot it and maybe you want
+
+00:17:21.707 --> 00:17:24.610
+to then take that snapshot put
+it in an isolated environment
+
+00:17:24.610 --> 00:17:27.413
+and then relaunch it back in the
+memory and it'll start where it
+
+00:17:27.413 --> 00:17:31.117
+left off and this is something
+ECFS allows you to do a process
+
+00:17:31.117 --> 00:17:36.322
+necromancy is what some of the
+guys run the office call it and
+
+00:17:36.322 --> 00:17:38.958
+any type of process forensics
+which could mean a lot of things
+
+00:17:38.958 --> 00:17:43.362
+we arty went over also helping
+break protected binaries a very
+
+00:17:43.362 --> 00:17:46.999
+powerful binary protector was
+protecting a program on my
+
+00:17:46.999 --> 00:17:51.270
+system and it crashed so ECFS
+caught it and I was amazed that
+
+00:17:51.270 --> 00:17:54.473
+ECFS fully reconstructed all the
+symbol tables even all the
+
+00:17:54.473 --> 00:17:57.109
+functions were individually
+encrypted only one decrypted a
+
+00:17:57.109 --> 00:18:00.746
+time and it it does this through
+a very special type of symbol
+
+00:18:00.746 --> 00:18:04.750
+table reconstruction will talk
+about shortly so just get into
+
+00:18:04.750 --> 00:18:09.255
+the ECFS features so this is a
+list of the features but I do
+
+00:18:09.255 --> 00:18:15.328
+have a I'm slide for each one
+talk over them individually so
+
+00:18:15.328 --> 00:18:20.166
+ECFS plugs into the Col.'s core
+handler it's actually a UserLand
+
+00:18:20.166 --> 00:18:23.869
+application you need to modify
+the kernel proxies kernel core
+
+00:18:23.869 --> 00:18:27.306
+pattern this is also the file
+that like a bunch is AB or
+
+00:18:27.306 --> 00:18:33.245
+modifies and essentially if you
+use the pipe symbol you can tell
+
+00:18:33.245 --> 00:18:36.716
+the Col. core handler to pipe
+the core file it's creating
+
+00:18:36.716 --> 00:18:39.685
+total positive process it's
+crashing it'll pipe the core
+
+00:18:39.685 --> 00:18:43.122
+file into the standard input of
+whatever program you wanted to
+
+00:18:43.122 --> 00:18:46.926
+so we tell it pipe into the
+standard input of the ECFS
+
+00:18:46.926 --> 00:18:51.697
+handler which then essentially
+dazzles that core file up
+
+00:18:51.697 --> 00:18:56.469
+totally transforms it and then
+spits out in ECFS file so that
+
+00:18:56.469 --> 00:18:59.205
+command right there is just a
+basic command of how you would
+
+00:18:59.205 --> 00:19:02.942
+enable ECFS on the system you
+can also snapshot a process
+
+00:19:02.942 --> 00:19:08.014
+without killing it without
+having the core it and so and
+
+00:19:08.014 --> 00:19:10.149
+that's honestly handy as well
+for when you want to kill a
+
+00:19:10.149 --> 00:19:15.488
+process so symbol table
+reconstruction in my opinion
+
+00:19:15.488 --> 00:19:20.092
+this is perhaps the most useful
+feature one of them at least the
+
+00:19:20.092 --> 00:19:23.596
+ECFS does so as reverse engineer
+as you probably know it's very
+
+00:19:23.596 --> 00:19:27.800
+nice to have symbols well what
+ECFS can do is even if the
+
+00:19:27.800 --> 00:19:30.970
+original binary was totally
+stripped has no section headers
+
+00:19:30.970 --> 00:19:35.374
+no symbol tables when that
+binary get sad when the process
+
+00:19:35.374 --> 00:19:38.678
+get snapshot in ECFS bully
+reconstructs both of the symbol
+
+00:19:38.678 --> 00:19:43.315
+tables and there's two symbol
+tables in a binary you got the
+
+00:19:43.315 --> 00:19:47.520
+local symbol table Sim tab the
+one were looking at here and
+
+00:19:47.520 --> 00:19:49.522
+that's all the functions that
+were in the binary not the
+
+00:19:49.522 --> 00:19:54.226
+dynamically linked functions and
+it turns out the GCC compiles
+
+00:19:54.226 --> 00:19:59.465
+all binaries by default with a
+segment called PT GNU EH frame
+
+00:19:59.465 --> 00:20:02.868
+is a section called the EH
+Freeman of sections if you look
+
+00:20:02.868 --> 00:20:05.504
+this contains the exception
+handling frame description
+
+00:20:05.504 --> 00:20:10.209
+information and you can parse
+the store for info the common
+
+00:20:10.209 --> 00:20:14.680
+information entries and then you
+get the FTEs and can use this to
+
+00:20:14.680 --> 00:20:18.818
+locate the address and size of
+every single function in the
+
+00:20:18.818 --> 00:20:23.689
+binary so even if all the
+functions are encrypted we give
+
+00:20:23.689 --> 00:20:26.692
+you an example with item Pro
+item Pro uses control flow
+
+00:20:26.692 --> 00:20:30.463
+analysis or fingerprinting to
+find all the functions what if
+
+00:20:30.463 --> 00:20:35.067
+all the functions are encrypted
+or packed or obfuscated do not
+
+00:20:35.067 --> 00:20:40.239
+sign to work so essentially what
+ECFS does is it uses that
+
+00:20:40.239 --> 00:20:43.709
+approach to go back quick if you
+see that link there that link
+
+00:20:43.709 --> 00:20:46.946
+will take you to some code on my
+site I came up with this method
+
+00:20:46.946 --> 00:20:52.284
+of about eight months ago you
+can use that code to rebuild
+
+00:20:52.284 --> 00:20:55.454
+symbol tables a friend minded in
+a CTF and you want it way before
+
+00:20:55.454 --> 00:20:59.658
+everybody else does he quickly
+reconstructed the symbol tables
+
+00:20:59.658 --> 00:21:05.297
+so until we reconstruct local
+symbol tables and it's powerful
+
+00:21:05.297 --> 00:21:09.735
+I've haven't had actually fail
+on anything as long as that each
+
+00:21:09.735 --> 00:21:12.438
+frame segment is there and the
+only time in ever wouldn't be
+
+00:21:12.438 --> 00:21:17.309
+there is when a binaries
+explicitly told not to have it
+
+00:21:17.309 --> 00:21:21.247
+usually if you compile it was
+like no STD Lib even then it
+
+00:21:21.247 --> 00:21:27.253
+still may be there but dumb very
+nice Kling does it too so anyhow
+
+00:21:29.622 --> 00:21:32.391
+let's look at the dynamic symbol
+tables the dynamic symbol table
+
+00:21:32.391 --> 00:21:37.563
+this is like symbols for what
+printf F get stir copy and the
+
+00:21:37.563 --> 00:21:42.034
+way we do this is the dynamic
+segment of a program is in
+
+00:21:42.034 --> 00:21:44.670
+memory because it's needed by
+the dynamic linker so you can
+
+00:21:44.670 --> 00:21:48.641
+locate the dynamic segment ECFS
+does this of course find the DT
+
+00:21:48.641 --> 00:21:52.344
+syntax resolves the address of
+every single shared library
+
+00:21:52.344 --> 00:21:55.114
+function and it plugs the
+addresses into the corresponding
+
+00:21:55.114 --> 00:22:00.419
+symbols so very nice feature as
+well complete symbol table
+
+00:22:00.419 --> 00:22:04.089
+Reconstruction fixing ECFS does
+is a rebuilds everybody know
+
+00:22:04.089 --> 00:22:08.894
+anybody or Noel section headers
+are calcium some you guys do
+
+00:22:08.894 --> 00:22:12.798
+well section headers are very
+nice because they allow making
+
+00:22:12.798 --> 00:22:16.001
+navigation of the binary much
+easier they're not necessary for
+
+00:22:16.001 --> 00:22:18.771
+runtime but they're usually
+there because are used by
+
+00:22:18.771 --> 00:22:22.374
+linkers and debuggers well even
+if the original binary had no
+
+00:22:22.374 --> 00:22:26.679
+section headers let's say it was
+stripped by a hacker when ECFS
+
+00:22:26.679 --> 00:22:29.515
+snapshots a process it still
+fully reconstructs all the
+
+00:22:29.515 --> 00:22:34.854
+section headers and all the
+original section headers for
+
+00:22:34.854 --> 00:22:38.224
+just about all of them and it
+reconstructs and builds a lot of
+
+00:22:38.224 --> 00:22:41.994
+new section headers that are
+totally custom and pertain to
+
+00:22:41.994 --> 00:22:45.698
+ECFS forensic stuff let us look
+at some of the section so
+
+00:22:45.698 --> 00:22:48.901
+there's a section for the heap
+you can quickly access the heap
+
+00:22:48.901 --> 00:22:51.871
+data is a section for the stack
+were stacks of their multiple
+
+00:22:51.871 --> 00:22:56.308
+stacks the VDS over to a dynamic
+shared object of the visas call
+
+00:22:56.308 --> 00:23:00.679
+page now text and data there in
+capital letters is actually
+
+00:23:00.679 --> 00:23:04.316
+point to the text segment in the
+data segment those are different
+
+00:23:04.316 --> 00:23:08.487
+than the text and data sections
+now some people know that the
+
+00:23:08.487 --> 00:23:13.525
+product paid directory has a lot
+of information about a running
+
+00:23:13.525 --> 00:23:18.063
+process so when this ECFS
+snapshot is created ECFS
+
+00:23:18.063 --> 00:23:21.166
+captures the proctored directory
+compresses and stores it in a
+
+00:23:21.166 --> 00:23:26.805
+section pocket Fest.tgz very
+nice to decompress and look at
+
+00:23:26.805 --> 00:23:31.110
+PR status contains register
+information at the info is nice
+
+00:23:31.110 --> 00:23:34.880
+because it retains all the file
+descriptor information offsets
+
+00:23:34.880 --> 00:23:38.917
+the files the socket information
+IPC all of that stuff about the
+
+00:23:38.917 --> 00:23:42.454
+process and that's one reason
+why snapshot process necromancy
+
+00:23:42.454 --> 00:23:45.624
+works we can bring the process
+back is a restores all of that
+
+00:23:45.624 --> 00:23:48.460
+information files that were
+opened wherever the process was
+
+00:23:48.460 --> 00:23:53.465
+at the auxiliary vector the
+executable path and the
+
+00:23:53.465 --> 00:23:58.137
+personality is the is very ECFS
+specific it contains information
+
+00:23:58.137 --> 00:24:03.242
+that is pertains to ECFS such is
+were the symbol tables fully
+
+00:24:03.242 --> 00:24:08.213
+reconstructed basically the
+personality of the ECFS file
+
+00:24:08.213 --> 00:24:10.849
+what components were turned on
+were heuristics enabled things
+
+00:24:10.849 --> 00:24:14.987
+like that the last two is the
+art list which contains the RV
+
+00:24:14.987 --> 00:24:18.123
+vector of the program and then
+the FP red set floating-point
+
+00:24:18.123 --> 00:24:22.861
+register so all very easy to
+access the section headers now
+
+00:24:22.861 --> 00:24:25.898
+more importantly is there are
+three custom section types could
+
+00:24:25.898 --> 00:24:31.870
+you have section names with any
+of section types so for example
+
+00:24:31.870 --> 00:24:34.673
+sections have code in memory
+data are usually of type
+
+00:24:34.673 --> 00:24:38.444
+products means program that's
+well what we have is three
+
+00:24:38.444 --> 00:24:43.082
+custom types so SH live anytime
+there's a shared library mapping
+
+00:24:43.082 --> 00:24:47.786
+gets marked with the type SH
+live it's very fitting but
+
+00:24:47.786 --> 00:24:50.689
+what's even cooler is if the
+shared library was determined by
+
+00:24:50.689 --> 00:24:54.093
+ECFS to of been injected
+unnaturally such as by an
+
+00:24:54.093 --> 00:24:58.697
+attacker will actually market is
+injected she can disease retail
+
+00:24:58.697 --> 00:25:01.834
+look at the file back of this
+was injected if it determines
+
+00:25:01.834 --> 00:25:05.537
+that a shared library was
+preloaded intellectually market
+
+00:25:05.537 --> 00:25:09.108
+as preloaded so those are very
+handy for quickly identifying
+
+00:25:09.108 --> 00:25:14.513
+injection we move on talk a
+little bit about the injection
+
+00:25:14.513 --> 00:25:17.316
+detection heuristic so what is a
+normal shared library gets
+
+00:25:17.316 --> 00:25:20.586
+loaded by the dynamic linker to
+Heidi differentiate when that is
+
+00:25:20.586 --> 00:25:25.224
+normal first is not normal I
+will go too deep into the detail
+
+00:25:25.224 --> 00:25:27.993
+but getting this is it's not too
+difficult but getting it to be
+
+00:25:27.993 --> 00:25:33.065
+accurate every time takes a
+little bit of work and
+
+00:25:33.065 --> 00:25:36.902
+essentially the idea is that a
+library can legally be loaded by
+
+00:25:36.902 --> 00:25:41.774
+DL open can legally be loaded by
+the dynamic linker or by preload
+
+00:25:41.774 --> 00:25:45.010
+but if it was loaded by some
+other means such as Lib CDL open
+
+00:25:45.010 --> 00:25:48.414
+motor P Tracer the VDS so that
+we can assume that it's been
+
+00:25:48.414 --> 00:25:52.384
+injected and a lot of work goes
+into analyzing a lot of
+
+00:25:52.384 --> 00:25:56.288
+different parts the process to
+determine that and we cannot
+
+00:25:56.288 --> 00:25:58.891
+just detect shared library
+injection any type of injected
+
+00:25:58.891 --> 00:26:05.464
+code and will see that in a
+quick demo shortly here so live
+
+00:26:05.464 --> 00:26:11.837
+ECFS this is actually an API I
+designed that I wrote so that
+
+00:26:11.837 --> 00:26:16.108
+people can very easily integrate
+ECFS support into their malware
+
+00:26:16.108 --> 00:26:23.115
+analysis tools and it makes
+process analysis or it's a take
+
+00:26:23.115 --> 00:26:25.918
+a snapshot of a process that you
+know some hour was running and
+
+00:26:25.918 --> 00:26:28.320
+you could write a really
+sophisticated tool using Lib
+
+00:26:28.320 --> 00:26:32.224
+ECFS very quickly I want to look
+at Shirley here as I wrote a
+
+00:26:32.224 --> 00:26:36.195
+tool to detect shared library
+injection PLT hooks the nasal
+
+00:26:36.195 --> 00:26:40.365
+takes about 3000 lines of code
+to detect the PLT hooks and
+
+00:26:40.365 --> 00:26:43.469
+shared library injection
+reliably take 3000 line to see
+
+00:26:43.469 --> 00:26:47.606
+code and this tools like 50
+lines of code because it's using
+
+00:26:47.606 --> 00:26:52.444
+ECFS and the Lib ECFS APIs very
+easy to use and I'm the only
+
+00:26:52.444 --> 00:26:56.815
+really have to know elf too much
+to know how to use it there is
+
+00:26:56.815 --> 00:27:00.953
+some documentation so read ECFS
+if you're familiar with the tool
+
+00:27:00.953 --> 00:27:05.023
+read health read ECFS is kind of
+like Reno but it's specifically
+
+00:27:05.023 --> 00:27:10.629
+designed to read ECFS files it
+is designed using the live ECFS
+
+00:27:10.629 --> 00:27:15.200
+API and that is why designed
+read ECFS to show how to use Lib
+
+00:27:15.200 --> 00:27:19.204
+ECFS it can do things such as
+extract the parasite the
+
+00:27:19.204 --> 00:27:23.775
+parasite is found in the process
+it can parse any of the sections
+
+00:27:23.775 --> 00:27:28.280
+show all the file descriptor
+socket information etc. still in
+
+00:27:28.280 --> 00:27:34.153
+early development to work in
+progress like all of this so the
+
+00:27:34.153 --> 00:27:37.456
+last thing to talk about your
+board into a demo is ECFS
+
+00:27:37.456 --> 00:27:41.827
+re-execution so to my knowledge
+there is only one other thing
+
+00:27:41.827 --> 00:27:44.730
+that can actually do this I
+believe it was called cryo- paid
+
+00:27:44.730 --> 00:27:50.269
+and maybe 2008 I know if there
+is a more modern version but the
+
+00:27:50.269 --> 00:27:53.639
+idea of being a snapshot of
+process or positive process
+
+00:27:53.639 --> 00:27:57.643
+completely taken out of memory
+and then resume its execution
+
+00:27:57.643 --> 00:28:01.713
+where it left off is something
+that a lot of people would like
+
+00:28:01.713 --> 00:28:08.086
+to have and ECFS is so so for
+kind with information with any
+
+00:28:08.086 --> 00:28:12.724
+file all the information about
+the process because it is
+
+00:28:12.724 --> 00:28:16.061
+essentially an L file why not be
+able to execute these and
+
+00:28:16.061 --> 00:28:19.798
+relaunch them back in the memory
+where they left off so if
+
+00:28:19.798 --> 00:28:24.970
+anybody remembers the groks
+UserLand exec I wrote a UserLand
+
+00:28:24.970 --> 00:28:30.242
+exec exhibit specifically
+designed for loading ECFS files
+
+00:28:30.242 --> 00:28:34.613
+not just regular elf executables
+and it'll restore the file
+
+00:28:34.613 --> 00:28:40.519
+streams doesn't work on IPC at
+so I wrote ECFS exec and here's
+
+00:28:40.519 --> 00:28:44.623
+the get hub for exists separate
+from the regular ECFS repo in
+
+00:28:44.623 --> 00:28:48.360
+about a day days time so it
+needs a lot more work to
+
+00:28:48.360 --> 00:28:55.000
+actually go anywhere at this
+point it's a prototype so what
+
+00:28:55.000 --> 00:29:01.006
+to do now is I'm in a do a demo
+so I'm in a do a demo of sorrow
+
+00:29:03.342 --> 00:29:08.113
+Mann to sorrow mine is an
+anti-forensics exec technique so
+
+00:29:08.113 --> 00:29:11.550
+people know about like threat
+injection maybe being able to
+
+00:29:11.550 --> 00:29:15.854
+inject some show code into a
+process opposition independent
+
+00:29:15.854 --> 00:29:19.658
+shell code well what I wanted to
+do was take a fully dynamically
+
+00:29:19.658 --> 00:29:23.595
+linked executable and be able to
+inject that into a process so
+
+00:29:23.595 --> 00:29:27.799
+basically be able to it's it's
+an anti-forensics exec because
+
+00:29:27.799 --> 00:29:30.769
+sorrow model allows you to
+execute any program you want
+
+00:29:30.769 --> 00:29:33.839
+just a regular dynamically
+linked program inside of an
+
+00:29:33.839 --> 00:29:37.075
+existing address space or
+doesn't create a new process
+
+00:29:37.075 --> 00:29:41.480
+that's why it anti-forensics so
+what this does will inject in
+
+00:29:41.480 --> 00:29:44.816
+our case were to inject the back
+door that I wrote when I was 14
+
+00:29:44.816 --> 00:29:48.453
+then I stalled the code for when
+injected into an existing
+
+00:29:48.453 --> 00:29:51.790
+process and it will run
+concurrently with that process
+
+00:29:51.790 --> 00:29:55.994
+this is a difficult technique to
+detect just by you know whatever
+
+00:29:55.994 --> 00:29:59.364
+means I would take some reverse
+engineering and it's not
+
+00:29:59.364 --> 00:30:02.868
+anything real apparent soaring
+use this is kind of a use case
+
+00:30:02.868 --> 00:30:06.905
+for showing how ECFS can help
+quickly identify the back door
+
+00:30:06.905 --> 00:30:12.911
+etc. so let's do that row
+quickly here go into sorrow
+
+00:30:16.048 --> 00:30:19.117
+Manzo first for simplicity were
+there on the simple program
+
+00:30:19.117 --> 00:30:24.256
+hosted just prints I am a host
+and then were to launch and use
+
+00:30:24.256 --> 00:30:29.428
+this anti-forensics exec and our
+back door it's a remote back
+
+00:30:29.428 --> 00:30:35.100
+door binds to a poor called
+server so we just injected that
+
+00:30:35.100 --> 00:30:39.738
+end of this process okay go over
+here see that process is still
+
+00:30:39.738 --> 00:30:42.174
+running but if we telnet
+localhost 31337X you got a back
+
+00:30:42.174 --> 00:30:47.312
+door so there's back to running
+inside of that other process
+
+00:30:47.312 --> 00:30:50.649
+take password and bam were in
+this awesome little backdoor
+
+00:30:50.649 --> 00:30:56.655
+from 99 and now may go back over
+here and I'm going to get a
+
+00:31:00.459 --> 00:31:06.465
+snapshot of that host program I
+go to just use the core handler
+
+00:31:08.467 --> 00:31:11.470
+no free looking cores we got two
+snapshots is a risk threat
+
+00:31:11.470 --> 00:31:14.005
+injections that are two threads
+that we can look at any one of
+
+00:31:14.005 --> 00:31:20.011
+them so let's just first use
+read ECFS I'm host at 2848 and
+
+00:31:23.181 --> 00:31:26.351
+lot of information register
+statement were looking at here
+
+00:31:26.351 --> 00:31:28.887
+is we look at the file
+descriptor information we see
+
+00:31:28.887 --> 00:31:32.023
+that host why would a program
+that just prints I am a host
+
+00:31:32.023 --> 00:31:37.562
+over and over have this Port
+right here it's being bound to
+
+00:31:37.562 --> 00:31:42.434
+because we injected the program
+into it the backdoor program so
+
+00:31:42.434 --> 00:31:45.704
+at just the first kind of
+anomalous thing no will to do
+
+00:31:45.704 --> 00:31:49.808
+his work and use just the
+standard retail futility read
+
+00:31:49.808 --> 00:31:56.581
+health really the section
+headers of this ECFS core file
+
+00:31:56.581 --> 00:31:59.918
+so as you can see and it's
+important to note regular core
+
+00:31:59.918 --> 00:32:02.387
+files do not have section
+headers so this is a nice
+
+00:32:02.387 --> 00:32:04.923
+feature and you can see there
+are many section headers for
+
+00:32:04.923 --> 00:32:08.126
+every single part of the process
+you would want to access if you
+
+00:32:08.126 --> 00:32:12.697
+wanted to look at say the the
+got the PLT God would just go
+
+00:32:12.697 --> 00:32:17.369
+there to open up an item you
+could open it in object dump got
+
+00:32:17.369 --> 00:32:21.039
+to keep now here's what's
+anomalous we see this CS is
+
+00:32:21.039 --> 00:32:27.078
+injected so these are going to
+say SH lip but this is as it's
+
+00:32:27.078 --> 00:32:31.149
+injected and it says elf.din.0
+says Dan means dynamic because
+
+00:32:31.149 --> 00:32:37.689
+the executable injected was
+position independent so we
+
+00:32:37.689 --> 00:32:40.892
+spotted something here now the
+next step would be we want a
+
+00:32:40.892 --> 00:32:46.998
+sample of that parasite so when
+you do read ECFS minus okay like
+
+00:32:46.998 --> 00:32:53.438
+object copy ‚Äì O ‚Äì O from but
+and we go to 848 it's
+
+00:32:53.438 --> 00:32:57.375
+called.health.din.0 is the
+section we will extract will
+
+00:32:57.375 --> 00:33:02.914
+call the file parasite case and
+now we are looking at the
+
+00:33:02.914 --> 00:33:05.617
+program enters prepare say we
+have a full sample of the
+
+00:33:05.617 --> 00:33:08.987
+executable that was injected
+into the process so we were able
+
+00:33:08.987 --> 00:33:13.725
+to very quickly performed
+surgery if you will on the ECFS
+
+00:33:13.725 --> 00:33:18.396
+file and quickly isolate where
+the parasite was we saw that it
+
+00:33:18.396 --> 00:33:20.832
+was bound to a port because all
+the socket information is
+
+00:33:20.832 --> 00:33:24.703
+included in the ECFS file and we
+see that it a position
+
+00:33:24.703 --> 00:33:28.740
+independent executable see that
+says dynamic but it's not a
+
+00:33:28.740 --> 00:33:36.548
+shared library and that's the
+server back door so that is one
+
+00:33:36.548 --> 00:33:43.154
+quick example next so well yes
+so next what to do me to see
+
+00:33:43.154 --> 00:33:50.028
+here to look at so the jinx and
+his hazel root kits that people
+
+00:33:50.028 --> 00:33:56.935
+use is an LD pre-preload type
+root kit and what that does is
+
+00:33:56.935 --> 00:34:00.805
+it preloads the as a result
+shared library into a process
+
+00:34:00.805 --> 00:34:05.677
+that the hacker wants to infect
+and hijack certain functions so
+
+00:34:05.677 --> 00:34:08.980
+were to run another simple
+program host organ infected with
+
+00:34:08.980 --> 00:34:14.986
+the is Azle shared library so
+just saying hello we go over
+
+00:34:18.290 --> 00:34:26.131
+here let's do kill ‚Äì 11 pit of
+host actually let me get rid of
+
+00:34:26.131 --> 00:34:32.137
+the other one sounded confused
+now got that so what were to do
+
+00:34:34.372 --> 00:34:40.879
+here is just look at the section
+headers again with Rita off keep
+
+00:34:40.879 --> 00:34:44.182
+in mind is using open source
+object utilities read health is
+
+00:34:44.182 --> 00:34:50.622
+totally compatible with our ECFS
+so looking at the section
+
+00:34:50.622 --> 00:34:54.726
+headers again notes go all the
+way down there's all the shared
+
+00:34:54.726 --> 00:35:00.031
+libraries now suddenly look we
+see that the is Azle shared
+
+00:35:00.031 --> 00:35:04.035
+libraries and ECFS detected them
+as being preloaded so
+
+00:35:04.035 --> 00:35:06.538
+immediately that look suspicious
+you know the libraries were
+
+00:35:06.538 --> 00:35:13.078
+preloaded and furthermore let's
+say we want to investigate the
+
+00:35:13.078 --> 00:35:15.280
+Global off the table see if
+there are any functions that
+
+00:35:15.280 --> 00:35:18.950
+were hooked the long way to do
+that would be to use read ECFS
+
+00:35:18.950 --> 00:35:21.453
+and you have to really kinda
+know what you're looking at here
+
+00:35:21.453 --> 00:35:25.590
+look at the Global offset table
+shows the God value shows they
+
+00:35:25.590 --> 00:35:28.326
+should either be the shared
+library or should be the PLT
+
+00:35:28.326 --> 00:35:32.831
+stop it's not one of those are
+those then it's off but that's I
+
+00:35:32.831 --> 00:35:36.668
+can confuse you guys what I'm in
+a do is on the show you a tool
+
+00:35:36.668 --> 00:35:42.741
+wrote using live ECFS it's a
+malware analysis tool that would
+
+00:35:42.741 --> 00:35:47.145
+typically be pretty
+sophisticated to write and see
+
+00:35:47.145 --> 00:35:50.515
+and not that you can see all
+this but this is essentially of
+
+00:35:50.515 --> 00:35:54.486
+this is the code for the 55
+lines of code this can detect
+
+00:35:54.486 --> 00:35:57.489
+shared library was injected if
+was preloaded and then if the
+
+00:35:57.489 --> 00:36:01.192
+functions were hijacked in the
+Global offset table so is run
+
+00:36:01.192 --> 00:36:07.198
+that detect PLT hooks encores
+and so can see it found the
+
+00:36:10.101 --> 00:36:15.473
+preloaded shared libraries and I
+found function hook so it says
+
+00:36:15.473 --> 00:36:20.979
+that unlink opened her and fopen
+were all hooked were all Pro
+
+00:36:20.979 --> 00:36:25.216
+hijacked so very quickly in both
+scenarios it out to about 30
+
+00:36:25.216 --> 00:36:29.254
+seconds to take an ECFS snapshot
+and identify that there was an
+
+00:36:29.254 --> 00:36:32.290
+infection and the summary was
+done a lot of reverse
+
+00:36:32.290 --> 00:36:36.194
+engineering and analysis of
+process memory by hand I can
+
+00:36:36.194 --> 00:36:42.367
+tell you that this makes it much
+much easier and this particular
+
+00:36:42.367 --> 00:36:48.206
+ECFS core technology is reliable
+so it doesn't do all the work
+
+00:36:48.206 --> 00:36:50.975
+for you but it does a lot of it
+for you and I I could see it
+
+00:36:50.975 --> 00:36:55.613
+being adopted heavily by memory
+analysis tools forensics tools
+
+00:36:55.613 --> 00:37:01.219
+and and things I want to have a
+more accurate and colored view
+
+00:37:01.219 --> 00:37:07.225
+of a process so lastly here what
+I would like to show well the
+
+00:37:10.328 --> 00:37:15.200
+ivory can it talked about the
+delay be CFS but remove four
+
+00:37:15.200 --> 00:37:21.239
+years of snapshot execution so
+what all demo here is a simple
+
+00:37:21.239 --> 00:37:25.310
+program this because this can
+just to show you that were in a
+
+00:37:25.310 --> 00:37:29.547
+snapshot of process the process
+is gonna be reading and printing
+
+00:37:29.547 --> 00:37:32.317
+from the password file so will
+snapshot it about halfway
+
+00:37:32.317 --> 00:37:37.322
+through and then will restart it
+and it'll continue were left off
+
+00:37:37.322 --> 00:37:41.292
+so this demonstrates this
+demonstrates that it was
+
+00:37:41.292 --> 00:37:45.330
+restoring the file streams
+essentially now okay so this
+
+00:37:45.330 --> 00:37:51.336
+program read pass can you run it
+see a printing doing its thing
+
+00:37:59.244 --> 00:38:07.252
+now here will do kill ‚Äì 11. Of
+read pass over here so it
+
+00:38:07.252 --> 00:38:13.258
+printed out in O the first eight
+or so and we got the snapshot so
+
+00:38:15.393 --> 00:38:21.399
+were to use ECFS exec so we had
+a first copy it over files are
+
+00:38:27.772 --> 00:38:33.711
+all rude consider created by
+ECFS so cores read pass copy it
+
+00:38:33.711 --> 00:38:39.717
+to ECFS exec example and so we
+see that read past.29260 I was a
+
+00:38:45.690 --> 00:38:52.230
+process we snapshot it now we
+want to run it and let it begin
+
+00:38:52.230 --> 00:38:57.435
+where it left off so will do
+exactly read pass is little
+
+00:38:57.435 --> 00:39:01.739
+debugging output we got a
+pseudo-that pseudo-Zach do Zach
+
+00:39:01.739 --> 00:39:07.745
+Reed read past that 2926 and it
+started where it left off so
+
+00:39:18.223 --> 00:39:22.260
+since what that date is you know
+that.at the info section has all
+
+00:39:22.260 --> 00:39:24.963
+the file descriptor information
+pipe information socket
+
+00:39:24.963 --> 00:39:29.067
+information now if that password
+file was removed from the system
+
+00:39:29.067 --> 00:39:31.669
+this wouldn't work because it
+doesn't keep state of all the
+
+00:39:31.669 --> 00:39:35.340
+actual files and only keeps the
+state of where was accessing
+
+00:39:35.340 --> 00:39:37.742
+within the file now for the
+research and development into
+
+00:39:37.742 --> 00:39:40.745
+this project it would be too
+difficult to come up with some
+
+00:39:40.745 --> 00:39:44.282
+interesting ways of retaining
+estate like virtual machines do
+
+00:39:44.282 --> 00:39:47.218
+virtual machines have everything
+so different with the process
+
+00:39:47.218 --> 00:39:49.654
+because processes are
+self-contained they rely on the
+
+00:39:49.654 --> 00:39:53.258
+environment but this has
+implications of doing things
+
+00:39:53.258 --> 00:39:58.062
+like life process migration or
+high-availability computing or
+
+00:39:58.062 --> 00:40:03.835
+different types of fuzzing or if
+you want to be able to snapshot
+
+00:40:03.835 --> 00:40:06.037
+piece of malware like I
+mentioned earlier and then
+
+00:40:06.037 --> 00:40:09.607
+relaunch it on a system that
+sandbox and safe to run it on
+
+00:40:09.607 --> 00:40:14.012
+but let it star were left off so
+open source project as well
+
+00:40:14.012 --> 00:40:19.550
+something I plan to get more
+time on eventually and in take
+
+00:40:19.550 --> 00:40:25.556
+to the next level so these are
+the get hubs so ECFS that is the
+
+00:40:28.760 --> 00:40:31.829
+playing at the straightforward
+ECFS code the core handler the
+
+00:40:31.829 --> 00:40:35.733
+snapshot utility it's pretty
+easy to install and set up on
+
+00:40:35.733 --> 00:40:39.370
+your system so you can to start
+collecting ECFS core files
+
+00:40:39.370 --> 00:40:45.576
+instead of core files and ECFS
+exact is a separate repository
+
+00:40:45.576 --> 00:40:49.380
+and just a small bit of code and
+then sorrow Mann was the
+
+00:40:49.380 --> 00:40:55.186
+anti-forensics exec tool and
+anyway does anybody have any
+
+00:40:55.186 --> 00:40:59.891
+questions at all you can also
+come up to me after the talk but
+
+00:40:59.891 --> 00:41:05.897
+I will be happy to answer any if
+there are any right now yes in
+
+00:41:08.166 --> 00:41:14.172
+the white I believe the question
+was how specific is this to
+
+00:41:19.544 --> 00:41:24.082
+Lenox and could it be ported to
+other annexes so the answer to
+
+00:41:24.082 --> 00:41:27.885
+that is this should be able to
+be ported to other UNIX's such
+
+00:41:27.885 --> 00:41:32.690
+as FreeBSD most of the stuff
+that makes this specific to
+
+00:41:32.690 --> 00:41:36.060
+Lenox because it is just a Dell
+format self core form Apple
+
+00:41:36.060 --> 00:41:40.198
+makes a specific to Linux is the
+product directory is set up a
+
+00:41:40.198 --> 00:41:42.967
+little bit differently than the
+FreeBSD product filesystem
+
+00:41:42.967 --> 00:41:47.505
+because ECFS does get
+information from Brock. Also the
+
+00:41:47.505 --> 00:41:52.810
+this utility uses P trace and
+the limitations slightly
+
+00:41:52.810 --> 00:41:56.381
+different FreeBSD but this
+should be able to be ported to
+
+00:41:56.381 --> 00:42:01.419
+all other UNIX is other using
+nail file format provided 11
+
+00:42:01.419 --> 00:42:05.857
+level or another Lenox has a
+very fruitful product file
+
+00:42:05.857 --> 00:42:10.928
+system previous Jesus okay so
+she definitely be portable there
+
+00:42:10.928 --> 00:42:16.934
+is a couple other questions on
+the blue right there thank you I
+
+00:42:24.475 --> 00:42:28.646
+just start from the beginning
+sure the solution was related to
+
+00:42:28.646 --> 00:42:33.151
+the ask a question at the and
+namely whether it works with
+
+00:42:33.151 --> 00:42:38.289
+processes that still generate
+code dynamically like budgets or
+
+00:42:38.289 --> 00:42:45.196
+some antivirus engines that are
+loaded dynamically yeah that's a
+
+00:42:45.196 --> 00:42:49.967
+really good question and I don't
+totally know I do know that the
+
+00:42:49.967 --> 00:42:53.171
+GCR section and an elf binary
+contains a lot of Java classes
+
+00:42:53.171 --> 00:42:57.775
+and things like that I think
+that that would be something
+
+00:42:57.775 --> 00:43:00.845
+that's definitely on the path
+for exploration I haven't gone
+
+00:43:00.845 --> 00:43:04.182
+that far yet but I think it
+would be something worthwhile
+
+00:43:04.182 --> 00:43:07.819
+looking into and could probably
+be worked on but yeah I don't
+
+00:43:07.819 --> 00:43:13.825
+know in short yes sorry please
+so by your statement that it's a
+
+00:43:23.468 --> 00:43:27.805
+health specific is that
+architecture is a CPU
+
+00:43:27.805 --> 00:43:32.510
+architecture agnostic it is not
+this particular implementation
+
+00:43:32.510 --> 00:43:38.516
+but it could be ported yes yeah
+right there on the but there you
+
+00:43:46.424 --> 00:43:50.862
+this is amazing and you with
+your research and writing this
+
+00:43:50.862 --> 00:43:54.966
+leverage you see a path to
+automatically remove injected
+
+00:43:54.966 --> 00:44:00.738
+code a runtime well I would
+typically see that being more
+
+00:44:00.738 --> 00:44:05.276
+the role of the software that
+using ECFS and DCFS tends my
+
+00:44:05.276 --> 00:44:08.646
+vision for anyways as it is a
+piece that should be implemented
+
+00:44:08.646 --> 00:44:12.183
+into existing tools that may be
+already do that so my DARPA
+
+00:44:12.183 --> 00:44:15.753
+project detected and disinfected
+so it actually did remove the
+
+00:44:15.753 --> 00:44:19.423
+injection and ECFS would be
+something that I would want to
+
+00:44:19.423 --> 00:44:24.028
+use for that so ECFS is more
+like you use this with your
+
+00:44:24.028 --> 00:44:27.832
+project for the detection
+components and then your project
+
+00:44:27.832 --> 00:44:33.838
+would maybe do the disinfection
+you any final questions so you
+
+00:44:42.813 --> 00:44:45.750
+are reading the the password
+file and you kill the process
+
+00:44:45.750 --> 00:44:51.355
+and you have a new process that
+picks up where left off yes so
+
+00:44:51.355 --> 00:44:57.828
+is ECFS serve was the exact it
+saw the F the info then it has
+
+00:44:57.828 --> 00:45:02.099
+to make a new open call and then
+and then he uses existing
+
+00:45:02.099 --> 00:45:06.504
+information to pick up from
+where is a new socket or a new
+
+00:45:06.504 --> 00:45:09.707
+file descriptor well I did make
+sure to use the actual same file
+
+00:45:09.707 --> 00:45:12.610
+after number two exit pays
+attention if it's at the three
+
+00:45:12.610 --> 00:45:16.247
+of the four then it does do an
+open and an LC to get to the
+
+00:45:16.247 --> 00:45:19.817
+offset yet you still to go to
+the Col. to say like hey didn't
+
+00:45:19.817 --> 00:45:25.823
+like the do June‚Ä¶ Call right
+yes okay yeah yep yes in the
+
+00:45:29.327 --> 00:45:35.333
+blue right there partially or if
+you could clarify one more time
+
+00:45:49.981 --> 00:45:57.822
+sorry Mike thanks the question
+was whether you can sniff it and
+
+00:45:57.822 --> 00:46:00.691
+then restart of pairs of
+processes like of and that
+
+00:46:00.691 --> 00:46:04.395
+creates the forks to clock to a
+child and then you want them
+
+00:46:04.395 --> 00:46:09.333
+both snapshot the peristaltic
+and particularly if they
+
+00:46:09.333 --> 00:46:15.272
+communicate using C pipes I have
+thought about how to go about
+
+00:46:15.272 --> 00:46:18.342
+performing the implementation of
+that I have some notes on that
+
+00:46:18.342 --> 00:46:21.812
+but I haven't actually done it
+yet so the possibility is there
+
+00:46:21.812 --> 00:46:26.617
+is is nine lamented yet and I
+think were virtually all the
+
+00:46:26.617 --> 00:46:32.623
+time here so thank you
+

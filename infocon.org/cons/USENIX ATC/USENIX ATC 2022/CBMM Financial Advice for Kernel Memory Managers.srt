@@ -1,0 +1,2092 @@
+﻿1
+00:00:13,120 --> 00:00:13,920
+um
+
+2
+00:00:13,920 --> 00:00:16,000
+and mark as you said and i'll talk about
+
+3
+00:00:16,000 --> 00:00:18,320
+cost memory cost benefit analysis in the
+
+4
+00:00:18,320 --> 00:00:20,240
+memory manager
+
+5
+00:00:20,240 --> 00:00:22,320
+so kernel memory management is the part
+
+6
+00:00:22,320 --> 00:00:24,160
+of the system that allocates and
+
+7
+00:00:24,160 --> 00:00:27,199
+securely multiplexes physical memory
+
+8
+00:00:27,199 --> 00:00:29,279
+and this may sound like a very boring
+
+9
+00:00:29,279 --> 00:00:30,400
+task
+
+10
+00:00:30,400 --> 00:00:34,800
+but in fact it's the stuff of nightmares
+
+11
+00:00:34,960 --> 00:00:37,120
+memory management has a big impact on
+
+12
+00:00:37,120 --> 00:00:39,200
+performance tail latency and the
+
+13
+00:00:39,200 --> 00:00:41,600
+efficiency of resource usage so for
+
+14
+00:00:41,600 --> 00:00:44,399
+example we've found that on linux when
+
+15
+00:00:44,399 --> 00:00:46,079
+the system is fragmented page faults
+
+16
+00:00:46,079 --> 00:00:47,680
+often take dozens or hundreds of
+
+17
+00:00:47,680 --> 00:00:49,920
+milliseconds
+
+18
+00:00:49,920 --> 00:00:52,000
+looks familiar
+
+19
+00:00:52,000 --> 00:00:53,199
+but in fact
+
+20
+00:00:53,199 --> 00:00:55,039
+we don't want our
+
+21
+00:00:55,039 --> 00:00:56,879
+page fault latency to look like the
+
+22
+00:00:56,879 --> 00:00:59,600
+dubai skyline
+
+23
+00:00:59,600 --> 00:01:00,960
+so
+
+24
+00:01:00,960 --> 00:01:02,719
+one area where this is particularly
+
+25
+00:01:02,719 --> 00:01:04,479
+important is first party data center
+
+26
+00:01:04,479 --> 00:01:06,560
+workloads or workloads that service
+
+27
+00:01:06,560 --> 00:01:09,360
+providers would run on their own systems
+
+28
+00:01:09,360 --> 00:01:10,799
+and this
+
+29
+00:01:10,799 --> 00:01:12,799
+in this setting workloads run at scale
+
+30
+00:01:12,799 --> 00:01:14,640
+and so they experience these problems at
+
+31
+00:01:14,640 --> 00:01:15,680
+scale
+
+32
+00:01:15,680 --> 00:01:17,520
+there's some unique challenges in this
+
+33
+00:01:17,520 --> 00:01:19,439
+setting we have very diverse and
+
+34
+00:01:19,439 --> 00:01:21,200
+concurrent workloads
+
+35
+00:01:21,200 --> 00:01:22,479
+because
+
+36
+00:01:22,479 --> 00:01:24,880
+tasks are packed onto the same machines
+
+37
+00:01:24,880 --> 00:01:26,799
+and because there's a high fan out of
+
+38
+00:01:26,799 --> 00:01:29,040
+requests from front end to back end tail
+
+39
+00:01:29,040 --> 00:01:32,240
+latency is an important system metric
+
+40
+00:01:32,240 --> 00:01:33,680
+on the other hand
+
+41
+00:01:33,680 --> 00:01:35,600
+uh there's a big opportunity here which
+
+42
+00:01:35,600 --> 00:01:38,320
+is that workloads are highly replicated
+
+43
+00:01:38,320 --> 00:01:39,920
+and highly controlled and well known to
+
+44
+00:01:39,920 --> 00:01:41,439
+the service provider
+
+45
+00:01:41,439 --> 00:01:42,479
+and so
+
+46
+00:01:42,479 --> 00:01:44,240
+there's an opportunity to profile these
+
+47
+00:01:44,240 --> 00:01:47,360
+workloads so given the poor tail latency
+
+48
+00:01:47,360 --> 00:01:48,880
+that we've seen before
+
+49
+00:01:48,880 --> 00:01:50,960
+it's reasonable to ask is current memory
+
+50
+00:01:50,960 --> 00:01:53,119
+management up to the task in this
+
+51
+00:01:53,119 --> 00:01:55,759
+setting and we did some analysis of
+
+52
+00:01:55,759 --> 00:01:58,000
+kernel and workload behavior and we came
+
+53
+00:01:58,000 --> 00:02:00,000
+up with three limitations
+
+54
+00:02:00,000 --> 00:02:02,560
+the first is that there's a lack of good
+
+55
+00:02:02,560 --> 00:02:04,320
+quality information with which the
+
+56
+00:02:04,320 --> 00:02:07,360
+memory manager can make policy decisions
+
+57
+00:02:07,360 --> 00:02:08,800
+it turns out that memory management is
+
+58
+00:02:08,800 --> 00:02:12,239
+hard and it uh the memory manager needs
+
+59
+00:02:12,239 --> 00:02:14,080
+to predict the workload behavior in
+
+60
+00:02:14,080 --> 00:02:16,640
+order to know how to best allocate a map
+
+61
+00:02:16,640 --> 00:02:18,400
+memory
+
+62
+00:02:18,400 --> 00:02:21,200
+so for example this plot shows
+
+63
+00:02:21,200 --> 00:02:23,680
+the benefit of using huge pages for a
+
+64
+00:02:23,680 --> 00:02:25,440
+particular workload for different parts
+
+65
+00:02:25,440 --> 00:02:26,879
+of the address space
+
+66
+00:02:26,879 --> 00:02:30,239
+on the x-axis we have split the workload
+
+67
+00:02:30,239 --> 00:02:32,959
+duress space into 100 slices and on the
+
+68
+00:02:32,959 --> 00:02:36,160
+y-axis we show for each individual slice
+
+69
+00:02:36,160 --> 00:02:39,680
+the benefit of using huge pages
+
+70
+00:02:39,680 --> 00:02:41,440
+we see that there's some regions that
+
+71
+00:02:41,440 --> 00:02:43,680
+have huge benefit from using huge pages
+
+72
+00:02:43,680 --> 00:02:45,200
+whereas others don't have so much
+
+73
+00:02:45,200 --> 00:02:48,080
+benefit and in fact for this workload
+
+74
+00:02:48,080 --> 00:02:50,560
+linux uses seven times more memory more
+
+75
+00:02:50,560 --> 00:02:51,920
+huge pages
+
+76
+00:02:51,920 --> 00:02:53,920
+than is necessary to get the performance
+
+77
+00:02:53,920 --> 00:02:55,440
+that it does
+
+78
+00:02:55,440 --> 00:02:58,400
+but how would we discover that even
+
+79
+00:02:58,400 --> 00:03:00,560
+so there's a few current sources of
+
+80
+00:03:00,560 --> 00:03:02,480
+possible information that we could use
+
+81
+00:03:02,480 --> 00:03:04,959
+but none of them are very good
+
+82
+00:03:04,959 --> 00:03:06,959
+one option is to use
+
+83
+00:03:06,959 --> 00:03:11,280
+system-wide statistics or tunables
+
+84
+00:03:11,280 --> 00:03:12,640
+that give information about the whole
+
+85
+00:03:12,640 --> 00:03:14,480
+system or we could use hardware
+
+86
+00:03:14,480 --> 00:03:15,920
+performance counters that give
+
+87
+00:03:15,920 --> 00:03:18,400
+information about a hardware thread but
+
+88
+00:03:18,400 --> 00:03:20,239
+both of these provide information at the
+
+89
+00:03:20,239 --> 00:03:22,400
+wrong granularity because memory
+
+90
+00:03:22,400 --> 00:03:24,080
+management often has to make decisions
+
+91
+00:03:24,080 --> 00:03:26,159
+about pages or sets of pages within a
+
+92
+00:03:26,159 --> 00:03:27,519
+process
+
+93
+00:03:27,519 --> 00:03:29,519
+another option is to use something like
+
+94
+00:03:29,519 --> 00:03:30,959
+m advise
+
+95
+00:03:30,959 --> 00:03:32,959
+but this requires that the programmer
+
+96
+00:03:32,959 --> 00:03:34,799
+knows the memory access patterns of
+
+97
+00:03:34,799 --> 00:03:37,040
+their workload and it requires modifying
+
+98
+00:03:37,040 --> 00:03:38,560
+the program
+
+99
+00:03:38,560 --> 00:03:40,879
+so this is hard to use well
+
+100
+00:03:40,879 --> 00:03:43,040
+and yet another option is to use page
+
+101
+00:03:43,040 --> 00:03:45,519
+table accessed or dirty bits or the
+
+102
+00:03:45,519 --> 00:03:48,159
+frequency and location of page faults
+
+103
+00:03:48,159 --> 00:03:50,080
+but these are expensive because they
+
+104
+00:03:50,080 --> 00:03:52,080
+force a tread trade-off between
+
+105
+00:03:52,080 --> 00:03:56,159
+performance and accuracy of information
+
+106
+00:03:56,159 --> 00:03:58,400
+for example for page tables
+
+107
+00:03:58,400 --> 00:04:00,159
+page table access bits you have to scan
+
+108
+00:04:00,159 --> 00:04:02,239
+them more frequently to get more
+
+109
+00:04:02,239 --> 00:04:04,560
+up-to-date and more accurate information
+
+110
+00:04:04,560 --> 00:04:07,920
+but that costs more cpu
+
+111
+00:04:07,920 --> 00:04:10,159
+so a second limitation
+
+112
+00:04:10,159 --> 00:04:11,760
+is that current memory management
+
+113
+00:04:11,760 --> 00:04:14,799
+policies are often unaware of costs
+
+114
+00:04:14,799 --> 00:04:16,798
+so this plot shows
+
+115
+00:04:16,798 --> 00:04:19,600
+the 99th percentile tail latency for a
+
+116
+00:04:19,600 --> 00:04:21,279
+bunch of different code paths that can
+
+117
+00:04:21,279 --> 00:04:24,000
+occur during a page fault in linux
+
+118
+00:04:24,000 --> 00:04:26,560
+and we found that for huge pages in the
+
+119
+00:04:26,560 --> 00:04:28,160
+worst case you can get up to a
+
+120
+00:04:28,160 --> 00:04:30,479
+millisecond to create a huge page and
+
+121
+00:04:30,479 --> 00:04:32,160
+even in the best case it costs 100
+
+122
+00:04:32,160 --> 00:04:34,479
+microseconds just because of zeroing
+
+123
+00:04:34,479 --> 00:04:35,680
+memory
+
+124
+00:04:35,680 --> 00:04:37,759
+worse there are all of these other paths
+
+125
+00:04:37,759 --> 00:04:40,240
+where the kernel has to do compaction or
+
+126
+00:04:40,240 --> 00:04:42,320
+reclamation
+
+127
+00:04:42,320 --> 00:04:44,240
+during the page fault which leads to
+
+128
+00:04:44,240 --> 00:04:46,080
+really insanely long
+
+129
+00:04:46,080 --> 00:04:47,360
+page faults of
+
+130
+00:04:47,360 --> 00:04:49,600
+tens or hundreds of milliseconds
+
+131
+00:04:49,600 --> 00:04:51,440
+this is so expensive
+
+132
+00:04:51,440 --> 00:04:54,160
+that just to break even a single huge
+
+133
+00:04:54,160 --> 00:04:56,560
+page would need to avoid millions of tlb
+
+134
+00:04:56,560 --> 00:04:57,919
+misses
+
+135
+00:04:57,919 --> 00:05:00,000
+this leads to lots of recommendations
+
+136
+00:05:00,000 --> 00:05:02,320
+from application developers to just
+
+137
+00:05:02,320 --> 00:05:04,240
+disable huge pages altogether but this
+
+138
+00:05:04,240 --> 00:05:07,120
+misses opportunity
+
+139
+00:05:07,120 --> 00:05:09,360
+but wait you may ask
+
+140
+00:05:09,360 --> 00:05:11,039
+we know that these code paths are no
+
+141
+00:05:11,039 --> 00:05:13,039
+good so why not just avoid them it seems
+
+142
+00:05:13,039 --> 00:05:15,360
+like it should be an easy fix
+
+143
+00:05:15,360 --> 00:05:17,039
+but it's not unfortunately and that
+
+144
+00:05:17,039 --> 00:05:19,039
+leads to our third limitation which is
+
+145
+00:05:19,039 --> 00:05:21,360
+that no programmer ever sat down and
+
+146
+00:05:21,360 --> 00:05:22,160
+said
+
+147
+00:05:22,160 --> 00:05:24,400
+hmm we should spend a second during
+
+148
+00:05:24,400 --> 00:05:26,639
+a page fault doing compaction
+
+149
+00:05:26,639 --> 00:05:27,759
+rather
+
+150
+00:05:27,759 --> 00:05:30,080
+these memory management policies are the
+
+151
+00:05:30,080 --> 00:05:31,840
+emergent behavior of a bunch of
+
+152
+00:05:31,840 --> 00:05:33,759
+different scattered pieces of code
+
+153
+00:05:33,759 --> 00:05:35,840
+throughout the kernel
+
+154
+00:05:35,840 --> 00:05:37,440
+and because they're scattered like this
+
+155
+00:05:37,440 --> 00:05:38,960
+it's hard to even understand what the
+
+156
+00:05:38,960 --> 00:05:40,240
+policy is
+
+157
+00:05:40,240 --> 00:05:43,280
+let alone debug it or fix the problems
+
+158
+00:05:43,280 --> 00:05:45,600
+for example in linux we found that huge
+
+159
+00:05:45,600 --> 00:05:48,880
+page policy is impacted by
+
+160
+00:05:48,880 --> 00:05:50,240
+code snippets that are scattered
+
+161
+00:05:50,240 --> 00:05:52,639
+throughout many different files and
+
+162
+00:05:52,639 --> 00:05:54,320
+mixed in with unrelated memory
+
+163
+00:05:54,320 --> 00:05:55,280
+management code
+
+164
+00:05:55,280 --> 00:05:58,320
+[Music]
+
+165
+00:05:58,320 --> 00:06:00,000
+so we've seen that
+
+166
+00:06:00,000 --> 00:06:02,400
+first party data center workloads need
+
+167
+00:06:02,400 --> 00:06:04,800
+consistent memory management behavior
+
+168
+00:06:04,800 --> 00:06:05,600
+but
+
+169
+00:06:05,600 --> 00:06:07,919
+current designs have low quality
+
+170
+00:06:07,919 --> 00:06:09,199
+information
+
+171
+00:06:09,199 --> 00:06:11,680
+are cost unaware and have scattered
+
+172
+00:06:11,680 --> 00:06:14,880
+implementations that are hard to fix
+
+173
+00:06:14,880 --> 00:06:17,120
+our solution is cost benefit memory
+
+174
+00:06:17,120 --> 00:06:19,440
+management or cbmm
+
+175
+00:06:19,440 --> 00:06:21,840
+which uses the insight that all memory
+
+176
+00:06:21,840 --> 00:06:23,680
+management operations have a cost and a
+
+177
+00:06:23,680 --> 00:06:25,360
+benefit to user space
+
+178
+00:06:25,360 --> 00:06:27,280
+and we strive to make the cost less than
+
+179
+00:06:27,280 --> 00:06:28,400
+the benefit
+
+180
+00:06:28,400 --> 00:06:31,199
+we also centralize policies in one place
+
+181
+00:06:31,199 --> 00:06:33,039
+and we use workload profiling
+
+182
+00:06:33,039 --> 00:06:34,800
+information that's readily available in
+
+183
+00:06:34,800 --> 00:06:37,840
+the first party data center setting to
+
+184
+00:06:37,840 --> 00:06:39,680
+augment the kernel with information it
+
+185
+00:06:39,680 --> 00:06:41,680
+would be otherwise hard to get it at
+
+186
+00:06:41,680 --> 00:06:43,199
+runtime
+
+187
+00:06:43,199 --> 00:06:45,600
+we found that this has
+
+188
+00:06:45,600 --> 00:06:48,720
+this is really effective at reducing
+
+189
+00:06:48,720 --> 00:06:50,240
+the latency of memory management
+
+190
+00:06:50,240 --> 00:06:51,680
+operations
+
+191
+00:06:51,680 --> 00:06:53,520
+often by orders of magnitude compared to
+
+192
+00:06:53,520 --> 00:06:56,560
+linux and we do this without regressing
+
+193
+00:06:56,560 --> 00:06:58,800
+performance
+
+194
+00:06:58,800 --> 00:07:01,599
+so let's see how this works
+
+195
+00:07:01,599 --> 00:07:04,479
+the central idea of cbmm is that memory
+
+196
+00:07:04,479 --> 00:07:06,479
+management operations have a cost and a
+
+197
+00:07:06,479 --> 00:07:08,400
+benefit to user space
+
+198
+00:07:08,400 --> 00:07:10,800
+for example for a copy on write mapping
+
+199
+00:07:10,800 --> 00:07:13,280
+the benefit is that processor cycles are
+
+200
+00:07:13,280 --> 00:07:16,400
+not spent on copying memory on the other
+
+201
+00:07:16,400 --> 00:07:19,039
+hand the the cost is processor cycles
+
+202
+00:07:19,039 --> 00:07:21,199
+spent on extra page faults
+
+203
+00:07:21,199 --> 00:07:23,599
+when we do need to touch pages and our
+
+204
+00:07:23,599 --> 00:07:25,039
+one page is our touch and we do need to
+
+205
+00:07:25,039 --> 00:07:26,560
+copy them
+
+206
+00:07:26,560 --> 00:07:28,800
+so in cbmm we strive to ensure that the
+
+207
+00:07:28,800 --> 00:07:30,960
+cost is less than the benefit for memory
+
+208
+00:07:30,960 --> 00:07:32,639
+management operations
+
+209
+00:07:32,639 --> 00:07:35,039
+and in practice applying this principle
+
+210
+00:07:35,039 --> 00:07:36,960
+across the kernel memory manager
+
+211
+00:07:36,960 --> 00:07:38,960
+requires addressing the three challenges
+
+212
+00:07:38,960 --> 00:07:41,039
+we saw before
+
+213
+00:07:41,039 --> 00:07:42,479
+so to that end
+
+214
+00:07:42,479 --> 00:07:44,960
+cbmm introduces a new kernel component
+
+215
+00:07:44,960 --> 00:07:46,880
+called the estimator
+
+216
+00:07:46,880 --> 00:07:48,479
+that centralizes memory management
+
+217
+00:07:48,479 --> 00:07:51,039
+policies in one place and makes it
+
+218
+00:07:51,039 --> 00:07:53,039
+easier to debug and fix anomalies when
+
+219
+00:07:53,039 --> 00:07:55,440
+they come up
+
+220
+00:07:56,160 --> 00:07:58,160
+one other part when another part of the
+
+221
+00:07:58,160 --> 00:08:00,000
+kernel needs to make a memory management
+
+222
+00:08:00,000 --> 00:08:02,080
+policy decision it consults the
+
+223
+00:08:02,080 --> 00:08:03,919
+estimator to ensure that the cost is
+
+224
+00:08:03,919 --> 00:08:06,479
+less than the benefit
+
+225
+00:08:06,479 --> 00:08:09,120
+it does this uh the estimator does this
+
+226
+00:08:09,120 --> 00:08:11,680
+by explicitly modeling the cost and the
+
+227
+00:08:11,680 --> 00:08:14,080
+benefit of memory management operations
+
+228
+00:08:14,080 --> 00:08:16,160
+in terms of processor cycles gained and
+
+229
+00:08:16,160 --> 00:08:18,560
+lost by user space
+
+230
+00:08:18,560 --> 00:08:20,879
+there's roughly a model for every
+
+231
+00:08:20,879 --> 00:08:22,879
+memory management policy decision that
+
+232
+00:08:22,879 --> 00:08:24,879
+the estimator needs to make
+
+233
+00:08:24,879 --> 00:08:27,280
+and if the operation is
+
+234
+00:08:27,280 --> 00:08:29,280
+or if the estimate is
+
+235
+00:08:29,280 --> 00:08:31,199
+less the cost estimate is less than the
+
+236
+00:08:31,199 --> 00:08:33,599
+benefit estimate then the operation can
+
+237
+00:08:33,599 --> 00:08:35,839
+proceed
+
+238
+00:08:35,839 --> 00:08:37,839
+additionally the estimator can make use
+
+239
+00:08:37,839 --> 00:08:40,559
+of workload profiling information
+
+240
+00:08:40,559 --> 00:08:42,479
+which is readily available in the first
+
+241
+00:08:42,479 --> 00:08:44,320
+party data center setting
+
+242
+00:08:44,320 --> 00:08:45,920
+but is hard for the kernel to get at
+
+243
+00:08:45,920 --> 00:08:48,160
+runtime
+
+244
+00:08:48,160 --> 00:08:50,399
+for both models and profiles the goal
+
+245
+00:08:50,399 --> 00:08:52,160
+isn't to be perfectly accurate or
+
+246
+00:08:52,160 --> 00:08:55,360
+detailed but rather to identify big
+
+247
+00:08:55,360 --> 00:08:57,600
+mistakes that would lead to pathologies
+
+248
+00:08:57,600 --> 00:08:59,600
+or to identify big opportunities that
+
+249
+00:08:59,600 --> 00:09:02,160
+can lead to better performance
+
+250
+00:09:02,160 --> 00:09:04,080
+to that end we don't consult the
+
+251
+00:09:04,080 --> 00:09:06,240
+estimator for every possible branching
+
+252
+00:09:06,240 --> 00:09:09,920
+code path in the kernel rather we only
+
+253
+00:09:09,920 --> 00:09:12,080
+consult the estimator for
+
+254
+00:09:12,080 --> 00:09:13,760
+key early decisions that would have a
+
+255
+00:09:13,760 --> 00:09:16,000
+big impact later such as
+
+256
+00:09:16,000 --> 00:09:17,760
+whether to use a huge page or a base
+
+257
+00:09:17,760 --> 00:09:21,959
+page during a page fault
+
+258
+00:09:22,959 --> 00:09:24,320
+in more detail
+
+259
+00:09:24,320 --> 00:09:26,480
+a model is a function that returns a
+
+260
+00:09:26,480 --> 00:09:28,959
+cost-benefit estimate for a given memory
+
+261
+00:09:28,959 --> 00:09:31,120
+management operation such as promoting a
+
+262
+00:09:31,120 --> 00:09:33,680
+huge page or running a background daemon
+
+263
+00:09:33,680 --> 00:09:36,320
+concretely the models are implemented as
+
+264
+00:09:36,320 --> 00:09:38,160
+normalc functions in the kernel memory
+
+265
+00:09:38,160 --> 00:09:39,760
+management code
+
+266
+00:09:39,760 --> 00:09:41,839
+and the function can take in some
+
+267
+00:09:41,839 --> 00:09:43,839
+information about the memory management
+
+268
+00:09:43,839 --> 00:09:46,720
+operation and it returns a cost and a
+
+269
+00:09:46,720 --> 00:09:49,120
+benefit estimate
+
+270
+00:09:49,120 --> 00:09:51,279
+along the way it can consume information
+
+271
+00:09:51,279 --> 00:09:53,360
+about the kernel or hardware state
+
+272
+00:09:53,360 --> 00:09:55,360
+and it can consume information from the
+
+273
+00:09:55,360 --> 00:09:57,680
+workload profiles
+
+274
+00:09:57,680 --> 00:10:00,080
+so now consider if your
+
+275
+00:10:00,080 --> 00:10:01,120
+workload
+
+276
+00:10:01,120 --> 00:10:04,000
+is or if your system is misbehaving
+
+277
+00:10:04,000 --> 00:10:05,680
+normally this would be hard to debug
+
+278
+00:10:05,680 --> 00:10:07,680
+because it's unclear whether
+
+279
+00:10:07,680 --> 00:10:09,600
+some part of the system isn't behaving
+
+280
+00:10:09,600 --> 00:10:12,080
+as we expect or the policy is broken in
+
+281
+00:10:12,080 --> 00:10:13,440
+some way
+
+282
+00:10:13,440 --> 00:10:15,680
+but with cbmm we can just look at the
+
+283
+00:10:15,680 --> 00:10:18,560
+inputs and the outputs of the models
+
+284
+00:10:18,560 --> 00:10:20,800
+if the inputs aren't what we expect then
+
+285
+00:10:20,800 --> 00:10:22,959
+we have a go an idea of what part of the
+
+286
+00:10:22,959 --> 00:10:25,200
+system isn't uh working
+
+287
+00:10:25,200 --> 00:10:26,640
+and on the other hand if the outputs
+
+288
+00:10:26,640 --> 00:10:28,240
+aren't what we expect then we know that
+
+289
+00:10:28,240 --> 00:10:30,320
+the model is failing to account for
+
+290
+00:10:30,320 --> 00:10:31,920
+something that it needs to be updated to
+
+291
+00:10:31,920 --> 00:10:34,399
+account for
+
+292
+00:10:34,640 --> 00:10:36,320
+as an example let's look at the huge
+
+293
+00:10:36,320 --> 00:10:40,160
+page model in cbmm
+
+294
+00:10:40,160 --> 00:10:42,320
+we found that costs for huge pages
+
+295
+00:10:42,320 --> 00:10:44,000
+depend highly on the amount of free
+
+296
+00:10:44,000 --> 00:10:46,640
+memory that we have in the system if we
+
+297
+00:10:46,640 --> 00:10:48,720
+have available
+
+298
+00:10:48,720 --> 00:10:50,640
+available huge pages
+
+299
+00:10:50,640 --> 00:10:52,320
+sorry if we don't have available huge
+
+300
+00:10:52,320 --> 00:10:54,240
+pages then we may need to do compaction
+
+301
+00:10:54,240 --> 00:10:56,240
+or reclamation which is really expensive
+
+302
+00:10:56,240 --> 00:10:58,640
+and probably not what we want to do
+
+303
+00:10:58,640 --> 00:11:00,800
+to avoid uh
+
+304
+00:11:00,800 --> 00:11:03,279
+modeling all of these possible useless
+
+305
+00:11:03,279 --> 00:11:04,640
+detailed
+
+306
+00:11:04,640 --> 00:11:07,279
+code paths we just use the maximum value
+
+307
+00:11:07,279 --> 00:11:08,880
+that we saw empirically which in this
+
+308
+00:11:08,880 --> 00:11:10,800
+case was about a second
+
+309
+00:11:10,800 --> 00:11:12,480
+on the other hand if we do have free
+
+310
+00:11:12,480 --> 00:11:15,040
+memory then the cost is dominated by
+
+311
+00:11:15,040 --> 00:11:17,680
+preparing that memory to be mapped which
+
+312
+00:11:17,680 --> 00:11:19,680
+usually means zeroing the memory and
+
+313
+00:11:19,680 --> 00:11:21,120
+empirically we found that this costs
+
+314
+00:11:21,120 --> 00:11:23,680
+about 100 microseconds however if you
+
+315
+00:11:23,680 --> 00:11:26,079
+have a pre-zeroing implementation then
+
+316
+00:11:26,079 --> 00:11:28,480
+this is free
+
+317
+00:11:28,480 --> 00:11:30,480
+so for example suppose that we take a
+
+318
+00:11:30,480 --> 00:11:32,560
+page fault on our workload and we need
+
+319
+00:11:32,560 --> 00:11:34,880
+to decide whether to use huge pages or
+
+320
+00:11:34,880 --> 00:11:36,160
+base pages
+
+321
+00:11:36,160 --> 00:11:38,880
+and further suppose that we somehow know
+
+322
+00:11:38,880 --> 00:11:41,279
+that if we use huge pages we'll avoid 10
+
+323
+00:11:41,279 --> 00:11:44,480
+microseconds worth of tld misses
+
+324
+00:11:44,480 --> 00:11:46,880
+if our cost estimate is 100 microseconds
+
+325
+00:11:46,880 --> 00:11:48,800
+then we should use base pages because
+
+326
+00:11:48,800 --> 00:11:50,959
+the cost of 100 microseconds is greater
+
+327
+00:11:50,959 --> 00:11:52,720
+than the expected benefit of 10
+
+328
+00:11:52,720 --> 00:11:54,800
+microseconds so it would be a net
+
+329
+00:11:54,800 --> 00:11:56,959
+regression
+
+330
+00:11:56,959 --> 00:11:59,440
+on the other hand if the cost is
+
+331
+00:11:59,440 --> 00:12:00,880
+uh
+
+332
+00:12:00,880 --> 00:12:02,880
+the cost estimate is zero for example if
+
+333
+00:12:02,880 --> 00:12:05,120
+we have pre-zeroed memory then we should
+
+334
+00:12:05,120 --> 00:12:06,959
+use huge pages because we'll see an
+
+335
+00:12:06,959 --> 00:12:10,399
+expected benefit of 10 microseconds
+
+336
+00:12:10,399 --> 00:12:12,240
+but this raises a question of where does
+
+337
+00:12:12,240 --> 00:12:15,040
+this 10 microseconds number come from
+
+338
+00:12:15,040 --> 00:12:17,360
+and in our system this comes from
+
+339
+00:12:17,360 --> 00:12:20,480
+profiling information
+
+340
+00:12:21,440 --> 00:12:23,600
+we found that while costs are often
+
+341
+00:12:23,600 --> 00:12:25,839
+application independent benefits are
+
+342
+00:12:25,839 --> 00:12:28,320
+usually application specific
+
+343
+00:12:28,320 --> 00:12:29,839
+so we need some information about
+
+344
+00:12:29,839 --> 00:12:32,000
+application behavior and profiles
+
+345
+00:12:32,000 --> 00:12:34,480
+provide this information as a function
+
+346
+00:12:34,480 --> 00:12:36,639
+of the virtual address space in the in
+
+347
+00:12:36,639 --> 00:12:39,120
+the process many memory management
+
+348
+00:12:39,120 --> 00:12:41,440
+policies are applied at the per page
+
+349
+00:12:41,440 --> 00:12:44,000
+granularity and so this is a very
+
+350
+00:12:44,000 --> 00:12:47,519
+convenient format for profiles to be in
+
+351
+00:12:47,519 --> 00:12:49,440
+in general we believe that this kind of
+
+352
+00:12:49,440 --> 00:12:52,000
+profile can be generated readily by
+
+353
+00:12:52,000 --> 00:12:53,920
+comparing the workload performance under
+
+354
+00:12:53,920 --> 00:12:56,320
+different policy decisions
+
+355
+00:12:56,320 --> 00:12:58,720
+for example to create a profile that
+
+356
+00:12:58,720 --> 00:13:01,200
+supports the huge page model we saw
+
+357
+00:13:01,200 --> 00:13:03,760
+we might run the workload twice
+
+358
+00:13:03,760 --> 00:13:04,959
+once with
+
+359
+00:13:04,959 --> 00:13:07,360
+only base pages and once supporting the
+
+360
+00:13:07,360 --> 00:13:09,360
+region that we're interested in
+
+361
+00:13:09,360 --> 00:13:13,760
+with uh base backed by huge pages
+
+362
+00:13:13,760 --> 00:13:16,240
+again the goal isn't to be perfectly
+
+363
+00:13:16,240 --> 00:13:18,399
+accurate or detailed but rather to
+
+364
+00:13:18,399 --> 00:13:20,639
+identify big mistakes and opportunities
+
+365
+00:13:20,639 --> 00:13:22,720
+so both the ranges and the benefit
+
+366
+00:13:22,720 --> 00:13:25,279
+values will be noisy but it's okay
+
+367
+00:13:25,279 --> 00:13:27,600
+because this suffices to guide us
+
+368
+00:13:27,600 --> 00:13:31,040
+to guide our memory management policies
+
+369
+00:13:31,040 --> 00:13:32,880
+so putting it all together
+
+370
+00:13:32,880 --> 00:13:34,880
+cbmm addresses the challenges we saw
+
+371
+00:13:34,880 --> 00:13:37,760
+before and to use cbmm we would first
+
+372
+00:13:37,760 --> 00:13:39,760
+need to create models for the key memory
+
+373
+00:13:39,760 --> 00:13:42,639
+management policies
+
+374
+00:13:42,639 --> 00:13:44,880
+these models would start simple
+
+375
+00:13:44,880 --> 00:13:47,680
+and you can improve them iteratively
+
+376
+00:13:47,680 --> 00:13:49,839
+additionally we would want to
+
+377
+00:13:49,839 --> 00:13:51,920
+profile our workloads to get information
+
+378
+00:13:51,920 --> 00:13:54,160
+about the impact of memory management
+
+379
+00:13:54,160 --> 00:13:56,320
+operations
+
+380
+00:13:56,320 --> 00:13:58,399
+later when a cluster manager assigns a
+
+381
+00:13:58,399 --> 00:14:00,639
+workload to a particular
+
+382
+00:14:00,639 --> 00:14:02,800
+machine it would pass the profile for
+
+383
+00:14:02,800 --> 00:14:04,800
+that workload to the kernel on that
+
+384
+00:14:04,800 --> 00:14:06,160
+machine
+
+385
+00:14:06,160 --> 00:14:08,880
+and then when the kernel needs to make a
+
+386
+00:14:08,880 --> 00:14:12,000
+policy decision for that task such as
+
+387
+00:14:12,000 --> 00:14:14,240
+during a page fault it can consult the
+
+388
+00:14:14,240 --> 00:14:16,959
+estimator which uses the cost and the
+
+389
+00:14:16,959 --> 00:14:18,880
+cost benefit models and the profiles to
+
+390
+00:14:18,880 --> 00:14:20,320
+make an estimate
+
+391
+00:14:20,320 --> 00:14:22,399
+and then if the cost estimate is less
+
+392
+00:14:22,399 --> 00:14:24,800
+than the benefit estimate then the
+
+393
+00:14:24,800 --> 00:14:27,839
+operation can proceed
+
+394
+00:14:28,320 --> 00:14:30,320
+we implemented a prototype on top of
+
+395
+00:14:30,320 --> 00:14:32,480
+linux for multiple different memory
+
+396
+00:14:32,480 --> 00:14:34,800
+management policies which we described
+
+397
+00:14:34,800 --> 00:14:37,279
+in detail in the paper
+
+398
+00:14:37,279 --> 00:14:39,040
+and there are several axes which we
+
+399
+00:14:39,040 --> 00:14:41,519
+wanted to evaluate and i'll discuss two
+
+400
+00:14:41,519 --> 00:14:43,120
+in this talk
+
+401
+00:14:43,120 --> 00:14:45,440
+the first is whether we improved the
+
+402
+00:14:45,440 --> 00:14:47,920
+consistency of memory management
+
+403
+00:14:47,920 --> 00:14:50,079
+which we measured through the soft page
+
+404
+00:14:50,079 --> 00:14:52,240
+fault tail latency operation
+
+405
+00:14:52,240 --> 00:14:55,680
+soft page fault tail latency
+
+406
+00:14:55,680 --> 00:14:57,360
+however we didn't want to do this at the
+
+407
+00:14:57,360 --> 00:14:59,120
+expense of performance
+
+408
+00:14:59,120 --> 00:15:01,680
+so we also measured performance
+
+409
+00:15:01,680 --> 00:15:03,199
+we compared against linux as our
+
+410
+00:15:03,199 --> 00:15:05,680
+baseline and we measured our workloads
+
+411
+00:15:05,680 --> 00:15:07,120
+both with and without memory
+
+412
+00:15:07,120 --> 00:15:08,880
+fragmentation because memory
+
+413
+00:15:08,880 --> 00:15:11,040
+fragmentation has been shown in prior
+
+414
+00:15:11,040 --> 00:15:14,160
+work to cause really severe pathologies
+
+415
+00:15:14,160 --> 00:15:18,399
+that we want cbm to be able to resist
+
+416
+00:15:18,639 --> 00:15:20,480
+so first let's look at tail latency and
+
+417
+00:15:20,480 --> 00:15:22,639
+then we'll look at performance
+
+418
+00:15:22,639 --> 00:15:24,720
+so this plot shows soft page fault tail
+
+419
+00:15:24,720 --> 00:15:28,480
+latency for linux and soon for cbmm
+
+420
+00:15:28,480 --> 00:15:30,639
+and this is like a cdf
+
+421
+00:15:30,639 --> 00:15:33,199
+except that the y-axis uses
+
+422
+00:15:33,199 --> 00:15:35,279
+the interval between events and that
+
+423
+00:15:35,279 --> 00:15:37,279
+helps us to normalize for differences in
+
+424
+00:15:37,279 --> 00:15:38,880
+the total number of events between
+
+425
+00:15:38,880 --> 00:15:41,199
+systems
+
+426
+00:15:41,199 --> 00:15:43,680
+so for example this point on the plot
+
+427
+00:15:43,680 --> 00:15:45,600
+indicates that linux sees a page fault
+
+428
+00:15:45,600 --> 00:15:47,680
+lasting 10 milliseconds
+
+429
+00:15:47,680 --> 00:15:49,759
+every one second on average for this
+
+430
+00:15:49,759 --> 00:15:52,240
+workload
+
+431
+00:15:53,040 --> 00:15:55,040
+so points to the upper left of the plot
+
+432
+00:15:55,040 --> 00:15:57,519
+are better
+
+433
+00:15:58,399 --> 00:16:00,560
+cbmm improves
+
+434
+00:16:00,560 --> 00:16:02,480
+the latency of the longest events by
+
+435
+00:16:02,480 --> 00:16:04,240
+over an order of magnitude compared to
+
+436
+00:16:04,240 --> 00:16:06,000
+linux for this workload without
+
+437
+00:16:06,000 --> 00:16:07,600
+fragmentation
+
+438
+00:16:07,600 --> 00:16:10,399
+and if we add fragmentation into the mix
+
+439
+00:16:10,399 --> 00:16:12,399
+because linux has such extreme
+
+440
+00:16:12,399 --> 00:16:14,320
+pathologies
+
+441
+00:16:14,320 --> 00:16:16,959
+see that cbmm eliminates the improvement
+
+442
+00:16:16,959 --> 00:16:20,079
+is over three orders of magnitude
+
+443
+00:16:20,079 --> 00:16:22,959
+moreover cbmm reduces the frequency of
+
+444
+00:16:22,959 --> 00:16:23,839
+events
+
+445
+00:16:23,839 --> 00:16:25,920
+that have latencies between 10 and
+
+446
+00:16:25,920 --> 00:16:28,639
+hundreds of microseconds by
+
+447
+00:16:28,639 --> 00:16:30,240
+over an order of magnitude compared to
+
+448
+00:16:30,240 --> 00:16:32,639
+linux
+
+449
+00:16:34,639 --> 00:16:37,279
+this plot or these plots show
+
+450
+00:16:37,279 --> 00:16:40,880
+the results for all of our workloads
+
+451
+00:16:40,880 --> 00:16:43,920
+and the shaded area is the gap between
+
+452
+00:16:43,920 --> 00:16:46,959
+cbmm and linux
+
+453
+00:16:47,279 --> 00:16:49,440
+and we can see that in almost all cases
+
+454
+00:16:49,440 --> 00:16:51,759
+cbmm improves the soft page faulty
+
+455
+00:16:51,759 --> 00:16:52,959
+latency
+
+456
+00:16:52,959 --> 00:16:53,839
+by
+
+457
+00:16:53,839 --> 00:16:55,199
+between one and three orders of
+
+458
+00:16:55,199 --> 00:16:58,480
+magnitude compared to linux
+
+459
+00:16:58,480 --> 00:17:00,880
+this is because cpmm experiences such
+
+460
+00:17:00,880 --> 00:17:03,440
+extreme pathologies
+
+461
+00:17:03,440 --> 00:17:07,280
+that cbmm mostly eliminates
+
+462
+00:17:08,480 --> 00:17:09,520
+however
+
+463
+00:17:09,520 --> 00:17:10,880
+did we do it at the expense of
+
+464
+00:17:10,880 --> 00:17:12,480
+performance
+
+465
+00:17:12,480 --> 00:17:14,880
+so this plot shows normalized workload
+
+466
+00:17:14,880 --> 00:17:16,640
+performance so
+
+467
+00:17:16,640 --> 00:17:18,640
+normalized workload runtime so lower is
+
+468
+00:17:18,640 --> 00:17:20,959
+better and we normalized against linux
+
+469
+00:17:20,959 --> 00:17:22,559
+without fragmentation which is these
+
+470
+00:17:22,559 --> 00:17:24,799
+yellow bars at height one
+
+471
+00:17:24,799 --> 00:17:26,799
+if we look at linux with fragmentation
+
+472
+00:17:26,799 --> 00:17:29,039
+we see that the same pathologies that
+
+473
+00:17:29,039 --> 00:17:30,720
+give linux
+
+474
+00:17:30,720 --> 00:17:32,799
+poor perform poor tail latency also give
+
+475
+00:17:32,799 --> 00:17:35,280
+it poor performance often by integer
+
+476
+00:17:35,280 --> 00:17:37,440
+factors
+
+477
+00:17:37,440 --> 00:17:39,120
+zooming in a little bit
+
+478
+00:17:39,120 --> 00:17:41,360
+uh we can see that cbmm has fairly
+
+479
+00:17:41,360 --> 00:17:44,160
+competitive performance with linux
+
+480
+00:17:44,160 --> 00:17:46,240
+without fragmentation in almost all
+
+481
+00:17:46,240 --> 00:17:48,559
+cases cpmm matches or exceeds the
+
+482
+00:17:48,559 --> 00:17:50,720
+performance of linux
+
+483
+00:17:50,720 --> 00:17:53,600
+and on average it's about the same
+
+484
+00:17:53,600 --> 00:17:56,880
+however with fragmentation cbmm is 35
+
+485
+00:17:56,880 --> 00:17:59,200
+faster on average because it eliminates
+
+486
+00:17:59,200 --> 00:18:01,919
+eliminates a lot of the pathologies that
+
+487
+00:18:01,919 --> 00:18:04,080
+linux experiences
+
+488
+00:18:04,080 --> 00:18:06,640
+so we can conclude that cbmm is able to
+
+489
+00:18:06,640 --> 00:18:08,240
+improve the consistency of memory
+
+490
+00:18:08,240 --> 00:18:09,840
+management performance
+
+491
+00:18:09,840 --> 00:18:11,200
+as
+
+492
+00:18:11,200 --> 00:18:12,880
+as measured by soft page fault tail
+
+493
+00:18:12,880 --> 00:18:14,400
+latency but it does so without
+
+494
+00:18:14,400 --> 00:18:17,520
+regressing performance
+
+495
+00:18:18,480 --> 00:18:21,039
+cbmm tries to address major challenges
+
+496
+00:18:21,039 --> 00:18:22,720
+for memory management in the first party
+
+497
+00:18:22,720 --> 00:18:25,280
+data center setting
+
+498
+00:18:25,280 --> 00:18:26,320
+while
+
+499
+00:18:26,320 --> 00:18:28,080
+current implementations are scattered
+
+500
+00:18:28,080 --> 00:18:30,480
+and hard to debug cbmm centralizes
+
+501
+00:18:30,480 --> 00:18:32,880
+implementation in the estimator making
+
+502
+00:18:32,880 --> 00:18:34,400
+it easier to
+
+503
+00:18:34,400 --> 00:18:36,400
+fix and debug anomalies
+
+504
+00:18:36,400 --> 00:18:39,120
+moreover while current policies are cost
+
+505
+00:18:39,120 --> 00:18:41,360
+unaware
+
+506
+00:18:41,360 --> 00:18:42,799
+in cbmm
+
+507
+00:18:42,799 --> 00:18:44,720
+costs are explicitly modeled as well as
+
+508
+00:18:44,720 --> 00:18:46,720
+benefits and we ensure that the costs
+
+509
+00:18:46,720 --> 00:18:48,799
+are outweighed by the benefits
+
+510
+00:18:48,799 --> 00:18:51,039
+and finally cbmm makes use of the first
+
+511
+00:18:51,039 --> 00:18:52,880
+party data center setting
+
+512
+00:18:52,880 --> 00:18:55,120
+to gather workload profiling information
+
+513
+00:18:55,120 --> 00:18:56,559
+that would be otherwise hard to get at
+
+514
+00:18:56,559 --> 00:18:58,160
+runtime
+
+515
+00:18:58,160 --> 00:19:00,400
+we've just seen how well this works
+
+516
+00:19:00,400 --> 00:19:02,240
+and we think these ideas can be used
+
+517
+00:19:02,240 --> 00:19:03,919
+more widely in memory management in the
+
+518
+00:19:03,919 --> 00:19:05,520
+kernel
+
+519
+00:19:05,520 --> 00:19:07,120
+and with that i thank you for your time
+
+520
+00:19:07,120 --> 00:19:08,960
+and i'm happy to
+
+521
+00:19:08,960 --> 00:19:10,640
+answer your questions and we also have a
+
+522
+00:19:10,640 --> 00:19:11,679
+poster
+
+523
+00:19:11,679 --> 00:19:15,000
+later tonight
+

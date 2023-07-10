@@ -1,0 +1,3182 @@
+﻿1
+00:00:00,053 --> 00:00:02,171
+- Thomas, thank you very
+much for being here.
+
+2
+00:00:02,171 --> 00:00:03,004
+(audience applauding)
+
+3
+00:00:03,004 --> 00:00:05,061
+Looking forward to listen your talk.
+
+4
+00:00:05,061 --> 00:00:06,840
+- Thank you.
+(audience applauding)
+
+5
+00:00:06,840 --> 00:00:09,090
+Hello. Thanks for staying
+so late (chuckles).
+
+6
+00:00:10,170 --> 00:00:12,750
+We're gonna talk about
+Solana and it's JIT compiler
+
+7
+00:00:12,750 --> 00:00:15,333
+and a couple of lessons we
+learned from fuzzing it.
+
+8
+00:00:16,590 --> 00:00:18,420
+First off, I'm Thomas Roth.
+
+9
+00:00:18,420 --> 00:00:19,950
+I'm a security researcher.
+
+10
+00:00:19,950 --> 00:00:22,200
+I lead something called
+Kraken Security Labs,
+
+11
+00:00:22,200 --> 00:00:25,020
+which is the security
+research division of Kraken.
+
+12
+00:00:25,020 --> 00:00:28,740
+Normally we do things like
+play "Doom" on Bitcoin ATMs,
+
+13
+00:00:28,740 --> 00:00:30,060
+hack hardware wallets,
+
+14
+00:00:30,060 --> 00:00:31,920
+all that kind of stuff.
+
+15
+00:00:31,920 --> 00:00:33,210
+But before we get started,
+
+16
+00:00:33,210 --> 00:00:35,550
+there are a couple of people
+we need to say thank you to.
+
+17
+00:00:35,550 --> 00:00:37,980
+So for example, the Solana team,
+
+18
+00:00:37,980 --> 00:00:40,800
+who are pretty good
+sports about all of this,
+
+19
+00:00:40,800 --> 00:00:42,690
+then secret.club's Addison,
+
+20
+00:00:42,690 --> 00:00:45,510
+this hosts a lot of recognition,
+as you will see later,
+
+21
+00:00:45,510 --> 00:00:48,030
+and also the AFL++ team
+
+22
+00:00:48,030 --> 00:00:51,750
+who were nice enough to help
+me out a couple of times.
+
+23
+00:00:51,750 --> 00:00:55,020
+Now, before we get into the fuzzing part,
+
+24
+00:00:55,020 --> 00:00:56,640
+let's quickly talk about Solana.
+
+25
+00:00:56,640 --> 00:00:59,190
+So Solana self describes itself
+
+26
+00:00:59,190 --> 00:01:00,840
+as a high performance blockchain,
+
+27
+00:01:00,840 --> 00:01:03,060
+which means one of their
+main goals is to execute
+
+28
+00:01:03,060 --> 00:01:06,120
+as many transactions
+per second as possible.
+
+29
+00:01:06,120 --> 00:01:07,740
+If you look at, for example, Ethereum,
+
+30
+00:01:07,740 --> 00:01:12,740
+you normally execute a couple
+of transactions per second,
+
+31
+00:01:12,750 --> 00:01:14,250
+but on Solana, their goal is
+
+32
+00:01:14,250 --> 00:01:16,470
+thousands of transactions per second.
+
+33
+00:01:16,470 --> 00:01:19,560
+Now on top of Solana, you
+can run smart contracts.
+
+34
+00:01:19,560 --> 00:01:22,140
+And if you've worked with,
+let's say, Ethereum before,
+
+35
+00:01:22,140 --> 00:01:24,120
+you probably know that
+normally those contracts
+
+36
+00:01:24,120 --> 00:01:26,160
+are written in domain specific languages.
+
+37
+00:01:26,160 --> 00:01:31,160
+So for example, on Ethereum it
+would be solidity and so on.
+
+38
+00:01:31,170 --> 00:01:33,900
+But on Solana instead, you
+can write your contracts
+
+39
+00:01:33,900 --> 00:01:37,680
+in C, C++, and Rust and so
+on, which is pretty cool.
+
+40
+00:01:37,680 --> 00:01:39,720
+And it's pretty cool
+how they implemented it.
+
+41
+00:01:39,720 --> 00:01:42,810
+And we are going to take
+quite a deep look at that.
+
+42
+00:01:42,810 --> 00:01:44,220
+Solana has a proof of stake
+
+43
+00:01:44,220 --> 00:01:46,440
+slash proof of history blockchain,
+
+44
+00:01:46,440 --> 00:01:48,330
+and so no mining involved.
+
+45
+00:01:48,330 --> 00:01:52,620
+Instead we have so-called servers
+that are called validators
+
+46
+00:01:52,620 --> 00:01:55,560
+that basically achieve the
+consensus on the network
+
+47
+00:01:55,560 --> 00:01:57,270
+and everyone can become a validator.
+
+48
+00:01:57,270 --> 00:01:59,400
+It's basically just a beefy server,
+
+49
+00:01:59,400 --> 00:02:03,600
+like 12 cores, 128 gigs of RAM.
+
+50
+00:02:03,600 --> 00:02:06,150
+And anyone can basically
+participate in that.
+
+51
+00:02:06,150 --> 00:02:08,370
+At any time in the Solana cluster,
+
+52
+00:02:08,370 --> 00:02:10,923
+one of the validators
+is elected the leader.
+
+53
+00:02:12,030 --> 00:02:13,410
+This is just a high level description.
+
+54
+00:02:13,410 --> 00:02:14,700
+The details are a bit more involved,
+
+55
+00:02:14,700 --> 00:02:17,400
+but basically at each
+time we have one leader
+
+56
+00:02:17,400 --> 00:02:20,490
+and that leader is basically
+in control of the order
+
+57
+00:02:20,490 --> 00:02:23,040
+and the way the transactions are executed.
+
+58
+00:02:23,040 --> 00:02:25,020
+And so basically if we submit transactions
+
+59
+00:02:25,020 --> 00:02:27,120
+to the Solana network,
+
+60
+00:02:27,120 --> 00:02:29,310
+they would all arrive at the leader
+
+61
+00:02:29,310 --> 00:02:31,470
+and the leader would
+then basically decide on
+
+62
+00:02:31,470 --> 00:02:33,810
+which order these get executed in.
+
+63
+00:02:33,810 --> 00:02:36,060
+Then it would run the transactions,
+
+64
+00:02:36,060 --> 00:02:37,920
+execute the smart contracts and so on,
+
+65
+00:02:37,920 --> 00:02:40,660
+and then publish first
+of the order in which
+
+66
+00:02:42,216 --> 00:02:43,980
+the transactions were executed.
+
+67
+00:02:43,980 --> 00:02:47,820
+And then finally a hash of the state of,
+
+68
+00:02:47,820 --> 00:02:51,180
+let's say the chain
+after they got executed.
+
+69
+00:02:51,180 --> 00:02:54,030
+Then all the other validators basically
+
+70
+00:02:54,030 --> 00:02:55,530
+take the order that was published.
+
+71
+00:02:55,530 --> 00:02:59,040
+They execute the same transactions again,
+
+72
+00:02:59,040 --> 00:03:02,340
+and they validate that indeed,
+they get the same hash.
+
+73
+00:03:02,340 --> 00:03:04,560
+Now the leader position
+always rotates through.
+
+74
+00:03:04,560 --> 00:03:07,290
+And so if we have, for
+example, a malicious leader,
+
+75
+00:03:07,290 --> 00:03:09,810
+eventually it will get ejected.
+
+76
+00:03:09,810 --> 00:03:12,930
+And so for example, if
+our leader would publish
+
+77
+00:03:12,930 --> 00:03:16,290
+a malicious state or, well, a fake state,
+
+78
+00:03:16,290 --> 00:03:19,140
+then the validators could
+say, "Hey, we don't agree."
+
+79
+00:03:19,140 --> 00:03:21,333
+And basically eject the leader.
+
+80
+00:03:22,440 --> 00:03:24,180
+That's just on the chain side.
+
+81
+00:03:24,180 --> 00:03:25,800
+But what we are really interested in
+
+82
+00:03:25,800 --> 00:03:27,900
+are the actual smart contracts.
+
+83
+00:03:27,900 --> 00:03:32,700
+Now, Solana smart contracts
+can be written in C and C++
+
+84
+00:03:32,700 --> 00:03:36,150
+but most that you will
+actually see a written in Rust.
+
+85
+00:03:36,150 --> 00:03:37,590
+Rust I think is a pretty good choice,
+
+86
+00:03:37,590 --> 00:03:39,750
+'cause you get all those
+nice safety features.
+
+87
+00:03:39,750 --> 00:03:41,430
+You have memory safety,
+
+88
+00:03:41,430 --> 00:03:44,790
+you have a lot of other things
+that you really want to have
+
+89
+00:03:44,790 --> 00:03:48,120
+when your code is literally
+dealing with a lot of money.
+
+90
+00:03:48,120 --> 00:03:50,073
+And so it's a pretty good choice.
+
+91
+00:03:51,270 --> 00:03:52,680
+Rust is a compiled language.
+
+92
+00:03:52,680 --> 00:03:55,620
+And so as a compiled language,
+we also need a target.
+
+93
+00:03:55,620 --> 00:03:57,363
+And in the case of Solana,
+
+94
+00:03:58,530 --> 00:04:01,200
+they choose eBPF as the target format.
+
+95
+00:04:01,200 --> 00:04:04,470
+And so instead of directly
+compiling to let's say x64
+
+96
+00:04:04,470 --> 00:04:07,950
+and run the smart contracts
+natively on the validators,
+
+97
+00:04:07,950 --> 00:04:09,660
+they compile into eBPF.
+
+98
+00:04:09,660 --> 00:04:12,750
+And so a smart contract
+is literally in this case,
+
+99
+00:04:12,750 --> 00:04:14,880
+an eBPF ELF file just as you would find
+
+100
+00:04:14,880 --> 00:04:16,950
+on Linux or whatever.
+
+101
+00:04:16,950 --> 00:04:20,052
+And yeah, if you're
+not familiar with eBPF,
+
+102
+00:04:20,052 --> 00:04:23,103
+eBPF stands for extended
+Berkeley Packet Filter.
+
+103
+00:04:23,940 --> 00:04:26,040
+Basically it's used in the Linux kernel
+
+104
+00:04:26,040 --> 00:04:31,040
+and also on BSD for network
+filtering, for packet filtering.
+
+105
+00:04:31,500 --> 00:04:33,000
+That's where the name comes from.
+
+106
+00:04:33,000 --> 00:04:34,830
+And it's a pretty simple RISC machine,
+
+107
+00:04:34,830 --> 00:04:38,100
+like 64-bit RISC machine,
+fixed-length instructions.
+
+108
+00:04:38,100 --> 00:04:41,490
+And in the Linux kernel, we
+actually have a full BPF EM.
+
+109
+00:04:41,490 --> 00:04:46,440
+And so if you do packet
+filtering in the Linux kernel,
+
+110
+00:04:46,440 --> 00:04:48,000
+there's like a just-in-time compiler,
+
+111
+00:04:48,000 --> 00:04:52,830
+a program verifier and it
+runs those BPF programs.
+
+112
+00:04:52,830 --> 00:04:55,230
+And the BPF machine is pretty simple.
+
+113
+00:04:55,230 --> 00:04:57,930
+It's just 10 registers
+and the frame pointer.
+
+114
+00:04:57,930 --> 00:05:00,060
+The instructions are 64-bits wide
+
+115
+00:05:00,060 --> 00:05:01,680
+and the encoding is super simple.
+
+116
+00:05:01,680 --> 00:05:03,960
+You have one encoding
+that's just the default,
+
+117
+00:05:03,960 --> 00:05:05,790
+encoding for all instructions.
+
+118
+00:05:05,790 --> 00:05:09,300
+And then you can also
+optionally have basically
+
+119
+00:05:09,300 --> 00:05:11,430
+128-bit wide instruction
+
+120
+00:05:11,430 --> 00:05:14,490
+that where you have a
+64 bit immediate value.
+
+121
+00:05:14,490 --> 00:05:17,160
+We just have your regular
+instruction classes
+
+122
+00:05:17,160 --> 00:05:20,040
+such as load and store and
+just some basic arithmetic.
+
+123
+00:05:20,040 --> 00:05:21,240
+It's really not much magic.
+
+124
+00:05:21,240 --> 00:05:22,110
+And as you will see,
+
+125
+00:05:22,110 --> 00:05:24,810
+we don't really have to
+understand BPF too much
+
+126
+00:05:24,810 --> 00:05:27,093
+to actually find vulnerabilities with it.
+
+127
+00:05:28,140 --> 00:05:29,943
+And if you work in security,
+
+128
+00:05:30,840 --> 00:05:33,570
+for me, I mainly know BPF from CVEs.
+
+129
+00:05:33,570 --> 00:05:36,720
+And so I really knew it as
+something that has a lot of
+
+130
+00:05:36,720 --> 00:05:38,430
+vulnerabilities in general.
+
+131
+00:05:38,430 --> 00:05:41,250
+And so when I read that Solana uses BPF
+
+132
+00:05:41,250 --> 00:05:44,763
+I got pretty curious how they
+do it securely, basically.
+
+133
+00:05:46,080 --> 00:05:50,220
+Now, the BPF ELF that you
+generate from your rough code
+
+134
+00:05:50,220 --> 00:05:53,190
+is basically directly
+uploaded to the blockchain.
+
+135
+00:05:53,190 --> 00:05:55,110
+So you can dump the program
+
+136
+00:05:55,110 --> 00:05:56,880
+and you would just get
+the regular ELF file.
+
+137
+00:05:56,880 --> 00:05:59,820
+There's no special custom encoding also,
+
+138
+00:05:59,820 --> 00:06:02,310
+which is pretty nice because
+you can use all the existing
+
+139
+00:06:02,310 --> 00:06:05,070
+tooling for ELF files on
+those smart contracts.
+
+140
+00:06:05,070 --> 00:06:07,870
+You don't need all the domain
+specific stuff, basically.
+
+141
+00:06:09,570 --> 00:06:10,890
+Now a couple of more things
+
+142
+00:06:10,890 --> 00:06:13,258
+we need to know about
+Solana smart contracts is
+
+143
+00:06:13,258 --> 00:06:16,860
+if you've worked with
+solidities, so for example,
+
+144
+00:06:16,860 --> 00:06:20,490
+if you ever written an
+Ethereum smart contract,
+
+145
+00:06:20,490 --> 00:06:22,800
+you probably know that Ethereum contracts
+
+146
+00:06:22,800 --> 00:06:24,000
+store their own state.
+
+147
+00:06:24,000 --> 00:06:26,970
+And so if you have a global
+variable in solidity,
+
+148
+00:06:26,970 --> 00:06:28,800
+the value of that variable is stored
+
+149
+00:06:28,800 --> 00:06:30,810
+as part of the contract, basically.
+
+150
+00:06:30,810 --> 00:06:33,030
+And for example, here, we
+have this public variable
+
+151
+00:06:33,030 --> 00:06:36,150
+just text, which has the state hello.
+
+152
+00:06:36,150 --> 00:06:38,700
+And if we were to submit a transaction
+
+153
+00:06:38,700 --> 00:06:40,210
+that caused the function Foo
+
+154
+00:06:41,070 --> 00:06:44,940
+that state of the contract
+would get updated.
+
+155
+00:06:44,940 --> 00:06:46,590
+This is not how Solana works.
+
+156
+00:06:46,590 --> 00:06:48,690
+Solana contracts are completely stateless
+
+157
+00:06:48,690 --> 00:06:51,420
+and they don't have their
+own storage, basically.
+
+158
+00:06:51,420 --> 00:06:53,790
+The way you actually interact with data
+
+159
+00:06:53,790 --> 00:06:55,830
+is that you have separate
+files, basically,
+
+160
+00:06:55,830 --> 00:06:57,330
+that are called accounts.
+
+161
+00:06:57,330 --> 00:07:00,810
+And these accounts basically
+pay rent to not get deleted.
+
+162
+00:07:00,810 --> 00:07:02,850
+And so it's pretty nice because
+
+163
+00:07:02,850 --> 00:07:05,040
+if you download a smart contract,
+
+164
+00:07:05,040 --> 00:07:07,890
+you have all the state you
+need 'cause there is none,
+
+165
+00:07:07,890 --> 00:07:10,740
+but you still need to figure
+out what files on the chain
+
+166
+00:07:10,740 --> 00:07:13,743
+and so on does the contract
+actually interact with.
+
+167
+00:07:15,300 --> 00:07:18,570
+Now the ELF file itself,
+it's a shared object.
+
+168
+00:07:18,570 --> 00:07:21,810
+And shared objects in
+the way Solana uses them
+
+169
+00:07:21,810 --> 00:07:24,540
+have one big caveat.
+
+170
+00:07:24,540 --> 00:07:26,700
+You can't have any
+writeable global variables,
+
+171
+00:07:26,700 --> 00:07:29,520
+simply because the shared
+object gets loaded once.
+
+172
+00:07:29,520 --> 00:07:32,820
+If you execute multiple transactions
+
+173
+00:07:32,820 --> 00:07:34,140
+that run the same contract,
+
+174
+00:07:34,140 --> 00:07:35,850
+you're gonna make sure that the state
+
+175
+00:07:35,850 --> 00:07:40,260
+of your in-memory shared
+object doesn't change.
+
+176
+00:07:40,260 --> 00:07:43,173
+And so we don't have any
+writable global variables.
+
+177
+00:07:44,490 --> 00:07:47,070
+On the memory side, it's pretty simple.
+
+178
+00:07:47,070 --> 00:07:49,950
+Basically the ELF just gets
+put at a fixed address,
+
+179
+00:07:49,950 --> 00:07:51,060
+x100000000.
+
+180
+00:07:51,060 --> 00:07:54,660
+The stack starts at
+x200000000, heap at 300000000.
+
+181
+00:07:54,660 --> 00:07:57,240
+And finally we have something
+called program input
+
+182
+00:07:57,240 --> 00:07:58,470
+at x400000000.
+
+183
+00:07:58,470 --> 00:08:01,200
+The program input is
+basically just a byte array.
+
+184
+00:08:01,200 --> 00:08:02,880
+And if you execute a transaction
+
+185
+00:08:02,880 --> 00:08:04,860
+that calls into the contract,
+
+186
+00:08:04,860 --> 00:08:06,960
+the byte array is basically the argument
+
+187
+00:08:06,960 --> 00:08:08,510
+towards the smart contract.
+
+188
+00:08:08,510 --> 00:08:10,920
+So you don't call functions by name or so,
+
+189
+00:08:10,920 --> 00:08:12,870
+instead you just provide a byte array
+
+190
+00:08:12,870 --> 00:08:15,783
+and it gets somehow
+parsed by our ELF file.
+
+191
+00:08:18,240 --> 00:08:22,743
+Now the ELF file, once a
+contract gets executed,
+
+192
+00:08:23,790 --> 00:08:25,710
+gets run by the Solana VM.
+
+193
+00:08:25,710 --> 00:08:27,627
+And if you build a VM
+for like, let's say BPF,
+
+194
+00:08:27,627 --> 00:08:29,100
+you have two choices.
+
+195
+00:08:29,100 --> 00:08:32,370
+You can either write
+an interpreter for BPF
+
+196
+00:08:32,370 --> 00:08:35,010
+or you write a just-in-time compiler.
+
+197
+00:08:35,010 --> 00:08:37,980
+Now an interpreter has a lot of advantages
+
+198
+00:08:37,980 --> 00:08:41,430
+in terms of safety 'cause you
+don't generate native code.
+
+199
+00:08:41,430 --> 00:08:43,773
+You can very easily sandbox it all,
+
+200
+00:08:44,760 --> 00:08:47,370
+but it obviously has a performance impact.
+
+201
+00:08:47,370 --> 00:08:51,840
+And as Solana cares a lot
+about high performance,
+
+202
+00:08:51,840 --> 00:08:55,290
+it's very probable that they
+use just-in-time compiler.
+
+203
+00:08:55,290 --> 00:08:57,690
+And just-in-time compilers historically
+
+204
+00:08:57,690 --> 00:08:59,940
+have been a security issue, let's say.
+
+205
+00:08:59,940 --> 00:09:01,830
+They're pretty difficult to get right.
+
+206
+00:09:01,830 --> 00:09:04,710
+And that's just because
+of the concept of them.
+
+207
+00:09:04,710 --> 00:09:06,600
+If you do just-in-time compilation,
+
+208
+00:09:06,600 --> 00:09:08,190
+you basically take BPF ELF code
+
+209
+00:09:08,190 --> 00:09:10,920
+and you somehow generate
+native instructions.
+
+210
+00:09:10,920 --> 00:09:13,840
+And if you're not very
+careful that somebody can't
+
+211
+00:09:15,030 --> 00:09:18,060
+generate random instructions
+that they can freely choose,
+
+212
+00:09:18,060 --> 00:09:20,280
+then you can very easily
+get into deep trouble
+
+213
+00:09:20,280 --> 00:09:23,700
+because basically the compiler
+will just write into memory,
+
+214
+00:09:23,700 --> 00:09:26,370
+then map that memory as
+executable and run it.
+
+215
+00:09:26,370 --> 00:09:28,860
+And so if you're not very careful,
+
+216
+00:09:28,860 --> 00:09:32,600
+your JIT code might just
+exploit your existing...
+
+217
+00:09:33,480 --> 00:09:35,643
+Basically the process it's running in.
+
+218
+00:09:36,720 --> 00:09:38,610
+You also need to bring
+your own memory safety.
+
+219
+00:09:38,610 --> 00:09:41,220
+So let's say I have BPF
+code that accesses memory
+
+220
+00:09:41,220 --> 00:09:43,230
+at, I don't know, address zero.
+
+221
+00:09:43,230 --> 00:09:45,810
+I wanna make sure that this memory access
+
+222
+00:09:45,810 --> 00:09:47,550
+doesn't actually happen on the, let's say,
+
+223
+00:09:47,550 --> 00:09:49,260
+physical process address zero.
+
+224
+00:09:49,260 --> 00:09:51,810
+And instead you wanna catch it and so on.
+
+225
+00:09:51,810 --> 00:09:53,790
+And this is all a lot of work
+
+226
+00:09:53,790 --> 00:09:56,250
+and it's fairly difficult
+to really do this securely
+
+227
+00:09:56,250 --> 00:09:59,400
+because you just have a
+large list of things to do.
+
+228
+00:09:59,400 --> 00:10:00,480
+And, yeah.
+
+229
+00:10:00,480 --> 00:10:03,300
+So this all sounds pretty interesting
+
+230
+00:10:03,300 --> 00:10:05,010
+for some security research.
+
+231
+00:10:05,010 --> 00:10:07,020
+And so we decided to look deeper
+
+232
+00:10:07,020 --> 00:10:09,600
+into the virtual machine of Solana.
+
+233
+00:10:09,600 --> 00:10:14,600
+You can find the code online
+on github.com/solanalabs/rbpf.
+
+234
+00:10:15,660 --> 00:10:17,520
+Contains the full machine.
+
+235
+00:10:17,520 --> 00:10:18,960
+It's written in Rust which is great
+
+236
+00:10:18,960 --> 00:10:21,270
+because we get memory safety and so on.
+
+237
+00:10:21,270 --> 00:10:22,650
+And if we check the read me,
+
+238
+00:10:22,650 --> 00:10:27,650
+we also can see that indeed
+they chose to use a JIT compiler
+
+239
+00:10:27,690 --> 00:10:31,350
+that only at the moment
+supports 64-bit x86.
+
+240
+00:10:31,350 --> 00:10:34,530
+But just because the virtual
+machine contains a JIT compiler
+
+241
+00:10:34,530 --> 00:10:36,330
+doesn't mean that it's
+actually used in the wild.
+
+242
+00:10:36,330 --> 00:10:38,910
+And so we had to kind of
+dig through the code a bit
+
+243
+00:10:38,910 --> 00:10:41,580
+and eventually just found
+that we should have just read
+
+244
+00:10:41,580 --> 00:10:44,880
+the release notes because
+since last year in March,
+
+245
+00:10:44,880 --> 00:10:47,133
+basically the JIT is enabled by default.
+
+246
+00:10:48,210 --> 00:10:50,940
+For us, this is super
+interesting because it means
+
+247
+00:10:50,940 --> 00:10:53,760
+everyone can upload smart
+contracts to the chain.
+
+248
+00:10:53,760 --> 00:10:55,860
+If we manage to build a smart contract
+
+249
+00:10:55,860 --> 00:10:57,573
+that can exploit the validators,
+
+250
+00:10:58,830 --> 00:11:01,140
+we can do a lot of very malicious stuff.
+
+251
+00:11:01,140 --> 00:11:04,410
+And so for us, this was super interesting.
+
+252
+00:11:04,410 --> 00:11:09,240
+Also in the read me, we
+can see that Solana RBPF
+
+253
+00:11:09,240 --> 00:11:12,660
+is a fork of RBPF from Quentin Monnet.
+
+254
+00:11:12,660 --> 00:11:15,000
+And if you see that something
+is based on something else,
+
+255
+00:11:15,000 --> 00:11:17,070
+it's always good to go
+to the original source
+
+256
+00:11:17,070 --> 00:11:20,850
+and check issues, to dos, CVEs,
+
+257
+00:11:20,850 --> 00:11:22,440
+things they might have fixed.
+
+258
+00:11:22,440 --> 00:11:24,720
+And in the case of RBPF,
+
+259
+00:11:24,720 --> 00:11:27,240
+if we go you to the GitHub repository,
+
+260
+00:11:27,240 --> 00:11:29,610
+there are indeed a couple
+of interesting things.
+
+261
+00:11:29,610 --> 00:11:31,980
+And so for example, in the to-do list,
+
+262
+00:11:31,980 --> 00:11:33,270
+there's literally a point,
+
+263
+00:11:33,270 --> 00:11:35,460
+improve safety of JIT- compiled programs
+
+264
+00:11:35,460 --> 00:11:37,800
+with runtime memory checks.
+
+265
+00:11:37,800 --> 00:11:38,633
+Hmm.
+
+266
+00:11:39,780 --> 00:11:42,360
+Then you scroll further down
+and there's this section,
+
+267
+00:11:42,360 --> 00:11:43,810
+what about safety (chuckles)?
+
+268
+00:11:45,030 --> 00:11:47,970
+And it literally says it will crash
+
+269
+00:11:47,970 --> 00:11:50,100
+if you JIT-compiled
+program tries to perform
+
+270
+00:11:50,100 --> 00:11:52,260
+unauthorized memory accesses.
+
+271
+00:11:52,260 --> 00:11:53,790
+Hmm.
+
+272
+00:11:53,790 --> 00:11:56,670
+Now crash has a very wide range.
+
+273
+00:11:56,670 --> 00:11:58,020
+Like crash can mean a lot.
+
+274
+00:11:58,020 --> 00:11:59,940
+Like crash could mean a Rust panic
+
+275
+00:11:59,940 --> 00:12:02,970
+or crash could mean, oh
+you can write into memory
+
+276
+00:12:02,970 --> 00:12:04,980
+and it sec falls.
+
+277
+00:12:04,980 --> 00:12:08,280
+And also in the caveat section,
+
+278
+00:12:08,280 --> 00:12:10,140
+there's a whole section called
+
+279
+00:12:10,140 --> 00:12:12,840
+the JIT compiler produces
+an unsafe program.
+
+280
+00:12:12,840 --> 00:12:16,080
+Memory accesses are
+not tested at run time,
+
+281
+00:12:16,080 --> 00:12:17,163
+use with caution.
+
+282
+00:12:18,420 --> 00:12:20,850
+Now we could go and mentally check
+
+283
+00:12:20,850 --> 00:12:24,840
+if they added safety checks around this,
+
+284
+00:12:24,840 --> 00:12:26,880
+or we could use the lazy
+way and we just start
+
+285
+00:12:26,880 --> 00:12:29,100
+fuzzing the VM and see what we find.
+
+286
+00:12:29,100 --> 00:12:33,000
+And so I'm lazy. So I started fuzzing.
+
+287
+00:12:33,000 --> 00:12:36,372
+And fuzzing a VM is actually
+surprisingly simple,
+
+288
+00:12:36,372 --> 00:12:38,103
+at least in this case.
+
+289
+00:12:39,150 --> 00:12:41,940
+To fuzz, let's say the Solana VM,
+
+290
+00:12:41,940 --> 00:12:43,740
+all we need is some kind of input.
+
+291
+00:12:43,740 --> 00:12:46,023
+So for example, the simple eBPF program.
+
+292
+00:12:46,950 --> 00:12:49,170
+Then we start mutating
+it seemingly randomly.
+
+293
+00:12:49,170 --> 00:12:50,550
+So we just start flipping bits,
+
+294
+00:12:50,550 --> 00:12:53,200
+adding bytes, removing bytes,
+and so on and so forth.
+
+295
+00:12:54,360 --> 00:12:56,730
+And then we execute it in the Solana VM.
+
+296
+00:12:56,730 --> 00:13:00,210
+Now we wanna get this all
+as performant as possible.
+
+297
+00:13:00,210 --> 00:13:02,730
+And so the Solana VM, if we get lucky,
+
+298
+00:13:02,730 --> 00:13:05,837
+we wanna execute this multiple
+thousand times per second.
+
+299
+00:13:05,837 --> 00:13:10,410
+And so we wanna try random
+mutations as fast as possible
+
+300
+00:13:10,410 --> 00:13:12,840
+on as many machines in
+parallel as possible.
+
+301
+00:13:12,840 --> 00:13:16,920
+And then hopefully, we
+eventually crash the machine
+
+302
+00:13:16,920 --> 00:13:18,780
+and we collect those crashes.
+
+303
+00:13:18,780 --> 00:13:21,900
+And if we get very lucky,
+we can analyze them
+
+304
+00:13:21,900 --> 00:13:25,020
+and we maybe find some
+nice vulnerabilities.
+
+305
+00:13:25,020 --> 00:13:27,663
+That's the plan. And so let's get started.
+
+306
+00:13:29,550 --> 00:13:32,970
+Now, first we need some
+simple eBPF programs.
+
+307
+00:13:32,970 --> 00:13:35,220
+Now, if you wanna fuzz a VM,
+
+308
+00:13:35,220 --> 00:13:36,300
+you wanna be sure that you get
+
+309
+00:13:36,300 --> 00:13:38,370
+a very wide variety of inputs.
+
+310
+00:13:38,370 --> 00:13:41,700
+You wanna cover as many
+instructions as possible.
+
+311
+00:13:41,700 --> 00:13:43,017
+In this case, we are looking at ELF.
+
+312
+00:13:43,017 --> 00:13:45,240
+ELF in itself is already pretty complex
+
+313
+00:13:45,240 --> 00:13:48,360
+and so you wanna have a lot
+of different ELF binaries,
+
+314
+00:13:48,360 --> 00:13:49,890
+different types and so on.
+
+315
+00:13:49,890 --> 00:13:54,150
+And luckily the RBPF code base
+
+316
+00:13:54,150 --> 00:13:56,100
+contains test cases for a lot of things.
+
+317
+00:13:56,100 --> 00:13:58,200
+And so we can just take
+these tiny binaries
+
+318
+00:13:58,200 --> 00:14:01,707
+that are already made to be
+almost the ideal causing input.
+
+319
+00:14:01,707 --> 00:14:05,253
+And we can just take them and
+feed them into our fuzzer,
+
+320
+00:14:06,930 --> 00:14:07,763
+into the VM.
+
+321
+00:14:07,763 --> 00:14:10,590
+And now one of the issues
+we encountered at this point
+
+322
+00:14:10,590 --> 00:14:12,660
+is that we wanted to analyze this binary.
+
+323
+00:14:12,660 --> 00:14:14,730
+So before we put them into the fuzzer
+
+324
+00:14:14,730 --> 00:14:16,200
+we want to look at the instructions
+
+325
+00:14:16,200 --> 00:14:17,280
+that are generated for them.
+
+326
+00:14:17,280 --> 00:14:19,500
+We wanna look at what did they do,
+
+327
+00:14:19,500 --> 00:14:22,250
+do really get the instruction
+coverage that we require?
+
+328
+00:14:24,330 --> 00:14:26,760
+Which puts that at a
+place where we wondered
+
+329
+00:14:26,760 --> 00:14:28,770
+how can we actually analyze them?
+
+330
+00:14:28,770 --> 00:14:29,640
+At this point in time,
+
+331
+00:14:29,640 --> 00:14:31,890
+there was simply no good
+reverse engineering tooling
+
+332
+00:14:31,890 --> 00:14:33,930
+to actually look at the compiled output
+
+333
+00:14:33,930 --> 00:14:36,390
+of a Solana smart contract.
+
+334
+00:14:36,390 --> 00:14:38,040
+Now there were like a disassembly
+
+335
+00:14:38,040 --> 00:14:39,990
+that gives you a huge text dump,
+
+336
+00:14:39,990 --> 00:14:41,310
+but that doesn't really help you
+
+337
+00:14:41,310 --> 00:14:43,096
+'cause Solana contracts tend to be
+
+338
+00:14:43,096 --> 00:14:45,450
+pretty complex and pretty large.
+
+339
+00:14:45,450 --> 00:14:47,910
+And so you can easily have
+a lot of libraries in there.
+
+340
+00:14:47,910 --> 00:14:49,857
+You can have a lot of
+dependencies and so on,
+
+341
+00:14:49,857 --> 00:14:52,140
+and it's very easy for
+these to get very large
+
+342
+00:14:52,140 --> 00:14:55,230
+and you really want to have
+an interactive disassembler
+
+343
+00:14:55,230 --> 00:14:56,193
+to work with them.
+
+344
+00:14:57,060 --> 00:14:59,610
+I'm a big fan of Ghidra, and unfortunately
+
+345
+00:14:59,610 --> 00:15:03,453
+Ghidra does not come
+with native eBPF support,
+
+346
+00:15:04,650 --> 00:15:08,310
+but Nailan98 built a
+processor module for BPF.
+
+347
+00:15:08,310 --> 00:15:12,090
+And so with that, Ghidra
+understands the machine code.
+
+348
+00:15:12,090 --> 00:15:15,153
+We can do patching. We can
+do all kinds of things.
+
+349
+00:15:16,110 --> 00:15:17,910
+But we can't load Solana binaries yet
+
+350
+00:15:17,910 --> 00:15:20,040
+because Solana has this custom memory map.
+
+351
+00:15:20,040 --> 00:15:22,950
+We have all these custom
+things that we need for Solana.
+
+352
+00:15:22,950 --> 00:15:25,650
+And so we decided to write
+a completely custom loader
+
+353
+00:15:25,650 --> 00:15:29,100
+based on this eBPF that
+basically sets up the memory map,
+
+354
+00:15:29,100 --> 00:15:32,460
+finds the symbols if
+they are in the ELF file
+
+355
+00:15:32,460 --> 00:15:34,470
+and basically allows us
+to just drag and drop
+
+356
+00:15:34,470 --> 00:15:37,890
+a Solana contract into
+Ghidra and analyze it.
+
+357
+00:15:37,890 --> 00:15:41,250
+So for example, if we have
+a simple hello word binary,
+
+358
+00:15:41,250 --> 00:15:43,590
+we can just drag it into Ghidra,
+
+359
+00:15:43,590 --> 00:15:45,813
+import it as Solana ELF file.
+
+360
+00:15:47,520 --> 00:15:48,353
+Hit OK.
+
+361
+00:15:51,810 --> 00:15:53,940
+And then simply double click it
+
+362
+00:15:53,940 --> 00:15:56,430
+to load it into the code browser,
+
+363
+00:15:56,430 --> 00:16:00,060
+run the regular analysis
+as you always do in Ghidra,
+
+364
+00:16:00,060 --> 00:16:03,510
+then you go grab a coffee
+'cause analysis takes forever.
+
+365
+00:16:03,510 --> 00:16:04,890
+And then once it's finished,
+
+366
+00:16:04,890 --> 00:16:07,080
+we can just navigate through the binary.
+
+367
+00:16:07,080 --> 00:16:09,660
+We get disassembly and
+we even get decompilation
+
+368
+00:16:09,660 --> 00:16:11,370
+of the full contract.
+
+369
+00:16:11,370 --> 00:16:13,560
+This is pretty nice because you can really
+
+370
+00:16:13,560 --> 00:16:15,401
+dig through a contract.
+
+371
+00:16:15,401 --> 00:16:16,920
+The decompilation will not help us
+
+372
+00:16:16,920 --> 00:16:18,450
+with analyzing the fuzzing results,
+
+373
+00:16:18,450 --> 00:16:21,390
+'cause those, you wanna really
+look at the instructions,
+
+374
+00:16:21,390 --> 00:16:24,480
+but this actually helps us
+a lot with something else
+
+375
+00:16:24,480 --> 00:16:27,570
+that's unrelated to actual
+virtual machine security,
+
+376
+00:16:27,570 --> 00:16:28,800
+but that is important for us
+
+377
+00:16:28,800 --> 00:16:31,530
+to be able to tRust public contracts
+
+378
+00:16:31,530 --> 00:16:35,010
+because verifiable builds
+are pretty important.
+
+379
+00:16:35,010 --> 00:16:38,160
+If you think about a lot
+of smart contract projects,
+
+380
+00:16:38,160 --> 00:16:39,600
+you get a link to GitHub
+
+381
+00:16:39,600 --> 00:16:41,700
+and it's like the contract code is there,
+
+382
+00:16:41,700 --> 00:16:43,950
+but you can't actually easily verify
+
+383
+00:16:43,950 --> 00:16:45,750
+whether the contract code is identical
+
+384
+00:16:45,750 --> 00:16:47,400
+to what's stored on chain.
+
+385
+00:16:47,400 --> 00:16:49,440
+And so for example, on Ethereum,
+
+386
+00:16:49,440 --> 00:16:51,900
+if you go to Ether scan
+and you look at a contract,
+
+387
+00:16:51,900 --> 00:16:55,320
+they have this thing called
+contract verification,
+
+388
+00:16:55,320 --> 00:16:58,140
+where you can just paste
+in your contract code,
+
+389
+00:16:58,140 --> 00:17:00,570
+they will compile it with
+the same solidity version
+
+390
+00:17:00,570 --> 00:17:03,660
+and then they will tell you,
+yes, this is all verified.
+
+391
+00:17:03,660 --> 00:17:05,010
+With Rust, it's not as easy.
+
+392
+00:17:05,010 --> 00:17:08,553
+If you've done reproducible
+builds with Rust before,
+
+393
+00:17:09,750 --> 00:17:11,010
+it's not very easy.
+
+394
+00:17:11,010 --> 00:17:13,920
+And so at the moment,
+most contracts on Solana,
+
+395
+00:17:13,920 --> 00:17:16,173
+even the very big ones are not verified.
+
+396
+00:17:17,760 --> 00:17:19,050
+But with our Ghidra tooling,
+
+397
+00:17:19,050 --> 00:17:21,630
+we kind of bring our own
+verification to the whole thing.
+
+398
+00:17:21,630 --> 00:17:23,130
+So we can really just go,
+
+399
+00:17:23,130 --> 00:17:26,460
+we can download any
+contract from the chain.
+
+400
+00:17:26,460 --> 00:17:28,860
+So for example, using Solana program dump,
+
+401
+00:17:28,860 --> 00:17:30,270
+you can literally just go
+
+402
+00:17:30,270 --> 00:17:32,343
+and fetch the ELF file from the chain.
+
+403
+00:17:33,330 --> 00:17:34,470
+So if we run file on this,
+
+404
+00:17:34,470 --> 00:17:38,610
+you can see it's really just
+a regular 64-bit ELF file.
+
+405
+00:17:38,610 --> 00:17:40,200
+And then we can drag it into Ghidra
+
+406
+00:17:40,200 --> 00:17:43,830
+and hopefully analyze our contract.
+
+407
+00:17:43,830 --> 00:17:46,680
+Now, obviously we can't go
+and manually reverse engineer
+
+408
+00:17:46,680 --> 00:17:49,093
+the entire contract 'cause
+it's really, really large
+
+409
+00:17:49,093 --> 00:17:51,240
+and really annoying.
+
+410
+00:17:51,240 --> 00:17:53,520
+However, what we can do is we can use
+
+411
+00:17:53,520 --> 00:17:58,230
+the Ghidra program comparison
+to actually compare
+
+412
+00:17:58,230 --> 00:18:01,500
+our manual compilation
+with what we find on chain
+
+413
+00:18:01,500 --> 00:18:04,800
+and get a very clear picture if the code
+
+414
+00:18:04,800 --> 00:18:06,630
+is really identical.
+
+415
+00:18:06,630 --> 00:18:09,420
+And so this really helps
+us 'cause we sometimes
+
+416
+00:18:09,420 --> 00:18:12,003
+need to tRust contracts
+with quite a bit of money.
+
+417
+00:18:14,610 --> 00:18:17,580
+So with that, we have
+our simple eBPF program.
+
+418
+00:18:17,580 --> 00:18:19,350
+We have our analysis tools
+
+419
+00:18:19,350 --> 00:18:22,440
+and we are basically almost good to go.
+
+420
+00:18:22,440 --> 00:18:25,680
+Next, we're gonna first look at
+
+421
+00:18:25,680 --> 00:18:28,410
+how we execute our simple
+program in the Solana VM.
+
+422
+00:18:28,410 --> 00:18:31,320
+'Cause those parts are running
+before we start mutating
+
+423
+00:18:31,320 --> 00:18:34,110
+so that we can be sure
+that everything is running.
+
+424
+00:18:34,110 --> 00:18:37,830
+And it turns out that this
+was really, really easy.
+
+425
+00:18:37,830 --> 00:18:40,740
+So I said our BPF is written in Rust,
+
+426
+00:18:40,740 --> 00:18:44,010
+and so we can really just
+write a couple of lines of Rust
+
+427
+00:18:44,010 --> 00:18:47,730
+to load our eBPF ELF file into memory.
+
+428
+00:18:47,730 --> 00:18:49,893
+Then we parse the executable.
+
+429
+00:18:51,390 --> 00:18:54,690
+We did compile it. This
+is just using the RPF API.
+
+430
+00:18:54,690 --> 00:18:55,830
+You don't have to read the code.
+
+431
+00:18:55,830 --> 00:18:58,590
+You can get the slides
+and read it on there.
+
+432
+00:18:58,590 --> 00:19:01,470
+I just wanna show how
+short it actually is.
+
+433
+00:19:01,470 --> 00:19:03,840
+And then we verify the executable.
+
+434
+00:19:03,840 --> 00:19:06,153
+This step will become important later.
+
+435
+00:19:07,260 --> 00:19:08,580
+We create the virtual machine
+
+436
+00:19:08,580 --> 00:19:11,010
+and then we finally just go and run it.
+
+437
+00:19:11,010 --> 00:19:11,970
+Simple as that.
+
+438
+00:19:11,970 --> 00:19:13,980
+And so this is just like 20 lines of code
+
+439
+00:19:13,980 --> 00:19:15,510
+and you have all the base that you need
+
+440
+00:19:15,510 --> 00:19:16,953
+to start fuzzing the VM.
+
+441
+00:19:18,510 --> 00:19:21,300
+So with that, we have our EBPF program.
+
+442
+00:19:21,300 --> 00:19:24,900
+We have our VM test set
+up. almost good to go.
+
+443
+00:19:24,900 --> 00:19:28,110
+Next, we need to start mutating randomly.
+
+444
+00:19:28,110 --> 00:19:29,610
+Now you could write your own fuzzer
+
+445
+00:19:29,610 --> 00:19:31,680
+that's maybe even instruction set aware
+
+446
+00:19:31,680 --> 00:19:33,120
+and so on and so forth.
+
+447
+00:19:33,120 --> 00:19:36,690
+But there are people who are
+much better at writing fuzzers,
+
+448
+00:19:36,690 --> 00:19:39,630
+especially the people at AFL++.
+
+449
+00:19:39,630 --> 00:19:44,630
+And AFL++ is really nice
+'cause it has Rust support.
+
+450
+00:19:44,640 --> 00:19:47,790
+We don't have to write our
+own fuzzing infrastructure.
+
+451
+00:19:47,790 --> 00:19:51,450
+It comes with native dual-core
+and multi-core support
+
+452
+00:19:51,450 --> 00:19:52,743
+and so on and so forth.
+
+453
+00:19:53,580 --> 00:19:55,590
+If you are not familiar with AFL++
+
+454
+00:19:55,590 --> 00:19:57,810
+it's a fork of the Google's AFL.
+
+455
+00:19:57,810 --> 00:20:00,330
+It's a bit faster, has
+better instrumentation,
+
+456
+00:20:00,330 --> 00:20:01,800
+and it comes with Rust support.
+
+457
+00:20:01,800 --> 00:20:03,480
+And the Rust support is amazing.
+
+458
+00:20:03,480 --> 00:20:04,780
+It's super simple to use
+
+459
+00:20:05,640 --> 00:20:07,233
+and it's really, really fast.
+
+460
+00:20:08,070 --> 00:20:10,800
+Also AFL++ instruments the target binary.
+
+461
+00:20:10,800 --> 00:20:13,806
+And so it's aware that as it
+goes through the JIT compiler
+
+462
+00:20:13,806 --> 00:20:15,960
+which branches has it taken
+
+463
+00:20:15,960 --> 00:20:18,810
+and it tries to automatically
+mutate the inputs
+
+464
+00:20:18,810 --> 00:20:21,030
+to get as much coverage as possible.
+
+465
+00:20:21,030 --> 00:20:23,100
+And so this allows us to really ensure
+
+466
+00:20:23,100 --> 00:20:25,170
+that we get a wide range
+of the JIT compiler
+
+467
+00:20:25,170 --> 00:20:27,720
+actually fast because as we are fuzzing,
+
+468
+00:20:27,720 --> 00:20:30,878
+it will see, oh, I haven't
+taken that branch yet
+
+469
+00:20:30,878 --> 00:20:32,550
+and so on and so forth.
+
+470
+00:20:32,550 --> 00:20:34,050
+And it also comes with a nice UI
+
+471
+00:20:34,050 --> 00:20:37,320
+and it has features to
+minimize test cases.
+
+472
+00:20:37,320 --> 00:20:40,620
+So if we find a crash
+and the back trace is
+
+473
+00:20:40,620 --> 00:20:42,390
+basically identical to another crash,
+
+474
+00:20:42,390 --> 00:20:46,380
+it will just ignore it and
+save you a ton of work.
+
+475
+00:20:46,380 --> 00:20:50,310
+What's really nice is that
+the Rust integration for AFL++
+
+476
+00:20:50,310 --> 00:20:54,420
+is really just add a
+single macro to your code.
+
+477
+00:20:54,420 --> 00:20:55,860
+We just remove the file loading
+
+478
+00:20:55,860 --> 00:20:57,900
+and we just add the fuzzing macro.
+
+479
+00:20:57,900 --> 00:20:59,790
+It gives us a byte array with whatever
+
+480
+00:20:59,790 --> 00:21:03,240
+fuzzing input we have and
+then we are ready to go.
+
+481
+00:21:03,240 --> 00:21:04,500
+Now because we are doing Rust,
+
+482
+00:21:04,500 --> 00:21:06,870
+we also wanna add a panic handler because
+
+483
+00:21:06,870 --> 00:21:10,890
+otherwise any Rust panic
+will be counted as a crash,
+
+484
+00:21:10,890 --> 00:21:12,180
+which we don't really care about
+
+485
+00:21:12,180 --> 00:21:15,933
+'cause we wanna get memory
+corruption, not Rust panics.
+
+486
+00:21:17,130 --> 00:21:21,090
+And with that, we are already ready to go.
+
+487
+00:21:21,090 --> 00:21:23,010
+We are basically ready to fuzz.
+
+488
+00:21:23,010 --> 00:21:25,923
+With 30 lines of coder. So pretty awesome.
+
+489
+00:21:27,270 --> 00:21:30,000
+And so I was pretty excited
+about this 'cause you know,
+
+490
+00:21:30,000 --> 00:21:33,240
+you just let this run for a
+bit and hope for the best.
+
+491
+00:21:33,240 --> 00:21:36,810
+And so you just started
+with cargo AFL fuzz,
+
+492
+00:21:36,810 --> 00:21:38,520
+you provide a directory with inputs,
+
+493
+00:21:38,520 --> 00:21:41,220
+which are just the example BPF programs.
+
+494
+00:21:41,220 --> 00:21:43,510
+You provide an output directory with
+
+495
+00:21:45,150 --> 00:21:48,120
+where basically the crashes
+and so on will be stored.
+
+496
+00:21:48,120 --> 00:21:50,613
+And then you finally go
+and launch the binary.
+
+497
+00:21:52,710 --> 00:21:53,973
+So let's do that.
+
+498
+00:21:55,601 --> 00:21:56,700
+And now we are fuzzing.
+
+499
+00:21:56,700 --> 00:21:59,100
+And if you are not familiar with AFL,
+
+500
+00:21:59,100 --> 00:22:01,500
+it comes with this nice CLI.
+
+501
+00:22:01,500 --> 00:22:04,440
+It tells you on the top basically
+the timing of your fuzzer.
+
+502
+00:22:04,440 --> 00:22:07,260
+It tells you, okay, how
+long have I been running?
+
+503
+00:22:07,260 --> 00:22:08,880
+What's the time since I last found
+
+504
+00:22:08,880 --> 00:22:11,220
+a new path in the fuzzer,
+which is pretty important.
+
+505
+00:22:11,220 --> 00:22:14,910
+It basically tells you
+if this goes very high,
+
+506
+00:22:14,910 --> 00:22:16,980
+it means it just didn't find a new
+
+507
+00:22:16,980 --> 00:22:18,450
+executable path in the binary.
+
+508
+00:22:18,450 --> 00:22:20,853
+And so you should probably stop fuzzing.
+
+509
+00:22:22,560 --> 00:22:25,470
+It also tells you how
+many crashes has it found,
+
+510
+00:22:25,470 --> 00:22:27,690
+how many hangs and so on.
+
+511
+00:22:27,690 --> 00:22:29,280
+And it tells you the execution speed.
+
+512
+00:22:29,280 --> 00:22:31,183
+And so in this case,
+we are running at like
+
+513
+00:22:31,183 --> 00:22:35,460
+3,600 executions or so per
+second, which is pretty decent.
+
+514
+00:22:35,460 --> 00:22:38,610
+If we let this run on 12
+cores for a couple of weeks,
+
+515
+00:22:38,610 --> 00:22:41,730
+we get a lot, a lot, a lot of results.
+
+516
+00:22:41,730 --> 00:22:44,490
+And so we had this running
+for a couple of hours
+
+517
+00:22:44,490 --> 00:22:47,100
+and then something nice happened.
+
+518
+00:22:47,100 --> 00:22:48,333
+We found a crash!
+
+519
+00:22:50,130 --> 00:22:54,210
+And time to party. Hopefully we'll see.
+
+520
+00:22:54,210 --> 00:22:56,700
+And we let this run for a couple of weeks
+
+521
+00:22:56,700 --> 00:22:58,350
+or a couple of days actually at first.
+
+522
+00:22:58,350 --> 00:23:01,203
+And we got a lot, a lot of crashes.
+
+523
+00:23:02,460 --> 00:23:05,190
+Unfortunately, if you look
+closer at the crashes,
+
+524
+00:23:05,190 --> 00:23:08,070
+they tell you which
+signal caused the crash.
+
+525
+00:23:08,070 --> 00:23:11,163
+Now does anyone know what
+signal 08 is on Linux?
+
+526
+00:23:12,480 --> 00:23:15,060
+Floating point exception.
+Doesn't really help us at all.
+
+527
+00:23:15,060 --> 00:23:17,560
+It just means that we did
+something numeric wrong,
+
+528
+00:23:19,080 --> 00:23:22,950
+No real luck, but however,
+all between the signal 08
+
+529
+00:23:22,950 --> 00:23:24,821
+are also three signal 11.
+
+530
+00:23:24,821 --> 00:23:26,880
+And signal 11 is exactly
+what you wanna find
+
+531
+00:23:26,880 --> 00:23:30,060
+because signal 11 is a segmentation fault.
+
+532
+00:23:30,060 --> 00:23:31,350
+And no matter what you do,
+
+533
+00:23:31,350 --> 00:23:34,320
+a virtual machine should never
+cause a segmentation fault.
+
+534
+00:23:34,320 --> 00:23:36,446
+So even if this is like,
+
+535
+00:23:36,446 --> 00:23:38,280
+if you see a segmentation fault,
+
+536
+00:23:38,280 --> 00:23:40,680
+it's most probably a vulnerability.
+
+537
+00:23:40,680 --> 00:23:43,440
+So I was super excited. We
+get three segmentation faults.
+
+538
+00:23:43,440 --> 00:23:45,393
+Let's start looking at them.
+
+539
+00:23:46,530 --> 00:23:48,180
+And so, oops, sorry.
+
+540
+00:23:48,180 --> 00:23:49,860
+I started executing them
+
+541
+00:23:49,860 --> 00:23:51,720
+and my target binary wouldn't crash.
+
+542
+00:23:51,720 --> 00:23:53,910
+Basically, I tried it
+again, again, again, again,
+
+543
+00:23:53,910 --> 00:23:55,620
+I wouldn't get a segmentation fault.
+
+544
+00:23:55,620 --> 00:23:56,790
+I eventually wrote a script
+
+545
+00:23:56,790 --> 00:23:59,370
+to simply run this like 10,000 times
+
+546
+00:23:59,370 --> 00:24:02,160
+and then it would only crash sometimes.
+
+547
+00:24:02,160 --> 00:24:03,030
+What's going on?
+
+548
+00:24:03,030 --> 00:24:06,960
+Well, it turns out that if
+I had read the AFL manual
+
+549
+00:24:06,960 --> 00:24:09,460
+to the end and not just
+skipped to the good parts,
+
+550
+00:24:10,440 --> 00:24:13,920
+they have this indication for
+something called stability.
+
+551
+00:24:13,920 --> 00:24:16,050
+And basically stability tells you
+
+552
+00:24:16,050 --> 00:24:18,360
+how deterministic your program is.
+
+553
+00:24:18,360 --> 00:24:20,160
+Basically if it executes the program
+
+554
+00:24:20,160 --> 00:24:21,840
+with the same inputs twice
+
+555
+00:24:21,840 --> 00:24:24,450
+and it sees that different
+branches are taken,
+
+556
+00:24:24,450 --> 00:24:26,437
+it reduces stability and tells you like,
+
+557
+00:24:26,437 --> 00:24:28,657
+"Hey, your binary is not deterministic.
+
+558
+00:24:28,657 --> 00:24:29,880
+"Something is sketchy."
+
+559
+00:24:29,880 --> 00:24:31,470
+For example, you might have an RNG
+
+560
+00:24:31,470 --> 00:24:33,270
+that is doing weird stuff.
+
+561
+00:24:33,270 --> 00:24:36,480
+You might have something else going on,
+
+562
+00:24:36,480 --> 00:24:38,310
+but how could this not be deterministic?
+
+563
+00:24:38,310 --> 00:24:39,870
+I mean, we are loading into a VM.
+
+564
+00:24:39,870 --> 00:24:41,850
+We are running the same binary.
+
+565
+00:24:41,850 --> 00:24:42,870
+What's going on?
+
+566
+00:24:42,870 --> 00:24:45,360
+Well, it turns out that
+RBPF has this feature
+
+567
+00:24:45,360 --> 00:24:48,550
+that introduces random
+no-ops into the code
+
+568
+00:24:49,890 --> 00:24:51,960
+and it's on by default.
+
+569
+00:24:51,960 --> 00:24:55,020
+And so that causes each
+time you run your program,
+
+570
+00:24:55,020 --> 00:24:56,940
+it causes it to be slightly
+different in memory.
+
+571
+00:24:56,940 --> 00:24:58,620
+And so obviously sometimes it would crash.
+
+572
+00:24:58,620 --> 00:25:01,170
+Sometimes it wouldn't crash and so on.
+
+573
+00:25:01,170 --> 00:25:03,060
+And simply by setting this to zero,
+
+574
+00:25:03,060 --> 00:25:06,183
+suddenly our stability goes up to 98.
+
+575
+00:25:07,170 --> 00:25:08,730
+Yay!
+(Tom chuckles)
+
+576
+00:25:08,730 --> 00:25:11,310
+We actually can fuzz nicely now.
+
+577
+00:25:11,310 --> 00:25:14,940
+And indeed, after running
+this for, I think 14 days,
+
+578
+00:25:14,940 --> 00:25:17,103
+we had 59 segmentation faults.
+
+579
+00:25:18,570 --> 00:25:22,133
+Yay!
+(audience applauding)
+
+580
+00:25:25,830 --> 00:25:29,100
+This is the fun part because
+next you have to do something
+
+581
+00:25:29,100 --> 00:25:32,640
+that is pretty difficult
+and pretty annoying.
+
+582
+00:25:32,640 --> 00:25:35,760
+Namely, you have to triage your crashes.
+
+583
+00:25:35,760 --> 00:25:37,500
+Now, luckily we don't care about
+
+584
+00:25:37,500 --> 00:25:40,830
+exploitation too much
+because for us exploitation
+
+585
+00:25:40,830 --> 00:25:42,660
+doesn't matter because we care about
+
+586
+00:25:42,660 --> 00:25:45,660
+whether we have or we
+don't have a vulnerability.
+
+587
+00:25:45,660 --> 00:25:48,480
+We also don't really care
+about the severity too much.
+
+588
+00:25:48,480 --> 00:25:52,200
+Because again, if the VM
+crashes that's an issue for us,
+
+589
+00:25:52,200 --> 00:25:53,790
+that's a vulnerability.
+
+590
+00:25:53,790 --> 00:25:56,250
+We don't really submit
+to background checks.
+
+591
+00:25:56,250 --> 00:25:57,990
+We just want the vulnerability fixed.
+
+592
+00:25:57,990 --> 00:26:01,200
+And so for us, triaging is enough to say,
+
+593
+00:26:01,200 --> 00:26:02,760
+okay, we have an out of bounds read
+
+594
+00:26:02,760 --> 00:26:04,460
+or we have an out of bounds write.
+
+595
+00:26:05,520 --> 00:26:07,473
+Yeah. We don't have to write a POC.
+
+596
+00:26:08,460 --> 00:26:10,620
+And even though we have
+all these limitations
+
+597
+00:26:10,620 --> 00:26:13,350
+that makes triaging much, much easier,
+
+598
+00:26:13,350 --> 00:26:16,590
+it's still quite difficult
+because if you think about it,
+
+599
+00:26:16,590 --> 00:26:17,990
+you have your eBPF bytecode.
+
+600
+00:26:18,960 --> 00:26:23,670
+That eBPF bytecode gets
+JIT compiled by Rust code.
+
+601
+00:26:23,670 --> 00:26:26,970
+That Rust code, then emits
+native x64 instructions.
+
+602
+00:26:26,970 --> 00:26:30,480
+Those native instructions
+then somehow get mapped
+
+603
+00:26:30,480 --> 00:26:32,820
+into actual process memory.
+
+604
+00:26:32,820 --> 00:26:35,370
+And we have symbols for
+the first two parts.
+
+605
+00:26:35,370 --> 00:26:39,243
+And afterwards it's
+basically just good luck.
+
+606
+00:26:41,130 --> 00:26:43,980
+If you take one of the
+crashes and you run it
+
+607
+00:26:43,980 --> 00:26:45,123
+in, let's say, GDV,
+
+608
+00:26:47,550 --> 00:26:49,047
+and we just run it with one of
+
+609
+00:26:49,047 --> 00:26:51,570
+the segmentation faults we found.
+
+610
+00:26:51,570 --> 00:26:53,430
+And we look at the back trace,
+
+611
+00:26:53,430 --> 00:26:55,320
+all you get is question marks
+
+612
+00:26:55,320 --> 00:26:59,220
+and that's not nice to reverse engineer,
+
+613
+00:26:59,220 --> 00:27:02,340
+'cause you basically have to exactly know
+
+614
+00:27:02,340 --> 00:27:05,370
+what was written at that
+address by which function
+
+615
+00:27:05,370 --> 00:27:09,303
+and which instruction, BPF
+instruction causes and so on.
+
+616
+00:27:10,800 --> 00:27:13,020
+It's pretty terrible to be honest.
+
+617
+00:27:13,020 --> 00:27:14,650
+And the same with lldb.
+
+618
+00:27:14,650 --> 00:27:17,613
+Lldb, if we debug with it,
+we get basically the same,
+
+619
+00:27:18,570 --> 00:27:20,820
+but it doesn't even give us a
+back trace since we are just
+
+620
+00:27:20,820 --> 00:27:23,310
+stuck somewhere in no man's land.
+
+621
+00:27:23,310 --> 00:27:26,130
+But at least it tells us
+kind of what type of access
+
+622
+00:27:26,130 --> 00:27:29,340
+caused the fault, whether
+it's read or write and so on.
+
+623
+00:27:29,340 --> 00:27:32,040
+And even worse, I didn't
+notice for quite a bit
+
+624
+00:27:32,040 --> 00:27:34,620
+that actually on my machine
+for whatever reason,
+
+625
+00:27:34,620 --> 00:27:37,470
+lldb had ASLR enabled by default.
+
+626
+00:27:37,470 --> 00:27:38,900
+And so each time I was running it,
+
+627
+00:27:38,900 --> 00:27:41,400
+it was crashing at a different address.
+
+628
+00:27:41,400 --> 00:27:44,850
+And if you surf at like
+hex addresses for 10 hours,
+
+629
+00:27:44,850 --> 00:27:46,740
+you stop seeing that they are changing.
+
+630
+00:27:46,740 --> 00:27:48,817
+And I just checked the first
+byte and I was just like,
+
+631
+00:27:48,817 --> 00:27:49,747
+"What's going on?
+
+632
+00:27:49,747 --> 00:27:52,347
+"This code was different
+the last run and so on."
+
+633
+00:27:53,430 --> 00:27:57,000
+Yeah, triaging this is not
+fun. Let's just say that.
+
+634
+00:27:57,000 --> 00:27:59,820
+And so in the end we still
+wanted to know what's going on.
+
+635
+00:27:59,820 --> 00:28:03,660
+And so we started to customize
+the just-in-time compiler
+
+636
+00:28:03,660 --> 00:28:07,740
+to basically on one hand,
+give us the raw x86 binary.
+
+637
+00:28:07,740 --> 00:28:10,587
+Then give us a map of the eBPF
+instructions that caused it.
+
+638
+00:28:10,587 --> 00:28:13,573
+And so we basically
+automatically annotated
+
+639
+00:28:13,573 --> 00:28:16,800
+the EBPF instructions in
+Ghidra to be able to see,
+
+640
+00:28:16,800 --> 00:28:18,603
+okay, what may have caused this.
+
+641
+00:28:19,560 --> 00:28:22,320
+Spend hours and hours analyzing this
+
+642
+00:28:22,320 --> 00:28:24,690
+and found multiple out-of-bound reads
+
+643
+00:28:24,690 --> 00:28:26,460
+and out-of-bound writes and so on.
+
+644
+00:28:26,460 --> 00:28:28,680
+And again, we didn't care too
+much about exploitability.
+
+645
+00:28:28,680 --> 00:28:30,120
+We just cared that they are there.
+
+646
+00:28:30,120 --> 00:28:33,120
+So I can't tell you whether
+this will be somehow exploitable
+
+647
+00:28:34,410 --> 00:28:35,243
+on the VM.
+
+648
+00:28:36,180 --> 00:28:39,870
+But we wanted to at
+least try on a test chain
+
+649
+00:28:39,870 --> 00:28:43,680
+to somehow get our validator
+to crash from the chain side.
+
+650
+00:28:43,680 --> 00:28:46,080
+And this is again, one
+of these points where
+
+651
+00:28:46,080 --> 00:28:48,840
+you really should have
+read the entire code
+
+652
+00:28:48,840 --> 00:28:50,070
+before you start fuzzing
+
+653
+00:28:50,070 --> 00:28:52,620
+and get too excited about vulnerabilities
+
+654
+00:28:52,620 --> 00:28:54,960
+because it turns out that the BPF run time
+
+655
+00:28:54,960 --> 00:28:57,750
+contains something called
+a program verifier.
+
+656
+00:28:57,750 --> 00:29:00,780
+And that program verifier happens to catch
+
+657
+00:29:00,780 --> 00:29:03,150
+basically all our crashes.
+
+658
+00:29:03,150 --> 00:29:06,273
+So we have vulnerabilities in the VM,
+
+659
+00:29:07,140 --> 00:29:09,390
+but they are not exploitable on chain.
+
+660
+00:29:09,390 --> 00:29:13,080
+So this lowered kind of the
+severity for us quite a bit,
+
+661
+00:29:13,080 --> 00:29:14,700
+but we still had some
+nice vulnerabilities.
+
+662
+00:29:14,700 --> 00:29:17,853
+And so let's still, we need
+to go through disclosure.
+
+663
+00:29:19,800 --> 00:29:22,710
+We submitted this talk, we
+did this early in the year,
+
+664
+00:29:22,710 --> 00:29:24,300
+started disclosure and so on,
+
+665
+00:29:24,300 --> 00:29:27,540
+and on the 1st of May,
+we submitted to DEF CON.
+
+666
+00:29:27,540 --> 00:29:30,660
+On the 11th of May, we
+basically got an email
+
+667
+00:29:30,660 --> 00:29:32,617
+by the DEF CON review board saying,
+
+668
+00:29:32,617 --> 00:29:34,347
+"Hey, is this your blog post?"
+
+669
+00:29:35,250 --> 00:29:38,160
+And so it turns out that
+Addison from Secret.Club
+
+670
+00:29:38,160 --> 00:29:42,450
+basically fuzzed exactly the same VM as we
+
+671
+00:29:42,450 --> 00:29:44,310
+using a different fuzzer
+
+672
+00:29:44,310 --> 00:29:47,160
+and found obviously,
+'cause pretty safe forward,
+
+673
+00:29:47,160 --> 00:29:50,340
+basically the same things we found.
+
+674
+00:29:50,340 --> 00:29:52,080
+Some memory corruption vulnerabilities,
+
+675
+00:29:52,080 --> 00:29:55,983
+and we basically had a full
+bug collision with Secret.Club.
+
+676
+00:29:57,720 --> 00:30:01,680
+The patch version fixed all
+our found vulnerabilities.
+
+677
+00:30:01,680 --> 00:30:02,827
+And we just told the review board,
+
+678
+00:30:02,827 --> 00:30:04,627
+"Hey, we didn't know about this,
+
+679
+00:30:04,627 --> 00:30:08,100
+"but this is not us, but it's
+very similar to what we do."
+
+680
+00:30:08,100 --> 00:30:11,820
+And yeah, that was kind of a sad day.
+
+681
+00:30:11,820 --> 00:30:14,853
+Congrats to Secret.Club.
+200K bounty is pretty nice.
+
+682
+00:30:16,230 --> 00:30:20,790
+And our fuzzer is basically
+not useless, but yeah,
+
+683
+00:30:20,790 --> 00:30:22,990
+it only finds floating
+point exceptions now.
+
+684
+00:30:24,030 --> 00:30:27,930
+But yeah, I mean sad, but in
+the end we still learned a lot.
+
+685
+00:30:27,930 --> 00:30:30,150
+We still have a lot of takeaways.
+
+686
+00:30:30,150 --> 00:30:32,460
+First off just-in-time
+compilers are really
+
+687
+00:30:32,460 --> 00:30:33,840
+a lot of fun to fuzz.
+
+688
+00:30:33,840 --> 00:30:36,990
+It's pretty cool 'cause they
+have a lot of different pieces.
+
+689
+00:30:36,990 --> 00:30:38,190
+They're pretty easy to fuzz,
+
+690
+00:30:38,190 --> 00:30:39,900
+which was kind of surprising to me
+
+691
+00:30:39,900 --> 00:30:43,080
+'cause I always kind of
+considered it a bit dark magic
+
+692
+00:30:43,080 --> 00:30:45,210
+because you hear about all these people
+
+693
+00:30:45,210 --> 00:30:50,210
+fuzzing JavaScript,
+virtual machines and so on.
+
+694
+00:30:50,250 --> 00:30:53,520
+Turns out with a small JIT,
+it's actually pretty easy.
+
+695
+00:30:53,520 --> 00:30:56,940
+Triaging it, however, is pretty difficult
+
+696
+00:30:56,940 --> 00:30:59,073
+and can be pretty annoying.
+
+697
+00:31:00,060 --> 00:31:02,850
+And also performance can
+really impact security.
+
+698
+00:31:02,850 --> 00:31:04,410
+Sometimes you have to make a decision
+
+699
+00:31:04,410 --> 00:31:06,870
+on whether you want
+performance or security.
+
+700
+00:31:06,870 --> 00:31:09,273
+In this case using a
+just-in-time compiler,
+
+701
+00:31:10,350 --> 00:31:11,190
+it's somewhere in the middle.
+
+702
+00:31:11,190 --> 00:31:13,710
+It's pretty difficult to get it right.
+
+703
+00:31:13,710 --> 00:31:15,990
+But luckily since then they've added
+
+704
+00:31:15,990 --> 00:31:19,020
+native fuzzing infrastructure
+to the whole VM
+
+705
+00:31:19,020 --> 00:31:22,890
+and I think, yeah, it's
+pretty secure by now.
+
+706
+00:31:22,890 --> 00:31:25,950
+Also if you find a vulnerability,
+don't get super excited,
+
+707
+00:31:25,950 --> 00:31:28,770
+verify that it's actually
+exploitable in the wild
+
+708
+00:31:28,770 --> 00:31:31,470
+and unfortunately bug collisions happen.
+
+709
+00:31:31,470 --> 00:31:33,363
+And yeah.
+
+710
+00:31:34,410 --> 00:31:35,779
+That's all I have for you today.
+
+711
+00:31:35,779 --> 00:31:36,715
+I hope you liked this.
+
+712
+00:31:36,715 --> 00:31:37,548
+Thanks a lot.
+
+713
+00:31:37,548 --> 00:31:41,401
+(audience applauding)
+
+714
+00:31:41,401 --> 00:31:42,318
+Hallelujah.
+
+715
+00:31:45,434 --> 00:31:46,267
+Cool.
+
+716
+00:31:46,267 --> 00:31:48,663
+Hope you enjoy DEF CON and
+see you next year, hopefully.
+

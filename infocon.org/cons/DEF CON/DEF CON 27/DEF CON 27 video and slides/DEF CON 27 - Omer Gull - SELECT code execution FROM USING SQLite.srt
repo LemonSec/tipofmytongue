@@ -1,0 +1,1913 @@
+﻿00:00:00.000,00:00:05.873
+>>Hello everyone. Uh- welcome to
+my talk called ‘Select Code
+Execution from Just About
+
+00:00:05.873,00:00:11.278
+Anything Using SQL Lite’ where
+we will gain code execution
+using malicious SQL lite
+
+00:00:11.278,00:00:17.017
+databases. So, quick who am i.
+My name is uh- Omer Gull. I’m a
+vulnerability researcher from
+
+00:00:17.017,00:00:21.588
+Tel Aviv. I’ve been working in
+check point research for the
+past three years. This is where
+
+00:00:21.588,00:00:27.961
+I’ve done this research and I’ve
+recently moved onto a new
+startup called Hunters AI. So,
+
+00:00:27.961,00:00:32.966
+the uh- agenda for today, we’ll
+start with a little motivation
+and uh backstory for this
+
+00:00:35.102,00:00:41.708
+research. We’ll then talk a
+little bit about SQL lite
+internals. Uh- we will examine
+
+00:00:41.708,00:00:48.115
+attack surface available to a
+malicious database and discuss
+some previous uh- work done in
+
+00:00:48.115,00:00:53.387
+the field of SQL lite
+exploitation. We will then move
+onto memory corruptions and uh-
+
+00:00:53.387,00:00:59.059
+the possibility of exploiting
+them using nothing but SQL
+queries and demonstrate our
+
+00:00:59.059,00:01:03.664
+innovative technique called
+Query Oriented Programming, or
+QOP. That’s a registered
+
+00:01:03.664,00:01:09.536
+trademark. Eh- we’ll take it for
+a spin in a couple of demos and
+discuss some possible future
+
+00:01:09.536,00:01:16.510
+work and conclusion. So, let’s
+get started. The motivation for
+this research is quite obvious.
+
+00:01:16.510,00:01:21.682
+SQL lite is one of the most
+deployed pieces of software in
+the world. Whether it is PHP
+
+00:01:21.682,00:01:26.687
+five, seven, Android, iOS,
+MacOS, it is now built into
+Windows 10. It is practically
+
+00:01:28.889,00:01:33.894
+everywhere. Yet, querying a
+database uh- is considered safe.
+And hopefully by the end of this
+
+00:01:36.530,00:01:41.535
+talk you realize why this is not
+necessarily the case. So, it all
+actually started with password
+
+00:01:43.770,00:01:49.810
+stealers, and, it’s a pretty
+popular type of malware. And
+there are several uh- types uh-
+
+00:01:49.810,00:01:54.815
+in this field but the story is
+usually all the same. First of
+all, a computer gets infected.
+
+00:01:56.950,00:02:02.856
+Then the malware collects the
+stored credentials as they are
+maintained by various clients.
+
+00:02:02.856,00:02:08.762
+Some of these clients actually
+store your secrets within SQL
+lite databases. Uh- so the
+
+00:02:08.762,00:02:15.435
+malware just ships those
+databases to its C2 server where
+they are all parsed uh- and your
+
+00:02:15.435,00:02:21.174
+secrets are stored in a
+collective database with the
+rest of the loot. So it all
+
+00:02:21.174,00:02:26.747
+actually began when my colleague
+and I, Omriher were looking at
+the leaked sources of a very
+
+00:02:26.747,00:02:33.253
+known password stealer. Then we
+thought to ourselves, these guys
+are just harvesting a bunch of
+
+00:02:33.253,00:02:38.258
+our DBs and parse them in their
+own backend. Can we actually
+leverage the load and query of
+
+00:02:40.327,00:02:46.933
+an untrusted database to our
+advantage. Uh- if we could this
+might actually have much bigger
+
+00:02:46.933,00:02:53.874
+implications just because SQL
+lite is so popular and used in
+countless scenarios. And so
+
+00:02:53.874,00:02:58.879
+began the longest CTF challenge
+of my life. So uh- a couple of
+words about SQL lite. So, unlike
+
+00:03:01.948,00:03:07.921
+most database engines, it
+doesn’t have that client server
+architecture. Instead it just
+
+00:03:07.921,00:03:14.661
+uh- reads and writes directly to
+the file system to files. So you
+have a complete database with
+
+00:03:14.661,00:03:20.434
+multiple tables and indices and
+triggers and views, and
+everything is contained within a
+
+00:03:20.434,00:03:27.307
+single file. So let’s examine
+for a second, the attack surface
+available to a malicious
+
+00:03:27.307,00:03:33.814
+database. Uh- again this is the
+leaked sources of a very uh-
+known password stealer and we
+
+00:03:33.814,00:03:39.753
+have two main points of interest
+here. The first one is SQL lite
+open, where our potentially
+
+00:03:39.753,00:03:45.959
+malicious database is about to
+be uh- loaded and initially
+parsed. And the second point is
+
+00:03:45.959,00:03:51.965
+obviously the query itself. Now,
+you notice that is
+uncontrollable to us, right? It
+
+00:03:51.965,00:03:58.004
+is hard coded within our target,
+yet we have some control over
+the database so we should uh- it
+
+00:03:58.004,00:04:04.544
+should be beneficial to us to
+learn this process. So let’s
+break the attack surface in two.
+
+00:04:04.544,00:04:11.151
+First of all, the SQL lite open.
+So, actually it’s a bunch of
+setup and configuration codes, a
+
+00:04:11.151,00:04:17.257
+bunch of loaded, uh- a bunch of
+modules are uh- loaded, and then
+we move onto straight forward
+
+00:04:17.257,00:04:23.597
+header parsing. And, actually
+the header is not that long. It
+is only 100 bytes long and it
+
+00:04:23.597,00:04:28.602
+was already fuzzed to death by
+AFL. So probably, this is not a
+very promising path to pursue.
+
+00:04:31.571,00:04:37.310
+The second part of our surface,
+uh- the query itself, and it
+might be a bit more interesting
+
+00:04:37.310,00:04:43.450
+because using SQL lite authors’
+words, the select statement is
+the most complicated command in
+
+00:04:43.450,00:04:48.455
+the AQL language. And, actually,
+uh- SQL lite is a wonderful
+virtual machine. So every query,
+
+00:04:51.691,00:04:56.696
+uh- is first compiled to some
+bytecode. And this is also known
+as the preparation step. Uh- So
+
+00:05:00.300,00:05:05.972
+SQL lite prepare would actually
+walk and expand your query so
+for example, everytime you write
+
+00:05:05.972,00:05:12.078
+an asterisk, it goes uh- behind
+your back, replace this asterisk
+with all the column names. Uh
+
+00:05:12.078,00:05:17.083
+so, SQL lite locate table
+actually verifies that all the
+relevant objects do exists, and
+
+00:05:19.519,00:05:24.524
+locates them uh- in memory. So
+where does this object exist.
+Uh- every SQL lite uh- database
+
+00:05:26.893,00:05:28.895
+has an SQL lite master table
+that defines the schema for the
+database. And, this is it’s
+
+00:05:28.895,00:05:30.897
+structure. You can see that it
+is actually a table. And uh-
+every entry there has that type
+
+00:05:30.897,00:05:32.899
+of the object, so like a table
+or a view, and its name and
+roots page, because if you
+
+00:05:32.899,00:05:34.901
+recall everything is contained
+within this file, and a field
+called SQL. And SQL is actually
+
+00:05:34.901,00:05:36.903
+the DDL describing the object.
+So, DDL stands for data
+definition language and you can
+
+00:05:36.903,00:05:38.905
+sort of look at it like uh- your
+header files in C. So they are
+used to define the structures
+
+00:05:38.905,00:05:40.907
+and the names and the types that
+are used within the database.
+Furthermore, also appear in
+
+00:05:40.907,00:05:42.909
+plain text within the file. So,
+let me show you an example.
+Here, I create a very simple
+
+00:05:42.909,00:05:44.911
+database. I create a table and
+then I insert a couple of
+strings into it. Then I quit the
+
+00:05:44.911,00:05:46.913
+SQL lite interpreter and I hex
+dump the file. And you can
+actually see the DDL in text,
+
+00:05:46.913,00:05:51.918
+the DDL of SQL lite master in
+plaintext within this file. Uh-
+so let’s go back to query
+
+00:06:11.905,00:06:18.178
+preparation for a second. So we
+have SQL lite locate table uh-
+that attempts to find the
+
+00:06:18.178,00:06:22.115
+structures describing the tables
+that we are interested in
+querying. Uh- so it reads the
+
+00:06:22.115,00:06:27.120
+available in SQL lite master.
+And if it’s the first time that
+it is doing so, it has a
+
+00:06:35.562,00:06:40.567
+callback function for every DDL
+statement. This callback uh-
+actually validates uh- the DDL
+
+00:07:00.287,00:07:06.693
+is indeed valid and it builds
+the internal data structures of
+the object. So, then we thought
+
+00:07:06.693,00:07:13.566
+about- what- what about DDL
+patching. Can we simply replace
+the SQL query within the DDL.
+
+00:07:13.566,00:07:16.303
+And, turns out that- this is uh-
+the callback function that I
+mentioned, and you see that the
+
+00:07:16.303,00:07:18.438
+DDL is verified to begin with
+create space and only then it
+moves onto preparation. So
+
+00:07:18.438,00:07:22.976
+that’s actually a constraint.
+Our DDL must begin with create.
+However uh- it does leave some
+
+00:07:22.976,00:07:24.978
+room for flexibility because uh-
+to judge by the recommendation,
+actually many things can be
+
+00:07:24.978,00:07:29.983
+created in SQL lite. So you can
+create an index and a table and
+a trigger and a view, and
+
+00:07:46.032,00:07:52.272
+something we still don’t
+understand called virtual table.
+And then, create a view gave us
+
+00:07:52.272,00:07:59.012
+an interesting idea. Because
+views are simply prepackaged
+select statements, right? And
+
+00:07:59.012,00:08:05.685
+they are queried similarly to a
+table. So selecting a column
+from a table is semantically
+
+00:08:05.685,00:08:10.690
+equivalent to selecting a column
+from a view, right? Uh, so we
+move onto the concept of query
+
+00:08:12.726,00:08:17.731
+hijacking. We are going to patch
+SQL lite maser DDL with a view
+instead of a table. And our
+
+00:08:19.833,00:08:26.339
+patched view can actually have
+any select that we wish. And now
+using our select subquery, we
+
+00:08:26.339,00:08:31.678
+can actually interact with the
+AQL lite interpreter. And this
+is a huge step forward right?
+
+00:08:31.678,00:08:37.851
+Because the query was
+uncontrollable by us at first,
+but now we have some control
+
+00:08:37.851,00:08:44.557
+over it. Let me show you an
+example. So let’s say that the
+original database had just a
+
+00:08:44.557,00:08:50.997
+single table. And it’s called
+dummy and it has two columns
+inside it. The target software
+
+00:08:50.997,00:08:55.702
+uh- would actually uh query it
+uh the following way. It would
+just select those two columns
+
+00:08:55.702,00:09:00.707
+out of the table. Right? But the
+following view can actually
+hijack this query so if we
+
+00:09:00.707,00:09:05.912
+create a view that it’s called
+dummy, it has uh- the exact
+number of columns inside, and
+
+00:09:05.912,00:09:12.619
+the same name, and every column
+can have any subquery that we
+wish inside it. So again, let me
+
+00:09:12.619,00:09:19.292
+show you in a practical example.
+Here I create uh- a database.
+And inside it I create a view
+
+00:09:19.292,00:09:25.765
+with two columns. Every column
+is actually a function. So the
+first column would call the SQL
+
+00:09:25.765,00:09:31.371
+lite version function that
+simply returns the SQL lite
+version in use. And the second
+
+00:09:31.371,00:09:36.976
+column will utilize SQL lite’s
+own implementation of print f.
+That’s right they have their own
+
+00:09:36.976,00:09:41.981
+implementation of print f, they
+must be insane. So now, when the
+target software actually queries
+
+00:09:44.184,00:09:50.323
+uh- this- uh- what it thinks to
+be a table but is actually a
+view, we can actually see our
+
+00:09:50.323,00:09:57.163
+two functions executing and
+again, we just gain some control
+over the query and this is a
+
+00:09:57.163,00:10:02.869
+huge step forward. But then the
+question is what do we do with
+this control, what primitives
+
+00:10:02.869,00:10:08.808
+does SQL lite have? Okay, do we
+have any system commands? Can we
+write to other files on the
+
+00:10:08.808,00:10:15.181
+system, maybe read some more
+files? Uh so this is uh- a
+really good point to uh- look
+
+00:10:15.181,00:10:20.487
+back at previous research done
+in the field because we are
+definitely not the first one to
+
+00:10:20.487,00:10:26.092
+notice SQL lites uh- huge
+potential in terms of
+exploitation, right? So a
+
+00:10:26.092,00:10:31.097
+reasonable place to start is SQL
+injections, right? And there are
+a couple of known SQL injection
+
+00:10:33.166,00:10:40.006
+tricks in SQL lite. The first
+one has something to do with
+attaching another database and
+
+00:10:40.006,00:10:44.811
+creating a table and then
+inserting a string into it uh-
+so you are able to write your
+
+00:10:44.811,00:10:50.450
+own webshell. And this is all
+very nice but we can’t do it
+because if you recall, you can’t
+
+00:10:50.450,00:10:57.323
+start any statement with attach.
+Our DDL must begin with create.
+So it’s not a very uh- uh-
+
+00:10:57.323,00:11:03.263
+useful trick for us. Another
+common thing to do in SQL
+injection uh- is loading a
+
+00:11:03.263,00:11:08.334
+remote extension like here in
+this example you can see it
+actually loads the meterpreter
+
+00:11:08.334,00:11:13.339
+DLL, however it is also disabled
+by default so again, no go with
+this trick. Let’s talk about
+
+00:11:16.176,00:11:21.881
+memory corruptions for a second
+because SQL lite is such a
+complex piece of software and
+
+00:11:21.881,00:11:28.721
+it- everything is written in C.
+Uh so, in his amazing blog post,
+“Finding bugs in SQL lite the
+
+00:11:28.721,00:11:33.726
+easy way” Michael Zalewski, uh-
+the author of AFL, described how
+he found 22 bugs in just under
+
+00:11:36.663,00:11:43.236
+30 minutes of fuzzing and this
+is pretty amazing. And
+interestingly, since then, there
+
+00:11:43.236,00:11:48.241
+was uh- version three eight ten
+that was 2015. SQL lite actually
+started using AFL as part of
+
+00:11:51.144,00:11:56.149
+their remarkable test suite. Yet
+these memory corruption all
+proved to be really difficult to
+
+00:11:58.885,00:12:05.425
+exploit without a convenient
+environment, right? But the
+security research community soon
+
+00:12:05.425,00:12:10.430
+found the perfect target, and it
+was web SQL. So, web SQL is
+essentially a webpage API for
+
+00:12:13.800,00:12:18.805
+storing data in databases. It is
+queried from javascript using
+SQL and it has an SQL lite
+
+00:12:21.541,00:12:26.546
+backend and it is available in
+Chrome and Safari. Here we see
+an example of how to uh- query
+
+00:12:29.282,00:12:35.054
+SQL to SQL lite using
+javascript. It’s very straight
+forward. But, in other words,
+
+00:12:35.054,00:12:41.427
+what I’m hearing here, is that
+we have untrusted inputs into
+SQL lite available uh- reachable
+
+00:12:41.427,00:12:46.432
+from any website on the internet
+in two of the world’s most
+popular browsers. Uh- and now,
+
+00:12:48.601,00:12:53.039
+every memory corruption bug
+could could actually be
+leveraged with the comfort and
+
+00:12:53.039,00:12:59.445
+knowledge of javascript
+exploitation. So there have been
+uh- several impressive
+
+00:12:59.445,00:13:04.384
+researchers that uh- were
+published about web SQL from
+very low hanging fruits like CVE
+
+00:13:06.386,00:13:11.391
+2015 70 36, that was an
+untrusted pointer dereference in
+FTS tokenizer. Uh to more
+
+00:13:15.328,00:13:21.501
+complex exploits presented at
+Blackhat 2017 by the awesome
+Chaitin team that was a type
+
+00:13:21.501,00:13:26.506
+confusion in the FTS optimizer.
+Uh to the recent Magellan bugs
+that were just uh- presented by
+
+00:13:28.675,00:13:34.714
+the tencent team. That was an
+integer overflow in uh FTS
+segment reader. And if you guys
+
+00:13:34.714,00:13:40.219
+are paying even a tiny bit of
+attention here, you might see an
+interesting pattern arises,
+
+00:13:40.219,00:13:45.224
+right? All these functions start
+with FTS. So, what is FTS? I’ve
+never heard of it and Googling
+
+00:13:47.794,00:13:52.799
+just even left me more confused.
+Well, after some time, I came to
+the realization that FTS
+
+00:13:55.368,00:14:00.606
+actually stands for full text
+search and it is something
+called a virtual table module
+
+00:14:00.606,00:14:06.913
+and it allows for textual
+searches on a set of documents.
+Again, using SQL lite’s author’s
+
+00:14:06.913,00:14:12.785
+words, it’s just like google for
+your SQL lite database. So
+that’s pretty cool. And a
+
+00:14:12.785,00:14:18.825
+virtual table actually allows
+for plenty of core functionality
+in SQL lite so we have FTS that
+
+00:14:18.825,00:14:24.731
+we just described. There is also
+R TREE, a virtual table that
+allows for some uh- clever
+
+00:14:24.731,00:14:30.236
+geographical indexing, or the
+CSV virtual table that lets you
+treat your database as you would
+
+00:14:30.236,00:14:35.241
+a CSV file. And actually, all
+these virtual tables are queried
+just like regular tables, but
+
+00:14:37.710,00:14:43.783
+behind the scenes, some dark
+magic happens. Because every
+query invokes a callback method
+
+00:14:43.783,00:14:48.788
+on something called shadow
+tables. So, shadow tables. Uh-
+for example, let’s look at a
+
+00:14:50.923,00:14:55.928
+virtual table that is created
+using FTS virtual table module.
+Right. So we create a table and
+
+00:14:58.297,00:15:03.369
+we insert a string into it. Now,
+obviously to allow for some
+efficient search, we need to
+
+00:15:03.369,00:15:08.741
+have some metadata right? We
+need to have some indexing or
+pointers or toke- or some tokens
+
+00:15:08.741,00:15:15.281
+or stuff like that. So obviously
+we have some- we have the raw
+text and some metadata, but this
+
+00:15:15.281,00:15:21.487
+one virtual table is actually
+comprised from three shadow
+tables. So the raw text would go
+
+00:15:21.487,00:15:26.893
+a shadow table called content,
+and the metadata would go to the
+seg dir and segments. And,
+
+00:15:26.893,00:15:31.697
+actually each of these shadow
+tables, uh- they pass
+information between them. They
+
+00:15:31.697,00:15:37.937
+have all those interfaces and
+those interfaces, and given that
+they have uh- such trusting
+
+00:15:37.937,00:15:44.277
+nature, are really fertile
+ground for bugs. Uh- many of the
+bugs in SQL lite are uh uh-
+
+00:15:44.277,00:15:50.917
+presented there so uh- it’s a
+really good thing to look at if
+you’re hunting for bugs. And let
+
+00:15:50.917,00:15:56.055
+me show you an example of a bug
+that I found in one of the
+interfaces of the R TREE virtual
+
+00:15:56.055,00:16:00.993
+table. Uh- so again, R TREE is a
+virtual table module and it is
+available in MacOS, iOS, and now
+
+00:16:04.530,00:16:09.535
+also built into Windows 10. And
+it’s used for some geographical
+indexing. I’m not entirely sure
+
+00:16:11.871,00:16:16.909
+what that means but the
+structure should be the
+following. A table should begin
+
+00:16:16.909,00:16:22.949
+with ID, that is supposedly an
+integer and then you have a
+bunch of coordinates, the like X
+
+00:16:22.949,00:16:27.954
+and Ys. Uh- so R TREE interfaces
+would obviously expect ID to be
+an integer but if we create a
+
+00:16:31.657,00:16:38.297
+virtual table using the R TREE
+module, and we’ll insert uh- a
+value, where ID is definitely
+
+00:16:38.297,00:16:43.736
+not an integer, but it’s a
+string, and then we use the uh-
+R TREE node, that is one of the
+
+00:16:43.736,00:16:50.676
+R TREE interfaces, we get the
+following CVE. That’s an out of
+bounds read, uh, and it’s really
+
+00:16:50.676,00:16:56.015
+cool because this bug is now
+available in iOS and MacOS and
+as you can see here, also in
+
+00:16:56.015,00:17:00.953
+Windows 10. So, let’s go back to
+exploitability for a second. We
+realize that virtual tables do
+
+00:17:03.890,00:17:10.830
+have bugs, right? And, using our
+method of query hijacking, we
+can actually trigger them at the
+
+00:17:10.830,00:17:15.835
+C2 and cause it to segfault. But
+gaining flow control requires
+some form of scripting right?
+
+00:17:17.904,00:17:24.143
+Because segfaulting is not
+enough. We write- we want to uh
+write a complete exploit. We
+
+00:17:24.143,00:17:30.149
+want to bypass ASLR, we want to
+have some logic. However, we
+don’t have the javascript
+
+00:17:30.149,00:17:35.388
+interpreter so we don’t have any
+variables or arrays to use like
+you would in web SQL
+
+00:17:35.388,00:17:40.393
+exploitation. However we do
+vaguely recall hearing somewhere
+that SQL is turing complete. So,
+
+00:17:42.962,00:17:49.568
+we decided to put it to the test
+in terms of exploitation. And we
+started writing our own wishlist
+
+00:17:49.568,00:17:55.441
+for exploitation primitives. So
+Obviously we need to leak some
+memories, right? We want to
+
+00:17:55.441,00:18:01.747
+bypass the ALSR. Uh- we’ll have
+to do some common tests like
+unpacking 64 bit pointers to
+
+00:18:01.747,00:18:06.719
+integers, and then do some
+arithmetics with them right? We
+want to calculate where
+
+00:18:06.719,00:18:12.325
+functions are or where the heap
+is located. After all you want
+to pack those integers back to
+
+00:18:12.325,00:18:18.898
+little endian 64 bit pointers
+and maybe we also want to fake
+some objects in memories. This
+
+00:18:18.898,00:18:25.705
+is a really uh- uh- powerful
+primitive that’s uh- really
+helpful in many vulnerabilities.
+
+00:18:25.705,00:18:30.309
+And uh- we want to know how to
+heap spray. Uh because why not?
+It might be really really
+
+00:18:30.309,00:18:37.183
+useful. So the question remains
+can all these primitives be
+achieved with nothing but SQL.
+
+00:18:37.183,00:18:39.185
+And the question is, yes it it.
+So I proudly present to you
+something we call the query
+
+00:18:39.185,00:18:44.190
+oriented programming. And to- to
+explain it we will uh exploit
+the unfixed CVE 2015 70 36. And
+
+00:18:54.634,00:19:00.172
+you might ask yourself, what?
+How come a four year old bug is
+still unfixed? But this is
+
+00:19:00.172,00:19:06.946
+exactly our point. It was only
+considered vulnerable from uh-
+the context of the untrusted web
+
+00:19:06.946,00:19:13.352
+SQL so it was mitigated
+accordingly. It’s just not
+available in web SQL anymore.
+
+00:19:13.352,00:19:19.025
+However, so it- it was
+blacklisted actually, unless you
+compile SQL lite with a certain
+
+00:19:19.025,00:19:24.030
+flag. Uh- but these platforms
+are still vulnerable. So we
+have: PHP 5, and PHP 7, and iOS
+
+00:19:27.333,00:19:32.338
+and MacOS, all still vulnerable
+to this CVE. So let’s describe
+the vulnerability a little bit.
+
+00:19:34.807,00:19:40.446
+So, we said it has something to
+do with the tokenizer. So a
+tokenizer is a set of rules for
+
+00:19:40.446,00:19:45.451
+extracting terms from a document
+or a query. And the default is
+called simple just splits those
+
+00:19:48.421,00:19:53.426
+strings by whitespaces. However,
+if oyu like, you can register
+custom tokenizer using the FTS
+
+00:19:56.629,00:20:01.634
+tokenizer function in an SQL
+query. I will repeat it slowly.
+You can actually register uh- a
+
+00:20:03.736,00:20:08.741
+function using an SQL query. You
+are about to pass uh- a raw
+pointer to an SQL query. This is
+
+00:20:10.810,00:20:16.348
+absolutely insane. Actually I
+have no idea how to really use
+this functionality other than in
+
+00:20:16.348,00:20:21.353
+my exploit. >>[laughter] >>So,
+FTS tokenizer is actually an
+overloaded function and if you
+
+00:20:25.858,00:20:31.197
+call it with one argument, so
+simple, again this is the name
+of the default tokenizer, it
+
+00:20:31.197,00:20:36.769
+actually spits back the address
+of this tokenizer. So, to make
+it a bit more readable, we’ll
+
+00:20:36.769,00:20:42.441
+use the hex decoder and we can
+see that we actually got a
+pointer to lib SQL lite but it’s
+
+00:20:42.441,00:20:48.948
+the other way around because
+little endianity. And uh- if you
+call it with two arguments, so
+
+00:20:48.948,00:20:54.720
+the first one is the tokenizer
+name, the other one is a raw
+pointer, uh- you actually
+
+00:20:54.720,00:21:00.993
+override the address of this uh-
+uh- tokenizer. So everyone
+trying to use this tokenizer,
+
+00:21:00.993,00:21:07.900
+everyone instantiating a virtual
+table will try to uh- initialize
+it and will then crash and burn
+
+00:21:07.900,00:21:12.905
+with segmentation fault uh- at
+the order it’s given to it. So a
+little recap, uh we established
+
+00:21:15.841,00:21:22.181
+that SQL lite is a wonderful one
+shot for many targets. One good
+bug in SQL lite is one good bug
+
+00:21:22.181,00:21:27.186
+in so many platforms. And we
+realized that is a complex
+machine written in C, and using
+
+00:21:29.622,00:21:35.127
+query hijacking, we can now
+actually start triggering bugs.
+And we aim to write a full
+
+00:21:35.127,00:21:40.132
+exploit uh- uh- implementing all
+necessary exploitation
+primitives uh- with nothing but
+
+00:21:47.039,00:21:52.044
+SQL queries. So, our
+exploitation game plan is as
+follows. We are going to leak
+
+00:21:56.081,00:22:01.887
+some pointers and then we’ll
+calculate some function
+addresses. Uh- we’ll create our
+
+00:22:01.887,00:22:07.793
+own fake tokenizer with some
+pointers to assist them to allow
+us to actually execute code. We
+
+00:22:07.793,00:22:13.832
+will override the default
+tokenizer and trigger it, right?
+And then something will happen,
+
+00:22:13.832,00:22:18.437
+and I know you think is going to
+come up next. But we’re not
+going to profit, we are going to
+
+00:22:18.437,00:22:23.142
+grab your grandma’s Yahoo
+password because this is what’s
+available in password stealers.
+
+00:22:23.142,00:22:28.147
+So, starting with the memory
+leak. Uh- we- first of all uh-
+we need to gain a leak to lib
+
+00:22:30.683,00:22:35.554
+SQL lite, right? Uh- so we
+already know how to do it,
+right? The FTS tokenizer just
+
+00:22:35.554,00:22:40.326
+give us the address. But, we
+have a slight problem because
+it’s in little endian so we need
+
+00:22:40.326,00:22:45.731
+to flip it. So, surely we can
+read the pointer in a reverse
+fashion, two characters at a
+
+00:22:45.731,00:22:50.736
+time, and concatenate everything
+together. So, our leak would
+eventually uh be the following
+
+00:22:52.805,00:22:58.911
+query and we actually now have a
+leak to lib SQL lite. This is
+really really cool. Another
+
+00:22:58.911,00:23:03.582
+thing that is going to be useful
+to us is a leak to the heap,
+right? So, I’m going to do
+
+00:23:03.582,00:23:08.220
+something pretty similar to the
+R TREE bugs that I’ve shown you.
+I’m going to confuse a virtual
+
+00:23:08.220,00:23:14.960
+table interface. So again I’m
+creating a virtual table. And
+I’m inserting a sting into it.
+
+00:23:14.960,00:23:19.698
+And then I will confuse the
+match interface and it is
+usually passing a pointer but
+
+00:23:19.698,00:23:24.536
+instead of uh- passing it to
+some other interface that is
+expecting this pointer, I will
+
+00:23:24.536,00:23:31.143
+simply pass it to the hex
+decoder again. So now we read
+this uh pointer. And it is
+
+00:23:31.143,00:23:37.416
+indeed a pointer to the heap,
+again, in uh- little endian, but
+using the trick above, we should
+
+00:23:37.416,00:23:42.955
+be fine in flipping it. So, we
+can cross that off the list. We
+know how to leak memory, now
+
+00:23:42.955,00:23:47.960
+it’s time to unpack some
+pointers. Uh, but before we do
+that, we actually have a slight
+
+00:23:49.995,00:23:55.334
+problem because unlike uh-
+browser uh- web SQL
+exploitation, we don’t have any
+
+00:23:55.334,00:24:00.673
+javascript variables or arrays
+to use, and this is a big
+problem because we need to
+
+00:24:00.673,00:24:05.544
+create some logic. We want to
+calculate things, we want to
+store things, and naturally
+
+00:24:05.544,00:24:10.549
+storing things in SQL lite uh-
+requires you to have some
+insert. Uh- but we can’t use
+
+00:24:10.549,00:24:16.121
+insert, right? We have to begin
+with create and we can only
+create tables and views and
+
+00:24:16.121,00:24:21.460
+indexes and triggers. So then we
+thought about chasing uh- uh-
+chaining a couple of views
+
+00:24:21.460,00:24:26.465
+together and use them sort of,
+as pseudo variables. Again, let
+me show you an example. We
+
+00:24:26.465,00:24:32.871
+create a view called little
+endian leak, uh- and we use the
+vulnerability as mentioned in
+
+00:24:32.871,00:24:38.711
+the earlier slide. Now we create
+another view, leak, and notice
+how it refers to the first view,
+
+00:24:38.711,00:24:45.417
+right? It selecting from little
+endian leak. Again, we are doing
+the trick from before. And now
+
+00:24:45.417,00:24:52.358
+we’re actually uh- we actually
+remain with a pseudo variable
+called leak that is actually all
+
+00:24:52.358,00:24:57.563
+these chains together so we have
+one pseudo variable that
+contains all the calculations
+
+00:24:57.563,00:25:02.401
+from before. And again, this is
+a huge step forward because we
+want to create some logic. Uh-
+
+00:25:02.401,00:25:08.440
+our exploit should bypass ASLR
+and those kind of things we need
+to be able to store things and
+
+00:25:08.440,00:25:13.445
+this would really help us. So,
+unpacking 64 bit pointers. Uh-
+to calculate the base of an
+
+00:25:15.714,00:25:21.954
+image or the heap, we have to
+convert our pointers to
+integers. And this can be done
+
+00:25:21.954,00:25:27.593
+using the following query. So,
+again we start with sub str,
+reading one character in a
+
+00:25:27.593,00:25:33.999
+reverse fashion. Then we take
+this character and we use it in
+str. In str is just like str
+
+00:25:33.999,00:25:40.072
+char, and we get the value of
+this hex character. Because it
+is one based, you have the minus
+
+00:25:40.072,00:25:45.978
+one on the side, and then you
+have some multiplication and
+shifting dark voodoo, and you
+
+00:25:45.978,00:25:51.517
+simply return it for every
+character in the pointer
+resulting in this monster query.
+
+00:25:51.517,00:25:56.522
+But eventually, we actually
+unpacked uh- the pointer and now
+we have the integer value. So
+
+00:26:00.793,00:26:07.232
+again, we can cross that off the
+list as well. Moving to pointer
+arithmetics, and it is actually
+
+00:26:07.232,00:26:13.038
+really really easy right now
+when we have uh- integers at
+hand right? All we have to is,
+
+00:26:13.038,00:26:18.010
+in one sub query, we use our
+pseudo variables, and the other
+one can have any constant then,
+
+00:26:18.010,00:26:23.015
+we wish, and now we now where
+lib SQL lite is located. So, uh-
+packing 64 bit pointers because
+
+00:26:28.187,00:26:33.058
+we read some pointers and we
+manipulated them. Now would be a
+good time to write them
+
+00:26:33.058,00:26:39.198
+somewhere. Uh- so we thought
+char is going to be really
+useful here because we are used
+
+00:26:39.198,00:26:44.603
+to char being the reverse of
+hex, right? And it actually
+works fairly well on some
+
+00:26:44.603,00:26:50.509
+values, but on higher values
+this was a problem because they
+were translated back to their
+
+00:26:50.509,00:26:55.514
+uh- two byte code points uh- in
+unicode. And this was a huge
+obstacle for us. And we actually
+
+00:26:58.250,00:27:04.022
+uh- uh- had a really big problem
+with this and after bashing our
+head against the documentation
+
+00:27:04.022,00:27:10.529
+for about a week, we suddenly
+had the strangest epiphany: that
+our exploit is actually a
+
+00:27:10.529,00:27:17.269
+database, and if I want any
+conversion to happen at all, I
+can simply cre- uh- prepare a
+
+00:27:17.269,00:27:22.608
+key value table in advanced
+while I’m generating this
+database and then use some sub
+
+00:27:22.608,00:27:28.647
+queries. Uh- so this is the
+python function that is actually
+generating this hex map key
+
+00:27:28.647,00:27:35.521
+value table and you can see that
+it’s a very simple four loop
+from zero to FF, just inserting
+
+00:27:35.521,00:27:40.526
+all the values that I wish. And
+now our conversion use sub
+queries that are selecting from
+
+00:27:43.729,00:27:48.734
+this hex map so you see how the
+view is referring to hex map and
+again, we have some uh- shifting
+
+00:27:51.670,00:27:56.675
+and moderate dark magic and we
+can catenate everything together
+resulting in this query. So, now
+
+00:27:58.810,00:28:03.749
+we also know how to pack 64 bit
+pointers, we are moving forward.
+Let’s talk about faking objects
+
+00:28:07.352,00:28:13.425
+in memory. Because writing a
+single pointer is definitely
+useful but it’s not enough,
+
+00:28:13.425,00:28:19.264
+right? Uh- we all want to fake
+objects in memory, it’s a really
+powerful primitive, and if you
+
+00:28:19.264,00:28:25.370
+recall, uh- FTS tokenizer
+actually requires us to assign a
+tokenizer module, so we need to
+
+00:28:25.370,00:28:30.375
+fake one. And a tokenizer module
+is the following struct. Uh- we
+don’t really care about most of
+
+00:28:32.511,00:28:37.716
+it. Uh- it starts with an
+integer and then it has three
+function pointer. First of all
+
+00:28:37.716,00:28:41.420
+we have the create, which is the
+constructor. Then we have the
+destroyer which is the
+
+00:28:41.420,00:28:46.558
+destructor. Obviously we want
+both of them to be valid because
+we don’t want to crash during
+
+00:28:46.558,00:28:50.362
+our exploitation. The third
+function pointer, uh- open,
+actually tokenizes a string. So
+
+00:28:50.362,00:28:52.364
+it gets a string as an argument.
+This would be a really good
+place to put our system
+
+00:28:52.364,00:28:54.366
+functions so we can execute code
+as we wish. So, I’ve used most
+of my SQL knowledge by know but
+
+00:28:54.366,00:28:56.368
+I still have one more trick up
+my sleeve. I remember join
+queries. So, we are going to
+
+00:28:56.368,00:29:01.306
+fake an object using the
+following join query, right? We
+can see that we started- we
+
+00:29:16.788,00:29:23.562
+created a view called fake
+tokenizer and it’s concatenating
+a bunch of As, and then uh- a
+
+00:29:23.562,00:29:29.201
+packed version of the simple
+create address, and then another
+packed pointer, and then a bunch
+
+00:29:29.201,00:29:34.206
+of Bs with a join query. So
+actually if we verify it from a
+debugger, we can actually see
+
+00:29:36.608,00:29:41.480
+that it works pretty good. That
+memory section begins with a
+bunch of As and then we have two
+
+00:29:41.480,00:29:46.952
+pointers and then we have a
+bunch of Bs. So we have
+successfully faked an object in
+
+00:29:46.952,00:29:51.957
+memory using nothing but SQL
+queries so far. Uh- so for our
+final primitive, we want to do
+
+00:29:55.694,00:30:00.699
+some heap spray. Uh- because now
+we have our malicious tokenizer,
+right? And using our leaks, we
+
+00:30:03.068,00:30:09.007
+also know where the heap is but
+we are not entirely sure where
+our tokenizer is between- uh- it
+
+00:30:09.007,00:30:14.012
+is inside the heap. So it’s time
+for some spraying. And ideally
+that would be some repetitive
+
+00:30:16.648,00:30:22.587
+form of our fake object
+primitive, right? Uh- so repeat
+sounded like a really good
+
+00:30:22.587,00:30:27.592
+option to us. Uh- sadly SQL lite
+did not implement it for us so
+we had to do it by ourself.
+
+00:30:30.829,00:30:35.801
+Stack overflow for the win. We
+found this really elegant
+solution. So the following
+
+00:30:35.801,00:30:42.207
+query, uh- it uses the zero blob
+function that returns a blob
+consisting of N bytes. Uh- they
+
+00:30:42.207,00:30:46.978
+are all zeros, right? And then
+we’ll use the replace function.
+We are going to replace each and
+
+00:30:46.978,00:30:53.251
+every o- of those null bytes
+with our fake tokenizer. So,
+again the colors here are pretty
+
+00:30:53.251,00:30:59.391
+bad, but, verifying it with pwn
+dbg, uh- we actually see that we
+got perfect consistency. Our
+
+00:30:59.391,00:31:06.031
+fake tokenizer is repeating
+itself every twenty bytes. So
+this is perfect. And it looks
+
+00:31:06.031,00:31:12.237
+like Christmas came early
+because we can go onto pwning
+shit. So, again our target is
+
+00:31:12.237,00:31:18.143
+the following code, right? We
+have the password stealer, and
+it selects a column called body
+
+00:31:18.143,00:31:23.148
+rich from a table called notes,
+right? So we are going to create
+a view that is called notes and
+
+00:31:25.417,00:31:31.590
+it will have three sub queries
+inside. We are going to start
+with a sub query called uh- a
+
+00:31:31.590,00:31:36.828
+heap spray and then will
+override the simple tokenizer,
+and then will trigger our
+
+00:31:36.828,00:31:42.834
+malicious tokenizer. And you
+might ask yourself, what is a
+heap spray? Well, heap spray is
+
+00:31:42.834,00:31:49.441
+obviously a QOP chain. It’s
+another view called heap spray
+that utilizes our heap spray
+
+00:31:49.441,00:31:56.014
+crazy capabilities. We start
+with a bunch of As and then we
+can catenate one of the pointers
+
+00:31:56.014,00:32:02.287
+that we are interested in; P 64
+simple create, for example.
+Needless to say that P 64 simple
+
+00:32:02.287,00:32:07.292
+create is another view, right,
+that actually refers, it’s a
+packed version of U 64 simple
+
+00:32:10.195,00:32:15.200
+create. The party goes on
+because U 64 simple create
+actually goes back to U 64 lib
+
+00:32:17.869,00:32:23.909
+SQL lite that utilizes uh- some
+of our pointer arithmetics
+capabilities, right? And
+
+00:32:23.909,00:32:28.914
+everything is derived from our
+initial leak, the U 64 leak. But
+it actually turtles all the way
+
+00:32:31.783,00:32:36.788
+down. U 64 leak refers to leak,
+right? And our unpacking
+capabilities. And leak goes all
+
+00:32:40.525,00:32:46.832
+the way back to our initial
+vulnerability. And everytime I
+describe this QOP chain, this is
+
+00:32:46.832,00:32:52.604
+how I must look, right? I must
+look insane. But luckily for you
+guys, you don’t have to look
+
+00:32:52.604,00:32:55.640
+like me. Because we created QOP
+dot Pi. And QOP dot Pi is a
+really useful python library
+
+00:32:55.640,00:32:57.642
+generating these crazy long
+statements, right? In something
+in- like the start of pwn tools.
+
+00:32:57.642,00:32:59.644
+So creazing uh- creating the
+pass chain is actually on this
+like four lines of python. Uh-
+
+00:32:59.644,00:33:01.580
+and it’s going to be available
+in our github right after this
+presentation. So, now that we
+
+00:33:01.580,00:33:07.819
+have everything in order, let’s
+show our first demo for today
+where we will own a password
+
+00:33:07.819,00:33:12.824
+stealer backend that is uh-
+running the latest PHP 7. So,
+this is our module uh- this is
+
+00:33:32.344,00:33:38.350
+our uh- panel. Obviously it’s
+just a model that we setup from
+the leaked sources. And you can
+
+00:33:38.350,00:33:43.355
+see of those uh- all those uh-
+victims that are infected. And
+we are trying to go p dot php
+
+00:33:47.459,00:33:52.130
+where our webshell should be.
+Obviously it’s still not there
+because we have yet to exploit
+
+00:33:52.130,00:33:57.802
+it. Moving onto the attacker’s
+computer, we see that we have
+two scripts. The first, qop dot
+
+00:33:57.802,00:34:02.741
+py will actually generate, our
+malicious database. And we see
+uh- using LS that a database was
+
+00:34:05.810,00:34:12.050
+indeed created. Now we are going
+to emulate an infection, right?
+So we are going to send this SQL
+
+00:34:12.050,00:34:18.023
+lite database to the C two
+server as if we were infected
+and as a bunch of passwords that
+
+00:34:18.023,00:34:23.094
+is interested in. And this
+process takes a bit of time so
+we can look at all the crazy
+
+00:34:23.094,00:34:28.533
+statements above. We started
+with the leaks, and then we
+unpacked them, and- and packed
+
+00:34:28.533,00:34:33.204
+them again and manipulated, and
+you see that at the bottom, our
+payload is actually creating P
+
+00:34:33.204,00:34:40.078
+dot PHP with the simplest
+webshell. So after our exploit
+uh- will run successfully, it
+
+00:34:40.078,00:34:46.651
+will go to that page. Now that
+it is finished we go to P dot
+PHP again, and we see 200, the
+
+00:34:46.651,00:34:51.656
+page do exist. So now we can
+actually execute some code on
+the backend. Who am I, www dot
+
+00:34:53.825,00:34:58.830
+data. And obviously type in etc
+password, and we got it. Yeah.
+>>[Applause] >>So, actually, if
+
+00:35:10.175,00:35:15.714
+you think of it, what we just
+demonstrated is that anyone
+querying our malicious database
+
+00:35:15.714,00:35:22.220
+can actually be exploited. And
+this can be a lot of fun. And
+given the fact that SQL lite is
+
+00:35:22.220,00:35:28.793
+so popular, it opens up uh- the
+door to wide range of attacks.
+Uh- let’s explore another really
+
+00:35:28.793,00:35:33.798
+interesting use case. Uh so this
+is iOS persistency. iOS uses SQL
+lite extensively. It is
+
+00:35:37.135,00:35:42.207
+everywhere, right? And
+persistency is really hard to
+achieve on iOS because all
+
+00:35:42.207,00:35:47.212
+executable files must be signed.
+Uh- SQL lite database, being
+data only are not signed. Right?
+
+00:35:50.348,00:35:55.353
+There’s no need to sign them.
+Uh- and iOS and MacOS are both
+compiled with the enable FTS uh-
+
+00:35:57.889,00:36:04.162
+tokenizer compile time flag. So
+we plan on regaining code
+execution after the reboot by
+
+00:36:04.162,00:36:09.167
+replacing any SQL lite DB,
+right? So, as our target, we
+chose the context db. So this is
+
+00:36:11.336,00:36:16.041
+the name of the context, it’s
+address book SQL lite db. And
+these are a couple of tables
+
+00:36:16.041,00:36:20.945
+inside it, there’s nothing
+really special about those
+tables, they’re just here as an
+
+00:36:20.945,00:36:27.585
+example. We will replace the db
+with our malicious db. Alright,
+that will start with two DDL
+
+00:36:27.585,00:36:32.524
+statements, and you guys are
+already familiar with them. The
+first one will override the
+
+00:36:32.524,00:36:38.730
+simple tokenizer with a bunch of
+As. The second one will actually
+trigger it, right? It will start
+
+00:36:38.730,00:36:43.735
+an FTS virtual table uh- try to
+construct our malicious
+tokenizer. Uh- and now what we
+
+00:36:46.037,00:36:51.409
+are going to do is that we are
+going to go over each and every
+one of the original tables, and
+
+00:36:51.409,00:36:57.215
+using query hijacking, we are
+going to rewrite them as views,
+redirecting the execution to our
+
+00:36:57.215,00:37:02.654
+malicious DDL statements. So you
+see we select from override and
+then we select from crash. And
+
+00:37:02.654,00:37:07.659
+then we go and we do it for the
+second ta- second table as well.
+And we reboot, and secure boot
+
+00:37:09.794,00:37:15.600
+was actually bypassed and we got
+the following CVE. And this is
+really interesting because you
+
+00:37:15.600,00:37:22.507
+can see that the crashing
+address is 41, 41, 41, 49, and
+this is exactly as we expected,
+
+00:37:22.507,00:37:28.279
+right? This is where the
+constructor X create should be.
+But that’s actually not
+
+00:37:28.279,00:37:33.284
+everything. Uh- because the
+context DB within your iPhone is
+actually used and shared by many
+
+00:37:36.454,00:37:41.826
+many different processes. So
+whether it’s the contacts app,
+or Facetime, Springboard,
+
+00:37:41.826,00:37:48.700
+WhatsApp, Telegram, XPC proxy,
+many many process, some of them
+are more privileged than others.
+
+00:37:48.700,00:37:54.672
+And we’ve actually established
+the fact that we can execute
+code on the querying process. So
+
+00:37:54.672,00:38:00.712
+this actually means that we got
+privilege escalation using our
+tricks, right? And actually
+
+00:38:00.712,00:38:06.117
+there is nothing special about
+context DB. Any shared database
+can be used to achieve our
+
+00:38:06.117,00:38:11.122
+goals. Uh- all these methods and
+techniques were reported to
+Apple and they gained those CVEs
+
+00:38:13.224,00:38:19.631
+if you want to go and read about
+it later. So, if you’ll take
+anything away from this
+
+00:38:19.631,00:38:25.403
+research, I don’t want it to be
+the crazy SQL gymnastics, or I
+don’t want it to be a bunch of
+
+00:38:25.403,00:38:30.408
+CVE numbers. I want it to be the
+following. Querying a database
+might not be safe. Whether it is
+
+00:38:33.411,00:38:39.584
+across reboots or shared between
+processes, or shared between
+users, querying a database might
+
+00:38:39.584,00:38:45.723
+not be safe. And with QOP,
+actually these memory
+corruptions can now be reliably
+
+00:38:45.723,00:38:50.728
+exploited using nothing but SQL.
+Uh- and we really think that
+this is just the tip of the
+
+00:38:52.830,00:38:57.835
+iceberg. So far, SQL lite was
+only examined through the very
+narrow lense of web S- webSQL.
+
+00:39:00.238,00:39:06.277
+And while browser pointing is
+really exciting, SQL lite has so
+much more potential from
+
+00:39:06.277,00:39:12.483
+exploitation uh- perspective. So
+we really uh- want to see where
+the community will take this
+
+00:39:12.483,00:39:17.488
+research to. And we do have a
+couple of ideas of our own. So,
+obviously, something really cool
+
+00:39:19.924,00:39:25.029
+to do in future work would be to
+expand our primitives and gain
+something powerful as absolute
+
+00:39:25.029,00:39:30.034
+read or write. And second, uh-
+our exploit was actually uh- a
+really sketchy POC right? It had
+
+00:39:34.239,00:39:39.444
+a bunch of hard coded constants
+inside. But you can actually
+make it really really clever.
+
+00:39:39.444,00:39:45.016
+Because if you think that your
+eploit is actually a database,
+you can choose the right QOP
+
+00:39:45.016,00:39:51.589
+chain for you, uh- based on the
+results of functions like SQL
+lite uh- version or compile
+
+00:39:51.589,00:39:56.394
+option- like getting the compile
+option views. Uh- so you can
+dynamically create your QOP
+
+00:39:56.394,00:40:03.234
+chain, uh- to be exact to the
+target that you are exploiting.
+Obviously we think that uh-
+
+00:40:03.234,00:40:08.239
+these techniques can be used to
+privilege escalate almost
+everything. All we have to do is
+
+00:40:08.239,00:40:13.244
+find a database that is writable
+by a weak user and queried by a
+more powerful user so it’s also
+
+00:40:16.114,00:40:21.119
+interesting to look at other
+platforms than iOS or MacOS. And
+something- uh- another thing
+
+00:40:24.422,00:40:26.424
+that is really interesting is
+that many of the primitives that
+we have shown are not exclusive
+
+00:40:26.424,00:40:31.429
+to SQL lite. You can actually
+port many of them, like the
+packing and unpacking, you can
+
+00:40:34.265,00:40:40.104
+port them to other database
+engines so this would be also a
+really cool path to pursue, to
+
+00:40:40.104,00:40:46.244
+see how these techniques work in
+other database engines. And
+that’s it, thank you so much.
+
+00:40:46.244,00:40:51.249
+>>[Applause]
+

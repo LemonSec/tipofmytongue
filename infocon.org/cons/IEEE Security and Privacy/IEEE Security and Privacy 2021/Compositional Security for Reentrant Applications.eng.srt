@@ -1,0 +1,786 @@
+﻿1
+00:00:02,310 --> 00:00:06,369
+My name is Ethan Cecchetti and I’m going
+to tell you how to secure reentrant applications
+
+2
+00:00:06,370 --> 00:00:08,200
+in a compositional fashion.
+
+3
+00:00:08,200 --> 00:00:11,500
+This is joint work with Siqiu Yao, Haobin Ni, and Andrew Myers.
+
+4
+00:00:11,500 --> 00:00:13,367
+All of us are at Cornell.
+
+5
+00:00:13,500 --> 00:00:17,250
+Reentrancy poses a serious security problem
+in decentralized systems.
+
+6
+00:00:17,250 --> 00:00:21,599
+To understand the problem, let’s look at
+the example of a simple automated bank.
+
+7
+00:00:21,599 --> 00:00:26,009
+The bank holds one large pile of money, and
+it has a balance sheet to track that, maybe,
+
+8
+00:00:26,009 --> 00:00:29,919
+Alice has $50 in her account
+and Bob has $10 in his.
+
+9
+00:00:29,919 --> 00:00:35,500
+If Bob asks to withdraw $10 from his account,
+the bank follows a specific protocol.
+
+10
+00:00:35,500 --> 00:00:37,300
+First it checks Bob’s balance.
+
+11
+00:00:37,300 --> 00:00:44,199
+He’s asking for $10 and he has $10 in his account, so this is fine.
+Then, the bank sends Bob his money, and waits
+
+12
+00:00:44,200 --> 00:00:47,940
+for him to return a success code so it can be sure he got it.
+
+13
+00:00:47,940 --> 00:00:52,379
+Assuming he got the money, Bob should pocket
+his $10 and return that success code.
+
+14
+00:00:52,380 --> 00:00:56,810
+At this point the bank knows the transfer
+worked, so it decreases Bob’s balance down
+
+15
+00:00:56,810 --> 00:00:59,090
+to 0 and return, completing the transaction.
+
+16
+00:00:59,090 --> 00:01:04,949
+But let’s say Bob isn’t a normal user
+and he wants to steal money from the bank.
+
+17
+00:01:04,949 --> 00:01:09,050
+Bob has an idea.
+He starts the same way he did before: he says,
+
+18
+00:01:09,050 --> 00:01:14,950
+“hey bank, please send me $10.”
+The bank checks his balance, sends him $10, and waits
+
+19
+00:01:14,950 --> 00:01:19,200
+for him to return a success code.
+But this time Bob doesn’t pocket the money
+
+20
+00:01:19,200 --> 00:01:24,060
+and return like he’s supposed to.
+Instead Bob sends the bank another message:
+
+21
+00:01:24,060 --> 00:01:30,929
+“hey bank, please send me $10.” He reenters
+the bank while it’s waiting for a return.
+
+22
+00:01:30,929 --> 00:01:35,759
+Well, the bank follows its withdrawal steps:
+First it checks Bob’s balance. Because the
+
+23
+00:01:35,759 --> 00:01:39,979
+first withdraw hasn’t finished, it hasn’t
+decreased his balance yet, so the balance
+
+24
+00:01:39,979 --> 00:01:43,030
+sheet still says Bob has $10 and the check passes.
+
+25
+00:01:43,030 --> 00:01:49,090
+So the bank sends Bob his $10 and it waits for him
+to return a success code.
+
+26
+00:01:49,090 --> 00:01:54,219
+Bob can do this again and again and again
+and get the bank to send him way more money
+
+27
+00:01:54,219 --> 00:01:58,179
+than is in his account. Perhaps $50 million more.
+
+28
+00:01:58,180 --> 00:02:03,039
+You may recognize this example.
+It’s not just any automated bank, it’s something
+
+29
+00:02:03,039 --> 00:02:06,959
+called the Decentralized Autonomous Organization, or The DAO.
+
+30
+00:02:06,959 --> 00:02:12,930
+The DAO was a famous Ethereum smart contract
+that lost about $50 million to this exact attack
+
+31
+00:02:12,930 --> 00:02:21,367
+resulting in Ethereum taking the extreme step of
+a hard-fork to un-do the damage back in July 2016.
+
+32
+00:02:22,180 --> 00:02:26,959
+But reentrancy isn’t just an old problem
+that happened once and then went away.
+
+33
+00:02:26,959 --> 00:02:32,930
+About a year ago, in April 2020, the Uniswap
+token exchange, also on Ethereum, was the
+
+34
+00:02:32,930 --> 00:02:40,290
+victim of another reentrancy attack where an attacker
+was able to steal about $25 million in tokens.
+
+35
+00:02:40,290 --> 00:02:45,629
+This attack was particularly pernicious because
+it exploited a complex interaction of two
+
+36
+00:02:45,629 --> 00:02:48,060
+otherwise-benign contracts.
+
+37
+00:02:48,060 --> 00:02:53,860
+Also, while the most visible examples of reentrancy
+have been smart contracts, it's actually
+
+38
+00:02:53,860 --> 00:02:56,300
+a much more general problem.
+
+39
+00:02:56,300 --> 00:03:03,799
+Reentrancy can occur in any system that has:
+two modules, that can call each other, and don't trust each other.
+
+40
+00:03:03,799 --> 00:03:08,200
+So these could be the DAO hacker trying to attack the DAO.
+
+41
+00:03:08,200 --> 00:03:13,819
+Or it could be a host a operating system potentially
+trying to attack an enclave running inside SGX
+
+42
+00:03:13,819 --> 00:03:16,708
+or some other trusted hardware module.
+
+43
+00:03:16,709 --> 00:03:21,790
+It could be a web-assembly program running
+in a web browser runtime that may do things
+
+44
+00:03:21,790 --> 00:03:23,870
+it's not supposed to.
+
+45
+00:03:23,870 --> 00:03:28,860
+Now, there are a variety of existing approaches
+to eliminating reentrancy, but all of them
+
+46
+00:03:28,860 --> 00:03:30,600
+focus on smart contracts.
+
+47
+00:03:31,367 --> 00:03:36,578
+In addition to having limited utility in other
+domains, this leads them to assume an application
+
+48
+00:03:36,579 --> 00:03:44,099
+is a single contract, and they secure one
+contract rather than securing an entire application.
+
+49
+00:03:44,099 --> 00:03:49,798
+The result is a definition of reentrancy that
+we call “object reentrancy.” And unfortunately
+
+50
+00:03:49,799 --> 00:03:53,500
+object reentrancy is inherently non-compositional.
+
+51
+00:03:53,934 --> 00:03:59,120
+What I mean by that, is if we have a single
+monolithic application, and it calls a second
+
+52
+00:03:59,120 --> 00:04:03,879
+application that then calls back into the
+first, this would be considered reentrant
+
+53
+00:04:03,879 --> 00:04:08,290
+according to an object-reentrancy model,
+because that monolith is one object.
+
+54
+00:04:08,290 --> 00:04:13,929
+But, if we refactor this application into
+a functionally-equivalent modular application
+
+55
+00:04:13,930 --> 00:04:20,579
+with a bunch of little objects, we could get
+a different definition. A call from one module
+
+56
+00:04:20,579 --> 00:04:27,170
+into that second application, the second application
+could then call back into a different module
+
+57
+00:04:27,170 --> 00:04:32,759
+of the first application, and this would not
+be considered reentrant, even though the functionality
+
+58
+00:04:32,759 --> 00:04:35,250
+is equivalent to the first example.
+
+59
+00:04:35,250 --> 00:04:41,190
+Combining modules into a larger application
+results in a different definition of security
+
+60
+00:04:41,190 --> 00:04:44,350
+from a single monolithic application.
+
+61
+00:04:44,350 --> 00:04:50,380
+This lack of composition makes it hard to
+secure larger systems and it can miss complex
+
+62
+00:04:50,380 --> 00:04:51,900
+interactions like Uniswap.
+
+63
+00:04:52,767 --> 00:04:58,110
+Our approach is to build a general-purpose
+solution, with compositional definitions and
+
+64
+00:04:58,110 --> 00:05:05,310
+guarantees, that's also safe with unknown
+code, so that programs are safe in open environments
+
+65
+00:05:05,310 --> 00:05:09,370
+and can interact safely with legacy systems.
+
+66
+00:05:09,370 --> 00:05:13,810
+Our key insight is that reentrancy is about trust.
+
+67
+00:05:13,810 --> 00:05:20,021
+Looking back at The DAO example, The DAO implicitly
+trusted Bob to pocket his money and immediately
+
+68
+00:05:20,021 --> 00:05:23,510
+return when it sent him his $10.
+
+69
+00:05:23,510 --> 00:05:29,430
+Bob violated that implicit trust when he made
+a reentrant call instead of returning.
+
+70
+00:05:29,430 --> 00:05:35,500
+So we want to track this trust, and we do it
+using something called Information Flow Control, or IFC.
+
+71
+00:05:36,034 --> 00:05:42,267
+To use IFC, we label data and computation
+so that we can track how inputs affect outputs.
+
+72
+00:05:43,100 --> 00:05:48,639
+IFC is most often applied to confidentiality
+to control data leaks, but here we use it
+
+73
+00:05:48,639 --> 00:05:55,100
+for integrity. So, for example, trusted data
+may be able to influence untrusted data,
+
+74
+00:05:55,100 --> 00:05:57,534
+but not vice versa.
+
+75
+00:05:58,530 --> 00:06:02,029
+To see how IFC applies, let’s look at The DAO example again.
+
+76
+00:06:02,534 --> 00:06:06,900
+We need to label code and data,
+so we’ll start by labeling the money and balances
+
+77
+00:06:06,900 --> 00:06:09,034
+that we’re trying to protect as trusted.
+
+78
+00:06:10,334 --> 00:06:15,967
+The code for withdraw is part of the application
+and needs to update that money and balance,
+
+79
+00:06:16,234 --> 00:06:18,400
+so we mark that as trusted as well.
+
+80
+00:06:19,234 --> 00:06:24,799
+But Bob may be trying to attack the system, so we’re going to mark Bob as untrusted.
+
+81
+00:06:24,819 --> 00:06:30,750
+Now, we can look at the pattern of trust on
+the call stack during the reentrant attack.
+
+82
+00:06:30,750 --> 00:06:37,410
+Bob is untrusted and he calls withdraw, which
+is trusted. And when withdraw sent Bob money,
+
+83
+00:06:37,410 --> 00:06:41,160
+it was passing control back to Bob, who is
+untrusted.
+
+84
+00:06:41,160 --> 00:06:46,199
+To this point everything is fine.
+This is the same as the honest withdraw operation.
+
+85
+00:06:46,199 --> 00:06:52,500
+But when Bob makes the reentrant call,
+we get another trusted operation on the stack.
+
+86
+00:06:52,500 --> 00:06:59,567
+This pattern of trusted followed by untrusted,
+followed by trusted, is what we use to define reentrancy.
+
+87
+00:07:00,500 --> 00:07:07,210
+More formally, we define the notion of ℓ-reentrancy
+for an integrity level ℓ as an execution
+
+88
+00:07:07,210 --> 00:07:13,409
+stack with two computations that are trusted at ℓ,
+separated by one computation that isn't.
+
+89
+00:07:14,033 --> 00:07:20,167
+So that execution stack we just saw
+would be T-reentrant for some trusted label T.
+
+90
+00:07:20,819 --> 00:07:26,379
+By basing the definition on integrity levels,
+we avoid relying on object boundaries.
+
+91
+00:07:27,133 --> 00:07:31,729
+So the example of the modular application
+I showed earlier would still be considered
+
+92
+00:07:31,729 --> 00:07:37,430
+T-reentrant because both of the modules in
+the modular application are trusted, even
+
+93
+00:07:37,430 --> 00:07:40,030
+though it's not object reentrant.
+
+94
+00:07:40,030 --> 00:07:45,539
+On the other hand, if we had a monolithic
+application with some trusted operations and
+
+95
+00:07:45,539 --> 00:07:52,120
+some untrusted operations, if a trusted operation
+called a second application that called back
+
+96
+00:07:52,120 --> 00:07:58,610
+into an untrusted operation in the first application,
+this execution is safe because we aren’t
+
+97
+00:07:58,610 --> 00:08:03,750
+trying to secure the untrusted part of the
+original application. And indeed, it’s not
+
+98
+00:08:03,750 --> 00:08:09,259
+T-reentrant, it's just trusted followed by
+two untrusteds without this interleaving.
+
+99
+00:08:09,259 --> 00:08:13,370
+But it would be considered object reentrant.
+This would actually essentially be a false
+
+100
+00:08:13,370 --> 00:08:16,533
+positive based on an object reentrancy definition.
+
+101
+00:08:17,560 --> 00:08:22,759
+So ℓ-reentrancy gives us a clean semantic
+definition of reentrancy, but I haven’t
+
+102
+00:08:22,759 --> 00:08:25,189
+told you what it means to be secure.
+
+103
+00:08:25,189 --> 00:08:31,533
+The goal of our security definition is to
+make sure reentrancy doesn’t create bugs.
+
+104
+00:08:32,933 --> 00:08:38,549
+We do this by defining a reentrancy-secure
+program as one where anything the program
+
+105
+00:08:38,549 --> 00:08:41,819
+can do with reentrancy, it can also do without reentrancy.
+
+106
+00:08:41,820 --> 00:08:49,970
+So, if a secure program produces an execution
+trace t that has some reentrancy in it, there
+
+107
+00:08:49,970 --> 00:08:57,140
+has to be some other equivalent program trace t',
+that just calls a trusted operation, and
+
+108
+00:08:57,140 --> 00:09:02,400
+then returns, and then calls another trusted
+operation, and so on, without reentrancy.
+
+109
+00:09:03,350 --> 00:09:08,390
+This requirement means reentrancy can’t
+introduce bugs that weren’t already there.
+
+110
+00:09:08,390 --> 00:09:14,220
+And, importantly, it means that developers
+can ignore reentrancy when analyzing a program’s
+
+111
+00:09:14,220 --> 00:09:19,600
+correctness, which is really important because
+reentrancy is very very hard to reason about.
+
+112
+00:09:21,300 --> 00:09:25,166
+We enforce this notion of security by locking integrity.
+
+113
+00:09:26,233 --> 00:09:32,032
+When execution enters trusted code from untrusted
+code - it grants new integrity -
+
+114
+00:09:32,033 --> 00:09:34,089
+we lock that new integrity.
+
+115
+00:09:34,767 --> 00:09:39,940
+So, if we had trusted and untrusted like we
+did before, then when Bob calls withdraw for
+
+116
+00:09:39,940 --> 00:09:45,700
+the first time, we're granting trusted integrity,
+and we lock that trusted integrity level.
+
+117
+00:09:46,933 --> 00:09:51,633
+We're then going to prohibit re-granting integrity that is already locked,
+
+118
+00:09:51,633 --> 00:09:54,390
+but we'll allow other calls to occur.
+
+119
+00:09:54,390 --> 00:10:00,670
+So the send call that the bank made was lowering
+integrity, it was going from trusted to untrusted.
+
+120
+00:10:00,670 --> 00:10:06,000
+So that is allowed through. And that was all
+we needed for the honest withdraw to complete,
+
+121
+00:10:06,000 --> 00:10:10,230
+so the basic functionality of the bank is maintained.
+
+122
+00:10:10,230 --> 00:10:17,070
+However, if Bob tries to make a reentrant call,
+the will lock prevent The DAO from re-granting
+
+123
+00:10:17,070 --> 00:10:23,400
+that trusted integrity level and it will block
+the attack, exactly how we want it to.
+
+124
+00:10:24,320 --> 00:10:28,860
+There are two different strategies for enforcing these locks:
+we can enforce them statically,
+
+125
+00:10:28,860 --> 00:10:33,267
+with a type system, or we can enforce them
+dynamically at run time.
+
+126
+00:10:33,667 --> 00:10:39,190
+Static locking is nice because it provides
+no run-time overhead, and it guides developers
+
+127
+00:10:39,190 --> 00:10:42,700
+by helping them find bugs while also being
+highly compositional.
+
+128
+00:10:43,467 --> 00:10:48,400
+Unfortunately, it doesn't interact well
+with unknown or legacy code
+
+129
+00:10:48,400 --> 00:10:51,033
+that may not provide the same guarantees.
+
+130
+00:10:51,400 --> 00:10:55,233
+And, as I mentioned earlier, this is a core
+design goal of this work.
+
+131
+00:10:55,967 --> 00:11:01,180
+Dynamic locks, on the other hand, can have
+a high run-time cost and they can result in
+
+132
+00:11:01,180 --> 00:11:03,540
+unexpected errors during execution.
+
+133
+00:11:03,700 --> 00:11:08,900
+But they do allow applications
+to safely interact with unknown and untrusted code.
+
+134
+00:11:10,300 --> 00:11:13,532
+To get the best of both worlds, we support both.
+
+135
+00:11:14,133 --> 00:11:17,333
+We start by tracking and enforcing locks statically,
+
+136
+00:11:17,333 --> 00:11:22,360
+but we allow developers to request
+run-time locks on demand when they need to
+
+137
+00:11:22,360 --> 00:11:25,990
+interact with unknown code or legacy systems.
+
+138
+00:11:25,990 --> 00:11:29,400
+To understand the interplay of these static
+and dynamic locks,
+
+139
+00:11:29,400 --> 00:11:31,699
+let’s see how they can fix The DAO.
+
+140
+00:11:32,850 --> 00:11:38,930
+The type system can’t prove that unknown
+code called in step 2 won’t call some other
+
+141
+00:11:38,930 --> 00:11:44,400
+trusted operation. But inside withdraw, the
+trusted integrity level is locked.
+
+142
+00:11:44,400 --> 00:11:51,180
+And that means the type system has no choice but to
+prevent this call from happening entirely.
+
+143
+00:11:51,180 --> 00:11:56,933
+The program won't compile, which is good,
+because it's vulnerable and we need to change it.
+
+144
+00:11:57,610 --> 00:12:02,114
+There are two ways of fixing it.
+The first is with dynamic locks.
+
+145
+00:12:02,767 --> 00:12:07,133
+If the programmer requests a dynamic lock
+when sending money,
+
+146
+00:12:07,133 --> 00:12:10,833
+that dynamic lock will block Bob
+from reentering withdraw
+
+147
+00:12:10,839 --> 00:12:13,880
+and it will prevent the reentrancy attack.
+
+148
+00:12:14,700 --> 00:12:19,900
+The other way to fix The DAO is that we can
+do it by reordering operations.
+
+149
+00:12:20,833 --> 00:12:26,266
+If we decrease the balance before we send money,
+this will also fix the bug.
+
+150
+00:12:26,833 --> 00:12:33,501
+Bob can try executing the same attack as he did before,
+but now The DAO decreases his balance first,
+
+151
+00:12:33,501 --> 00:12:38,900
+and then sends him money.
+So when he makes his reentrant request to withdraw,
+
+152
+00:12:38,900 --> 00:12:44,233
+his balance will already be updated,
+and that reentrant call can't cause a problem.
+
+153
+00:12:45,100 --> 00:12:50,550
+The reason this is safe is not because there's
+no reentrancy. It's actually because Bob gets
+
+154
+00:12:50,550 --> 00:12:57,199
+only control of the execution after The DAO
+has completely updated its internal state,
+
+155
+00:12:58,100 --> 00:12:59,200
+and it can't --
+
+156
+00:12:59,530 --> 00:13:03,906
+so it can't cause a bug.
+The send is actually the last operation.
+
+157
+00:13:04,200 --> 00:13:09,300
+And our static locking mechanism
+actually supports this provably-safe pattern.
+
+158
+00:13:09,633 --> 00:13:15,933
+So our system going to allow both
+this fix and the one that uses dynamic locks.
+
+159
+00:13:16,670 --> 00:13:22,040
+To sum up, I’ve described a new compositional
+integrity-based definition for reentrancy
+
+160
+00:13:22,040 --> 00:13:26,300
+and reentrancy-security that doesn’t rely
+on program architecture.
+
+161
+00:13:26,933 --> 00:13:32,240
+I’ve described how to use locks to enforce
+this security, even when interacting with
+
+162
+00:13:32,240 --> 00:13:37,000
+unknown code, so programmers don’t have
+to think about reentrancy.
+
+163
+00:13:37,000 --> 00:13:44,033
+The enforcement uses efficient and helpful static checking
+where it can, and dynamic mechanisms when it needs to.
+
+164
+00:13:44,733 --> 00:13:49,699
+There’s a lot more in the paper, including
+support for provably-safe forms of reentrancy
+
+165
+00:13:49,699 --> 00:13:55,370
+that I mentioned earlier, formal definitions
+and proofs, as well as a prototype type checker.
+
+166
+00:13:56,033 --> 00:13:59,866
+Thank you for watching, and we would love
+to talk to you at the conference.
+

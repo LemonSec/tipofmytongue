@@ -1,0 +1,1638 @@
+﻿00:00:00.067-->00:00:05.339
+>>Ok, cool so um I a bit nervous
+now following the monkey comedy
+hour um it’s gonna be hard to
+
+00:00:05.339-->00:00:11.678
+follow that up. But this is
+relocation bonus, attacking the
+windows loader makes analysts
+
+00:00:11.678-->00:00:18.018
+switch careers. So quick
+introduction, I am Nick Cano,
+I’m 25 and I’m a senior security
+
+00:00:18.018-->00:00:23.991
+architect at Cylance. I have
+written a book on hacking games.
+Sorry I didn’t know a clap was
+
+00:00:23.991-->00:00:29.029
+coming. I’ve written a book on
+hacking games. Uh I’m also a
+pluralsight author, I just had a
+
+00:00:29.029-->00:00:34.167
+course published like a month
+ago on C plus plus secure coding
+practices and what is this talk
+
+00:00:34.167-->00:00:40.507
+about. Well this talk in essence
+is about the Windows portable
+executable header and how it can
+
+00:00:40.507-->00:00:45.245
+be weaponized to destroy parsers
+and other data analysis tools.
+Things like disassemblers and
+
+00:00:45.245-->00:00:50.250
+such and that all culminates
+into like a PE rebuilder for 32
+bit windows binaries. So you
+
+00:00:52.319-->00:00:58.992
+might ask, why are you attacking
+relocations, so this is a
+disassembly of a game. A game
+
+00:00:58.992-->00:01:04.464
+that I make a bot for. [sound
+affect} Disassembly, to get rid
+of a jump. I’ll just put some
+
+00:01:04.464-->00:01:10.604
+nots in there and then I save my
+new binary to disk, I ran it and
+it crashed. And I was like what
+
+00:01:10.604-->00:01:15.409
+the heck is going on here and I
+looked at the code and my nots
+were not changed, the code was
+
+00:01:15.409-->00:01:20.681
+different from what I had
+patched and I I know what you
+guys are thinking, auto hack?
+
+00:01:20.681-->00:01:27.521
+What’s going on here? So as it
+turns out, there are these
+things called relocations. So at
+
+00:01:27.521-->00:01:33.226
+first I was like, oh man this is
+broken for no reason. Then I was
+like ok, relocations corrupted
+
+00:01:33.226-->00:01:39.833
+the patch code, then I was like
+maybe I shouldn’t patch code
+that is relocated. But then I
+
+00:01:39.833-->00:01:44.838
+thought, I can use relocations
+to hide my arsenal in the bowels
+of the machine. So before we
+
+00:01:48.976-->00:01:55.449
+dive into the nitty gritty
+technical details [laughter]
+let’s let’s restate what we’re
+
+00:01:55.449-->00:02:01.388
+doing here. The windows loader
+has this piece in it that
+applies relocations. Relocations
+
+00:02:01.388-->00:02:07.594
+exist because binaries will have
+pointers in there that th- that
+are sensitive to the position of
+
+00:02:07.594-->00:02:11.231
+the binary and where it is
+loaded. So if the binary is
+loaded at a different base
+
+00:02:11.231-->00:02:17.304
+address then the compiler
+expected, those things need to
+be relocated, so if we can
+
+00:02:17.304-->00:02:22.175
+weaponize that, if we can
+instrument that and make it
+modify things for a different
+
+00:02:22.175-->00:02:28.348
+purpose, we can use that for
+obfuscation and we can get an
+obfuscator such that there’s no
+
+00:02:28.348-->00:02:33.120
+deobfuscation code, the windows
+loader does it all for us and
+then it’s kind of a mystery if
+
+00:02:33.120-->00:02:38.125
+it’s the first time seeing this,
+you’re like, this thing is a
+mess on disk and then in memory
+
+00:02:38.125-->00:02:43.663
+it’s fine before anything
+executes. So that’s what we’re
+going to talk about. So first we
+
+00:02:43.663-->00:02:48.668
+need to say well what are
+relocations? They exist to
+enable ASLR and dynamic mapping
+
+00:02:51.238-->00:02:55.776
+that’s not exactly true, it’s a
+bit more nuance than that but
+for the sake of executables,
+
+00:02:55.776-->00:03:00.714
+they exist to enable ASLR and
+let’s look at an example. So
+this is the same binary loaded
+
+00:03:03.917-->00:03:09.256
+at two different base addresses
+and I’m specifically looking at
+a function table and as you can
+
+00:03:09.256-->00:03:14.394
+see the function tables in the
+two different loads. One on the
+left and one on the right, the
+
+00:03:14.394-->00:03:19.933
+addresses are different at least
+that upper part of them and on
+the left we have what is that? O
+
+00:03:19.933-->00:03:25.772
+1 3 3 and on the right we have 0
+1 1 7. That is because they’re
+at a different base address we
+
+00:03:25.772-->00:03:30.744
+can see that actually here
+outlined in blue. It’s kind of
+reflected by the address of
+
+00:03:30.744-->00:03:35.816
+where this function table is.
+Binaries memory and we can see
+that the values are actually
+
+00:03:35.816-->00:03:41.988
+changed here in the bytes of the
+function table. So let’s take a
+sidebar really quick to talk
+
+00:03:41.988-->00:03:47.294
+about the PE header. By the way
+this is not my diagram, I got it
+from corkami, if you don’t that
+
+00:03:47.294-->00:03:52.199
+what that is, check it out,
+really good resource. So there
+are three things we’re worried
+
+00:03:52.199-->00:03:58.405
+about. The first thing is image
+base. Image base is a part in
+the PE header. Well, so the PE
+
+00:03:58.405-->00:04:02.809
+header is kind of the
+description of the binary in
+windows, what needs to be loaded
+
+00:04:02.809-->00:04:08.014
+what parts of memory need to
+have, what access right, uh what
+functions are important. Stuff
+
+00:04:08.014-->00:04:12.819
+like that. What we’re
+specifically interested in image
+base, which is a value you can
+
+00:04:12.819-->00:04:17.724
+use what base address you what
+your binary loaded at and if
+ASLRs not on, that will be
+
+00:04:17.724-->00:04:24.064
+followed. Throughout the talk I
+might refer to this as desired
+base. There’s also DLL
+
+00:04:24.064-->00:04:28.835
+characteristics. Now this is
+just a 2 byte value and it’s
+like a flags value. We’re
+
+00:04:28.835-->00:04:34.808
+specifically interested in the
+bit 0 X 40, which if it’s set
+means ASLRs on and if it’s not
+
+00:04:34.808-->00:04:39.813
+set, ASLRs off. ASLRs just the
+part of the loader that says ok
+I’m going to put this binary at
+
+00:04:42.349-->00:04:48.221
+a different address for security
+purposes. And finally there’s
+the data directories and
+
+00:04:48.221-->00:04:54.995
+specifically, there’s an offset
+from the data directories called
+image uh based entry reloc. So
+
+00:04:54.995-->00:04:59.633
+the data directory is basically
+just an array of pointers and
+sizes, different pieces of data
+
+00:04:59.633-->00:05:05.572
+that the loader needs and we’re
+only worried right now about the
+reloc index which points to the
+
+00:05:05.572-->00:05:11.778
+relocation table. And the
+relocations table looks
+something like this. At the top
+
+00:05:11.778-->00:05:16.082
+here, you have the data
+directories and then we have
+this little gray block and then
+
+00:05:16.082-->00:05:21.087
+we have what the reloc blocks
+actually look like. In the data
+directory there’s a pointer to
+
+00:05:21.087-->00:05:27.294
+these blocks, to the first block
+and then all the blocks should
+be contiguous after that. And
+
+00:05:27.294-->00:05:32.299
+there’s also a size which refers
+to the size of all of the blocks
+and bytes. Each block ends in an
+
+00:05:34.868-->00:05:41.107
+O X 0 0 0 0 just 2 byte 0 to say
+this is the end of the block,
+there’s another block coming so
+
+00:05:41.107-->00:05:45.979
+that the loader knows that it
+needs to look for a new
+relocation setter. So each block
+
+00:05:45.979-->00:05:52.719
+looks something like this. First
+there’s a virtual address, that
+virtual address is sort of like
+
+00:05:52.719-->00:05:57.591
+a base so instead of encoding
+every single address that needs
+to be relocated, you encode a
+
+00:05:57.591-->00:06:02.562
+virtual address and then offsets
+relative to that virtual address
+that are less than 4 bytes long
+
+00:06:02.562-->00:06:07.634
+and that just saves space. So
+this virtual address is the base
+which we will offset from in
+
+00:06:07.634-->00:06:13.506
+each entry. There’s also size of
+block and that is the size of
+the entire block. That is
+
+00:06:13.506-->00:06:20.046
+including the size of size of
+block and the size of virtual
+address. So those are both 4
+
+00:06:20.046-->00:06:26.052
+bytes, so 4 plus 4 and then in
+this case we have 4 entries
+which are each 2 bytes, so then
+
+00:06:26.052-->00:06:31.057
+plus 2, 4 times and you get the
+size of the block. So each entry
+is 16 bits, 4 of those or half
+
+00:06:33.627-->00:06:40.200
+of a byte are the relocation
+byte which we’ll talk about in a
+second and then the 12 remaining
+
+00:06:40.200-->00:06:45.205
+bits are used for the offset. So
+you get up to 4 0 9 6 from the
+virtual address. So you can have
+
+00:06:47.207-->00:06:53.546
+virtual address and then you can
+have as many entries as you want
+within 4 0 9 6 bytes of that to
+
+00:06:53.546-->00:06:57.617
+be relocated. And this
+optimization, it might not seem
+like much, but when you have a
+
+00:06:57.617-->00:07:02.756
+function table where you have
+like 30 things to be relocated
+back to back, it makes sense why
+
+00:07:02.756-->00:07:07.761
+it’s done this way. So this code
+kind of describes how the re-
+loader does relocations. Um this
+
+00:07:10.096-->00:07:15.635
+is just pseudo code obviously
+it’s not written in modern C
+plus plus. But this gives you
+
+00:07:15.635-->00:07:20.040
+the gist and we’re gonna talk
+about this. Specifically what we
+care about is the first line
+
+00:07:20.040-->00:07:25.879
+where we say delta is equal to
+base that’s the base that we’re
+actually mapped at. Minus
+
+00:07:25.879-->00:07:30.450
+desired base, that’s the base
+that we asked for in the PE
+header. And then the first if
+
+00:07:30.450-->00:07:36.523
+statement inside the loop is a
+type of relocation we’re gonna
+use. So if we were to look at
+
+00:07:36.523-->00:07:41.728
+that first if if statement, we
+would see that a plus equal
+operation is used during
+
+00:07:41.728-->00:07:47.634
+relocations and the right hand
+side of that is delta. So
+essentially everything that is
+
+00:07:47.634-->00:07:54.407
+relocated is the value that’s
+there plus equals delta, which
+is derived from the base address
+
+00:07:54.407-->00:07:58.778
+we’re given minus the base
+address we wanted and that’s how
+everything gets fixed up to
+
+00:07:58.778-->00:08:03.717
+point to the right place. So the
+conclusion that we can come to
+is that if we want to abuse
+
+00:08:06.152-->00:08:10.790
+relocations or if we want to be
+able to control what they’re
+writing, base must be
+
+00:08:10.790-->00:08:15.795
+pre-selected, or we must have
+some way to take base and make
+it be something we know that
+
+00:08:18.465-->00:08:23.803
+isn’t the base that we asked
+for. There needs to be a
+difference there. And desired
+
+00:08:23.803-->00:08:28.608
+base is the only means of
+controlling ASLR so that’s a bit
+tricky and delta’s also
+
+00:08:28.608-->00:08:33.613
+dependent on desired base. So we
+know we need to use desire base
+somehow to preselect a base, but
+
+00:08:36.116-->00:08:42.355
+it’s not clear how and I thought
+maybe we’ll just try invalid
+stuff so I tried negative 1 or
+
+00:08:42.355-->00:08:47.227
+maxint or whatever you want to
+call it and it didn’t work. PE
+fails to load. Well what I know
+
+00:08:47.227-->00:08:52.232
+is those final four Fs actually
+have to mask and be 0, because
+of alignment so I tried all 0s.
+
+00:08:55.301-->00:09:00.240
+PE fails to load, invalid
+header. So then I combined the
+two and PE loads at base 0 X 1
+
+00:09:02.542-->00:09:08.348
+with 4 0s after it instantly.
+Everytime. So we’re getting a
+base address every time that is
+
+00:09:08.348-->00:09:14.888
+different than the one we ask
+for and always the same. As i
+later learned corkami already
+
+00:09:14.888-->00:09:21.394
+had all of this documented so
+this has been known for a few
+years as well. So let’s talk
+
+00:09:21.394-->00:09:27.233
+about the loading process. It’s
+pretty complex and this is not
+all of it, but this is sort of
+
+00:09:27.233-->00:09:31.638
+what the windows loader does. So
+you don’t really have to read
+this whole thing, what we really
+
+00:09:31.638-->00:09:36.776
+care about is that the things in
+blue are things that happen
+before relocations are applied
+
+00:09:36.776-->00:09:42.882
+by the loader. And then things
+in orange are things that happen
+after relocations are applied,
+
+00:09:42.882-->00:09:47.253
+so if we want to obfuscate
+things, we might want to
+obfuscate things that happen
+
+00:09:47.253-->00:09:52.392
+after relocations are applied or
+we might break something. So if
+we just take out everything that
+
+00:09:52.392-->00:09:57.263
+isn’t relevant. This is, when we
+do our attack this is what it
+will look like. This is the
+
+00:09:57.263-->00:10:01.868
+flowchart that we’ll go through.
+Now you might notice there’s a
+red arrow coming from ASLR
+
+00:10:01.868-->00:10:08.007
+enabled. Which means we’re
+actually gonna have ASLR set to
+off and the attack happens here.
+
+00:10:08.007-->00:10:13.012
+So it turns out we’re not
+tricking ASLR. An allocator is
+being asked to locate something
+
+00:10:15.548-->00:10:20.553
+at FFFF0000 it’s saying yeah, I
+can do that but it’s spitting
+back OX 1 0000 for whatever
+
+00:10:22.689-->00:10:27.694
+reason. So our targets for
+relocation obfuscation well we
+know import table it loaded post
+
+00:10:31.130-->00:10:36.135
+relocations. So we can obfuscate
+the entire import table, that is
+all of the libraries and
+
+00:10:36.135-->00:10:41.241
+functions that are imported from
+DLLs can be obfuscated, so on
+disk they look like trash, but
+
+00:10:41.241-->00:10:47.947
+the loader fixes them up at load
+time. Additionally, even though
+sections are mapped, pre- pre
+
+00:10:47.947-->00:10:53.720
+reloc, they’re not used until
+execution which is post reloc.
+Additionally, their memory
+
+00:10:53.720-->00:10:58.825
+protections aren’t set properly
+until after relocations in case
+read only stuff has to be
+
+00:10:58.825-->00:11:03.763
+relocated. Also entry point
+isn’t used until post reloc. So
+we could obfuscate the entry
+
+00:11:06.199-->00:11:12.105
+point making it that much
+harder, the problem is that is
+write protected before
+
+00:11:12.105-->00:11:16.943
+relocations are done so you
+could only do this if the target
+machine doesn’t have data
+
+00:11:16.943-->00:11:22.849
+execution prevention turned on.
+So and the conclusion is pretty
+much what I just said, we could
+
+00:11:22.849-->00:11:27.220
+hit imports, code and resource
+sections and optionally the
+entry point with this attack.
+
+00:11:29.656-->00:11:33.760
+And that is this little green
+area you can see highlighted,
+now you might look at this and
+
+00:11:33.760-->00:11:39.732
+say, ok that’s only like half of
+the binary, but what you have to
+realize is this is a modified PE
+
+00:11:39.732-->00:11:45.038
+and that is actually most of the
+important stuff and in like a
+real binary it’s gonna be
+
+00:11:45.038-->00:11:51.277
+somewhere above 90 percent or 95
+percent of what’s actually there
+and what’s actually important
+
+00:11:51.277-->00:11:56.282
+content. So the final attack
+looks something like this. We’ll
+load the target PE file, the PE
+
+00:11:58.651-->00:12:03.590
+file that we want to obfuscate,
+then we’ll apply the original
+relocations, because remember
+
+00:12:03.590-->00:12:09.963
+relocations are there for a
+reason. O X 1 0000 is probably
+not where that binary wanted to
+
+00:12:09.963-->00:12:16.369
+be mapped, so it’s gonna break
+unless we apply the original
+relocations and say ok, fix
+
+00:12:16.369-->00:12:22.408
+everything up for that address.
+Once we do that, we flip ASLR
+off ‘cause remember even though
+
+00:12:22.408-->00:12:28.248
+we planned to trick ASLR, we’re
+actually tricking the allocation
+function. Then we set desired
+
+00:12:28.248-->00:12:34.721
+base to that tricky F F F F 0000
+and then we loop over all of the
+data that we want to obfuscate
+
+00:12:34.721-->00:12:41.661
+that is section import table
+stuff like that in D word or
+uint 32 sized chunks and we
+
+00:12:41.661-->00:12:48.401
+decrement them by what we expect
+delta to be. That decrement is
+because the relocations part of
+
+00:12:48.401-->00:12:52.238
+the windows loader doesn’t
+increment, so we just do the
+opposite of that and that is
+
+00:12:52.238-->00:12:57.877
+kind of our obfuscation. So
+every integer in this stuff
+we’re obfuscating is going to be
+
+00:12:57.877-->00:13:02.949
+messed up a bit, which is good
+enough. Then we discard the
+original relocations table,
+
+00:13:02.949-->00:13:08.287
+because we’ve already applied
+them on disk. We generate a new
+relocations table, reflecting
+
+00:13:08.287-->00:13:13.726
+the positions of every single
+decrement that we’ve done so
+that the loader can fix them up.
+
+00:13:13.726-->00:13:19.966
+We save the new PE file to disk
+and profit. We’re done. We now
+have a PE that is completely
+
+00:13:19.966-->00:13:25.972
+mangled on disk, it has a huge
+relocations table and then when
+it runs, it maps perfectly fine.
+
+00:13:25.972-->00:13:30.977
+So let’s jump into some demos.
+So here I’m trying to load it in
+Ida. you can see the messed up
+
+00:13:45.458-->00:13:51.397
+dll name Ida thinks is an
+import. Ok, Ida throw some weird
+errors. On older versions of
+
+00:13:51.397-->00:13:56.636
+Ida, it was crashing sometimes.
+I can’t get newer versions of
+Ida to crash. Um you can see Ida
+
+00:13:56.636-->00:14:01.541
+lights up red, it doesn’t know
+what it’s looking at, it only
+sees one subroutine and even the
+
+00:14:01.541-->00:14:06.179
+assembly code there is a bunch
+of invalid instructions and if
+you look at the strings, they
+
+00:14:06.179-->00:14:11.317
+look like trash, everything
+looks like trash. Binges gonna
+be mostly the same, it’s gonna
+
+00:14:11.317-->00:14:16.322
+see two sums, but it’s got like
+question marks there, it doesn’t
+know what it’s looking at. So
+
+00:14:21.194-->00:14:27.333
+next is CFF explorer, this one
+actually crashes somewhat
+consistently, I think it’s this
+
+00:14:27.333-->00:14:31.337
+one that like it reaches out on
+the network and does a bunch of
+weird like out of band scans
+
+00:14:31.337-->00:14:37.076
+that come back like a few
+minutes later. And those do
+cause crashes, uh, more than any
+
+00:14:37.076-->00:14:41.414
+other tool. There’s no crashes
+in these demos, cause one you
+have to get lucky, they’re not
+
+00:14:41.414-->00:14:45.818
+even consistent across the same
+binary and also you have to get
+binary to happen to cause them.
+
+00:14:45.818-->00:14:50.423
+I haven’t looked more into it,
+I’m really worried about as you
+can see here, the import names
+
+00:14:50.423-->00:14:55.261
+are all messed up. Some of them
+look kind of right, because
+remember we’re doing it in 4
+
+00:14:55.261-->00:15:00.399
+byte chunks. So for strings
+we’re only messing up like one
+byte at a time. Depends just
+
+00:15:00.399-->00:15:05.404
+completely chokes, it has no
+clue what it’s looking at. And
+then resource hacker just throws
+
+00:15:10.977-->00:15:16.682
+an error, it says you don’t have
+a valid resource table cause the
+resource section is encrypted or
+
+00:15:16.682-->00:15:21.687
+obfuscated. And even PE bear,
+you can see it just lights up
+red, imports look like trash. If
+
+00:15:24.824-->00:15:30.496
+we tab over to the disassembly
+we’ll see it says, ok, these are
+invalid instructions. You also
+
+00:15:30.496-->00:15:35.501
+see a bunch of jumps into
+locations that can’t possibly be
+jumped to. And finally PE view,
+
+00:15:46.946-->00:15:51.884
+it’s gonna be the same thing,
+it’s just gonna maybe pop some
+errors and then imports are
+
+00:15:51.884-->00:15:56.889
+gonna be messed up, codes gonna
+be messed up. Ok, and that is
+that one. Ok. So we’ve show that
+
+00:16:10.870-->00:16:14.740
+this attack is viable and that
+works and we can do something
+with it. Oh wait what am I
+
+00:16:14.740-->00:16:21.581
+doing, I have another video to
+show I’m pretty dumb. We like
+we’ve seen it break stuff, but
+
+00:16:21.581-->00:16:26.586
+we haven’t seen it work. What am
+I talking about? So let’s do
+that. Ok. So here you can see me
+
+00:16:30.756-->00:16:36.829
+clicking on the binary and it
+runs. This is an encrypted
+obfuscated binary with this
+
+00:16:36.829-->00:16:42.602
+method that’s running and it’s
+just process explorer that are
+that i’ve obfuscated. What’s
+
+00:16:42.602-->00:16:47.640
+going on over there? Um it’s
+just processing that I’ve
+obfuscated so that’s why you saw
+
+00:16:47.640-->00:16:51.777
+processing explorer launch. I
+did this cause this is a
+relatively complex application,
+
+00:16:51.777-->00:16:56.315
+it’s got a lot of stuff in it’s
+resource section and it’s got a
+lot of non-trivial code. So I
+
+00:16:56.315-->00:17:00.286
+figure if it works on this, it
+will work. What you see right
+now is me searching for invalid
+
+00:17:00.286-->00:17:05.858
+strings in the image to show you
+that this is actually
+obfuscated. Some of the strings
+
+00:17:05.858-->00:17:09.962
+are not obfuscated because they
+are in the dot R data section,
+which I didn’t obfuscate for
+
+00:17:09.962-->00:17:14.367
+this demo, but if you look here,
+you’ll see a bunch of file paths
+and a bunch of like error
+
+00:17:14.367-->00:17:20.373
+strings that almost look right
+but are actually gibberish when
+you try to read them. [applause]
+
+00:17:20.373-->00:17:25.378
+And it also kind of messes up
+like a ton of AVs so here’s a
+malicious sample. Um we’re gonna
+
+00:17:42.795-->00:17:47.800
+go ahead and pack that. And now
+you see it’s generated a new
+sample, er a new sample sorry.
+
+00:17:50.436-->00:17:53.873
+And we’re gonna drop them both
+on Virus total and see what
+happens. The first one’s gonna
+
+00:17:53.873-->00:17:58.878
+light up all red. And now the
+second one, even though it’s
+effectively the same binary
+
+00:18:04.584-->00:18:09.588
+that’s just obfuscated by the
+windows loader I guess, uh we
+only get two reds. [applause]
+
+00:18:16.329-->00:18:21.567
+Ok, so we know the proof of
+concept works. We should
+probably test it on multiple
+
+00:18:21.567-->00:18:27.306
+platforms. Windows 7, it works.
+That’s what I originally
+developed it on. Windows 8 that
+
+00:18:27.306-->00:18:32.311
+no one uses Windows 8. Come on.
+[laughter] Windows 10, aw f***k,
+it doesn’t work! Yeah, I get it.
+
+00:18:35.481-->00:18:40.486
+Ok, I’m done, sorry. Ok. No but
+really, we we have to find a new
+attack for Windows 10. What ends
+
+00:18:43.589-->00:18:48.594
+up happening is asking for 4 Fs
+4 0s does not yield that one
+with 4 0s after it. It actually
+
+00:18:50.997-->00:18:56.102
+lets ASLR go through the process
+even if the ASLR bit is off and
+then we get a random base
+
+00:18:56.102-->00:19:01.774
+address. So no good. So I
+thought maybe I can embed
+multiple PE copies for all
+
+00:19:01.774-->00:19:06.846
+possible base addresses and then
+use some kind of reload tricks
+to point to the right one, which
+
+00:19:06.846-->00:19:11.784
+is something corkami has
+actually show as possible, but
+that would be way to big. It
+
+00:19:11.784-->00:19:18.090
+would inflate the binary even
+more than using relocations
+already does, which is actually
+
+00:19:18.090-->00:19:22.561
+pretty significant. So then I
+thought, maybe I can tweak ASLR
+configuration cause I know there
+
+00:19:22.561-->00:19:28.334
+was a major change on Windows 10
+and how all of that works. And
+that actually does work, so if
+
+00:19:28.334-->00:19:33.439
+you notice the demos were on
+Windows 10 and this is what I
+used to demo on Windows 10. We
+
+00:19:33.439-->00:19:38.444
+set mandatory ASLR to on and
+bottom up ASLR to off. And if we
+do that with this dot red file,
+
+00:19:41.180-->00:19:47.186
+for specific executables, it
+works. But I don’t really like
+it, uh as soon as you start
+
+00:19:47.186-->00:19:52.191
+touching these registry keys,
+everything’s gonna light up. AVs
+gonna light up, EDRs gonna light
+
+00:19:52.191-->00:19:57.296
+up. Monitoring is just gonna
+say, hey, this is bad if it
+doesn’t just block this entirely
+
+00:19:57.296-->00:20:03.369
+so I wanted something else. And
+then I did a lot of playing with
+it. I was trying to see what I
+
+00:20:03.369-->00:20:09.375
+could do to control base
+addresses and I noticed this. So
+this is just a file. I have
+
+00:20:09.375-->00:20:13.946
+multiple instances running and
+I’m basically just looking at
+the base address of this file
+
+00:20:13.946-->00:20:18.884
+and even though I have multiple
+processes running of this same
+file, I notice that they all
+
+00:20:18.884-->00:20:23.622
+have the same base address.
+There is something in windows
+that is caching that base
+
+00:20:23.622-->00:20:27.960
+address or reusing it on loads,
+maybe it has something to do
+with copy on write. Not exactly
+
+00:20:27.960-->00:20:32.965
+sure. And then I noticed ok, if
+I take this file. I copy it to
+another file. I delete the
+
+00:20:35.234-->00:20:40.139
+original and then cap the copy
+into the name of the original,
+it sounds crazy, but it’s a way
+
+00:20:40.139-->00:20:45.144
+of copying a file to itself
+without the file system being
+able to track that it’s the same
+
+00:20:47.279-->00:20:53.586
+file and then I launch it again.
+I invalidate that base address.
+So they all have the same base
+
+00:20:53.586-->00:20:58.224
+address again, but it’s
+different from what it was
+before. So this tells me there’s
+
+00:20:58.224-->00:21:04.196
+something in the file system
+that invalidates that base
+address as being reused. So I
+
+00:21:04.196-->00:21:10.369
+can at least brute force and get
+a base address that I want by
+just invalidating it everytime.
+
+00:21:10.369-->00:21:16.976
+So we’re gonna go over a pretty
+complex flowchart. So really
+quick, here’s a flowchart on how
+
+00:21:16.976-->00:21:22.381
+to read flowcharts. Uh, a, ok, I
+I accidentally put in the deep
+fryer so let’s just talk for a
+
+00:21:22.381-->00:21:27.386
+sec. So what I figured out is
+that if you take a file, and you
+memory map it then you close the
+
+00:21:31.891-->00:21:37.563
+mapping and you launch that
+file, it will launch with a
+different base address then last
+
+00:21:37.563-->00:21:43.169
+time you launched it. So if you
+do this in a loop, you launch a
+file, check the base address, if
+
+00:21:43.169-->00:21:48.374
+it’s not what you want. Memory
+map the file, close the mapping,
+launch it again. You co- can
+
+00:21:48.374-->00:21:52.077
+keep getting new base address
+and you can brute force and
+pre-select whatever base you
+
+00:21:52.077-->00:21:59.018
+want. And that attack looks like
+this. So you’ll have a root
+process and a drone process.
+
+00:21:59.018-->00:22:03.589
+Effectively where the drone
+process is just launching and
+throwing back a specific return
+
+00:22:03.589-->00:22:08.427
+code based on whether or not it
+has a base address that it wants
+and then you have your root
+
+00:22:08.427-->00:22:13.399
+process which in a loop is doing
+that mapping stuff whi- which is
+highlighted in yellow. So here
+
+00:22:13.399-->00:22:19.672
+in orange is really the main
+part of the attack within the
+root process we’re highlighting
+
+00:22:19.672-->00:22:24.443
+the loop that’s going in and
+saying ok I’m going to keep
+looping until I see the right
+
+00:22:24.443-->00:22:30.616
+base address, which is signaled
+from the drone process by an
+exit code of O X what did I use?
+
+00:22:30.616-->00:22:35.621
+Bad beef, yeah. So if O X bad
+beef is the exit code of the
+drone process, it knows that it
+
+00:22:38.324-->00:22:43.128
+didn’t get the right base
+address and it will keep doing
+this loop. Now these are
+
+00:22:43.128-->00:22:49.235
+actually the same file, so
+effectively, we want to put
+this, embed this to attack in
+
+00:22:49.235-->00:22:54.540
+the binary we want to obfuscate.
+It will make a copy of itself to
+be the drone process that it can
+
+00:22:54.540-->00:22:59.245
+map that copy file to invalidate
+it’s base address and launch it
+over and over and over again.
+
+00:22:59.245-->00:23:04.350
+But effectively they’re the same
+code which is why you see at the
+top, we create a mutex and check
+
+00:23:04.350-->00:23:09.688
+check if it exists and that’s
+how we know if we’re the root
+process or the drone process. So
+
+00:23:09.688-->00:23:15.894
+to weaponize this, the tool must
+create a new section with enough
+room for this brute forcing
+
+00:23:15.894-->00:23:21.967
+code, embed the code inside of
+this new section and make that
+code aware of the original entry
+
+00:23:21.967-->00:23:27.806
+point. Then it needs to point
+entry point within the PE header
+to the embedded code so
+
+00:23:27.806-->00:23:33.012
+effectively it’s a typical
+parasitic infection. And for
+this to work, this ASLR
+
+00:23:33.012-->00:23:37.516
+preselection code, this brute
+force attack must be position
+agnostic because we’re
+
+00:23:37.516-->00:23:42.187
+destroying in the binary
+wherever we can. It must be
+generically embeddable in any
+
+00:23:42.187-->00:23:47.192
+PE. And yeah, that’s basically
+it. So to do that I made a bunch
+of preprocessor macros, so I
+
+00:23:51.030-->00:23:54.199
+could do everything in line and
+this , you don’t need to read
+these, this is just showing a
+
+00:23:54.199-->00:23:58.971
+bunch of variadic macros. And
+once I had all of these in
+place, it looks something like
+
+00:23:58.971-->00:24:03.942
+this. So like some of the weird
+stuff had to do like some of
+these macros take a string in
+
+00:24:03.942-->00:24:09.181
+and then they admit that string
+as like assembly bytes and then
+jump over those bytes and then
+
+00:24:09.181-->00:24:14.186
+use like a call and then a ret
+to get the address and like move
+it into uh a variable. Really
+
+00:24:16.322-->00:24:20.693
+weird stuff. But this is how I
+made all that work. Now you
+might be looking at this big
+
+00:24:20.693-->00:24:26.298
+block at the top. Which is doing
+a bunch of function resolution
+and you might say, Nick, why
+
+00:24:26.298-->00:24:32.104
+didn’t you resolve, get module
+handle and get proc address and
+then do the rest normally? And
+
+00:24:32.104-->00:24:37.910
+so my answer to that is this is
+like more obfuscated, it’s
+really indirect, this code
+
+00:24:37.910-->00:24:44.083
+actually looks like a mess um so
+it’s harder to reverse. That
+answers a lot. Um I got really
+
+00:24:44.083-->00:24:48.320
+carried away writing the macros
+and then I had resolved all of
+my functions by the time I
+
+00:24:48.320-->00:24:53.325
+realized I could have done that.
+So yeah. And it worked. So. This
+actually worked. So there’s some
+
+00:24:58.897-->00:25:03.836
+caveats. Because this attack is
+actually running code, we or
+sorry, I had my bullets wrong in
+
+00:25:06.038-->00:25:11.944
+my head, come on Nick get your
+s**t together. So it can be
+slow. It takes about 200
+
+00:25:11.944-->00:25:16.081
+iterations to land on the base
+address that we want, so
+depending on what machine you’re
+
+00:25:16.081-->00:25:21.153
+running it on, it can happen in
+5 seconds or a minute. Because
+you’re launching this executable
+
+00:25:21.153-->00:25:25.491
+hundreds of times and you’re
+mapping it to memory in between
+so also the size of the
+
+00:25:25.491-->00:25:30.496
+executable matters. Size
+matters. And imports can’t be
+obfuscated. Right? Because what
+
+00:25:32.831-->00:25:38.504
+ends up happening is the binary
+has to get mapped into memory
+properly for this attack to
+
+00:25:38.504-->00:25:43.242
+start running and if imports are
+obfuscated on the times where we
+don’t hit the right base
+
+00:25:43.242-->00:25:47.579
+address, the windows loader is
+just going to nope out and it’s
+gonna say ok, this is wrong, I
+
+00:25:47.579-->00:25:52.418
+can’t resolve any of this and
+it’s just gonna error. So that’s
+a bit of a problem, but there
+
+00:25:52.418-->00:25:57.423
+are some advantages. Because
+first we don’t really need to
+use that one with 4 0s after it.
+
+00:25:59.758-->00:26:06.665
+Before if you saw the request of
+FFFF 0000 and you’re like a
+parser, you know it’s gonna map
+
+00:26:06.665-->00:26:10.869
+this address, but with this
+attack we can preselect any
+address within the realm of
+
+00:26:10.869-->00:26:15.874
+possibility. And the side effect
+of this is some form of symbolic
+execution or manual analysis is
+
+00:26:19.678-->00:26:25.918
+now needed to determine what
+base address is going to be
+obtained so it’s harder to just
+
+00:26:25.918-->00:26:32.825
+take this and do the relocations
+like inside of a parser to fix
+up the binary. So yeah we can’t
+
+00:26:32.825-->00:26:37.463
+do imports which was actually
+really cool to see, but at the
+same time, it’s harder for
+
+00:26:37.463-->00:26:42.468
+automated analysis. And let’s
+see what this looks like. So you
+see process monitor on the right
+
+00:26:48.407-->00:26:52.244
+and you’re gonna see that just
+showing a bunch of process
+launches, this is a the brute
+
+00:26:52.244-->00:26:57.249
+force going. You can see on the
+left it copied itself to just
+it’s name to dot EXE it launched
+
+00:26:59.351-->00:27:03.222
+itself a bunch of times looking
+for the base address, showing
+that in process monitor and
+
+00:27:03.222-->00:27:07.526
+eventually it created that
+binary and then eventually it
+launched, which we see down
+
+00:27:07.526-->00:27:12.364
+here. We see that actually
+loaded and launched process
+explorer which is what we had
+
+00:27:12.364-->00:27:17.369
+obfuscated. If we go and we look
+we see ok, we had our first
+thing, it copied the second
+
+00:27:20.806-->00:27:26.078
+thing, it launched it, that got
+mapped properly and then that er
+process explorer actually then
+
+00:27:26.078-->00:27:30.983
+drops a 64 bit file and launches
+that which is why you see an
+extra process. But that’s just
+
+00:27:30.983-->00:27:35.921
+showing that we’ve actually
+obfuscated resources and they
+got deobfuscated so that process
+
+00:27:35.921-->00:27:40.926
+explorer could dump another
+binary out of them perfectly
+without messing it up. Yeah. and
+
+00:27:49.001-->00:27:55.007
+so what can we really do with
+this? We’ve seen it work. We
+know it’s an interesting attach.
+
+00:27:55.007-->00:28:00.312
+We’ve got the windows loader
+deobfuscating stuff for us, but
+what can we do with it. So you
+
+00:28:00.312-->00:28:04.483
+can annoy analysts with this.
+It’s gonna be annoying like
+maybe the first time or first
+
+00:28:04.483-->00:28:08.287
+few times you see this. But if
+you see this a lot, it’s
+actually not that annoying once
+
+00:28:08.287-->00:28:13.492
+you know what’s going on. We can
+break a lot of automated stat
+analysis systems as we saw
+
+00:28:13.492-->00:28:19.965
+before. A lot of PE parsers just
+choke on it. We can break a lot
+of tools, those two are kind of
+
+00:28:19.965-->00:28:26.204
+one in the same, but. We can
+break maybe some AV parsers. I
+haven’t looked too much into it.
+
+00:28:26.204-->00:28:30.475
+But I im- I imagine there’s at
+least one out there that’s
+choking on this. But there are a
+
+00:28:30.475-->00:28:34.546
+lot of improvements we can make
+as well. Such as more
+obfuscations. Now this might
+
+00:28:34.546-->00:28:39.818
+mean new targets, so instead of
+just doing like a few sections
+and imports, we might be able to
+
+00:28:39.818-->00:28:44.723
+find and identify other things
+that can be obfuscated. Or we
+might be able to do multiple
+
+00:28:44.723-->00:28:51.330
+passes. So we do right now each
+D word in the file consecutively
+in any of our targets, but what
+
+00:28:51.330-->00:28:56.268
+if we do that and then we start
+over offsetting by 1 and then we
+start over offsetting by 2 and
+
+00:28:56.268-->00:29:01.106
+then offsetting by 3? Instead of
+getting like 1 or 1 and a half
+bytes that are messed up for
+
+00:29:01.106-->00:29:06.311
+every 4 bytes. Everything’s
+obfuscated. The thing is your
+relocations table is gonna blow
+
+00:29:06.311-->00:29:12.718
+up if you do this. But I mean if
+you really want to make it hard
+to analyze, it’s possible. We
+
+00:29:12.718-->00:29:17.889
+might also be able to do header
+scrambling. So we might be able
+to embed things in the
+
+00:29:17.889-->00:29:22.995
+relocations table that say,
+these things need to be
+relocated. That aren’t things
+
+00:29:22.995-->00:29:27.532
+that we’ve done anything to.
+Things that are needed by the
+loader, but not needed during
+
+00:29:27.532-->00:29:33.138
+execution. So then the loader
+will go and relocate things that
+were already correct, then
+
+00:29:33.138-->00:29:37.142
+corrupting them in memory. So
+not only would you have
+something that looks corrupt on
+
+00:29:37.142-->00:29:42.047
+disk and fine in memory, you
+could selective corrupt things
+to make dynamic analysis hard.
+
+00:29:42.047-->00:29:46.752
+Cause right now this doesn’t
+really do anything against
+dynamic analysis. And we might
+
+00:29:46.752-->00:29:50.489
+even be able to combine this
+with run time packers and that
+will just be an extra level of
+
+00:29:50.489-->00:29:57.029
+annoyance. Now support for 64
+bit binaries is definitely
+possible the preselection
+
+00:29:57.029-->00:30:02.034
+attack, it seems like there
+would be a much larger search
+base, but as far as I can tell,
+
+00:30:04.302-->00:30:10.742
+windows does kind of prefer to
+load it around base address that
+is like the maximum possible
+
+00:30:10.742-->00:30:16.281
+user space address that’s
+available minus the size of the
+binary. It tries to load it
+
+00:30:16.281-->00:30:20.719
+around there first. So if you do
+that, you might be able to
+narrow down the search space,
+
+00:30:20.719-->00:30:25.724
+though I haven’t exactly tried
+it. And the FF FF 0000 trick
+works similarly in 64 bit, but
+
+00:30:27.926-->00:30:34.099
+not exactly. Might also be able
+to support DLLs. I actually have
+no evidence for that. I just
+
+00:30:34.099-->00:30:39.604
+think it’s probably possible
+with the right modifications.
+And then you could also do
+
+00:30:39.604-->00:30:46.144
+selective obfuscation, so rather
+obfuscating the entire binary,
+whi- which throws up red flags
+
+00:30:46.144-->00:30:52.651
+right away, you might have an IP
+address embedded in a section
+and you only use this to change
+
+00:30:52.651-->00:30:58.123
+one byte in the IP address. So
+now the analyst is like ok this
+is the CNC. Cause this is a
+
+00:30:58.123-->00:31:02.027
+string, this is a host name or
+an IP address. So then they try
+to connect to that and they’re
+
+00:31:02.027-->00:31:07.766
+like ok, the CNCs dead. But they
+were looking at it in Ida which
+isn’t doing relocations at load
+
+00:31:07.766-->00:31:13.371
+time you relocate just the one
+byte in that address and now,
+you’re good to go like, and it’s
+
+00:31:13.371-->00:31:20.078
+it’s kind of confusing. It won’t
+trick a lot of people for too
+long, but it will add a extra
+
+00:31:20.078-->00:31:25.083
+annoying bit there. And that’s
+the end. [applause] So we have a
+bunch of links here. This QR
+
+00:31:35.127-->00:31:40.365
+code I believe goes to the
+slides. Um, so here’s what’s
+gonna happen with the code
+
+00:31:40.365-->00:31:45.403
+release. We’ve decided to do it
+like this cause while we’re not
+dropping any oday or anything
+
+00:31:45.403-->00:31:50.175
+that’s like super bad, we are
+breaking some stuff, so we wanna
+give people time to catch up
+
+00:31:50.175-->00:31:55.680
+with that. So in two weeks,
+we’re gonna drop some samples.
+So if you’re working on fixing
+
+00:31:55.680-->00:31:59.718
+this, if you write parser, you
+work for an AV company, you
+write a PE tool, you can go
+
+00:31:59.718-->00:32:03.588
+ahead and start thinking about
+this. The slides already up, so
+all the information’s there. In
+
+00:32:03.588-->00:32:08.393
+2 weeks you’ll have samples to
+test on and exactly 1 week after
+that, full source code release,
+
+00:32:08.393-->00:32:12.731
+everything will be dropped and
+anyone can play with this. Make
+changes in it. The source code
+
+00:32:12.731-->00:32:17.736
+is in C plus plus. Visual Studio
+2017. So I think if you hit the
+relocation bonus, git hub repo.
+
+00:32:20.071-->00:32:24.776
+I’ve posted a timeline on there
+for now. That will eventually
+point to the code. Full
+
+00:32:24.776-->00:32:29.781
+timeline’s on there, but I think
+it’s September 3rd for the full
+code release. Thank you.
+
+00:32:32.818-->00:32:35.220
+[applause]
+

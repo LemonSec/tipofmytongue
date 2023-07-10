@@ -1,0 +1,2595 @@
+﻿00:00:00.200,00:00:05.806
+>>Alright so Kyle and John are
+going to talk about process
+emulation they’re all the way in
+
+00:00:05.806,00:00:11.011
+from Boston so this is of this
+heat for them with and luckly
+they haven’t melted on lets give
+
+00:00:11.011,00:00:16.016
+these gentlemen round of
+applause >>Thanks everyone for
+coming so like he said this is
+
+00:00:21.388,00:00:27.628
+about process emulation in
+particular automating that
+process emulation at scale so
+
+00:00:27.628,00:00:32.799
+before we get started I want to
+talk about is kind of like how
+we think about analyzing all the
+
+00:00:32.799,00:00:37.337
+malware and all the binaries we
+get and in particular we have a
+fairly large ingestion pipeline
+
+00:00:37.337,00:00:42.676
+and we need to be able to
+process all the samples quickly
+and efficiently. So when we
+
+00:00:42.676,00:00:47.447
+think about a sample uh what we
+think about is a every sample
+has some new finite amount of
+
+00:00:47.447,00:00:53.353
+total features or data that can
+extract out of it and all those
+pieces of information cost a
+
+00:00:53.353,00:00:58.458
+little bit different and have
+different cost with each one. So
+when we talk about the cost the
+
+00:00:58.458,00:01:03.864
+reason that the cost is there is
+because as you see in the graph
+we have static the two the two
+
+00:01:03.864,00:01:08.602
+domains of extracting
+information is static and
+dynamic, so static is obviously
+
+00:01:08.602,00:01:12.039
+the cheapest and the fastest and
+you know the primary reasons
+that you can just do that at
+
+00:01:12.039,00:01:16.376
+scale very easily throw it in
+Docker or your function service
+whatever cloud provider and you
+
+00:01:16.376,00:01:20.948
+can just extract those features
+really quickly. Dynamic of
+course is the opposite of that
+
+00:01:20.948,00:01:24.918
+it runs very slow spin up lots
+of machines, you have to
+configure them in particular
+
+00:01:24.918,00:01:29.923
+ways and just um increases our
+cost for getting information. So
+as we collect more samples
+
+00:01:32.125,00:01:37.297
+particularly when malware comes
+in, there’s some problems with
+that right so, when doing this
+
+00:01:37.297,00:01:41.168
+research we we really have with
+three problems we want to solve
+particularly with regard to
+
+00:01:41.168,00:01:46.506
+malware I and the first one is
+obsfucation and packers and
+encryptors and then to a lesser
+
+00:01:46.506,00:01:50.777
+extent different types of
+installers and what these have
+the effect of the effect to do
+
+00:01:50.777,00:01:54.314
+is they actually limit the
+amount of information extract
+from static analysis so they
+
+00:01:54.314,00:01:58.919
+reduce that total set and then
+would force us to do is push
+those samples is not getting all
+
+00:01:58.919,00:02:02.723
+the information you want from
+them were forced to push those
+into the dynamic analysis domain
+
+00:02:02.723,00:02:07.427
+but the dynamic analysis domain
+you know is more expensive and
+increases our cost which is not
+
+00:02:07.427,00:02:12.165
+something that we like. But the
+dynamic analysis domain also has
+some problems right so there is
+
+00:02:12.165,00:02:16.603
+anti-analysis techniques, like
+no malware likes to be like run
+in a debugger, like on a
+
+00:02:16.603,00:02:20.507
+different type of hypervisors.
+But effectivelty there’s this
+infinite set of like cat and
+
+00:02:20.507,00:02:25.746
+mouse kind of things things that
+you need to add to the to the
+machine to trick the malware
+
+00:02:25.746,00:02:32.019
+into thinking to to run. In
+addition not all malware is like
+equal opportunity, it doesn't
+
+00:02:32.019,00:02:35.956
+run on every machine equally
+some malware is targeted, so it
+won't run the same way on a
+
+00:02:35.956,00:02:42.229
+Windows machine in English as it
+would you know in French machine
+or some other keyboard or any
+
+00:02:42.229,00:02:47.334
+number of features in there. So
+the old one with those three
+problems in mind, that our goal
+
+00:02:47.334,00:02:53.106
+is to basically we have three
+goals in mind first is want to
+reduce the cost want to bring
+
+00:02:53.106,00:02:58.145
+the the static analysis features
+that we lost to obsfucation, we
+want to remove those from the uh
+
+00:02:58.145,00:03:03.316
+of the dynamic domain and bring
+us back into the static analysis
+who want to come bring back
+
+00:03:03.316,00:03:08.422
+parity of static analysis or at
+least the cost of associated
+with that and in the second they
+
+00:03:08.422,00:03:12.893
+want to do and this is your we
+hope to bring as much as we can
+we really want to do is to take
+
+00:03:12.893,00:03:17.097
+some of the features you would
+find inside of dyn.. dynamic
+analysis domain and emulate
+
+00:03:17.097,00:03:21.735
+those or bring those back into
+or bring those into the static
+analysis domain increasing like
+
+00:03:21.735,00:03:26.173
+the total set that we can
+actually extract via static
+analysis or at least more than
+
+00:03:26.173,00:03:30.610
+traditionally you would accept.
+And the last thing of course is
+we want to do all this at scale
+
+00:03:30.610,00:03:34.347
+so the static analysis kind of
+implies the scale but we want to
+make sure that we can run all
+
+00:03:34.347,00:03:39.352
+these things inside of Docker or
+inside of your functions
+service. So with that we came,
+
+00:03:41.655,00:03:45.358
+explored several options and
+what we decided on the
+simulation, and anyone's not
+
+00:03:45.358,00:03:50.664
+aware there's a really amazing
+emulator out there right now,
+Unicorn Engine, this basically
+
+00:03:50.664,00:03:55.836
+CPU architecture emulation but
+they also emulate memory and
+this is key so what we want to
+
+00:03:55.836,00:03:59.739
+do is we want to load up malware
+and want to replicate the
+Windows process memory inside
+
+00:03:59.739,00:04:04.611
+the emulator is with as high
+fidelity as we can and what this
+allows us do with the emulation
+
+00:04:04.611,00:04:09.883
+in particular is we get full
+introspection into every single
+instruction on the system I'll
+
+00:04:09.883,00:04:14.521
+be at full introspection to
+system call so we can hook
+everything and then what that
+
+00:04:14.521,00:04:18.892
+also allows a dues because we
+can hook everything and we'd see
+everything we can also mock out
+
+00:04:18.892,00:04:22.262
+more of the system and this was
+key and this was where we feel
+like we were adding a lot of
+
+00:04:22.262,00:04:27.000
+value is we took kind of an idea
+from unit testing with software
+engineering where you're mocking
+
+00:04:27.000,00:04:32.139
+out functions and services and
+we thought why can’t we just
+mock out large chunks of the OS
+
+00:04:32.139,00:04:39.045
+to allow the malware to execute
+further than we would normally
+expect. So with that there were
+
+00:04:39.045,00:04:45.418
+other PE emulators that are out
+there three at the top were
+found on the unicorn website and
+
+00:04:45.418,00:04:48.722
+these are pretty nice right,
+this is where we got some
+inspiration and what they do
+
+00:04:48.722,00:04:53.160
+though I should take the PE file
+load up a bunch of DLLs and I’ll
+actually throw it into the
+
+00:04:53.160,00:04:57.397
+emulator space and execute them.
+And they do every well- they’ll
+output you get the parameters
+
+00:04:57.397,00:05:01.001
+for the functioning of the unit
+where they're called what the
+function name is and the return
+
+00:05:01.001,00:05:05.839
+values. And they work they work
+quite well and we want to see
+all right, using this as
+
+00:05:05.839,00:05:10.844
+inspiration how can we take this
+like the next step further so
+with that kind of in mind, we
+
+00:05:12.879,00:05:17.450
+had some requirements for when
+we decided what we want to build
+right, so there is one extra
+
+00:05:17.450,00:05:21.955
+requirement is one of the code
+to be simple so wanted to build
+this framework for executing and
+
+00:05:21.955,00:05:26.793
+that the actual code be very
+simple and when we originally
+POC’d this we did it in C and
+
+00:05:26.793,00:05:32.265
+then to make it even more
+accessible we we switched to
+Golang, so that’s just as a side
+
+00:05:32.265,00:05:36.603
+note, but in the four core
+requirements to be anywhere, one
+we wanted to come to formalize
+
+00:05:36.603,00:05:40.674
+that mechanism for loading a PE
+file and all of its DLLs so we
+like sync all them up, get the
+
+00:05:40.674,00:05:44.778
+imports working in when a call
+is made it actually jumps to the
+real DLL within, or the real
+
+00:05:44.778,00:05:51.351
+function within the DLL that was
+called. So once we had that then
+we can really build a
+
+00:05:51.351,00:05:55.689
+good-hooking framework and this
+is good.. the hooking framework
+is really the core part of of
+
+00:05:55.689,00:06:00.160
+any and it enables everything
+else and we wanted this to also
+be as simple as possible so when
+
+00:06:00.160,00:06:03.863
+you want to define a hook you
+just basically fill in a
+structure that defines the name
+
+00:06:03.863,00:06:10.804
+of the hook, the parameters and
+the implementation and then the
+third thing because of that do
+
+00:06:10.804,00:06:15.408
+we want to extend the current
+research a little bit and then
+add your mocking out some of the
+
+00:06:15.408,00:06:19.412
+some of the OS so a lot of
+malware you touch the file
+system, touches the registry,
+
+00:06:19.412,00:06:23.783
+has threads things like that,
+what if we could actually mock
+that inside the emulator and
+
+00:06:23.783,00:06:28.455
+make the malware think that it
+is actually running and inside
+of a real PC and this what this
+
+00:06:28.455,00:06:32.392
+really allows is to add more
+fidelity to some of the function
+calls and really take the next
+
+00:06:32.392,00:06:37.397
+step we think of in the PE
+emulation space. And lastly want
+this to be highly configurable
+
+00:06:39.466,00:06:44.938
+so we want.. with the problem of
+dynamic analysis right, is that
+you have kind of an infinite
+
+00:06:44.938,00:06:48.975
+array of cat and mouse and
+figuring out you know, the
+anti-analysis techniques and
+
+00:06:48.975,00:06:53.046
+like the whether malware will
+run on the machine, so we want
+to do is find a single
+
+00:06:53.046,00:06:56.316
+configuration file that
+represents the entire
+environment of the machine so
+
+00:06:56.316,00:07:01.021
+the entire context with the idea
+that we can enumerate a bunch of
+different configuration files
+
+00:07:01.021,00:07:05.158
+and we can run Binee against a
+particular sample much faster
+against the hundred you know,
+
+00:07:05.158,00:07:08.561
+configuration files than we
+could spinning up 100 different
+enumerations of those machines
+
+00:07:08.561,00:07:13.300
+so that is you change the
+keyboard change the registries
+and then you can do this kind of
+
+00:07:13.300,00:07:17.337
+very rapidly and then you can
+take have the malware take
+different branches, and then
+
+00:07:17.337,00:07:24.210
+just really explore what it
+actually does. So with that, now
+we’re going to talk about the
+
+00:07:24.210,00:07:29.249
+implementation details of Binee
+and while we're going through
+this, so lil.. quick history on
+
+00:07:29.249,00:07:33.186
+Binee is that it started just
+like a side project, we're
+looking at those three examples
+
+00:07:33.186,00:07:37.223
+I showed you from the Unicorn
+website and we’re just kind of
+playing around with it, throwing
+
+00:07:37.223,00:07:41.695
+the PE in the emulator seeing
+what it would do and then
+eventually we got to this point
+
+00:07:41.695,00:07:47.000
+where we were actually getting
+interesting data or useful data
+and then we decided it was a
+
+00:07:47.000,00:07:51.538
+actually worth pursuing as a as
+a real project and now is
+actually living inside of our
+
+00:07:51.538,00:07:55.909
+ingestion pipeline and
+everything goes through it. So
+this is a.. this talk will be
+
+00:07:55.909,00:07:59.279
+from now on, kind of like a
+little bit will have some
+screenshots and some demo stuff
+
+00:07:59.279,00:08:02.949
+we’ll do official real demos of
+the end we’ll have screenshots
+of that and explain what we were
+
+00:08:02.949,00:08:07.654
+talking about you and slides
+prior to and this will be in
+chronological order of of the
+
+00:08:07.654,00:08:14.127
+different problems that we had
+when we are running different
+samples through. So you know,
+
+00:08:14.127,00:08:17.564
+with that said what's the first
+problem when you're building an
+emulator like this, so the first
+
+00:08:17.564,00:08:21.000
+thing is you need to write a..
+you need a parser to parse the
+PE files need something to parse
+
+00:08:21.000,00:08:25.071
+the DLLs and in all and all the
+get all the information out of
+there and need to be able to
+
+00:08:25.071,00:08:31.010
+link that up and throw it in the
+emulator. So first we did was,
+of course, wrote a parser. Wrote
+
+00:08:31.010,00:08:37.283
+a PE parser that would you know
+parse our PE file, DLLs and then
+we added some, the reason we
+
+00:08:37.283,00:08:40.920
+wrote the parser is cause we
+wanted to do all of the linking
+and the updating of like the
+
+00:08:40.920,00:08:46.092
+base address and you the imports
+and various other features,
+wanted to do that all outside
+
+00:08:46.092,00:08:50.063
+the emulator and the main reason
+to do that, once we get
+everything in the emulator we
+
+00:08:50.063,00:08:53.666
+only want to start the emulator
+once. We don’t want to interact
+with the emulator a bunch, it’s
+
+00:08:53.666,00:08:59.873
+just it's more time-consuming
+kind of problematic so writing
+our PE parser and in getting
+
+00:08:59.873,00:09:04.811
+that going you basically, you
+load the P,E you get its imports
+tables recursively and you go
+
+00:09:04.811,00:09:10.450
+through and you get a load of
+all the PEs and then you update
+the base address of the DLLs and
+
+00:09:10.450,00:09:14.487
+then once those are all synced
+up then you throw that in memory
+and one of the reason we want to
+
+00:09:14.487,00:09:19.893
+do this outside of the emulator
+was because for every DLL, once
+we finish linking everything up
+
+00:09:19.893,00:09:24.864
+we go back through every DLL and
+grab the exports so we let we
+now we know where the real image
+
+00:09:24.864,00:09:29.803
+at image is for the addresses
+for particular function in the
+memory space an now we’re going
+
+00:09:29.803,00:09:33.706
+to build our own map outside of
+the emulator, that has a map
+between the of the DLL, the
+
+00:09:33.706,00:09:38.077
+function and where the address
+actually is in memory and this
+is so we can enable the hooking,
+
+00:09:38.077,00:09:43.116
+so when the emulator actually
+jumps to that address we know to
+stop the emulator, run our hook
+
+00:09:43.116,00:09:49.089
+if if there's a hook available
+and move on. And you think of
+this work right away right done
+
+00:09:49.089,00:09:54.761
+on modern on modern binaries or
+modern Windows machines there’s
+these things called API sets, so
+
+00:09:54.761,00:09:59.899
+you compile when binary on
+Windows anything after maybe
+Windows 7 I think some service
+
+00:09:59.899,00:10:05.405
+pack in there, you'll actually
+when you you you pound a,
+include a particular file and
+
+00:10:05.405,00:10:09.876
+you do like load library in this
+case is a screenshot indicates,
+you’re not going to get the real
+
+00:10:09.876,00:10:14.314
+DLL ,else so we didn’t actually
+know what the DLL was.
+Fortunately Jeff Chapelle has
+
+00:10:14.314,00:10:18.885
+some amazing documentation, he’s
+in a lot of RE work on this and
+we were able to pull that
+
+00:10:18.885,00:10:23.223
+implantation directly into
+Binee, and add this to our PE
+parser. So now when our PE
+
+00:10:23.223,00:10:29.829
+parser get this kind of file it
+grabs that that full API set
+grabs the API sets’ schema DLL
+
+00:10:29.829,00:10:35.001
+which is in every version of
+Windows beyond, I think, seven,
+which is the lookup table for
+
+00:10:35.001,00:10:39.606
+the actual real DLL on disk, so
+now we can do the real linking
+and load all this into memory
+
+00:10:39.606,00:10:44.611
+space, so this is kinda the
+first problem that we had. So
+now you we have the PE file
+
+00:10:47.981,00:10:53.219
+inside of memory, we have all
+the DLLs linked up, we haven't
+quite hit go yet, but the next
+
+00:10:53.219,00:10:57.524
+thing we want to be able to do
+is you were mocking kind of the
+system right, doing unit testing
+
+00:10:57.524,00:11:00.827
+of the malware effectively, so
+we don't need to implement you
+know, all of the Windows
+
+00:11:00.827,00:11:06.432
+subsystems of course that would
+be painful but we can influence
+subsets of it.. but at the end
+
+00:11:06.432,00:11:10.970
+of the day what we will really
+want is want the malware to
+think that this particular API
+
+00:11:10.970,00:11:14.741
+was executed successfully. Like
+we don’t really care that, about
+it, like all the other details
+
+00:11:14.741,00:11:18.578
+of the API, we just need all
+right, does this function return
+a value? Is that value, what
+
+00:11:18.578,00:11:22.949
+does that value need to be in
+order for that the malware to
+continue executing? So, in the
+
+00:11:22.949,00:11:28.521
+case of like create file, all we
+really need here is we need to
+pop some values off the stack
+
+00:11:28.521,00:11:33.526
+and then we need to put a valid
+address or a valid identifier
+and EAX. So basically, not -1
+
+00:11:35.995,00:11:41.000
+there, then the malware will
+continue thinking that is
+executed successfully. So that
+
+00:11:43.136,00:11:48.608
+brings us to hooking. So I
+mentioned the hooking, we wanted
+it to be incredibly simple and
+
+00:11:48.608,00:11:52.512
+you know, we believe it is, so
+when you define a hook, as I
+said earlier we have we have a
+
+00:11:52.512,00:11:56.583
+mapping of all the hooks were
+the addresses actually are and
+what you do is when you're want
+
+00:11:56.583,00:12:01.287
+to implement this inside of the
+inside of framework you define a
+type of struct you know
+
+00:12:01.287,00:12:04.791
+describes your hook, and all you
+really need is the name of the
+function you want to hook, the
+
+00:12:04.791,00:12:06.793
+parameters which is just a
+string or array of strings and
+they also accept format string
+
+00:12:06.793,00:12:08.795
+variables which I’ll explain on
+the next slide about you know,
+display and then the last two
+
+00:12:08.795,00:12:10.797
+are optional, uh, function are
+optional parameters? So if you
+define the function this is the
+
+00:12:10.797,00:12:12.799
+actual implementation that you
+would be over overwriting and
+then the return value. Em.. if
+
+00:12:12.799,00:12:14.801
+you don't know if you don't have
+these and just assume it's own
+default behavior. So with that
+
+00:12:14.801,00:12:16.803
+then we ended up with two types
+of hooks. There's a full hook
+where we actually override the
+
+00:12:16.803,00:12:18.805
+implementation of the DLL so
+when Binee is executing inside
+PE it goes to a function call so
+
+00:12:18.805,00:12:20.807
+in this case it hit sleep and
+then what'll happen is ill do
+it’ll call instruction to sleep
+
+00:12:20.807,00:12:22.809
+into kernal32 or whatever and it
+will go in that address in
+memory and then what happens is
+
+00:12:22.809,00:12:25.411
+when we hit that address because
+we have them all, we have the
+lookup table, we’ll hook that
+
+00:12:25.411,00:12:28.715
+address, stop execution and run
+our implementation which then
+can you know, either override it
+
+00:12:28.715,00:12:35.688
+in a full hook case or what I’ll
+talk about in a second is
+partial hook. So looking at
+
+00:12:35.688,00:12:40.693
+that, so this is the only way to
+define this hook is used to find
+the name which is sleep, right?
+
+00:12:45.732,00:12:51.104
+And then you define a pointer to
+the hook in which contains the
+parameters which the string and
+
+00:12:51.104,00:12:56.175
+the function, and one thing
+everything is pretty cool here
+is, particularly with malware,
+
+00:12:56.175,00:13:02.315
+is doing like a sleep very early
+on, you know sometimes it’s
+trying to evade something, so
+
+00:13:02.315,00:13:07.420
+sleep in this case we can
+actually intercept the
+parameter, so with our function
+
+00:13:07.420,00:13:13.393
+implementation you get two
+parameters that are built into
+it and those pass in the context
+
+00:13:13.393,00:13:18.398
+of what the functions called, so
+basically the parameters that
+it's called and some other, you
+
+00:13:38.184,00:13:43.322
+know, metadata.. and we can do
+is we can just increment the
+tick count of the CPU and then
+
+00:13:43.322,00:13:46.492
+just return immediately, and
+then the malware is just like
+okay we must execute
+
+00:13:46.492,00:13:51.531
+successfully we slept for five
+minutes or whatever and it can
+go then call, gets tick count
+
+00:13:51.531,00:13:55.134
+later and then it'll actually
+get an incremented tick count.
+So this will happen in real time
+
+00:13:55.134,00:13:59.272
+it’s just right and it’s just
+instant. So that's a full hook
+but unfortunately, we don’t want
+
+00:13:59.272,00:14:03.476
+to do.. fortunately we don’t
+want to hook everything because
+it'd just take forever we really
+
+00:14:03.476,00:14:07.480
+only want to hook things that
+make a system call. So for
+everything else that doesn’t
+
+00:14:07.480,00:14:11.017
+actually make a system call and
+transition in the kernel mode we
+just want to do is.. we call
+
+00:14:11.017,00:14:15.455
+partial hook and effectively
+what this does this just gives
+us the details of the parameters
+
+00:14:15.455,00:14:20.193
+in like a human readable form
+for that particular function and
+so what happens here is when the
+
+00:14:20.193,00:14:25.198
+functions call that jumps into
+the DLL that's that function
+within the DLL and it literally
+
+00:14:25.198,00:14:30.203
+emulates that function and then
+returns back to the PE file as
+normal. So as I mentioned the
+
+00:14:33.306,00:14:37.043
+parameter skills is that this is
+a particularly important field
+and it actually does like three
+
+00:14:37.043,00:14:43.049
+things. The first is it defines
+the string values it sets the
+parameter names so when you
+
+00:14:43.049,00:14:47.186
+output is the kind of in the
+bottom part of the screenshot it
+will give you the human readable
+
+00:14:47.186,00:14:53.826
+values to the screen so this is
+this information it will capture
+in the data pipeline. The second
+
+00:14:53.826,00:15:00.266
+thing it’ll do is it'll it'll
+dictate what gets popped off of
+the stack so when you return for
+
+00:15:00.266,00:15:04.871
+a function it'll actually say
+allright we have some helper
+functions built in that so if
+
+00:15:04.871,00:15:09.308
+you go back a slide the skip
+function standard call that's
+built in and that’ll recognize
+
+00:15:09.308,00:15:14.113
+how the parameters are on this
+and this and this list and it'll
+pop those those values of the
+
+00:15:14.113,00:15:20.720
+stack.. and it’ll do all this
+for you. Um, and then lastly the
+parameters are what's used for
+
+00:15:20.720,00:15:25.191
+when you call when you call into
+that function you want access to
+those parameters to do your
+
+00:15:25.191,00:15:29.095
+implementation, this is how you
+would reference them as you, as
+they offset that they're
+
+00:15:29.095,00:15:36.002
+actually in. So a quick example
+there will be several these
+demos you throughout er, the
+
+00:15:36.002,00:15:40.072
+screenshot demos throughout but
+if we look at the highlight
+lines, the first one is you were
+
+00:15:40.072,00:15:44.710
+actually running Binee and we
+have various parameters, so the
+– V will actually say will spit
+
+00:15:44.710,00:15:49.382
+out all of the instructions so
+this will be like verbose mode
+will give you all the
+
+00:15:49.382,00:15:54.287
+instructions leading up to a
+particular function call and
+then the last line that’s
+
+00:15:54.287,00:15:57.990
+highlighted is the actual
+function call that we’re getting
+so we've actually hooked it,
+
+00:15:57.990,00:16:01.727
+right and you can see it’s a
+different address so we know
+that this is where the DLL was
+
+00:16:01.727,00:16:05.898
+mapped this is where that
+function is within that DLL and
+then just next to the address
+
+00:16:05.898,00:16:09.936
+there is a slightly different
+than what PE is just next to
+that address is an F and this
+
+00:16:09.936,00:16:14.373
+would indicate that it's a full
+hook versus the partial hook and
+knowing this is actually very
+
+00:16:14.373,00:16:18.678
+useful for debugging when you're
+going through malware and trying
+to get it to go to different
+
+00:16:18.678,00:16:22.081
+branches but that is that
+indication and then you get the
+of the actual name of the
+
+00:16:22.081,00:16:26.352
+function you know the parameters
+and they can be in human
+readable format they take a
+
+00:16:26.352,00:16:31.357
+format strings parameter and
+then of course the return value
+which is also important. Perfect
+
+00:16:36.896,00:16:42.401
+allright so now this point we
+basically have a PE parser, we
+have loading DLLs and actually
+
+00:16:42.401,00:16:46.505
+everything set up to to a
+certain extent we we actually
+have some hooks properly
+
+00:16:46.505,00:16:52.645
+implemented a hooking system
+implemented and that's all great
+and this is where we kind of hit
+
+00:16:52.645,00:16:56.349
+the feature parity mark for some
+the other emulators that we are
+that we were a kind of
+
+00:16:56.349,00:17:01.287
+describing earlier and so we
+asked ourselves are we done here
+and of course not. So we’re able
+
+00:17:04.457,00:17:08.828
+to access an entry point and
+then start the emulator set
+everything up as as mentioned
+
+00:17:08.828,00:17:13.532
+earlier in the press go in and
+continue forward and hopefully
+get through most of the sample
+
+00:17:13.532,00:17:18.638
+and have it terminate
+successfully. Well in the case
+of some of what we're doing the
+
+00:17:18.638,00:17:24.644
+partial hooking it wasn't
+particularly working properly
+for us. In the case of like say
+
+00:17:24.644,00:17:29.181
+GetCurrentProcessId as you see
+on the screen here on we are
+partially hooking this mainly
+
+00:17:29.181,00:17:33.719
+because it wasn't making a
+system call and typically we we
+only want a full hook functions
+
+00:17:33.719,00:17:38.558
+that are making system calls
+ultimately, and so in the case
+of getting our process ID it was
+
+00:17:38.558,00:17:43.696
+actually accessing Windows
+UserLand objects and we did not
+have those set up at all and so
+
+00:17:43.696,00:17:47.967
+before we can actually go and
+set up these UserLand objects we
+actually had to implement
+
+00:17:47.967,00:17:52.805
+segment registers that was kind
+of a glaring oversight when we
+first set this all up, so
+
+00:17:52.805,00:17:57.877
+fortunately there’s actually,
+thanks to Chris Eagle on that,
+there's actually a lot of
+
+00:17:57.877,00:18:02.848
+examples on how to I do that and
+so we were kinda able to take
+the code that he had written and
+
+00:18:02.848,00:18:07.853
+kinda take that in and make it
+suited to our needs. So now that
+we actually had the segment the
+
+00:18:10.723,00:18:13.993
+segment registers we were
+actually able to start filling
+out windows UserLand and
+
+00:18:13.993,00:18:19.265
+structures in particular, most
+of what we've actually done is
+like the TIB and the PEB which
+
+00:18:19.265,00:18:23.402
+are the thread information block
+and that the process environment
+block respectively and we
+
+00:18:23.402,00:18:29.842
+actually wanted to start filling
+those out cause it turns out
+that malware actually, any any
+
+00:18:29.842,00:18:33.746
+program really uses those
+extensively. Typically when the
+Windows loader actually starts
+
+00:18:33.746,00:18:39.151
+up process it will actually
+populate a lot of these
+structures so that the
+
+00:18:39.151,00:18:43.789
+whatever's running can actually
+reference that and in many cases
+uses the information so it
+
+00:18:43.789,00:18:49.128
+doesn't have to makes a a
+context switch in to kernel mode
+to get certain information, so
+
+00:18:49.128,00:18:54.100
+we actually wanted to to build
+these out and much like the rest
+of the requirements Bineee
+
+00:18:54.100,00:19:00.272
+Binee, they needed to be
+configurable, so with that we
+actually started building at the
+
+00:19:00.272,00:19:06.312
+TIB and the PEB and at first it
+was it was mainly just as we saw
+fit um we’d see samples that
+
+00:19:06.312,00:19:11.083
+would hit a certain portion of
+of the structures and then from
+there it would fail and we say
+
+00:19:11.083,00:19:15.154
+okay were missing this this
+certain field, and so we
+actually built out the
+
+00:19:15.154,00:19:19.892
+structures and these structures
+are quite large for those of you
+who have maybe seen it before
+
+00:19:19.892,00:19:23.162
+these structs are quite long and
+every version of Windows they
+keep adding more and more to
+
+00:19:23.162,00:19:27.266
+this so as we were kind of going
+through the Windows versions
+making we had all the
+
+00:19:27.266,00:19:32.238
+information and these structures
+actually ballooned in size quite
+a bit, but the important take
+
+00:19:32.238,00:19:37.877
+away from this is that we
+actually again can only
+populated the fields that we
+
+00:19:37.877,00:19:43.516
+needed at the current time, so
+most of what we did was usually
+lowering the structure but
+
+00:19:43.516,00:19:48.654
+higher-level stuff we kind of
+ignored and would NOP out and so
+if we had an issue we would then
+
+00:19:48.654,00:19:54.927
+populate that and move on, and
+again much like we did with the
+PEs in the in the DLLs when we
+
+00:19:54.927,00:19:59.832
+were parsing we are actually
+setting up the TIB and the PEB
+ahead of time and actually
+
+00:19:59.832,00:20:04.103
+having it kind of in a
+semi-working state before we
+actually started the emulator
+
+00:20:04.103,00:20:08.808
+itself, typically it's done as a
+loader is going but in this case
+we we just kinda set it up ahead
+
+00:20:08.808,00:20:13.112
+of time with mock values that
+would kinda make the sample run
+and be happy to go through what
+
+00:20:13.112,00:20:18.117
+it needed to do. So now that we
+actually had something going we
+are actually getting through
+
+00:20:21.220,00:20:26.192
+some samples it was is great to
+see we actually got through a
+few example programs we had
+
+00:20:26.192,00:20:29.228
+written to test certain things
+that we're going from start to
+finish we are seeing the
+
+00:20:29.228,00:20:34.133
+terminate process at the end
+which is great to see you really
+exciting stuff, so then we
+
+00:20:34.133,00:20:38.304
+actually came to a crossroads
+where we want to actually
+continue adding more to it like
+
+00:20:38.304,00:20:42.842
+Colin mentioned with the
+requirements there is there's a
+number of subsystems and that we
+
+00:20:42.842,00:20:48.247
+want to mock out especially on
+the OS level but before we can
+do that we actually have to go
+
+00:20:48.247,00:20:55.054
+and set up some some more stuff
+that Windows would require and
+for that reason we actually
+
+00:20:55.054,00:21:01.560
+start doing start doing stuff
+with handles. Windows uses
+handles for a number of things
+
+00:21:01.560,00:21:05.297
+basically anything you can think
+of on like the lower levels side
+of things like especially like
+
+00:21:05.297,00:21:11.704
+file filing access, registry
+stuff, anything with the
+threading that that's all done
+
+00:21:11.704,00:21:14.573
+via handles which are
+effectively just a memory
+pointer to some sort of
+
+00:21:14.573,00:21:19.445
+information in memory, and so
+what we did was we basically
+created like a superstructure of
+
+00:21:19.445,00:21:24.583
+all of all the types of handles
+that we might use and kinda put
+them in one place and using the
+
+00:21:24.583,00:21:29.221
+information we can then just
+abstract away most of what
+Windows would expect to have
+
+00:21:29.221,00:21:34.059
+inside the handles and we can
+then, hand wave and pretend that
+they're actually there an the
+
+00:21:34.059,00:21:39.732
+malware or any sample we put
+through it can actually go and
+continue forward and we can we
+
+00:21:39.732,00:21:43.602
+can then build subsystems on top
+of that so it's it's kind of a
+basic building block for us to
+
+00:21:43.602,00:21:48.607
+kinda start building subsystems
+and mocking out the OS. And of
+course you can’t actually do
+
+00:21:50.643,00:21:55.915
+anything with handles until
+we’ve actually made a proper
+memory manager, so we actually
+
+00:21:55.915,00:21:59.585
+started to build a memory
+manager inside Binee itself
+that’d be kinda separate from
+
+00:21:59.585,00:22:06.158
+the emulator and that we we we
+take we took a normal Heap
+implementation and kind of build
+
+00:22:06.158,00:22:09.461
+it up to to suit our needs a
+little bit more so it does
+everything you would expect a
+
+00:22:09.461,00:22:15.634
+Heap, in a heap manager and then
+we kinda build on top of that.
+The way we can handle the heap
+
+00:22:15.634,00:22:21.073
+in this case is anything that
+references the heap so say it's
+maloc or free some one of those
+
+00:22:21.073,00:22:26.912
+function calls, what we do is
+any library that was that was
+calling some that some style of
+
+00:22:26.912,00:22:30.683
+memory management on it we’d
+partial hook and ultimately
+whats going to happen is there
+
+00:22:30.683,00:22:37.523
+going to hit ntdll and when we
+hit ntdll then we’re actually
+full hooking that memory
+
+00:22:37.523,00:22:41.026
+management function and then
+we’re passing it over to the
+Binee memory manager and then
+
+00:22:41.026,00:22:47.766
+doing everything from there. And
+from there we can then start
+doing more things than just you
+
+00:22:47.766,00:22:51.437
+just heap management for example
+everything that’s that’s not on
+the stack we’re then just
+
+00:22:51.437,00:22:55.074
+throwing into the heap and that
+the member manager is taking
+everything care of everything
+
+00:22:55.074,00:23:00.679
+for us. So with that we can
+actually start putting atomic
+IDs for handles which will point
+
+00:23:00.679,00:23:04.583
+to our superstructures outside
+outside the emulator and the we,
+from there we can actually
+
+00:23:04.583,00:23:08.487
+having, have those the
+structures filled out and then
+from there build on top of it,
+
+00:23:08.487,00:23:13.492
+so say we do file stuff registry
+stuff etc. So that that's all
+now handled. So now I feel like
+
+00:23:19.632,00:23:23.168
+at this point when we are doing
+the development, this is where
+kinda switched into where it’s a
+
+00:23:23.168,00:23:28.007
+real project and were actually
+we were confident that we were
+going to get useful information
+
+00:23:28.007,00:23:33.279
+whereas before it was kind of
+touch and go, but basically what
+that means we would mimicked the
+
+00:23:33.279,00:23:37.950
+the UserLand space quite well,
+right, so we have as John,
+mentioned, we have a heap which
+
+00:23:37.950,00:23:43.122
+is critical and then we have all
+of the UserLand processes and
+the hooking and place and things
+
+00:23:43.122,00:23:48.560
+like that, so the next thing we
+want to do is I'll see if we can
+actually capture some some files
+
+00:23:48.560,00:23:52.331
+so we have a piece of malware
+that writes a file can we
+actually capture that and then
+
+00:23:52.331,00:23:56.502
+save it and analyze later, so
+the first thing we want started
+implementing when we got into
+
+00:23:56.502,00:24:02.341
+the mocking of the OS was the
+file system, and the way we did
+that as we basically Binee will
+
+00:24:02.341,00:24:05.811
+have it, it kinda operates
+similar to Windows where it.
+when you’re searching for a DLL,
+
+00:24:05.811,00:24:09.782
+when you load something is Binee
+will have several different
+paths where it looks for files.
+
+00:24:09.782,00:24:14.086
+In the first path is its own
+kind of folder when you so when
+you start Binee you can give it
+
+00:24:14.086,00:24:19.558
+a file path and will be its root
+directory for where the the file
+system is and then from within
+
+00:24:19.558,00:24:24.096
+there you can actually copy in
+your DLLs or copy of the other
+files you want so when Binee
+
+00:24:24.096,00:24:30.936
+actually does a create file it
+will actually grab whatever the
+file actually is and coming back
+
+00:24:30.936,00:24:35.207
+to the hooking and so what does
+the malware actually need
+though, we just need a valid
+
+00:24:35.207,00:24:40.679
+handle so we have a file, a mock
+file system that can support
+that the handles and in the
+
+00:24:40.679,00:24:46.318
+abstractions that go along with
+the with interacting with the
+system. So with that, the first
+
+00:24:46.318,00:24:50.656
+thing that happens is first of
+all, all of the file functions
+like create file all these
+
+00:24:50.656,00:24:54.493
+things are fully hooked right,
+cause eventually these would
+make a system call and we want
+
+00:24:54.493,00:24:59.365
+intercept all those things so we
+fully hook that what happens is
+we’re gonna hit that address it
+
+00:24:59.365,00:25:02.468
+within that within the emulator
+the emulator’s gonna know we’re
+at some address that's fully
+
+00:25:02.468,00:25:06.171
+hooked it’s gonna popout, so
+sim.. so similar to the
+transition from your user to
+
+00:25:06.171,00:25:10.809
+kernel space it’s gonna pop out
+to our own filesystem handler
+and then what’s gonna happen is
+
+00:25:10.809,00:25:15.080
+its gonna instantiate one of
+these new handles to pass in all
+the parameters from create file
+
+00:25:15.080,00:25:20.252
+so specifically the path and
+that permissions and then with
+that it’s gonna instantiate a
+
+00:25:20.252,00:25:25.791
+file, create a handle put that
+handling Binee’s lookup table
+and then pass since Binee’s
+
+00:25:25.791,00:25:30.596
+getting you a valid handle from
+the heap which is going to be a
+atomic address it to pass that
+
+00:25:30.596,00:25:35.634
+back as EAX back into the create
+file, so now when you run create
+file you’ll actually get a real
+
+00:25:35.634,00:25:42.307
+handle that than the malware can
+can then use, or the file can
+then use. But other thing we
+
+00:25:42.307,00:25:46.512
+want to do is if we’re running
+multiple samples within this
+filesystem we want any rights
+
+00:25:46.512,00:25:49.982
+like we don't want to pollute
+the system the file system or
+the registry with anything we do
+
+00:25:49.982,00:25:54.186
+but any rights need to go to a
+our sandbox location, so if the
+malware is installing some
+
+00:25:54.186,00:25:57.689
+persistence mechanism or
+whatever we want to actually
+capture that so we can analyzer
+
+00:25:57.689,00:26:02.428
+it later so if there's anything
+that's created like a create
+file with any type of write bit
+
+00:26:02.428,00:26:06.865
+set Binee will actually
+understand the hey, we’ref
+trying to write here so let's
+
+00:26:06.865,00:26:10.436
+instead of going to the real
+path they’re trying to write to
+the real file they’re opening,
+
+00:26:10.436,00:26:16.041
+let's redirect that into the
+sandbox location. So as I said a
+write file will get called, it
+
+00:26:16.041,00:26:20.646
+will get into it will get hooked
+right cause we know the address,
+and go into the fold.. the Binee
+
+00:26:20.646,00:26:24.850
+system handler grab that handle,
+write anything they were writing
+to the file will actually just
+
+00:26:24.850,00:26:28.854
+redirect it to these bins and
+then it will just return how
+many bytes were written written
+
+00:26:28.854,00:26:34.326
+successfully and the malware
+really doesn’t know any
+different. Here's a little
+
+00:26:34.326,00:26:38.597
+screenshot of that actually
+happening so of course the two
+highlighted lines on the first
+
+00:26:38.597,00:26:43.769
+one actually you know a create
+file getting you the actual file
+path it’s located and the
+
+00:26:43.769,00:26:48.006
+permissions, so this is super
+helpful when we’re doing data
+analysis later is capturing all
+
+00:26:48.006,00:26:53.178
+this data and this is the more
+the human form running and in
+manual mode there's also – J
+
+00:26:53.178,00:26:58.116
+option we can calculate this and
+get it in JSON so, that’s part
+of our ingestion pipeline but
+
+00:26:58.116,00:27:01.119
+the important thing here is we
+know the path right? We know the
+permissions and then we know the
+
+00:27:01.119,00:27:05.023
+return value and the return
+value IS the handle, so the
+malware actually gets a valid
+
+00:27:05.023,00:27:09.361
+abut handle here, right it
+doesn't get -1 so the malware is
+like okay you’re good so we’ll
+
+00:27:09.361,00:27:14.566
+continue executing, now we’re
+not in the sandbox and at the
+end there, last highlighted line
+
+00:27:14.566,00:27:19.638
+is write file, So now we’re, the
+first parameter here is our
+valid handle and then we know
+
+00:27:19.638,00:27:24.676
+when we hit write file Binee’s
+going to execute or intercept
+that that call and then run its
+
+00:27:24.676,00:27:28.447
+implementations, it’s full
+hook.. And of course we’re going
+to return a valid output for
+
+00:27:28.447,00:27:32.351
+that which can be the number of
+bytes written and then again our
+malware doesn't really know any
+
+00:27:32.351,00:27:39.091
+different. So just in the
+console you can LS the file and
+everything goes this temp
+
+00:27:39.091,00:27:45.864
+directory we created a mal.exe,
+a malfile exe this is not a
+valid EXE of course and then we
+
+00:27:45.864,00:27:49.835
+just catted the bytes so we can
+actually this is kind of like
+when we saw this right yeah we
+
+00:27:49.835,00:27:54.239
+can definitely we do something
+with this and of course this is
+a very trivial example and we’ll
+
+00:27:54.239,00:28:01.146
+show some more in the demos of
+real malware. So you know, we’re
+just continuing on and this
+
+00:28:01.146,00:28:05.050
+whole process very iteratively
+just get a new sample of malware
+an we execute it, see how far it
+
+00:28:05.050,00:28:09.922
+goes and it’s like now we need
+to implement a file system we
+need to implement this.. so the
+
+00:28:09.922,00:28:15.360
+next one that we needed that we
+wanted to implement or we need
+to implement was the registry
+
+00:28:15.360,00:28:19.364
+and similar to the file system
+every registry call is
+eventually.. you drop in the
+
+00:28:19.364,00:28:24.436
+system or in to kernel mode so
+we want to full hook all of this
+and then when we full hook those
+
+00:28:24.436,00:28:28.874
+we built a registry within Binee
+that has a bunch of helper
+methods for you accessing the
+
+00:28:28.874,00:28:33.579
+different keys in the registry
+and then one cool thing about
+this is we made it, we wanted to
+
+00:28:33.579,00:28:37.516
+mimic being able to load any
+value from your Windows registry
+into the Binee registry we want
+
+00:28:37.516,00:28:42.921
+to make as seamless possible so
+you just export you from regedit
+you can actually import all of
+
+00:28:42.921,00:28:47.092
+that data that file that exports
+they saved to disk you can just
+copy and paste those into our
+
+00:28:47.092,00:28:52.564
+configuration file and then then
+Binee will just read those up,
+so this is really useful if your
+
+00:28:52.564,00:28:56.602
+malware is dependent on certain
+keys or trying to evaluate
+what's what what its actually
+
+00:28:56.602,00:29:02.407
+storing in keys and you can
+toggle these in real-time and
+it's very fast. So you all
+
+00:29:02.407,00:29:06.612
+registry keys are gonna get
+hooked it’s going to get into
+the Binney subsystem for
+
+00:29:06.612,00:29:10.682
+handling registry you do
+whatever option it or whatever
+function that that's required
+
+00:29:10.682,00:29:15.687
+and then just return valid data
+back to the malware and again
+the malware has no idea. So the
+
+00:29:18.256,00:29:22.361
+next thing we wanna do is
+configuration files and as I
+mentioned these are directly
+
+00:29:22.361,00:29:26.832
+copied, the registry keys here
+are directly copied from from
+regedit from the export and then
+
+00:29:26.832,00:29:30.736
+inside of Binee’s registry,
+there’s a handler that converts
+these to bytes for whatever the
+
+00:29:30.736,00:29:35.741
+proper type this so, we’ve kind
+of abstracted that awaits you
+really have to worry about and
+
+00:29:35.741,00:29:40.979
+that’ll just copy bytes back
+into the emulator and it just
+works you as you expect and the
+
+00:29:40.979,00:29:45.250
+other thing to note, and kind of
+one of requirements was this
+configuration file needs to be
+
+00:29:45.250,00:29:49.655
+very easy to edit and very easy
+to understand on any kind of
+all-inclusive so I just cherry
+
+00:29:49.655,00:29:54.126
+picked a few values here but
+there’s obviously a lot more..
+the root filesystem, so this is
+
+00:29:54.126,00:29:58.563
+how you define where the actual
+files are located and this is
+typically where we put all the
+
+00:29:58.563,00:30:05.137
+DLLs and like NLS files in your
+other files you want that are
+supporting the execution and
+
+00:30:05.137,00:30:09.408
+then you can also have like
+codepage identifiers you know
+what process IDs you have pretty
+
+00:30:09.408,00:30:14.446
+much anything that would go in
+the TIB or the PEB or that would
+help the you know, the execution
+
+00:30:14.446,00:30:19.885
+of the sample would go in this
+one for and of course the
+registry is defined like this
+
+00:30:19.885,00:30:23.488
+and it will parse everything
+properly and build the tree so
+it's a pretty efficient access.
+
+00:30:26.091,00:30:30.796
+So again another quick sample
+looking at the registry key we
+have three you know highlighted
+
+00:30:30.796,00:30:35.133
+rows your axis the registry key
+will give great insight into
+what's actually happening and
+
+00:30:35.133,00:30:39.404
+these are the IOCs that we
+really want when doing some of
+our machine learning and then
+
+00:30:39.404,00:30:44.843
+you know the query values, you
+can look at the particular.. the
+value name and the next we can
+
+00:30:44.843,00:30:48.313
+see what's actually getting set
+into this registry keys and
+because this is again all
+
+00:30:48.313,00:30:53.318
+turning returning back
+successfully malware doesn't
+really doesn’t really know. So
+
+00:30:57.189,00:31:01.760
+now that we actually have a few
+subsystems we have file
+subsystem, registry subsystem,
+
+00:31:01.760,00:31:06.598
+we have configuration files to
+kind of back all that up we
+actually started running this
+
+00:31:06.598,00:31:10.168
+against more and more samples
+and we are finding some
+interesting results in the case
+
+00:31:10.168,00:31:14.539
+in the case of a few samples we
+were hitting some some
+interesting threading stuff and
+
+00:31:14.539,00:31:20.645
+and in some cases we were at we
+weren’t actually doing anything
+with threading and we wanted to
+
+00:31:20.645,00:31:26.852
+Binee by nature because it's an
+emulation what didn't have any
+sort of thread management so we
+
+00:31:26.852,00:31:30.355
+actually implemented a thread
+manager. When we actually
+implemented this, we kind of
+
+00:31:30.355,00:31:36.027
+treated it as a global
+interpretation lock so it's it's
+basically just a round robin
+
+00:31:36.027,00:31:42.467
+scheduler everything single
+threaded and we time sliced out
+each of the threads so it'll a
+
+00:31:42.467,00:31:47.105
+certain thread will run for a
+certain instruction… uh times
+and instructions and then it'll
+
+00:31:47.105,00:31:50.475
+move on the next thread and we
+can kinda hand wave away most of
+the threading issues that we are
+
+00:31:50.475,00:31:54.346
+running into and from there we
+actually allow malware to run
+threaded and when you think
+
+00:31:54.346,00:31:56.348
+about what a malware actually
+wants, it just cares that
+there's threads running and that
+
+00:31:56.348,00:31:58.350
+didn't get an error with a
+thread right? It just as long as
+it got a successful return value
+
+00:31:58.350,00:32:00.285
+out of create thread it just
+assumes the thread is running
+and is probably looking for
+
+00:32:00.285,00:32:05.290
+information to be updated at
+some point it doesn't really
+matter when. So that that's
+
+00:32:14.199,00:32:18.970
+where this this round robin
+scheduler, really shined was
+because it was something so
+
+00:32:18.970,00:32:22.741
+simple but we were able to
+actually get stuff to to run
+through completely even though
+
+00:32:22.741,00:32:27.746
+it was multithreaded and here's
+here's a quick example of of
+that action,pay the most
+
+00:32:30.549,00:32:35.020
+attention to the left side of
+all those highlighted numbers so
+in the numbers between the
+
+00:32:35.020,00:32:40.091
+brackets are all thread IDs and
+this is like a standard output
+of Binee output function calls
+
+00:32:40.091,00:32:44.429
+so as you can see as time goes
+on that the threat ID will
+change cause we’re context
+
+00:32:44.429,00:32:48.700
+switching to a different thread
+and then from there it'll just
+kinda continue forward until it
+
+00:32:48.700,00:32:52.003
+completes all these threads are
+really doing in the highlighted
+lines are just creating threads
+
+00:32:52.003,00:32:57.642
+in each each thread is at some
+point printing something and you
+can actually see some of the
+
+00:32:57.642,00:33:02.013
+print F stuff with the format
+strings right there we have a on
+the first print F you can see
+
+00:33:02.013,00:33:06.051
+the percent D etc. You can see
+what’s going to be put into that
+line when it’s actually written
+
+00:33:06.051,00:33:11.056
+to console. So another thing
+that we actually ran into when
+we are running samples against
+
+00:33:14.593,00:33:20.098
+Binee was we saw some to some
+malware actually start dropping
+files and in and and and this
+
+00:33:20.098,00:33:26.104
+case that would cause us to
+pursue DllMain stuff was it was
+dropping DLLs to disk and then
+
+00:33:26.104,00:33:30.876
+it was loading them up
+dynamically and so we actually
+weren't doing anything with
+
+00:33:30.876,00:33:35.580
+loading the DLLs dynamically up
+until this point in fact we're
+just all are doing is just
+
+00:33:35.580,00:33:41.987
+running a DLL, sorry, parsing a
+DLL and then while we're doing
+the parsing of the PEs and then
+
+00:33:41.987,00:33:45.690
+from there it would we just kind
+of run it we weren’t actually
+running the DllMain of those of
+
+00:33:45.690,00:33:51.563
+those DLLs themselves I'm so we
+actually went about trying to
+run DllMain that something is
+
+00:33:51.563,00:33:57.035
+required for us to actually do
+the library properly and
+probably for implementing more
+
+00:33:57.035,00:34:01.940
+stuff in the TIB and the PEB in
+some cases especially for some
+system-level DLLs will actually
+
+00:34:01.940,00:34:06.244
+populate some values for us for
+the TIB and the PEB so we can
+actually go through and have
+
+00:34:06.244,00:34:11.182
+those run and then it'll
+populate most of those fields
+for us which is which is great
+
+00:34:11.182,00:34:16.554
+we don't actually have to to
+spend time with a fine tooth
+comb time kind on through and
+
+00:34:16.554,00:34:22.794
+adding more value to those and
+that will probably drive us
+crazy at some point, so what we
+
+00:34:22.794,00:34:28.333
+end up doing actually tried two
+ways of implementing DllMain, so
+for any DLL that we are loading
+
+00:34:28.333,00:34:34.105
+up statically when the, as if
+we’re pretending to be the
+loader what we were will
+
+00:34:34.105,00:34:39.077
+originally try to do was just
+set the stack with the arguments
+that were required, set the
+
+00:34:39.077,00:34:45.817
+entry point to to the start of
+the DLL, DllMain if it did exist
+if it didn't we skip over it and
+
+00:34:45.817,00:34:49.688
+then the return address from
+that would actually point to
+somewhere else in Binee’s memory
+
+00:34:49.688,00:34:54.159
+where we had actually put
+interrupts and so the interrupts
+would pause emulation and then
+
+00:34:54.159,00:34:59.698
+we would then go and update the
+stack with the next DLL that
+needed to be ran and then from
+
+00:34:59.698,00:35:03.435
+there if if if it also had a
+DllMain we just run through that
+again and so on so forth but it
+
+00:35:03.435,00:35:06.471
+turns out that when we were
+actually pausing the DllMain we
+are pausing the emulator it
+
+00:35:06.471,00:35:11.476
+would actually cause it can be a
+little bit more of an unclean
+state for the emulator itself so
+
+00:35:18.516,00:35:23.655
+we want to stick more to the
+press the button once one array
+to go loaded every thing at a
+
+00:35:23.655,00:35:28.994
+time and go and when we
+accomplish that is just through
+a ROP chain essentially so the
+
+00:35:28.994,00:35:32.564
+idea behind this is that we
+wanted to set the stack in a way
+in the way in a way such that
+
+00:35:32.564,00:35:34.566
+when we actually started the
+emulation of the first entry
+point to be the first DLL that
+
+00:35:34.566,00:35:36.568
+we needed to load, typically
+this is an ntDll and then on
+Kernal32 so we would set the
+
+00:35:36.568,00:35:41.573
+stack with the arguments that we
+need for that and then we do the
+return address onto the stack
+
+00:35:51.516,00:35:55.153
+but in this case the return
+address for the for the first
+DLL would be the entry point of
+
+00:35:55.153,00:35:59.124
+the next DLL that needed to run
+so we just kinda keep chaining
+these together in the stack so
+
+00:35:59.124,00:36:04.629
+that when we return in a DLL it
+would then pop the address of
+the next DLL into the
+
+00:36:04.629,00:36:07.799
+instruction pointer and then
+from there we can just go
+through all the DLLs until her
+
+00:36:07.799,00:36:12.704
+done and finally we the last
+deal in line on the return
+address for that will just be
+
+00:36:12.704,00:36:18.076
+the entry point of the PE that
+we’re testing against. This is
+actually quite a great way to do
+
+00:36:18.076,00:36:22.414
+it were able to hit the
+emulation start button once and
+then it was able to just
+
+00:36:22.414,00:36:26.384
+continue through and then we are
+actually getting some great
+results a lot more fidelity
+
+00:36:26.384,00:36:31.156
+especially since were having a
+lot more set up of of them of
+the mock OS done by the DLLs
+
+00:36:31.156,00:36:36.494
+themselves which is great and
+from there we can actually then
+take the same idea and apply to
+
+00:36:36.494,00:36:41.699
+say load library with a full
+hook we could then just
+obviously give a few different
+
+00:36:41.699,00:36:46.705
+arguments argument values and
+then from there we can do more
+than that so so I think that’s
+
+00:36:49.474,00:36:54.479
+about it. Now we have some
+demos. So the first like half of
+these demos kinda go through
+
+00:36:58.817,00:37:03.288
+some of the like how you run
+this at scale or how it would
+look at scale but the and then
+
+00:37:03.288,00:37:08.293
+will so shome so show some real
+malware and I’ll try to pause
+it.. so in the beginning is just
+
+00:37:11.362,00:37:15.934
+the others a bunch of feeder, a
+bunch of the parameters probably
+the most notable ones are just
+
+00:37:15.934,00:37:20.939
+the –V the and VV Oh yeah,so
+first one is a yeah our API sets
+I guess we thought that’s cool
+
+00:37:22.974,00:37:26.511
+so we added it in there it was
+super helpful for when you're
+doing, when you're building this
+
+00:37:26.511,00:37:32.217
+is you have to be able to
+resolve those quickly but there
+is a verbose mode so when you’re
+
+00:37:32.217,00:37:35.820
+doing verbose mode like I said
+earlier you get the instructions
+which is like super helpful for
+
+00:37:35.820,00:37:40.825
+R-ing things but then if you do
+–VV you also get the registers
+in the stack or at least a
+
+00:37:40.825,00:37:46.831
+subset of the stack and then
+another flag which is like – D
+so you'll get the the actual DLL
+
+00:37:46.831,00:37:53.505
+that it’s in.. DLL: the function
+in the name.. so just going
+through here this is a very
+
+00:37:53.505,00:37:57.509
+simple kind of a printf example
+basically of a console
+application and we actually
+
+00:37:57.509,00:38:02.046
+start at the beginning of the
+entry point and go all the way
+through and were getting your
+
+00:38:02.046,00:38:05.984
+nice you know, detailed
+information about the function
+parameters this pretty cool or
+
+00:38:05.984,00:38:11.456
+getting human readable stuff
+from like like printf you know
+create file, write file you're
+
+00:38:11.456,00:38:16.461
+getting really good data here.
+So now we’re just showing some
+of the verbose mode.. and again
+
+00:38:30.108,00:38:34.379
+so when you're doing REing of a
+piece of malware like having our
+say the instructions is really
+
+00:38:34.379,00:38:37.715
+helpful especially when you're
+trying to manipulate the config
+file to maybe take a different
+
+00:38:37.715,00:38:41.019
+branch you can kinda just go
+through here and see what's
+actually happening after the
+
+00:38:41.019,00:38:45.190
+function call change modify the
+configuration file which changes
+the environment and now the
+
+00:38:45.190,00:38:50.195
+binary runs completely
+differently.. and then the – VV
+sort of the same thing except as
+
+00:38:58.469,00:39:03.408
+I mention you now get the
+registers and then a dump of the
+stack as well so useful but I'm
+
+00:39:07.712,00:39:12.517
+not as useful as is the other
+one but this is interesting
+information nonetheless when
+
+00:39:12.517,00:39:17.522
+you're particularly debugging by
+hand. So now to the last of the…
+the – D, you already know the
+
+00:39:26.664,00:39:31.669
+actual API set was this where we
+this is the reason we actually
+implemented the API set the ‘–
+
+00:39:34.505,00:39:39.210
+a’ and ‘A’ within Binee that is
+because were getting a lot of
+this and we know are I would API
+
+00:39:39.210,00:39:43.448
+set is that, okay what DLL is
+that, I was the function we need
+to look at see if it's a full
+
+00:39:43.448,00:39:48.453
+hook or partial hook or
+something like that.. And again
+just kind of looking at the
+
+00:39:55.226,00:40:00.231
+data, create file write file
+your getting all these IOCs are
+seeing what the malware is doing
+
+00:40:09.207,00:40:14.212
+without actually executing. So
+this is the key piece or use of
+the –J flag right it converts
+
+00:40:19.851,00:40:23.755
+all this to JSON so we put this
+in our cluster we get all of our
+samples this is what we’re
+
+00:40:23.755,00:40:26.724
+getting back so then we go
+through and we can parse these
+for all the different
+
+00:40:26.724,00:40:32.797
+interesting functions that we’re
+looking for so in this case are
+looking at write file and we get
+
+00:40:32.797,00:40:36.701
+the interesting part here is we
+get the parameters right, the
+string value of the parameters
+
+00:40:36.701,00:40:41.439
+you also get the values is being
+passed to it so you'll know
+exactly what's happening, so you
+
+00:40:41.439,00:40:45.009
+know this function is slightly
+less interesting but the malware
+thats coming next is a little
+
+00:40:45.009,00:40:49.647
+more interesting. But again you
+can parse all the data in
+real-time and we can do this you
+
+00:40:49.647,00:40:54.552
+can do this in scale, this will
+run, run on Linux, in Docker
+It’ll also run in whatever
+
+00:40:54.552,00:40:59.557
+function as a service is for
+your cloud provider. so
+threading is this is this is
+
+00:41:02.160,00:41:06.964
+actually some sort of simple to
+implement but is really cool and
+actually got it to work. It’s
+
+00:41:06.964,00:41:11.969
+just one of those ah-ha moments.
+So now for some real malware. So
+this first case is from from the
+
+00:41:18.009,00:41:22.513
+I believe it’s from the orange
+worm variant, one of their
+samples and the others would run
+
+00:41:22.513,00:41:25.984
+all the way through and this is
+part of that family I think
+there is maybe thirty samples in
+
+00:41:25.984,00:41:30.221
+that family an interesting thing
+here is, we get the we get the
+IOC we know what service is
+
+00:41:30.221,00:41:35.226
+actually trying to start, we can
+do this without actually even
+running the sample. So now we
+
+00:41:35.226,00:41:38.863
+know where to look at for
+hunting you in your environment
+you're looking for particular
+
+00:41:38.863,00:41:42.033
+server you're looking for
+particular malware and now you
+can see some of these IOCs so
+
+00:41:42.033,00:41:46.404
+now you can hunt in your
+environment and figure out where
+these things actually are
+
+00:41:46.404,00:41:49.974
+additionally there's the skip
+rock address so this is useful
+for getting around some
+
+00:41:49.974,00:41:53.945
+obfuscation and some packers you
+know if they hide all the you
+know from the import still
+
+00:41:53.945,00:41:58.349
+enough to get that statically
+but you can get that now
+dynamically and this is a pretty
+
+00:41:58.349,00:42:03.287
+useful feature for any of your
+statistics. So this next one
+this is an interesting sample
+
+00:42:05.757,00:42:11.129
+because basically has multiple
+layers of packing and then
+unpacking what it does is
+
+00:42:11.129,00:42:16.367
+effectively, well, so this is
+particularly interesting cause
+now we’re getting this is hidden
+
+00:42:16.367,00:42:20.638
+previously by all of the.. from
+the static analysis cause it was
+in the import table directly
+
+00:42:20.638,00:42:25.810
+getting this data in real-time
+so we can add these to our
+machine learing model say this
+
+00:42:25.810,00:42:28.880
+thing actually does use these
+imports, these are the
+functions, these are the names,
+
+00:42:28.880,00:42:35.420
+this is the DLL. And then
+additionally you can see right
+below it we’re getting registry
+
+00:42:35.420,00:42:40.258
+values, getting registry keys
+but what’s interesting about the
+samples you it's completely
+
+00:42:40.258,00:42:46.397
+packed and were also does is it
+unpacks a DLL and memory and
+then it writes it to disk packed
+
+00:42:46.397,00:42:50.935
+and then it loads itself and
+then and then unpacks again and
+that's kind of this part where
+
+00:42:50.935,00:42:54.806
+it’s.. you read files so now
+we’re getting all this we
+actually get the DLL that it's
+
+00:42:54.806,00:43:01.746
+that dumping, you get the file
+name, the naming scheme a little
+bit and then you again you see
+
+00:43:01.746,00:43:06.417
+the load libraries we could get
+ROC address you're getting all
+of these IOCs adding, tagging
+
+00:43:06.417,00:43:11.489
+this binary in our ingestion
+pipeline with all of these these
+new IOCs, and then we’ll
+
+00:43:11.489,00:43:15.226
+actually be able to collect new
+ones and now we have a new DLL,
+this thing was written to disk
+
+00:43:15.226,00:43:19.864
+but it is written and is
+redirected into a temp loacation
+or sandbox location and now we
+
+00:43:19.864,00:43:24.869
+can look at it later. We’re Open
+Sourcing it, sorry, clearly we
+had a couple things we want to
+
+00:43:32.176,00:43:37.715
+work on next, but yeah, we are
+are open sourcing it so we’re
+more than happy to help anyone
+
+00:43:37.715,00:43:42.720
+get involved and get started but
+so these are some of the things.
+So, thank you
+

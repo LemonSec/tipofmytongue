@@ -1,0 +1,1123 @@
+﻿00:00:00.033-->00:00:05.038
+ >Um this is Patrick Wardle,
+we've got 99 problems but a
+little snitch aint one. And I
+
+00:00:07.975-->00:00:12.980
+will just let him take his talk
+away. [Applause] >> Aloha. So
+let's talk about owning little
+
+00:00:18.652-->00:00:25.092
+snitch. As he mentioned my name
+is Patrick Wardle. I worked at a
+bunch of Acronymed places,
+
+00:00:25.092-->00:00:29.730
+currently the director of R&D at
+Synack. So synack does
+crowdsourced vulnerability
+
+00:00:29.730-->00:00:34.601
+discovery with vetted security
+researchers. So if you are
+interested in getting paid to
+
+00:00:34.601-->00:00:40.073
+find bugs in our customers web
+apps, mobile apps, IOT devices
+and network endpoints then check
+
+00:00:40.073-->00:00:46.213
+out synack.com. Alright we only
+have 20 minutes so we are gonna
+jam through a good amount of
+
+00:00:46.213-->00:00:50.851
+stuff. We are gonna start by
+briefly talking about what
+little snitch is. We are then
+
+00:00:50.851-->00:00:55.822
+gonna talk about how to bypass
+it, how to exfiltrate data or
+talk to a Command and control
+
+00:00:55.822-->00:00:59.993
+server without being detected by
+the firewall. Then i'm gonna
+talk about reverse engineering
+
+00:00:59.993-->00:01:04.698
+the kernel component looking for
+a security vulnerability and
+then talk about a bug that I
+
+00:01:04.698-->00:01:09.703
+found. Now before attacking any
+technology it's good to have
+basic understanding, so let's
+
+00:01:12.205-->00:01:18.445
+briefly talk about what little
+snitch is. So what is little
+snitch? Well little snitch is
+
+00:01:18.445-->00:01:23.450
+basically a firewall. Basically
+its goal is to alert the user if
+its sees any unauthorized
+
+00:01:27.688-->00:01:32.092
+traffic. So this couple be a
+piece of malware, connecting to
+a command and control centre or
+
+00:01:32.092-->00:01:37.097
+an attacker trying to exfiltrate
+data. It has various components.
+There is a kernel driver or a
+
+00:01:40.434-->00:01:44.972
+kernel extension that runs in
+ring 0, and we are going to be
+focusing mostly on this, because
+
+00:01:44.972-->00:01:49.309
+this is where the security
+vulnerability I found lies.
+There's also some pieces that
+
+00:01:49.309-->00:01:55.115
+run in user mode, so there is a
+daemon that runs in the root
+session that does some rules
+
+00:01:55.115-->00:02:00.020
+managment, and then there is
+some interactive components that
+run in the user session. Most
+
+00:02:00.020-->00:02:04.891
+notably there is a launch agent
+that is responsible for
+displaying the alert anytime the
+
+00:02:04.891-->00:02:09.563
+firewall core detects
+unauthorized traffic. So it's
+gonna pop up telling the user
+
+00:02:09.563-->00:02:15.969
+process x is trying to connect
+to IP address y, then the user
+can confirm or deny it. Alright
+
+00:02:15.969-->00:02:21.475
+so little snitch is a firewall,
+so how can we bypass it. That is
+to say how can we exfiltrate
+
+00:02:21.475-->00:02:26.413
+data without being detected or
+connect to a command and control
+server without generating any
+
+00:02:26.413-->00:02:32.352
+popups which would alert the
+user to what we are doing. So
+the first thing is, let's look
+
+00:02:32.352-->00:02:38.792
+at the little snitches' firewall
+rules. What is this, there is a
+default undeletable system rule
+
+00:02:38.792-->00:02:44.131
+that says anyone can talk to
+Icloud. So what we can do is
+reverse engineer the iCloud
+
+00:02:44.131-->00:02:49.236
+protocol, and its pretty basic,
+its JSON based. And once we
+understand the protocol what we
+
+00:02:49.236-->00:02:55.175
+can do is set up a Command and
+control server on iCloud then we
+can write our custom code that's
+
+00:02:55.175-->00:03:00.247
+trying to exfiltrate data or
+write some malware that connects
+to a Command and control server
+
+00:03:00.247-->00:03:05.318
+that is then on iCloud. Now
+little snitch will see this
+traffic but since it conforms to
+
+00:03:05.318-->00:03:10.624
+that rule, it won't generate an
+alert. So basically now we can
+exfiltrate data, talk to Command
+
+00:03:10.624-->00:03:16.430
+and control server without
+alerting the user at all.
+Another way to bypass little
+
+00:03:16.430-->00:03:22.669
+snitch is by abusing its process
+level trust. So little snitch in
+terms of granularity, assigns
+
+00:03:22.669-->00:03:28.508
+trust at the process level. This
+means the process is allowed to
+talk to the internet,a ny code
+
+00:03:28.508-->00:03:34.781
+or threads of dynamic libraries
+within that process, can talk to
+the internet as well. So this
+
+00:03:34.781-->00:03:39.419
+means if we can find any way to
+inject malicious code into any
+of the processes that little
+
+00:03:39.419-->00:03:44.624
+snitch trusts or allows to talk
+to the internet, we can connect
+out without the user being
+
+00:03:44.624-->00:03:50.597
+alerted. So for example on my
+box gpg keychain is allowed to
+talk to the internet, which
+
+00:03:50.597-->00:03:55.302
+makes sense. It does key
+management, checks for updates,
+stuff like that. Fortunately gpg
+
+00:03:55.302-->00:04:00.273
+keychain is vulnerable to a
+dialling hijack attack. This
+means we can plant a malicious
+
+00:04:00.273-->00:04:04.778
+dynamic library on the
+filesystem and then every time
+this application is started,
+
+00:04:04.778-->00:04:09.583
+either by the user or
+programmatically by some malware
+in the background, the dynamic
+
+00:04:09.583-->00:04:14.421
+library will be loaded
+automatically by the OS loader
+into context. Into the process
+
+00:04:14.421-->00:04:18.391
+context of this trusted
+application. At that point we
+can then connect out to the
+
+00:04:18.391-->00:04:24.197
+internet. Again little snitch
+will see this connection, but
+since it conforms to a rule it
+
+00:04:24.197-->00:04:29.069
+will allow it without alerting
+the user. Finally another way to
+bypass little snitch is to
+
+00:04:29.069-->00:04:35.442
+simply turn it off. So I reverse
+engineered what happens when the
+user clicks on stop network
+
+00:04:35.442-->00:04:39.946
+filter. And basically what
+happens is the user mode
+component of the firewall
+
+00:04:39.946-->00:04:44.117
+connects and authenticates to
+the kernel component and we will
+talk about how to do that in a
+
+00:04:44.117-->00:04:50.190
+minute. But once it's connected
+and authenticated it simply
+invokes method B. Method B takes
+
+00:04:50.190-->00:04:55.896
+a single parameter, a 0 to turn
+off the firewall, or a 1 to turn
+it on. So we can write our own
+
+00:04:55.896-->00:05:02.169
+code to do this ourselves. So
+the best part about this bypass
+is, is it's invisible to the UI.
+
+00:05:02.169-->00:05:07.340
+so if malware invokes method B
+with a 0 to turn off the
+firewall to exfiltrate data and
+
+00:05:07.340-->00:05:11.178
+then connect to a command and
+control server. If the user
+looks at the status of the
+
+00:05:11.178-->00:05:16.183
+firewall it will show that it is
+on. Alright so let's talk about
+how to reverse engineer little
+
+00:05:18.451-->00:05:23.190
+snitch. Specifically its kernel
+extension. With the goal of
+finding a exploitable a kernel
+
+00:05:23.190-->00:05:28.628
+vulnerability. Bypassing a
+firewall, bypassing any security
+product is you know pretty easy.
+
+00:05:28.628-->00:05:31.998
+You target a certain anti-virus
+product you target a certain
+firewall you are going to be
+
+00:05:31.998-->00:05:36.836
+able to get around it. Little
+snitch makes it really easy, but
+still they should not have
+
+00:05:36.836-->00:05:40.807
+exploitable security bugs. Right
+these are security tools. So in
+my opinion that's kinda what we
+
+00:05:40.807-->00:05:47.714
+want to find, because that a lot
+bigger of a problem. So little
+snitch kernel extension lives in
+
+00:05:47.714-->00:05:52.452
+slash library slash extensions.
+its signed and its started
+automatically every time the
+
+00:05:52.452-->00:05:57.724
+system starts. We look at its
+info dot plist file which has
+characteristics about it. We can
+
+00:05:57.724-->00:06:02.662
+see it's a IOkit driver. So what
+is IOkit? IOkit is basically
+apple's device driver
+
+00:06:05.665-->00:06:11.471
+environment. So it's a object
+oriented programming model
+that's implemented in a subset
+
+00:06:11.471-->00:06:15.775
+of C++. And there is a lot of
+good resources on it, so I am
+not gonna spend a lot of time
+
+00:06:15.775-->00:06:21.982
+talking about details, but on
+the slide we can see this is a
+skeleton hello world driver.
+
+00:06:21.982-->00:06:26.519
+Basically you implement a bunch
+of C++ methods, you compile
+this, load it into the kernel,
+
+00:06:26.519-->00:06:31.391
+and then the kernel proper will
+invoke these methods. SO we can
+see for example invokes you know
+
+00:06:31.391-->00:06:35.695
+init, proc, start, and obviously
+you can put code in these
+methods to do whatever you want
+
+00:06:35.695-->00:06:41.901
+your driver to do. Now in terms
+of reversing specifically
+looking for exploitable kernel
+
+00:06:41.901-->00:06:47.907
+vulnerabilities I always like to
+see how and where user mode data
+is processed. The idea here is
+
+00:06:47.907-->00:06:52.912
+if we can pass in user mode date
+code to the kernel mode driver
+and it processes it in a
+
+00:06:55.482-->00:06:59.686
+vulnerable way we might be able
+to find a security
+vulnerability. So it's important
+
+00:06:59.686-->00:07:05.725
+to understand what mechanisms
+IOkit provides to pass in user
+mode data that's processed by an
+
+00:07:05.725-->00:07:10.130
+IOkit driver. So as the slide
+shows there's a variety of
+mechanisms, we are only going to
+
+00:07:10.130-->00:07:14.634
+focus on sending control
+requests. Because this is what
+little snitch does and this is
+
+00:07:14.634-->00:07:19.239
+also the mechanism where you
+pass larger structures that
+might have pointers, sizes,
+
+00:07:19.239-->00:07:24.244
+interesting things that the
+kernel driver might not validate
+or use correctly. So first let's
+
+00:07:26.279-->00:07:32.319
+kinda talk about a conceptual
+overview of how a user can
+invoke a method in the kernel
+
+00:07:32.319-->00:07:37.390
+driver. So in this slide we see
+at the bottom there's a user or
+some user mode, and say it wants
+
+00:07:37.390-->00:07:42.796
+invoke a method for example:
+method 1. How does it do this,
+well it makes a request to the
+
+00:07:42.796-->00:07:48.802
+kernel with a selector. A
+selector is simply an integer
+and as we will see its an index.
+
+00:07:48.802-->00:07:54.074
+So this request gets routed into
+the kernel and then the kernel
+proper will forward to the
+
+00:07:54.074-->00:07:59.946
+correct IOKit driver.
+Specifically it will call that
+IOkit driver's external method
+
+00:07:59.946-->00:08:04.584
+function. What the external
+method function does is use the
+selector that integer as an
+
+00:08:04.584-->00:08:10.056
+index into array of function
+pointer. These are the methods
+that the driver exports or
+
+00:08:10.056-->00:08:16.162
+exposed to user mode. So if we
+want to invoke method 1, we pass
+in 1. So once the external
+
+00:08:16.162-->00:08:20.467
+method has extracted that
+function pointer, calls it the
+dispatch method, it invokes its
+
+00:08:20.467-->00:08:26.373
+super class. The super class
+performs some basic validation,
+uhh and for example if method 1
+
+00:08:26.373-->00:08:31.478
+picks a strucutre of size x, and
+makes sure the user also passed
+in a structure, and that
+
+00:08:31.478-->00:08:35.849
+structure they passed in is of
+size x.Now it doenst validate
+whats in that strucutre and we
+
+00:08:35.849-->00:08:39.886
+will see in a minute thats kinds
+of a problem. Now once that
+parameter validation is
+
+00:08:39.886-->00:08:44.691
+successful, the super class then
+will directly invoke the
+dispatch method. So will then
+
+00:08:44.691-->00:08:49.696
+actually invoke method 1. So
+here's an example of some user
+mode code of how to actually do
+
+00:08:52.632-->00:08:57.537
+this. So there's basically 3
+steps. Step one is you use find
+the driver you want to connect
+
+00:08:57.537-->00:09:02.242
+to and you do this by the
+driver's name. You then connect
+to it to create connection
+
+00:09:02.242-->00:09:08.882
+object and then finally you
+invoke the method. Um and there
+is a bunch of api how you invoke
+
+00:09:08.882-->00:09:13.553
+the um kernel mode method. In
+this example we are passing in a
+structure so we call the IO
+
+00:09:13.553-->00:09:18.091
+connect call structure method.
+This again gets routed into the
+kernel, the kernel will invoke
+
+00:09:18.091-->00:09:22.128
+the external method of the
+driver, that will validate the
+parameters and the call the
+
+00:09:22.128-->00:09:28.168
+function that the selector
+indicated. Okay so let's get
+back to little snitch and talk
+
+00:09:28.168-->00:09:32.572
+about how to connect to its
+IOkit driver and then how to
+enumerate the methods and then
+
+00:09:32.572-->00:09:37.076
+audit them. So if we reverse
+engineer the user mode
+components, specifically the
+
+00:09:37.076-->00:09:41.147
+user mode daemon of little
+snitch we can see it connecting
+to the little snitch driver via
+
+00:09:41.147-->00:09:46.853
+the string at_obdev_lsnke. So
+what we can do is write our own
+custom code that tries to
+
+00:09:46.853-->00:09:53.259
+connect to that kernel extension
+as well. And when we compile and
+run that, low and behold we are
+
+00:09:53.259-->00:09:59.632
+allowed to connect to the kernel
+extension. So what dispatch
+methods can we call, that is to
+
+00:09:59.632-->00:10:04.704
+say what methods does the little
+snitch kernel driver export or
+expose that we can invoke from
+
+00:10:04.704-->00:10:10.610
+user mode. So if we reverse
+engineer the external method of
+the little snitch IOkit driver,
+
+00:10:10.610-->00:10:16.082
+we can see where it uses that
+selector. And in the disassembly
+you can see there is an array of
+
+00:10:16.082-->00:10:20.720
+function pointers called s
+method that IDA pro has flagged.
+So we double click on that and
+
+00:10:20.720-->00:10:26.025
+follow the cross reference we
+can see there are all the
+methods that we can invoke, you
+
+00:10:26.025-->00:10:31.130
+just invoked. So there is 17 of
+them or so. So I started
+auditing these methods cause
+
+00:10:31.130-->00:10:36.135
+again these are the methods we
+can reach from user mode. And
+when I got to method 7 I found
+
+00:10:36.135-->00:10:41.641
+an interesting bug. So method 7
+calls a bunch of helper
+functions and one of these
+
+00:10:41.641-->00:10:47.080
+helper functions processes the
+data that gets passed in from
+user mode. So what method 7 is
+
+00:10:47.080-->00:10:52.852
+trying to do is simply copy some
+bytes from user mode into kernel
+mode. So it takes a structure
+
+00:10:52.852-->00:10:58.725
+that has a size of these bytes
+and then the user mode address
+of where to copy from. Now if
+
+00:10:58.725-->00:11:02.595
+you look at the pseudo code it's
+probably easiest to see unless
+you prefer to read assembly. But
+
+00:11:02.595-->00:11:07.767
+you can see it extracts the size
+out of the user mode structure,
+allocates a buffer, and then if
+
+00:11:07.767-->00:11:14.307
+that allocation is successful it
+copies the data of that same
+size into the kernel. So you
+
+00:11:14.307-->00:11:18.411
+might look at this and took me a
+while and I didn't really see
+that there was a problem and
+
+00:11:18.411-->00:11:23.883
+this looked like normal valid
+code. Well the problem is size
+matters. Why? Well the
+
+00:11:23.883-->00:11:28.288
+allocation function they use
+which is OS_malloc takes a 32
+bit integer. Well the copy
+
+00:11:28.288-->00:11:33.993
+function which is copy_in takes
+a 64 bit integer. So obviously
+if you pass in a 64 bit size,
+
+00:11:33.993-->00:11:38.531
+which is what little snitch
+extracts from that structure
+it's gonna truncate that when it
+
+00:11:38.531-->00:11:43.436
+allocates it. So for example if
+we pass in one with a bunch of
+zeros and a two, basically 64bit
+
+00:11:43.436-->00:11:48.141
+value, it's actually gonna
+truncate that when it goes to
+allocate that. So in this case
+
+00:11:48.141-->00:11:53.146
+it's going to only allocate a
+buffer of 2 bytes. Then when it
+goes to the copy, copy_in uses
+
+00:11:53.146-->00:11:58.418
+the entire 64 bit value. There
+is no truncation that occurs. So
+obviously we get a massive heap
+
+00:11:58.418-->00:12:04.691
+overflow, because it tries to
+copy some 2 to the 31 or 4
+billion bytes into that. Alright
+
+00:12:04.691-->00:12:09.696
+so can we exploit this bug? Well
+turns out first before the
+vulnerable there is actually a
+
+00:12:12.165-->00:12:17.103
+check in the little snitch
+driver. And what the check does
+it checks some value which turns
+
+00:12:17.103-->00:12:21.975
+out to be a authentication flag
+and if that is not set to 1 it
+fails, it does not even invoke
+
+00:12:21.975-->00:12:27.647
+the buggy code. So we have to
+figure out how to set the flag
+so we can reach the buggy code.
+
+00:12:27.647-->00:12:31.985
+So I reverse engineered the
+remaining piece or methods in
+the little snitch kernel driver
+
+00:12:31.985-->00:12:37.257
+and I found out that method 8 is
+the code that sets this flag.
+Basically what methods 8 does is
+
+00:12:37.257-->00:12:42.395
+it's expects a hash from user
+mode and then it computes a
+secondary hash itself and then
+
+00:12:42.395-->00:12:48.935
+compares these hashes. If the
+hashes match it sets the flag to
+1. So this is exactly how we can
+
+00:12:48.935-->00:12:53.873
+pass in the correct hash so that
+those both match , so we can set
+the authentication flag. So we
+
+00:12:53.873-->00:12:59.479
+connect to the little snitch
+driver, we invoke method 4,
+which passes back some 16 bytes
+
+00:12:59.479-->00:13:05.184
+of random data, we then hash
+that with md5 and a hard coded
+salt. The hard coded salt is
+
+00:13:05.184-->00:13:09.188
+embedded in the user mode
+components of the little snitch
+firewall. An then we invoke
+
+00:13:09.188-->00:13:13.793
+method 8, again method 8's gonna
+recompute or compute the
+secondary hash, and since we
+
+00:13:13.793-->00:13:18.264
+know how to generate that hash,
+it will now match and
+authenticate. So it's basically
+
+00:13:18.264-->00:13:24.937
+kinda like security through
+obscurity for authentication
+purposes. Okay so we can now
+
+00:13:24.937-->00:13:29.942
+authenticate, but can we trigger
+this bug? So I found this bug in
+2013 and when I was stepping
+
+00:13:32.045-->00:13:36.382
+through the code in a kernel
+debugger I saw yes they
+extracted a 64 bit value, passed
+
+00:13:36.382-->00:13:41.354
+that to a allocation routine
+that truncated that down to
+32bits, so for example it would
+
+00:13:41.354-->00:13:46.559
+only allocate a buffer of 2
+bytes or 3 bytes. But then when
+I stepped over the copy routine
+
+00:13:46.559-->00:13:52.532
+it actually only also copied 3
+or 4 bytes. So you know that was
+sad, right? Did Not actually
+
+00:13:52.532-->00:13:57.570
+trigger the bug. So I looked
+into the copy_in routine to
+figure out what it was doing. Um
+
+00:13:57.570-->00:14:03.009
+copy_in is a function written by
+Apple and under the hood it
+calls underscore bcopy. If you
+
+00:14:03.009-->00:14:07.980
+look at the assembly for
+underscore bcopy, it's a
+handwritten assembly routine.
+
+00:14:07.980-->00:14:13.319
+You can see although function
+definition says hey I take a vm
+size T, which is a 64 bit value
+
+00:14:13.319-->00:14:18.291
+on 64bit systems, and even the
+comment says I am going to use
+rdx which is again a 64 bit
+
+00:14:18.291-->00:14:24.363
+register. You look at the
+assembly code they actually only
+ECX register. So this means that
+
+00:14:24.363-->00:14:30.403
+64 value that gets passed in,
+that size is also gonna get
+truncated. So unfortunately this
+
+00:14:30.403-->00:14:35.174
+at the time wasn't really a bug.
+Well I did what any normal
+person did and I filed bug
+
+00:14:35.174-->00:14:41.714
+report with apple. I basically
+said hey guys [Laughter] your
+bcopy routine is [clapping] is
+
+00:14:41.714-->00:14:48.454
+buggy. And we all know how Apple
+is, they take their time. So I
+had to wait 2 and a half years
+
+00:14:48.454-->00:14:53.993
+for them to fix this. That's why
+I am only talking about it now.
+So they fixed it which is good,
+
+00:14:53.993-->00:14:59.465
+so if you look at bcopy now and
+look at the assembly, you can
+see they correctly use RDX or
+
+00:14:59.465-->00:15:05.638
+the 64 bit registers. As the
+function definition says it
+should. So awesome. So we can
+
+00:15:05.638-->00:15:11.377
+authenticate and we can trigger
+the bug. But it's still gonna
+try to copy some massive amount
+
+00:15:11.377-->00:15:17.517
+of bytes into a small allocated
+buffer. Which is gonna trash the
+kernel and cause a kernel panic.
+
+00:15:17.517-->00:15:21.654
+So basically we need to figured
+out a way to how exactly control
+the number of bytes, so we can
+
+00:15:21.654-->00:15:26.993
+maybe overflow it by 6 or 7
+bytes. You know we need a
+tactical solution here. So how
+
+00:15:26.993-->00:15:31.831
+can we take this whole kernel
+copy. Well turns out that bcopy
+is actually fault tolerant,
+
+00:15:31.831-->00:15:36.736
+which is a good thing, so bcopy
+again is copying data from user
+mode into kernel mode. So what
+
+00:15:36.736-->00:15:41.707
+happens if it hits an unmapped
+page it handles this gracefully
+and stops copying. So we can
+
+00:15:41.707-->00:15:46.779
+exploit this fact by passing in
+an address that's close to a
+page boundary of an unmapped
+
+00:15:46.779-->00:15:52.685
+page. So we can map two pages in
+user mode, unmap the seconds
+page, and then pass in pointer
+
+00:15:52.685-->00:15:57.356
+that say like 5 bytes before
+that unmapped page, and what's
+gonna happen is that copy
+
+00:15:57.356-->00:16:02.061
+routine is going to try and copy
+4 billion bytes in, but as soon
+as it hits that unmapped page
+
+00:16:02.061-->00:16:05.965
+it's gonna stop. So that's
+perfect cause now we control the
+exact number of bytes that are
+
+00:16:05.965-->00:16:12.305
+copied. So now we have all the
+components needed for an
+exploitable heap overflow. We
+
+00:16:12.305-->00:16:17.243
+control the size of an
+allocation buffer in the kernel.
+We control the values of the
+
+00:16:17.243-->00:16:20.780
+bytes copied, there is no
+constraints. We can put in 0s,
+nulls, whatever we want. And
+
+00:16:20.780-->00:16:26.786
+most importantly we can copy the
+number of bytes that get copied
+into this buffer. So what we can
+
+00:16:26.786-->00:16:31.390
+do to exploit this, is we can
+perform a heap spray, some heap
+feng shui, and basically get a
+
+00:16:31.390-->00:16:37.496
+C++ object that we own to be
+immediately adjacent to this
+little snitch buffer. We can
+
+00:16:37.496-->00:16:42.869
+then overflow the little snitch
+buffer into that C++ object and
+if you know how a C++ object is
+
+00:16:42.869-->00:16:47.974
+laid out in memory, it has a
+vtable which is a pointer to all
+its function pointers. So we can
+
+00:16:47.974-->00:16:53.145
+corrupt that or control that
+vtable. And once you control the
+vtable of an object you control,
+
+00:16:53.145-->00:16:57.516
+if you can invoke methods on
+that, it will use the corrupted
+vtable. Which basically give you
+
+00:16:57.516-->00:17:02.922
+RIP. So here is a screenshot of
+the kernel broken on
+instruction, it's a call
+
+00:17:02.922-->00:17:07.793
+instruction uses RAX. I've blown
+it up a little bigger so you can
+see the values. But if we look
+
+00:17:07.793-->00:17:13.366
+at what RAX is, its 41 41 41 41,
+so basically we control the
+instruction pointer in kernel
+
+00:17:13.366-->00:17:18.537
+mode. Now firstly we dont have
+the time to talk to how to
+weaponize this exploit, but
+
+00:17:18.537-->00:17:23.142
+there's been a great number of
+really awesome talks
+articulating exactly how to do
+
+00:17:23.142-->00:17:27.413
+this if you have such a heap
+overflow. So they talk about how
+to groom the heap, how to get
+
+00:17:27.413-->00:17:33.319
+these C++ objects, where you
+need to be, how to bypass kslr,
+[inaudible], smap, that kind of
+
+00:17:33.319-->00:17:39.525
+stuff and some payload. Now one
+interesting weaponization
+technique you can maybe use with
+
+00:17:39.525-->00:17:44.397
+this, is that even if the bug
+patched, this is still a
+valuable bug. So in modern
+
+00:17:44.397-->00:17:49.201
+versions of OS 10, even if you
+have root access, you can't
+bypass system integrity
+
+00:17:49.201-->00:17:54.407
+protection and you can't load
+unsigned code into the kernel.
+However this is a signed driver,
+
+00:17:54.407-->00:17:58.611
+so as long as we have a buggy
+version of this driver, we can
+bring this to a target, load the
+
+00:17:58.611-->00:18:03.316
+driver and then exploit the
+vulnerability. Once we exploited
+it, we have arbitrary code
+
+00:18:03.316-->00:18:08.020
+execution in the context of ring
+0, in the kernel. Now we can
+bypass system integrity
+
+00:18:08.020-->00:18:14.460
+protection or even run unsigned
+code in the kernel. Alright so
+let's wrap this up. So what did
+
+00:18:14.460-->00:18:18.831
+the vendor do, so the good news
+is they fixed the bug pretty
+quickly. So I said hey guys you
+
+00:18:18.831-->00:18:23.302
+should probably just pull out
+the 32 bit value and pass that
+to both the allocation and the
+
+00:18:23.302-->00:18:26.772
+copy function, then you don't
+really have to care about what
+it's doing under the hood. So
+
+00:18:26.772-->00:18:31.577
+that's exactly how they patched
+it. Fortunately then they really
+down played the bug, so the
+
+00:18:31.577-->00:18:36.816
+exact quote was they fixed a
+rare issue that could cause a
+kernel panic. This is bullshit.
+
+00:18:36.816-->00:18:42.221
+It's not a rare issue, this was
+in all versions of little
+snitch. Its also not a kernel
+
+00:18:42.221-->00:18:46.993
+panic. it's a exploitable
+security vulnerability. So I was
+a little urked, because I was
+
+00:18:46.993-->00:18:50.963
+like come one guys you are a
+security company. You Are
+providing payed security tools,
+
+00:18:50.963-->00:18:55.301
+if someone reports you a
+security bug, at least you know
+like lets your users know that
+
+00:18:55.301-->00:19:00.506
+they should update. So you know
+that was a little of a bummer,
+but I think they've got better.
+
+00:19:00.506-->00:19:04.543
+Alright um I'M assuming you guys
+are interested in Mac stuff,
+which is why you are here. So
+
+00:19:04.543-->00:19:08.414
+I'm just briefly going to
+mention my personal Mac security
+website, I apologize for the
+
+00:19:08.414-->00:19:13.152
+shameless plug. But everything
+is free, lot of opensource Mac
+security tools. There's a bunch
+
+00:19:13.152-->00:19:17.523
+of modern Mac malware samples if
+you want to reverse engineer,
+the AV guys don't always like to
+
+00:19:17.523-->00:19:23.629
+share. So I try to share. And
+also I blog about this stuff, so
+feel free to check it out, if
+
+00:19:23.629-->00:19:29.902
+not, no worries. Alright so we
+have 54 seconds so there's time
+for one or two questions, i'll
+
+00:19:29.902-->00:19:36.142
+hang around afterwards if any of
+you want to chat. So are there
+any questions about little
+
+00:19:36.142-->00:19:42.615
+snitch kernel exploitation?
+Anything else? Anything Else?
+[applause] That one slide. Yes
+
+00:19:42.615-->00:19:53.526
+[applause] Awesome well thanks
+again, feel free to shoot me
+email any time. Ummm I love
+
+00:19:53.526-->00:19:56.695
+talking about all this stuff. Um
+and thank you again I really
+appreciate you attending my
+
+00:19:56.695-->00:19:58.697
+talk. [applause] 
+

@@ -1,0 +1,753 @@
+﻿1
+00:00:00,560 --> 00:00:05,600
+Hello everyone. Today I will present our work
+RegexNet, which is the system for  
+
+2
+00:00:05,600 --> 00:00:10,879
+runtime recovery of web applications under
+zero-day ReDoS attacks. Here, ReDoS means
+
+3
+00:00:10,880 --> 00:00:15,920
+Denial of Service attacks exploiting the
+super-linear matching time of regular expressions.
+
+4
+00:00:20,000 --> 00:00:24,160
+Regular expression is a fundamental
+tool in computer software. It is widely  
+
+5
+00:00:24,160 --> 00:00:28,560
+used in web services to manipulate,
+validate and scrape user data.
+
+6
+00:00:28,560 --> 00:00:32,879
+Let's consider a scenario where a client
+sends a HTTP GET request to the server.
+
+7
+00:00:35,520 --> 00:00:40,240
+There are many headers in the HTTP request.
+Different regular expressions are applied to
+
+8
+00:00:40,240 --> 00:00:46,080
+different headers. For example, "Content-Type" header 
+is used to indicate the media type of the resource.
+
+9
+00:00:49,120 --> 00:00:54,640
+We can use a simple regular expression to 
+extract the encoding scheme, which is UTF-8 here.
+
+10
+00:00:54,640 --> 00:00:59,360
+Typically, it takes linear time to match the 
+regular expression with respect to the input  
+
+11
+00:00:59,360 --> 00:01:05,039
+length. However, in practice, if the regular 
+expression is badly designed, it might take
+
+12
+00:01:05,040 --> 00:01:08,800
+a super-linear time for a carefully crafted 
+input to match the regular inspiration.
+
+13
+00:01:11,760 --> 00:01:17,600
+For example, this regular expression is also used to 
+extract the encoding scheme, which is from a popular  
+
+14
+00:01:17,600 --> 00:01:23,119
+JavaScript module. The labeled part introduces 
+a vulnerability which could be used to create  
+
+15
+00:01:23,120 --> 00:01:29,520
+an input that takes quadratic time to match
+the regular expression. Consequently when the attacker
+
+16
+00:01:29,520 --> 00:01:35,440
+adds such input into the HTTP request, it will take 
+much time to match and blocks other requests on  
+
+17
+00:01:35,440 --> 00:01:41,280
+the server. This attack is known as regular
+expression denial of service attacks, or ReDoS.
+
+18
+00:01:44,240 --> 00:01:50,960
+The ReDoS problem is serious now. In 2016,
+StackOverflow experienced a 34-minute outage, which is  
+
+19
+00:01:50,960 --> 00:01:57,759
+caused by an unknown ReDoS vulnerability.
+A large-scale study in 2018 analyzed more than 400,000  
+
+20
+00:01:57,760 --> 00:02:04,640
+libraries for Node.js and Python. They found 
+more than 10,000 libraries with vulnerabilities,
+
+21
+00:02:04,640 --> 00:02:08,880
+which accounts for 2% of all the
+libraries in npm and PyPI.  
+
+22
+00:02:09,680 --> 00:02:16,320
+Another study in 2018 analyzed the 10,000
+most popular modules for Node.js in npm to  
+
+23
+00:02:16,320 --> 00:02:22,239
+search for vulnerabilities, and it explored nearly 
+3,000 popular websites based on Express framework.  
+
+24
+00:02:23,200 --> 00:02:29,200
+They observed more than 300 websites among them 
+suffering from ReDoS vulnerability, and most of  
+
+25
+00:02:29,200 --> 00:02:38,399
+the websites have more than 100,000 popularity. 
+So, why does such input take so much time  
+
+26
+00:02:38,400 --> 00:02:42,800
+to be matched? It is caused by the 
+technology we use to match the regular expression,
+
+27
+00:02:42,800 --> 00:02:46,160
+which is non-deterministic finite 
+automata with epsilon moves.
+
+28
+00:02:46,720 --> 00:02:51,359
+Let's consider a simple regular expression
+"a*a*b" and its corresponding automata.  
+
+29
+00:02:52,000 --> 00:02:57,040
+It has a start state and an accept state.
+If we can find a path from the start to  
+
+30
+00:02:57,040 --> 00:03:02,720
+the accept state with a given string, then
+this string is accepted. Otherwise, if we explore  
+
+31
+00:03:02,720 --> 00:03:07,840
+all the possible paths and can't arrive at the 
+accept state, then this string is not accepted.
+
+32
+00:03:10,800 --> 00:03:16,080
+Let's see an example, string "a". We start from
+the start state and transfer to state 1.
+
+33
+00:03:17,680 --> 00:03:24,640
+Here we have 2 choices. We first try
+to cycle on the state 1 with the character 'a'.  
+
+34
+00:03:25,600 --> 00:03:31,120
+However, we stop at the state 2 and
+can't arrive at the accept state. Thus,
+
+35
+00:03:35,360 --> 00:03:37,680
+we transfer to the state 2
+through the epsilon move.
+
+36
+00:03:38,480 --> 00:03:42,799
+Unfortunately, we stop here
+again. In conclusion, we have  
+
+37
+00:03:42,800 --> 00:03:46,800
+explored all the paths and the string "a" cannot 
+be accepted by this regular expression.
+
+38
+00:03:49,680 --> 00:03:54,160
+When the string becomes longer, the search
+space for possible paths will also be large. 
+
+39
+00:03:54,160 --> 00:03:59,840
+Consequently, it will take much time to refuse the 
+input string, even several minutes or hours.
+
+40
+00:04:02,480 --> 00:04:06,560
+Our key insight is that malicious payloads
+triggering ReDoS attacks have to obey
+
+41
+00:04:06,560 --> 00:04:10,000
+certain underlying patterns
+which is invariant during content
+
+42
+00:04:10,000 --> 00:04:14,240
+manipulation across different attacks 
+targeting the same vulnerable regular expression.  
+
+43
+00:04:14,800 --> 00:04:19,920
+For example, we repeat the string "a" for many
+times here. This observation is also supported  
+
+44
+00:04:19,920 --> 00:04:24,960
+by previous works. Such pattern motivates 
+us to detect ReDoS attacks by deep learning
+
+45
+00:04:24,960 --> 00:04:33,039
+methods. Then we describe our threat
+model. It considers a website hosting a
+
+46
+00:04:33,040 --> 00:04:37,680
+web service as a potential victim. The victim
+may deploy a vulnerable regular expression  
+
+47
+00:04:37,680 --> 00:04:41,360
+to match against the incoming HTTP
+requests. The adversary is the client
+
+48
+00:04:41,360 --> 00:04:45,440
+of the web server which sends requests with 
+malicious content for ReDoS attacks.  
+
+49
+00:04:46,160 --> 00:04:52,000
+We classify ReDoS attacks into two categories, 
+reflected and stored, based on the adversary's
+
+50
+00:04:52,000 --> 00:04:57,760
+behavior. First, a reflected ReDoS
+
+51
+00:04:57,760 --> 00:05:01,360
+adversary keeps sending malicious
+requests to the vulnerable web server.
+
+52
+00:05:05,520 --> 00:05:11,440
+Second, a stored ReDoS adversary just sends one
+malicious request to the vulnerable web server
+
+53
+00:05:11,440 --> 00:05:18,240
+and then the requests or part of the contents
+are stored at the server side. Then, when a benign user  
+
+54
+00:05:18,240 --> 00:05:23,280
+sends a request to the server, the stored contents
+are fetched and matched against a vulnerable
+
+55
+00:05:23,280 --> 00:05:29,119
+regular expression, leading to a ReDoS attack. The
+outage of StackOverflow is this type of ReDoS attack.
+
+56
+00:05:32,080 --> 00:05:36,960
+Next, we present our system, RegexNet,
+which is a payload-based runtime recovery
+
+57
+00:05:36,960 --> 00:05:42,960
+system for web services. It has the following
+goals. Effective. The system should recover web  
+
+58
+00:05:42,960 --> 00:05:46,799
+services to process requests from normal 
+clients after a zero-day ReDoS attack
+
+59
+00:05:46,800 --> 00:05:52,160
+and provides comparable throughput and latency.
+Responsive. The system should quickly react
+
+60
+00:05:52,160 --> 00:05:56,960
+to the zero-day ReDoS attack and minimize the 
+downtime of the web service caused by the attack.
+
+61
+00:05:57,760 --> 00:06:03,760
+Resilient. The system should be resilient to
+different attack types. And we also require the  
+
+62
+00:06:03,760 --> 00:06:10,240
+system to be low-overhead, scalable and fault-tolerant.
+This figure shows the architecture of RegexNet.  
+
+63
+00:06:11,040 --> 00:06:16,160
+RegexNet replies on an online feedback
+loop to train a customized DNN model,
+
+64
+00:06:16,160 --> 00:06:20,240
+leverages the model to detect 
+malicious ReDoS requests, and  
+
+65
+00:06:20,240 --> 00:06:25,120
+then isolates them to separate sandboxes
+to mitigate their impact on web services.
+
+66
+00:06:28,400 --> 00:06:33,520
+The core of RegexNet is the DNN-based
+detection model. Our model consists  
+
+67
+00:06:33,520 --> 00:06:39,039
+of 4 layers. First, we feed the input into an 
+embedding layer, because it can turn the input
+
+68
+00:06:39,040 --> 00:06:44,480
+characters into dense vectors. These vectors 
+contain information of characters and is important  
+
+69
+00:06:44,480 --> 00:06:49,920
+to the convergence of the DNN.
+Second, we perform 1-dimensional convolutional  
+
+70
+00:06:49,920 --> 00:06:54,880
+operation on the embedded vectors. Such a
+convolutional layer is able to extract the local  
+
+71
+00:06:54,880 --> 00:07:02,159
+information from the sequence of characters and
+it is also computationally efficient. Third, we choose
+
+72
+00:07:02,160 --> 00:07:07,040
+a special pyramid pooling layer that draws the 
+feature maps from the output of the convolutional  
+
+73
+00:07:07,040 --> 00:07:12,640
+layer and then pools the features in arbitrary 
+regions to generate fixed-length representations.
+
+74
+00:07:13,600 --> 00:07:19,360
+Finally, we choose a fully connected layer to
+capture useful patterns from a global perspective.
+
+75
+00:07:21,920 --> 00:07:26,480
+The next question is how can
+we use the DNN model to detect
+
+76
+00:07:26,480 --> 00:07:31,280
+attacks. Here is a typical scenario. The client
+sends requests to the load balancer,  
+
+77
+00:07:31,280 --> 00:07:33,919
+and the load balancer forwards
+the request to the servers.
+
+78
+00:07:35,920 --> 00:07:40,720
+A trivial design is to put the model in front
+of the server. The requests are classified by the  
+
+79
+00:07:40,720 --> 00:07:46,400
+detector and forwarded to the server only when
+they are classified as "benign". However, such  
+
+80
+00:07:46,400 --> 00:07:53,520
+design added the overhead of classification
+into the latency. Thus, RegexNet uses a different
+
+81
+00:07:53,520 --> 00:07:59,039
+design. The load balancer forwards requests to the
+server directly. At the same time, the load balancer  
+
+82
+00:07:59,040 --> 00:08:05,600
+copies the request to the detector. If the request
+is benign, then the detector does nothing. Otherwise, if  
+
+83
+00:08:05,600 --> 00:08:10,000
+the request is classified as malicious, the
+detector will notify the server to handle it.
+
+84
+00:08:10,640 --> 00:08:15,840
+This design does not impose any latency overhead 
+on benign requests in normal scenarios, because  
+
+85
+00:08:15,840 --> 00:08:19,760
+requests are classified in parallel with 
+normal processing at the web servers.
+
+86
+00:08:22,080 --> 00:08:26,479
+When the server is notified, it migrates
+potentially malicious requests to sandboxes.  
+
+87
+00:08:26,480 --> 00:08:29,920
+Because the classifier
+cannot guarantee 100% accuracy,
+
+88
+00:08:29,920 --> 00:08:35,039
+there could be false positives. In other words, benign 
+requests might be labeled as "malicious".
+
+89
+00:08:35,039 --> 00:08:40,640
+To avoid dropping such misclassified requests, we
+migrate all potentially malicious requests to the  
+
+90
+00:08:40,640 --> 00:08:44,720
+sandbox, which is an elastic 
+bounded fraction of server instances.  
+
+91
+00:08:45,280 --> 00:08:49,439
+While such requests might experience
+longer latency, they are still executed.
+
+92
+00:08:52,320 --> 00:08:57,600
+RegexNet provides both an offline trained
+model and an online update procedure. The offline  
+
+93
+00:08:57,600 --> 00:09:03,200
+training is used to bootstrap the
+DNN model with a training data set.
+
+94
+00:09:03,200 --> 00:09:08,560
+It is mainly used to defend against known
+attacks. The online training is used to refine
+
+95
+00:09:08,560 --> 00:09:13,839
+the model with real-time measurements to adapt
+to both known and unknown attacks. When  
+
+96
+00:09:13,840 --> 00:09:17,760
+the server is processing requests, it will store
+requests and their processing time, 
+
+97
+00:09:17,760 --> 00:09:22,960
+then reports to the data collector. The data collector
+builds the training data set with these data.  
+
+98
+00:09:24,640 --> 00:09:29,280
+If the latency of the request exceeds a threshold,
+it is categorized as "malicious ". 
+
+99
+00:09:30,000 --> 00:09:35,840
+After collecting the data, RegexNet trains the model 
+and update the detector after the convergence.  
+
+100
+00:09:37,040 --> 00:09:42,400
+This is the main design of RegexNet, and
+you can find more details about it in our paper,
+
+101
+00:09:42,400 --> 00:09:44,560
+such as scalability and fault tolerance.
+
+102
+00:09:48,880 --> 00:09:53,439
+We have implemented a system prototype
+of RegexNet with a total of about  
+
+103
+00:09:53,440 --> 00:10:00,560
+2,000 lines of code. It is open-sourced at GitHub. The
+load balancer is based on HAProxy, which is a
+
+104
+00:10:00,560 --> 00:10:06,640
+widely-used open-source software load balancer.
+The server is based on Node.js applications,
+
+105
+00:10:06,640 --> 00:10:13,280
+and RegexNet adds a shim layer in C++ to
+handle migrations and measure latencies. The detector, 
+
+106
+00:10:13,280 --> 00:10:18,800
+which is responsible for detecting and training, is 
+implemented with PyTorch framework in Python.
+
+107
+00:10:21,840 --> 00:10:26,000
+In the evaluation section, we evaluated RegexNet
+with a wider variety of real-world  
+
+108
+00:10:26,000 --> 00:10:32,320
+ReDoS attacks. Our evaluation aims to answer the
+following research questions. How resilient is  
+
+109
+00:10:32,320 --> 00:10:38,400
+RegexNet against various ReDoS attacks? 
+How fast is the RegexNet in recovering web  
+
+110
+00:10:38,400 --> 00:10:45,840
+services under ReDoS attacks? How does RegexNet
+compare with the state-of-the-art reactive defense?
+
+111
+00:10:46,960 --> 00:10:53,680
+How effective is RegexNet on the different
+malicious loads and message sizes? What is the  
+
+112
+00:10:53,680 --> 00:11:01,920
+accuracy of RegexNet's model, especially with
+the imbalanced or polluted training set? In this  
+
+113
+00:11:01,920 --> 00:11:07,120
+presentation, we'll show the results for the first 
+two questions, and you can find others in our paper.
+
+114
+00:11:09,840 --> 00:11:12,720
+Before discussing the evaluation, 
+I will describe our methodology.
+
+115
+00:11:13,520 --> 00:11:19,600
+The experiments are conducted on AWS. We use 
+CPU instances for the client, load balancer
+
+116
+00:11:19,600 --> 00:11:24,640
+and the servers. and GPU instances for 
+the detector. To evaluate the performance  
+
+117
+00:11:24,640 --> 00:11:28,880
+of the system, we use 3 metrics: 
+throughput, latency and recovery time. 
+
+118
+00:11:30,240 --> 00:11:35,280
+As for the network traffics, we use Apache 
+Benchmark for benign requests. To simulate the web  
+
+119
+00:11:35,280 --> 00:11:40,319
+services with vulnerabilities, we insert 
+vulnerable regular expressions into the application, and  
+
+120
+00:11:40,320 --> 00:11:45,680
+send malicious requests with a Python program 
+that adds attacking content into the HTTP request.
+
+121
+00:11:48,720 --> 00:11:53,920
+In the first experiment, we evaluate the resiliency 
+of RegexNet with different vulnerable
+
+122
+00:11:53,920 --> 00:12:00,079
+Node.js modules.
+They are collected from previous works and public  
+
+123
+00:12:00,080 --> 00:12:05,360
+databases. This figure shows the performance
+under ReDoS attacks. The blue bars, which  
+
+124
+00:12:05,360 --> 00:12:11,280
+are throughput with RegexNet, are close to 
+normal throughputs. On the contrary, the red bars, 
+
+125
+00:12:11,280 --> 00:12:16,319
+which are throughput without RegexNet,
+shows significant decrease under ReDoS attacks.
+
+126
+00:12:19,920 --> 00:12:26,240
+In the second experiment, we also evaluate the
+resiliency of RegexNet, but under adaptive attacks.
+
+127
+00:12:27,040 --> 00:12:31,520
+We consider the model as a white box,
+and then generate adversarial requests 
+
+128
+00:12:31,520 --> 00:12:37,760
+for the vulnerable regular expression. As shown 
+in the figure, the adversary first launches
+
+129
+00:12:37,760 --> 00:12:43,520
+the attack, making the throughput drops to
+almost 0.  RegexNet quickly catches  
+
+130
+00:12:43,520 --> 00:12:48,319
+the malicious request to train its model,
+and recovers the throughput in several seconds.
+
+131
+00:12:49,360 --> 00:12:55,680
+Next, the adversary starts to generate an adaptive
+attack using a white-box gradient-based  
+
+132
+00:12:55,680 --> 00:13:02,880
+approach, and successfully creates one
+after about 1 minute. This adversarial example  
+
+133
+00:13:02,880 --> 00:13:08,880
+brings the throughput down to almost 0 again,
+but RegexNet quickly recovers the web service
+
+134
+00:13:08,880 --> 00:13:14,240
+and restores the system to the 
+original throughput within several seconds.
+
+135
+00:13:17,280 --> 00:13:22,160
+In conclusion, RegexNet is
+resilient against all kinds of ReDoS attacks.
+
+136
+00:13:24,640 --> 00:13:29,680
+In the third experiment, we evaluated the 
+responsiveness of RegexNet, especially those  
+
+137
+00:13:29,680 --> 00:13:36,319
+unknown ones. The adversary launches a
+dynamic ReDoS attacks targeting 3 different  
+
+138
+00:13:36,320 --> 00:13:41,600
+ReDoS vulnerabilities. The left figure shows
+the system throughput without RegexNet.
+
+139
+00:13:41,600 --> 00:13:46,400
+We can see that the throughput drops significantly 
+when the adversary generates malicious requests.
+
+140
+00:13:47,360 --> 00:13:51,120
+The right figure shows the system 
+throughput with RegexNet online training.
+
+141
+00:13:51,840 --> 00:13:56,160
+With the online feedback loop, RegexNet
+can quickly learn the pattern of all 3 attacks
+
+142
+00:13:56,160 --> 00:14:00,079
+in several seconds, and the 
+throughput recovers to normal level.
+
+143
+00:14:00,720 --> 00:14:04,320
+The performance can be even better 
+when combined with offline training.
+
+144
+00:14:08,960 --> 00:14:15,840
+This result shows that RegexNet can quickly recover web
+services under zero-day ReDoS attacks within in several seconds.
+
+145
+00:14:18,000 --> 00:14:23,360
+In conclusion, we propose RegexNet, the 
+first payload-based automated ReDoS recovery  
+
+146
+00:14:23,360 --> 00:14:29,760
+system for web services. It leverages a learning 
+model to classify requests and recover web services  
+
+147
+00:14:29,760 --> 00:14:35,760
+after zero-day ReDoS attacks. We design
+an online feedback loop for RegexNet. It collects  
+
+148
+00:14:35,760 --> 00:14:40,720
+training data at runtime, continuously 
+trains the model online and automatically updates  
+
+149
+00:14:40,720 --> 00:14:47,440
+its model to classify and migrate requests in
+face of adaptive or unknown attacks. We implement  
+
+150
+00:14:47,440 --> 00:14:52,160
+a system prototype of RegexNet and 
+demonstrate its effectiveness, responsiveness
+
+151
+00:14:52,720 --> 00:15:00,480
+and resiliency with experiments on a testbed with
+a wide variety of real-world ReDoS.attacks. Thank you,
+

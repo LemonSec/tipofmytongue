@@ -1,0 +1,4540 @@
+﻿1
+00:00:03,840 --> 00:00:14,269
+[Music]
+
+2
+00:00:14,719 --> 00:00:16,480
+hello i'm william burgess and i'm going
+
+3
+00:00:16,480 --> 00:00:17,920
+to be talking to you today about
+
+4
+00:00:17,920 --> 00:00:21,920
+detecting access token manipulation
+
+5
+00:00:21,920 --> 00:00:24,320
+so a little bit about me so i'm a
+
+6
+00:00:24,320 --> 00:00:26,560
+security researcher at elastic
+
+7
+00:00:26,560 --> 00:00:28,240
+i used to be part of endgame before it
+
+8
+00:00:28,240 --> 00:00:30,400
+was acquired and i used to be a pen
+
+9
+00:00:30,400 --> 00:00:32,558
+tester at a uk consultancy
+
+10
+00:00:32,558 --> 00:00:36,239
+mwr where i primarily did red teaming
+
+11
+00:00:36,239 --> 00:00:38,960
+purple teaming style assessments and my
+
+12
+00:00:38,960 --> 00:00:40,480
+my research interested generally
+
+13
+00:00:40,480 --> 00:00:41,920
+everything and anything to do with
+
+14
+00:00:41,920 --> 00:00:45,440
+low level windows internals
+
+15
+00:00:45,440 --> 00:00:48,559
+my objectives for today are threefold
+
+16
+00:00:48,559 --> 00:00:50,960
+firstly i want to help defense
+
+17
+00:00:50,960 --> 00:00:52,320
+practitioners understand
+
+18
+00:00:52,320 --> 00:00:54,320
+how access tokens work in windows
+
+19
+00:00:54,320 --> 00:00:55,680
+environments
+
+20
+00:00:55,680 --> 00:00:59,359
+and access tokens are intimately related
+
+21
+00:00:59,359 --> 00:01:00,640
+to a number of other sort of key
+
+22
+00:01:00,640 --> 00:01:02,559
+concepts in windows security
+
+23
+00:01:02,559 --> 00:01:05,199
+and in my opinion if you ignore those
+
+24
+00:01:05,199 --> 00:01:06,479
+relationships then you only get a
+
+25
+00:01:06,479 --> 00:01:08,400
+surface level understanding so
+
+26
+00:01:08,400 --> 00:01:10,400
+my definition of of access tokens and
+
+27
+00:01:10,400 --> 00:01:12,159
+access token manipulation is perhaps far
+
+28
+00:01:12,159 --> 00:01:13,200
+broader than
+
+29
+00:01:13,200 --> 00:01:14,960
+you might be expecting or perhaps used
+
+30
+00:01:14,960 --> 00:01:17,119
+to
+
+31
+00:01:17,360 --> 00:01:19,119
+the second objective is to show how
+
+32
+00:01:19,119 --> 00:01:20,960
+attackers abuse legitimate windows
+
+33
+00:01:20,960 --> 00:01:22,720
+functionality to basically compromise
+
+34
+00:01:22,720 --> 00:01:23,600
+entire
+
+35
+00:01:23,600 --> 00:01:25,759
+entire domains and in my experience this
+
+36
+00:01:25,759 --> 00:01:27,920
+is often as simple as
+
+37
+00:01:27,920 --> 00:01:29,360
+finding some credentials and then
+
+38
+00:01:29,360 --> 00:01:30,799
+abusing existing windows trust
+
+39
+00:01:30,799 --> 00:01:32,960
+relationships
+
+40
+00:01:32,960 --> 00:01:37,200
+and then lastly helped by showing the
+
+41
+00:01:37,200 --> 00:01:39,119
+the art of the possible in both offense
+
+42
+00:01:39,119 --> 00:01:41,119
+and defense i hopefully
+
+43
+00:01:41,119 --> 00:01:42,640
+help defense practitioners understand
+
+44
+00:01:42,640 --> 00:01:44,799
+their own ability to detect and respond
+
+45
+00:01:44,799 --> 00:01:46,159
+to these type of attacks
+
+46
+00:01:46,159 --> 00:01:47,840
+understand how their technology such as
+
+47
+00:01:47,840 --> 00:01:49,759
+edrs can detect
+
+48
+00:01:49,759 --> 00:01:51,680
+this type of behavior and then use this
+
+49
+00:01:51,680 --> 00:01:53,200
+as a springboard for future
+
+50
+00:01:53,200 --> 00:01:56,719
+um threat hunting um my
+
+51
+00:01:56,719 --> 00:01:59,520
+my agenda today is um three-fold so
+
+52
+00:01:59,520 --> 00:02:00,240
+firstly
+
+53
+00:02:00,240 --> 00:02:01,280
+just going to cover some windows
+
+54
+00:02:01,280 --> 00:02:03,439
+security internals so this is going to
+
+55
+00:02:03,439 --> 00:02:04,560
+focus on
+
+56
+00:02:04,560 --> 00:02:06,479
+logon sessions and access tokens and
+
+57
+00:02:06,479 --> 00:02:08,560
+then a brief recap of
+
+58
+00:02:08,560 --> 00:02:11,840
+network authentication the second part
+
+59
+00:02:11,840 --> 00:02:13,200
+is going to cover
+
+60
+00:02:13,200 --> 00:02:15,440
+three kind of techniques about how
+
+61
+00:02:15,440 --> 00:02:17,680
+attackers can abuse access tokens
+
+62
+00:02:17,680 --> 00:02:19,120
+and this is going to focus on the net
+
+63
+00:02:19,120 --> 00:02:21,520
+only flag and pass the ticket attacks
+
+64
+00:02:21,520 --> 00:02:23,520
+and overpass the hash
+
+65
+00:02:23,520 --> 00:02:25,120
+and then the last part is going to be
+
+66
+00:02:25,120 --> 00:02:26,720
+how we can start to detect these types
+
+67
+00:02:26,720 --> 00:02:28,160
+of attacks
+
+68
+00:02:28,160 --> 00:02:30,400
+now my research when i when i started
+
+69
+00:02:30,400 --> 00:02:32,560
+out was essentially looking to develop
+
+70
+00:02:32,560 --> 00:02:33,920
+user land hooks
+
+71
+00:02:33,920 --> 00:02:36,959
+for for these types of attacks so
+
+72
+00:02:36,959 --> 00:02:40,720
+um my my focus really was on hooking and
+
+73
+00:02:40,720 --> 00:02:42,640
+the proof of concepts i'm going to show
+
+74
+00:02:42,640 --> 00:02:44,560
+will be predominantly hook based but i
+
+75
+00:02:44,560 --> 00:02:46,239
+will show other sort of native sources
+
+76
+00:02:46,239 --> 00:02:51,840
+of telemetry along the way
+
+77
+00:02:52,879 --> 00:02:54,400
+so the first part i'm going to cover is
+
+78
+00:02:54,400 --> 00:02:56,720
+some window security internals
+
+79
+00:02:56,720 --> 00:02:58,640
+and one of the key things to understand
+
+80
+00:02:58,640 --> 00:02:59,840
+is the relationship between log on
+
+81
+00:02:59,840 --> 00:03:01,440
+sessions and access tokens and the best
+
+82
+00:03:01,440 --> 00:03:03,280
+way to demonstrate this is what is to
+
+83
+00:03:03,280 --> 00:03:04,720
+show what actually happens when you log
+
+84
+00:03:04,720 --> 00:03:05,360
+on
+
+85
+00:03:05,360 --> 00:03:07,680
+so in this demo so in this example we
+
+86
+00:03:07,680 --> 00:03:08,879
+have the user cosmo
+
+87
+00:03:08,879 --> 00:03:11,200
+who's logging on and when when they
+
+88
+00:03:11,200 --> 00:03:12,720
+enter their password basically the
+
+89
+00:03:12,720 --> 00:03:15,599
+local security authority or the lsa in a
+
+90
+00:03:15,599 --> 00:03:16,640
+in a
+
+91
+00:03:16,640 --> 00:03:18,239
+in a domain environment will typically
+
+92
+00:03:18,239 --> 00:03:20,159
+forward this to the domain controller
+
+93
+00:03:20,159 --> 00:03:21,680
+who will then actually authenticate the
+
+94
+00:03:21,680 --> 00:03:24,480
+user following successful authentication
+
+95
+00:03:24,480 --> 00:03:27,120
+the lsa produces two key artifacts so a
+
+96
+00:03:27,120 --> 00:03:29,280
+log on session and an access token
+
+97
+00:03:29,280 --> 00:03:32,080
+the key thing is a login session is is
+
+98
+00:03:32,080 --> 00:03:32,640
+what it
+
+99
+00:03:32,640 --> 00:03:34,480
+says it is it indicates the presence of
+
+100
+00:03:34,480 --> 00:03:35,760
+a user on a machine
+
+101
+00:03:35,760 --> 00:03:37,200
+so it starts when they're successfully
+
+102
+00:03:37,200 --> 00:03:39,360
+authenticated and then ends
+
+103
+00:03:39,360 --> 00:03:42,720
+when they log off and there are two
+
+104
+00:03:42,720 --> 00:03:43,200
+really
+
+105
+00:03:43,200 --> 00:03:45,440
+key points about this relationship that
+
+106
+00:03:45,440 --> 00:03:47,200
+i just want to highlight
+
+107
+00:03:47,200 --> 00:03:49,920
+so firstly access tokens are always
+
+108
+00:03:49,920 --> 00:03:51,599
+linked to an originating
+
+109
+00:03:51,599 --> 00:03:53,599
+logon session and you can see that via
+
+110
+00:03:53,599 --> 00:03:55,760
+the auth id parameter here
+
+111
+00:03:55,760 --> 00:03:57,840
+um and so a logon session can have you
+
+112
+00:03:57,840 --> 00:03:58,959
+know thousands
+
+113
+00:03:58,959 --> 00:04:00,560
+hundreds of access tokens associated
+
+114
+00:04:00,560 --> 00:04:02,080
+with it but access tokens
+
+115
+00:04:02,080 --> 00:04:04,000
+only ever can be associated with one
+
+116
+00:04:04,000 --> 00:04:06,080
+originating logon session
+
+117
+00:04:06,080 --> 00:04:09,200
+and so secondly access tokens act as
+
+118
+00:04:09,200 --> 00:04:12,480
+a proxy or an extension of the logon
+
+119
+00:04:12,480 --> 00:04:14,080
+session so you as a developer you only
+
+120
+00:04:14,080 --> 00:04:15,680
+ever interact with access tokens you
+
+121
+00:04:15,680 --> 00:04:16,079
+never
+
+122
+00:04:16,079 --> 00:04:19,120
+touch log on sessions and
+
+123
+00:04:19,120 --> 00:04:21,839
+as a result access tokens act as a
+
+124
+00:04:21,839 --> 00:04:23,840
+volatile repository for the security
+
+125
+00:04:23,840 --> 00:04:24,400
+sessions
+
+126
+00:04:24,400 --> 00:04:26,479
+associated with that logon session and
+
+127
+00:04:26,479 --> 00:04:27,919
+hence they determine the security
+
+128
+00:04:27,919 --> 00:04:29,360
+context of the user
+
+129
+00:04:29,360 --> 00:04:30,960
+and by security context i just mean the
+
+130
+00:04:30,960 --> 00:04:32,880
+information cached in the token so
+
+131
+00:04:32,880 --> 00:04:36,720
+group memberships privileges etc
+
+132
+00:04:36,720 --> 00:04:38,560
+so if we continue with our example once
+
+133
+00:04:38,560 --> 00:04:39,840
+the lsa has
+
+134
+00:04:39,840 --> 00:04:42,800
+a token it will typically spawn the
+
+135
+00:04:42,800 --> 00:04:45,040
+user's shell which is normally explorer
+
+136
+00:04:45,040 --> 00:04:47,600
+and it will attach this this token to it
+
+137
+00:04:47,600 --> 00:04:48,800
+and so every process
+
+138
+00:04:48,800 --> 00:04:52,720
+has to have a token um
+
+139
+00:04:52,720 --> 00:04:54,080
+attached to it and this is typically
+
+140
+00:04:54,080 --> 00:04:57,199
+referred to as the primary access token
+
+141
+00:04:57,199 --> 00:04:58,880
+and then subsequently any other
+
+142
+00:04:58,880 --> 00:05:01,919
+processes spawned by the shell
+
+143
+00:05:01,919 --> 00:05:03,840
+they inherit the security context of the
+
+144
+00:05:03,840 --> 00:05:05,520
+parent and then they get their own local
+
+145
+00:05:05,520 --> 00:05:06,880
+copy of this token
+
+146
+00:05:06,880 --> 00:05:08,800
+and the key thing here is that the token
+
+147
+00:05:08,800 --> 00:05:11,360
+again acts as this volatile repository
+
+148
+00:05:11,360 --> 00:05:13,600
+so a process can change its own settings
+
+149
+00:05:13,600 --> 00:05:15,840
+without affecting other processes
+
+150
+00:05:15,840 --> 00:05:17,919
+and so chrome for example can create a
+
+151
+00:05:17,919 --> 00:05:19,680
+restricted access token to effectively
+
+152
+00:05:19,680 --> 00:05:21,520
+sandbox itself from
+
+153
+00:05:21,520 --> 00:05:23,520
+you know memory corruption style
+
+154
+00:05:23,520 --> 00:05:25,039
+exploits so that
+
+155
+00:05:25,039 --> 00:05:26,479
+if an attacker is successful then the
+
+156
+00:05:26,479 --> 00:05:28,160
+damage is restricted
+
+157
+00:05:28,160 --> 00:05:29,680
+um and it can do this by removing
+
+158
+00:05:29,680 --> 00:05:32,080
+dangerous groups or privileges etc
+
+159
+00:05:32,080 --> 00:05:33,680
+and the reason why this is so important
+
+160
+00:05:33,680 --> 00:05:35,440
+is that the access tokens are the
+
+161
+00:05:35,440 --> 00:05:37,039
+fundamental component of windows
+
+162
+00:05:37,039 --> 00:05:39,759
+security so whenever a process or a
+
+163
+00:05:39,759 --> 00:05:41,360
+thread attempts to access some
+
+164
+00:05:41,360 --> 00:05:43,440
+securable object managed by the kernel
+
+165
+00:05:43,440 --> 00:05:44,479
+whether it's a file
+
+166
+00:05:44,479 --> 00:05:46,320
+process or thread windows will do an
+
+167
+00:05:46,320 --> 00:05:47,759
+access check and it needs three things
+
+168
+00:05:47,759 --> 00:05:48,800
+to do this
+
+169
+00:05:48,800 --> 00:05:51,199
+it needs the authorization attribute in
+
+170
+00:05:51,199 --> 00:05:52,000
+the token
+
+171
+00:05:52,000 --> 00:05:54,320
+which in this case will be a restricted
+
+172
+00:05:54,320 --> 00:05:55,600
+access token
+
+173
+00:05:55,600 --> 00:05:57,680
+it needs the intentions up front because
+
+174
+00:05:57,680 --> 00:05:59,039
+in windows the access check for
+
+175
+00:05:59,039 --> 00:06:00,240
+performance is only
+
+176
+00:06:00,240 --> 00:06:01,840
+is only done the first time and you need
+
+177
+00:06:01,840 --> 00:06:03,360
+to state exactly what you plan to do
+
+178
+00:06:03,360 --> 00:06:05,120
+with the object
+
+179
+00:06:05,120 --> 00:06:06,400
+and the third thing is a security
+
+180
+00:06:06,400 --> 00:06:08,240
+descriptor so this is
+
+181
+00:06:08,240 --> 00:06:09,680
+contained within the object and it
+
+182
+00:06:09,680 --> 00:06:11,919
+basically has a access control list that
+
+183
+00:06:11,919 --> 00:06:12,560
+says who
+
+184
+00:06:12,560 --> 00:06:15,360
+and who and like who is not um able to
+
+185
+00:06:15,360 --> 00:06:16,240
+access it
+
+186
+00:06:16,240 --> 00:06:17,360
+and then based on these windows we'll
+
+187
+00:06:17,360 --> 00:06:20,080
+make a decision and um
+
+188
+00:06:20,080 --> 00:06:21,840
+this this is why the ability to control
+
+189
+00:06:21,840 --> 00:06:23,360
+the security settings in access tokens
+
+190
+00:06:23,360 --> 00:06:26,160
+is so important
+
+191
+00:06:26,240 --> 00:06:27,759
+so the next thing to briefly cover is
+
+192
+00:06:27,759 --> 00:06:29,520
+network authentication so this is a kind
+
+193
+00:06:29,520 --> 00:06:31,759
+of classic scenario in a domain where
+
+194
+00:06:31,759 --> 00:06:33,360
+you as a user you want to access some
+
+195
+00:06:33,360 --> 00:06:34,960
+resources across the domain say a file
+
+196
+00:06:34,960 --> 00:06:36,000
+share or something
+
+197
+00:06:36,000 --> 00:06:37,360
+and so in this i'm just viewing the
+
+198
+00:06:37,360 --> 00:06:40,479
+network shares of the domain controller
+
+199
+00:06:40,479 --> 00:06:42,160
+but how does this actually work under
+
+200
+00:06:42,160 --> 00:06:44,560
+the hood
+
+201
+00:06:44,720 --> 00:06:48,880
+and now the key thing here
+
+202
+00:06:48,880 --> 00:06:50,319
+is that the access token the login
+
+203
+00:06:50,319 --> 00:06:52,400
+session are unique to the client machine
+
+204
+00:06:52,400 --> 00:06:55,360
+on the left and so the client can't send
+
+205
+00:06:55,360 --> 00:06:56,639
+its token over the wire or something
+
+206
+00:06:56,639 --> 00:06:57,840
+like that because the server still can't
+
+207
+00:06:57,840 --> 00:06:59,039
+verify who
+
+208
+00:06:59,039 --> 00:07:00,080
+you know just because you say you're
+
+209
+00:07:00,080 --> 00:07:01,440
+that user it doesn't know and it doesn't
+
+210
+00:07:01,440 --> 00:07:02,720
+correspond to a meaningful log on
+
+211
+00:07:02,720 --> 00:07:03,199
+sessions
+
+212
+00:07:03,199 --> 00:07:05,599
+it's basically worthless so effectively
+
+213
+00:07:05,599 --> 00:07:07,120
+you need to re-authenticate to the
+
+214
+00:07:07,120 --> 00:07:08,000
+server
+
+215
+00:07:08,000 --> 00:07:10,560
+now for interactive logons and in fact
+
+216
+00:07:10,560 --> 00:07:12,639
+every type of login apart from network
+
+217
+00:07:12,639 --> 00:07:14,160
+windows will automatically cache your
+
+218
+00:07:14,160 --> 00:07:16,000
+credentials now it doesn't matter
+
+219
+00:07:16,000 --> 00:07:18,560
+if it's a kerberos ticket an ntlm hash
+
+220
+00:07:18,560 --> 00:07:20,639
+when you try and access a resource
+
+221
+00:07:20,639 --> 00:07:22,160
+windows will automatically try and
+
+222
+00:07:22,160 --> 00:07:24,400
+authenticate on your behalf for you
+
+223
+00:07:24,400 --> 00:07:25,840
+and this is the intended design of
+
+224
+00:07:25,840 --> 00:07:28,479
+windows single sign-on and it's also
+
+225
+00:07:28,479 --> 00:07:30,319
+the reason for lots of say ntlm relay
+
+226
+00:07:30,319 --> 00:07:32,880
+style style attacks
+
+227
+00:07:32,880 --> 00:07:35,360
+from the server perspective it's again
+
+228
+00:07:35,360 --> 00:07:37,199
+produced with with two key artefacts it
+
+229
+00:07:37,199 --> 00:07:38,800
+gets a logon session
+
+230
+00:07:38,800 --> 00:07:41,199
+and a token there's a few key
+
+231
+00:07:41,199 --> 00:07:42,400
+differences here though
+
+232
+00:07:42,400 --> 00:07:43,840
+note that this is a network logon
+
+233
+00:07:43,840 --> 00:07:45,840
+session it me which means it represents
+
+234
+00:07:45,840 --> 00:07:47,440
+a remote client
+
+235
+00:07:47,440 --> 00:07:49,280
+um and secondly that there are no
+
+236
+00:07:49,280 --> 00:07:51,280
+credentials backed up by this
+
+237
+00:07:51,280 --> 00:07:52,639
+and this is typically what's known as
+
+238
+00:07:52,639 --> 00:07:54,560
+the double hop problem so you can't
+
+239
+00:07:54,560 --> 00:07:55,840
+off that box to someone else because
+
+240
+00:07:55,840 --> 00:07:58,319
+there's no credentials there
+
+241
+00:07:58,319 --> 00:07:59,919
+now i mentioned before that every
+
+242
+00:07:59,919 --> 00:08:02,160
+processor has a primary access token
+
+243
+00:08:02,160 --> 00:08:04,319
+and so when the server is presented this
+
+244
+00:08:04,319 --> 00:08:05,360
+token
+
+245
+00:08:05,360 --> 00:08:07,280
+what does it do with it and this leads
+
+246
+00:08:07,280 --> 00:08:09,039
+nicely to the the windows concept of
+
+247
+00:08:09,039 --> 00:08:10,800
+impersonation
+
+248
+00:08:10,800 --> 00:08:13,520
+and so typically into a multi-threaded
+
+249
+00:08:13,520 --> 00:08:14,960
+application
+
+250
+00:08:14,960 --> 00:08:17,440
+multiple threads may try and adjust that
+
+251
+00:08:17,440 --> 00:08:19,759
+volatile repository of security settings
+
+252
+00:08:19,759 --> 00:08:21,199
+at the same time which could lead to
+
+253
+00:08:21,199 --> 00:08:24,000
+sort of weird bugs and race conditions
+
+254
+00:08:24,000 --> 00:08:26,080
+and to solve this windows has a feature
+
+255
+00:08:26,080 --> 00:08:27,520
+called impersonation which
+
+256
+00:08:27,520 --> 00:08:30,720
+basically allows a thread its own
+
+257
+00:08:30,720 --> 00:08:32,640
+local copy of an access token which it
+
+258
+00:08:32,640 --> 00:08:34,799
+can then modify as it sees fit
+
+259
+00:08:34,799 --> 00:08:36,159
+um and this this is known as
+
+260
+00:08:36,159 --> 00:08:37,360
+impersonation and the key thing here is
+
+261
+00:08:37,360 --> 00:08:39,360
+this is an impersonation token it's
+
+262
+00:08:39,360 --> 00:08:40,559
+applied to a thread
+
+263
+00:08:40,559 --> 00:08:42,880
+and so it allows the thread to to slip
+
+264
+00:08:42,880 --> 00:08:43,760
+into a different
+
+265
+00:08:43,760 --> 00:08:46,720
+security context and so and this is
+
+266
+00:08:46,720 --> 00:08:48,320
+exactly what the server does so so
+
+267
+00:08:48,320 --> 00:08:50,320
+in in recap then we have the user
+
+268
+00:08:50,320 --> 00:08:52,080
+re-authenticated over the network
+
+269
+00:08:52,080 --> 00:08:53,519
+they have a new network logon session
+
+270
+00:08:53,519 --> 00:08:55,040
+produced and the server is given an
+
+271
+00:08:55,040 --> 00:08:56,399
+impersonation token
+
+272
+00:08:56,399 --> 00:08:58,160
+which links back to that originating
+
+273
+00:08:58,160 --> 00:09:00,560
+network logon the server then uses this
+
+274
+00:09:00,560 --> 00:09:01,680
+token
+
+275
+00:09:01,680 --> 00:09:04,560
+um to perform work on behalf of the
+
+276
+00:09:04,560 --> 00:09:05,040
+client
+
+277
+00:09:05,040 --> 00:09:06,800
+and so all access checks they'll use
+
+278
+00:09:06,800 --> 00:09:08,080
+that threads token
+
+279
+00:09:08,080 --> 00:09:10,560
+which is that remote user and this is
+
+280
+00:09:10,560 --> 00:09:12,720
+how windows can force access control
+
+281
+00:09:12,720 --> 00:09:16,399
+in in client server applications
+
+282
+00:09:16,560 --> 00:09:18,480
+um and as a note just for most of
+
+283
+00:09:18,480 --> 00:09:20,000
+windows with key communication protocols
+
+284
+00:09:20,000 --> 00:09:21,600
+this is handed automatically this the
+
+285
+00:09:21,600 --> 00:09:23,839
+server just calls the api
+
+286
+00:09:23,839 --> 00:09:25,680
+rpc impersonate client and it
+
+287
+00:09:25,680 --> 00:09:27,279
+automatically starts slipping into that
+
+288
+00:09:27,279 --> 00:09:31,360
+security context of that remote user
+
+289
+00:09:35,279 --> 00:09:36,880
+so the second part of this presentation
+
+290
+00:09:36,880 --> 00:09:39,279
+is going to start to focus on
+
+291
+00:09:39,279 --> 00:09:40,880
+how attackers can actually start to
+
+292
+00:09:40,880 --> 00:09:44,160
+abuse access tokens
+
+293
+00:09:44,160 --> 00:09:45,839
+now i want you to consider the following
+
+294
+00:09:45,839 --> 00:09:48,160
+scenario which is very typical which is
+
+295
+00:09:48,160 --> 00:09:50,480
+an attacker's fish a user and they've
+
+296
+00:09:50,480 --> 00:09:51,200
+got a sheller
+
+297
+00:09:51,200 --> 00:09:54,000
+holding a corp in a corporate network um
+
+298
+00:09:54,000 --> 00:09:55,360
+a key thing here is it doesn't matter
+
+299
+00:09:55,360 --> 00:09:56,640
+what payload the attacker used or
+
+300
+00:09:56,640 --> 00:09:57,360
+whatever
+
+301
+00:09:57,360 --> 00:09:59,680
+they're running in a process which is in
+
+302
+00:09:59,680 --> 00:10:01,680
+the security context of that user
+
+303
+00:10:01,680 --> 00:10:03,360
+and in this case that user has no
+
+304
+00:10:03,360 --> 00:10:04,880
+privileges across the domain
+
+305
+00:10:04,880 --> 00:10:06,480
+so any attempts will use their cash
+
+306
+00:10:06,480 --> 00:10:09,120
+credentials and will fail so
+
+307
+00:10:09,120 --> 00:10:10,800
+the attacker's got to move quickly but
+
+308
+00:10:10,800 --> 00:10:13,599
+what can they do
+
+309
+00:10:14,079 --> 00:10:15,600
+and so they effectively have three
+
+310
+00:10:15,600 --> 00:10:18,000
+options here and the first one is they
+
+311
+00:10:18,000 --> 00:10:19,920
+can steal the token of an already logged
+
+312
+00:10:19,920 --> 00:10:21,279
+on privileged user
+
+313
+00:10:21,279 --> 00:10:22,320
+and again because they want to move
+
+314
+00:10:22,320 --> 00:10:24,399
+laterally they need credits cached so a
+
+315
+00:10:24,399 --> 00:10:26,399
+non-network logon
+
+316
+00:10:26,399 --> 00:10:30,399
+and this they can then
+
+317
+00:10:30,399 --> 00:10:31,600
+with this token they can then
+
+318
+00:10:31,600 --> 00:10:33,200
+impersonate or spawn a process whatever
+
+319
+00:10:33,200 --> 00:10:34,720
+but they they can then move laterally
+
+320
+00:10:34,720 --> 00:10:35,600
+using that
+
+321
+00:10:35,600 --> 00:10:38,160
+those cache credentials if they can't
+
+322
+00:10:38,160 --> 00:10:39,040
+find credentials
+
+323
+00:10:39,040 --> 00:10:41,680
+sorry if if this if a user already isn't
+
+324
+00:10:41,680 --> 00:10:42,320
+logged in
+
+325
+00:10:42,320 --> 00:10:44,480
+then they need to find credentials and
+
+326
+00:10:44,480 --> 00:10:46,000
+if they do well then they can create
+
+327
+00:10:46,000 --> 00:10:47,519
+a new logon session with these stolen
+
+328
+00:10:47,519 --> 00:10:49,279
+credentials and then impersonate the
+
+329
+00:10:49,279 --> 00:10:53,439
+return token or spawn a process with it
+
+330
+00:10:53,680 --> 00:10:55,760
+and then their last option is again they
+
+331
+00:10:55,760 --> 00:10:57,600
+still need stolen credentials but
+
+332
+00:10:57,600 --> 00:10:58,880
+they can just change the cash
+
+333
+00:10:58,880 --> 00:11:00,320
+credentials associated with their
+
+334
+00:11:00,320 --> 00:11:01,519
+current logged on user
+
+335
+00:11:01,519 --> 00:11:03,440
+to these stolen credentials and so this
+
+336
+00:11:03,440 --> 00:11:05,360
+could be legitimately through an api or
+
+337
+00:11:05,360 --> 00:11:06,800
+illegitimately say by
+
+338
+00:11:06,800 --> 00:11:09,839
+directly modifying lsat's memory and the
+
+339
+00:11:09,839 --> 00:11:11,040
+examples we're going to cover are
+
+340
+00:11:11,040 --> 00:11:14,160
+largely focused on two and three
+
+341
+00:11:14,160 --> 00:11:17,360
+and so the first um the first case is
+
+342
+00:11:17,360 --> 00:11:19,040
+sort of legitimately used by this net
+
+343
+00:11:19,040 --> 00:11:20,959
+only flag and the subtitle here is from
+
+344
+00:11:20,959 --> 00:11:22,160
+a really excellent blog by
+
+345
+00:11:22,160 --> 00:11:25,839
+by rafael mudge and so say an attacker
+
+346
+00:11:25,839 --> 00:11:27,200
+if they find creds where they can use
+
+347
+00:11:27,200 --> 00:11:29,440
+the logon user api
+
+348
+00:11:29,440 --> 00:11:32,079
+to to basically create a new logon
+
+349
+00:11:32,079 --> 00:11:33,839
+session and get a token in return
+
+350
+00:11:33,839 --> 00:11:35,360
+and so they can supply username domain
+
+351
+00:11:35,360 --> 00:11:37,680
+password and a logon type
+
+352
+00:11:37,680 --> 00:11:40,959
+and the logon type um
+
+353
+00:11:40,959 --> 00:11:42,720
+is basically what you specify for the
+
+354
+00:11:42,720 --> 00:11:44,320
+login type depends what kind of token
+
+355
+00:11:44,320 --> 00:11:45,279
+you get back
+
+356
+00:11:45,279 --> 00:11:47,360
+in this case we we want creds associated
+
+357
+00:11:47,360 --> 00:11:48,560
+with it so we're going to say
+
+358
+00:11:48,560 --> 00:11:51,680
+an interactive logon
+
+359
+00:11:52,959 --> 00:11:54,639
+in the case of an interactive logon we
+
+360
+00:11:54,639 --> 00:11:56,399
+get a primary token back so if we want
+
+361
+00:11:56,399 --> 00:11:57,839
+to impersonate that on a thread then we
+
+362
+00:11:57,839 --> 00:11:59,440
+need to convert it to an impersonation
+
+363
+00:11:59,440 --> 00:12:00,000
+token
+
+364
+00:12:00,000 --> 00:12:01,680
+and so we can use duplicate token x to
+
+365
+00:12:01,680 --> 00:12:03,519
+do this and we just apply a token type
+
+366
+00:12:03,519 --> 00:12:05,600
+of token impersonate
+
+367
+00:12:05,600 --> 00:12:06,720
+and then lastly having got an
+
+368
+00:12:06,720 --> 00:12:08,240
+impersonation token we can use set
+
+369
+00:12:08,240 --> 00:12:09,839
+thread token or impersonally logged on
+
+370
+00:12:09,839 --> 00:12:10,399
+user
+
+371
+00:12:10,399 --> 00:12:12,160
+and this will make the thread slip into
+
+372
+00:12:12,160 --> 00:12:13,920
+that security context of that that
+
+373
+00:12:13,920 --> 00:12:16,399
+logged on user
+
+374
+00:12:16,399 --> 00:12:18,480
+and note that both of these are wrappers
+
+375
+00:12:18,480 --> 00:12:20,000
+around ntc information thread which will
+
+376
+00:12:20,000 --> 00:12:22,959
+be important later
+
+377
+00:12:22,959 --> 00:12:24,959
+now say an attacker finds valid
+
+378
+00:12:24,959 --> 00:12:26,240
+credentials
+
+379
+00:12:26,240 --> 00:12:27,839
+they try and log the user in but they
+
+380
+00:12:27,839 --> 00:12:29,839
+access is denied and this could be a
+
+381
+00:12:29,839 --> 00:12:31,440
+legitimate reason you know the account
+
+382
+00:12:31,440 --> 00:12:33,200
+is valid but that user can't log on to
+
+383
+00:12:33,200 --> 00:12:35,440
+that particular machine
+
+384
+00:12:35,440 --> 00:12:37,920
+what can they do now things get very
+
+385
+00:12:37,920 --> 00:12:39,600
+interesting if you supply this logon new
+
+386
+00:12:39,600 --> 00:12:41,120
+credentials flag
+
+387
+00:12:41,120 --> 00:12:43,519
+and what this does is it clones your
+
+388
+00:12:43,519 --> 00:12:45,120
+current access token
+
+389
+00:12:45,120 --> 00:12:46,880
+but it changes the credentials cached
+
+390
+00:12:46,880 --> 00:12:48,160
+with it
+
+391
+00:12:48,160 --> 00:12:50,560
+and so when you try and then access a
+
+392
+00:12:50,560 --> 00:12:51,760
+network resource
+
+393
+00:12:51,760 --> 00:12:53,440
+it will authenticate with the stolen
+
+394
+00:12:53,440 --> 00:12:55,600
+credentials and so you'll get a session
+
+395
+00:12:55,600 --> 00:12:56,480
+that remote host
+
+396
+00:12:56,480 --> 00:12:58,800
+as with the as the user of the who
+
+397
+00:12:58,800 --> 00:12:59,600
+belongs to those
+
+398
+00:12:59,600 --> 00:13:02,639
+credentials and you can do the same
+
+399
+00:13:02,639 --> 00:13:04,399
+thing with create processes log on w
+
+400
+00:13:04,399 --> 00:13:04,880
+it's got
+
+401
+00:13:04,880 --> 00:13:07,279
+a logon flag of net credentials only
+
+402
+00:13:07,279 --> 00:13:08,720
+these flags are equivalent all they mean
+
+403
+00:13:08,720 --> 00:13:10,160
+is that these credentials are only to be
+
+404
+00:13:10,160 --> 00:13:11,839
+used on the network
+
+405
+00:13:11,839 --> 00:13:13,760
+um and this is basically what the the
+
+406
+00:13:13,760 --> 00:13:15,600
+run as tool yeah the assistant
+
+407
+00:13:15,600 --> 00:13:17,680
+of sorry the native windows tool run as
+
+408
+00:13:17,680 --> 00:13:19,279
+does with the only flag
+
+409
+00:13:19,279 --> 00:13:21,120
+it allows you to specify credentials
+
+410
+00:13:21,120 --> 00:13:22,560
+only to be used in the network
+
+411
+00:13:22,560 --> 00:13:26,079
+and so i have a quick demo
+
+412
+00:13:33,440 --> 00:13:35,440
+and so we can see here that i am running
+
+413
+00:13:35,440 --> 00:13:38,800
+as the user cosmo
+
+414
+00:13:39,120 --> 00:13:40,639
+and then i'm just going to try and
+
+415
+00:13:40,639 --> 00:13:42,880
+enumerate the c dollar
+
+416
+00:13:42,880 --> 00:13:44,399
+or the admin share on the domain
+
+417
+00:13:44,399 --> 00:13:46,800
+controller and i'm rightly denied
+
+418
+00:13:46,800 --> 00:13:48,399
+because i'm just a standard
+
+419
+00:13:48,399 --> 00:13:49,519
+user there's no reason why i should be
+
+420
+00:13:49,519 --> 00:13:52,000
+able to do this this is contrived but
+
+421
+00:13:52,000 --> 00:13:52,639
+i've just got
+
+422
+00:13:52,639 --> 00:13:54,320
+on the on the domain controller here now
+
+423
+00:13:54,320 --> 00:13:56,000
+i'm just dumping creds and i can find
+
+424
+00:13:56,000 --> 00:13:57,279
+the clear text
+
+425
+00:13:57,279 --> 00:14:01,040
+domain admin password i then can
+
+426
+00:14:01,040 --> 00:14:03,120
+use run as with that magic and their
+
+427
+00:14:03,120 --> 00:14:04,240
+only flag
+
+428
+00:14:04,240 --> 00:14:06,720
+and use those credentials to spawn a new
+
+429
+00:14:06,720 --> 00:14:07,519
+process
+
+430
+00:14:07,519 --> 00:14:09,360
+and remember this clones the current
+
+431
+00:14:09,360 --> 00:14:10,959
+access token but changes the cache
+
+432
+00:14:10,959 --> 00:14:13,680
+credentials
+
+433
+00:14:15,199 --> 00:14:16,959
+just to note that this creates a new
+
+434
+00:14:16,959 --> 00:14:19,199
+logon session so we can see
+
+435
+00:14:19,199 --> 00:14:22,240
+we can see it there the 4917e0 and then
+
+436
+00:14:22,240 --> 00:14:24,560
+we can use the sysinternals tools to
+
+437
+00:14:24,560 --> 00:14:26,000
+enumerate them so we can see this new
+
+438
+00:14:26,000 --> 00:14:30,639
+credentials logon type
+
+439
+00:14:30,639 --> 00:14:33,519
+and similarly you also get a an event
+
+440
+00:14:33,519 --> 00:14:35,440
+4624 in the windows
+
+441
+00:14:35,440 --> 00:14:37,680
+event log again log on type 9 and you
+
+442
+00:14:37,680 --> 00:14:41,199
+can see the target outbound username
+
+443
+00:14:42,959 --> 00:14:46,959
+now if i just spawn a new command prompt
+
+444
+00:14:46,959 --> 00:14:48,399
+again i'm going to run who am i and this
+
+445
+00:14:48,399 --> 00:14:50,320
+would just show i'm the same user
+
+446
+00:14:50,320 --> 00:14:52,000
+also note that the credentials are not
+
+447
+00:14:52,000 --> 00:14:53,600
+validated when you enter them they're
+
+448
+00:14:53,600 --> 00:14:55,519
+only validated when you try and remotely
+
+449
+00:14:55,519 --> 00:14:58,639
+authenticate to a host
+
+450
+00:14:58,639 --> 00:15:00,240
+and so now i'm going to enumerate the c
+
+451
+00:15:00,240 --> 00:15:01,760
+dollar share and
+
+452
+00:15:01,760 --> 00:15:05,440
+i'm an admin and i can similarly just
+
+453
+00:15:05,440 --> 00:15:07,360
+enter a new ps session
+
+454
+00:15:07,360 --> 00:15:10,240
+just to confirm the same thing if i run
+
+455
+00:15:10,240 --> 00:15:12,480
+who am i here
+
+456
+00:15:12,480 --> 00:15:15,440
+i'm the administrator
+
+457
+00:15:21,040 --> 00:15:22,720
+and you can you can apply very similar
+
+458
+00:15:22,720 --> 00:15:24,720
+behavior with kerberos and this is
+
+459
+00:15:24,720 --> 00:15:25,920
+typically you know it's past the ticket
+
+460
+00:15:25,920 --> 00:15:27,199
+attacks and this is the second attack
+
+461
+00:15:27,199 --> 00:15:28,639
+we're going to look at
+
+462
+00:15:28,639 --> 00:15:31,360
+um as a brief recap of kerberos so when
+
+463
+00:15:31,360 --> 00:15:31,920
+you
+
+464
+00:15:31,920 --> 00:15:34,079
+enter your password what the kerberos
+
+465
+00:15:34,079 --> 00:15:35,440
+provider will do is it will
+
+466
+00:15:35,440 --> 00:15:37,120
+it will hash the um it will take the
+
+467
+00:15:37,120 --> 00:15:38,480
+instant hash of your password and
+
+468
+00:15:38,480 --> 00:15:40,079
+encrypt a timestamp and send it to the
+
+469
+00:15:40,079 --> 00:15:42,240
+domain controller the domain controller
+
+470
+00:15:42,240 --> 00:15:44,240
+once it verifies your identity will send
+
+471
+00:15:44,240 --> 00:15:45,839
+you back a ticket granting ticket or a
+
+472
+00:15:45,839 --> 00:15:47,040
+tgt
+
+473
+00:15:47,040 --> 00:15:48,639
+then whenever you want to access another
+
+474
+00:15:48,639 --> 00:15:50,079
+resource across the domain
+
+475
+00:15:50,079 --> 00:15:51,600
+you give this to the maintenance i want
+
+476
+00:15:51,600 --> 00:15:52,800
+to access this file share and it will
+
+477
+00:15:52,800 --> 00:15:54,160
+give you a ticket granting service
+
+478
+00:15:54,160 --> 00:15:54,720
+ticket
+
+479
+00:15:54,720 --> 00:15:56,639
+which you can then provide to that file
+
+480
+00:15:56,639 --> 00:15:59,040
+server and you can start accessing stuff
+
+481
+00:15:59,040 --> 00:16:00,639
+and what pass the ticket does is it
+
+482
+00:16:00,639 --> 00:16:02,560
+allows you to just basically arbitrarily
+
+483
+00:16:02,560 --> 00:16:04,240
+change the credentials associated with
+
+484
+00:16:04,240 --> 00:16:05,440
+your logon session
+
+485
+00:16:05,440 --> 00:16:07,759
+so you can just apply a tgt for a domain
+
+486
+00:16:07,759 --> 00:16:08,480
+admin
+
+487
+00:16:08,480 --> 00:16:10,320
+and then any and then you can access the
+
+488
+00:16:10,320 --> 00:16:12,880
+domain as that user
+
+489
+00:16:12,880 --> 00:16:15,920
+um the magic is mainly done by this lsa
+
+490
+00:16:15,920 --> 00:16:17,759
+call authentication package function
+
+491
+00:16:17,759 --> 00:16:19,759
+which basically makes an rpc call to the
+
+492
+00:16:19,759 --> 00:16:22,240
+kerberos provider
+
+493
+00:16:22,240 --> 00:16:24,399
+and you basically pass a massive buffer
+
+494
+00:16:24,399 --> 00:16:26,160
+of data of the protocol message you want
+
+495
+00:16:26,160 --> 00:16:27,120
+to send to the
+
+496
+00:16:27,120 --> 00:16:28,639
+kerberos provider and you just you just
+
+497
+00:16:28,639 --> 00:16:30,399
+give you just pass a pointer to this
+
+498
+00:16:30,399 --> 00:16:31,680
+buffer
+
+499
+00:16:31,680 --> 00:16:33,839
+in the case of a pass a ticket attack
+
+500
+00:16:33,839 --> 00:16:36,000
+it's a curb submit ticket message
+
+501
+00:16:36,000 --> 00:16:37,759
+and so effectively you have this
+
+502
+00:16:37,759 --> 00:16:39,199
+structure in memory followed by a
+
+503
+00:16:39,199 --> 00:16:40,480
+massive blob of a
+
+504
+00:16:40,480 --> 00:16:42,240
+asn encoded kerberos ticket that you
+
+505
+00:16:42,240 --> 00:16:44,079
+want to apply to your session
+
+506
+00:16:44,079 --> 00:16:46,079
+and so i have a quick demo of this as
+
+507
+00:16:46,079 --> 00:16:51,839
+well i can show
+
+508
+00:16:55,519 --> 00:16:57,759
+so once again i'm the user cosmo and i'm
+
+509
+00:16:57,759 --> 00:16:59,519
+medium i'm medium integrity so i'm not
+
+510
+00:16:59,519 --> 00:17:00,240
+elevated
+
+511
+00:17:00,240 --> 00:17:03,120
+when i'm performing this attack likewise
+
+512
+00:17:03,120 --> 00:17:05,280
+i have an existing tgt for the user
+
+513
+00:17:05,280 --> 00:17:07,679
+cosmo
+
+514
+00:17:07,679 --> 00:17:09,119
+once again i can try and access the
+
+515
+00:17:09,119 --> 00:17:10,880
+admin share of the domain controller and
+
+516
+00:17:10,880 --> 00:17:12,400
+i will rightly be
+
+517
+00:17:12,400 --> 00:17:14,959
+rejected
+
+518
+00:17:17,119 --> 00:17:19,839
+access denied
+
+519
+00:17:20,160 --> 00:17:22,319
+i can then again switch to the domain
+
+520
+00:17:22,319 --> 00:17:24,000
+controller and i'm going to export all
+
+521
+00:17:24,000 --> 00:17:25,119
+the
+
+522
+00:17:25,119 --> 00:17:28,799
+kerberos tickets i can find um
+
+523
+00:17:28,799 --> 00:17:31,120
+in memory and then i'm going to copy
+
+524
+00:17:31,120 --> 00:17:32,240
+over a tgt
+
+525
+00:17:32,240 --> 00:17:35,360
+for that admin user
+
+526
+00:17:42,640 --> 00:17:44,799
+i can then use the kerberos ptt command
+
+527
+00:17:44,799 --> 00:17:46,559
+to pass the ticket
+
+528
+00:17:46,559 --> 00:17:48,720
+and it will load this up from disk and
+
+529
+00:17:48,720 --> 00:17:50,400
+basically
+
+530
+00:17:50,400 --> 00:17:52,240
+submit that as part of that buffer to
+
+531
+00:17:52,240 --> 00:17:54,080
+the function
+
+532
+00:17:54,080 --> 00:17:56,400
+and now we can see that i do have a tgt
+
+533
+00:17:56,400 --> 00:17:58,000
+for the administrator user in my
+
+534
+00:17:58,000 --> 00:18:00,799
+in my kerberos cache so if i try once
+
+535
+00:18:00,799 --> 00:18:01,200
+again
+
+536
+00:18:01,200 --> 00:18:04,400
+to access that c dollar share
+
+537
+00:18:04,400 --> 00:18:06,000
+i can access it now because i have that
+
+538
+00:18:06,000 --> 00:18:09,120
+domain admin ticket
+
+539
+00:18:13,600 --> 00:18:15,760
+um a couple of things to know so as i
+
+540
+00:18:15,760 --> 00:18:17,200
+showed there we were medium integrity so
+
+541
+00:18:17,200 --> 00:18:18,640
+you don't need privileges to change your
+
+542
+00:18:18,640 --> 00:18:19,360
+tgt
+
+543
+00:18:19,360 --> 00:18:21,360
+associated with your session but
+
+544
+00:18:21,360 --> 00:18:22,880
+obtaining a tgc in the first place
+
+545
+00:18:22,880 --> 00:18:25,679
+is a different matter um you don't need
+
+546
+00:18:25,679 --> 00:18:27,440
+to create additional logon sessions but
+
+547
+00:18:27,440 --> 00:18:28,160
+bear in mind
+
+548
+00:18:28,160 --> 00:18:30,080
+when you apply a new tut or blitz the
+
+549
+00:18:30,080 --> 00:18:32,240
+old one the way to get around this is
+
+550
+00:18:32,240 --> 00:18:34,559
+that net only gadget that we saw before
+
+551
+00:18:34,559 --> 00:18:38,080
+so you create a dummy um new credentials
+
+552
+00:18:38,080 --> 00:18:39,919
+session and then you can apply the tgt
+
+553
+00:18:39,919 --> 00:18:41,360
+to that session while preserving your
+
+554
+00:18:41,360 --> 00:18:42,480
+own
+
+555
+00:18:42,480 --> 00:18:45,120
+also note that through this this api you
+
+556
+00:18:45,120 --> 00:18:46,640
+can do a lot more than just pass the
+
+557
+00:18:46,640 --> 00:18:47,840
+ticket you can basically dump
+
+558
+00:18:47,840 --> 00:18:48,960
+credentials
+
+559
+00:18:48,960 --> 00:18:51,280
+um as in a high integrity context and
+
+560
+00:18:51,280 --> 00:18:52,400
+the key thing here is that this doesn't
+
+561
+00:18:52,400 --> 00:18:54,160
+involve opening a handle 12 sas
+
+562
+00:18:54,160 --> 00:18:56,080
+which is what a lot of um quick theft is
+
+563
+00:18:56,080 --> 00:18:57,360
+traditionally based on
+
+564
+00:18:57,360 --> 00:18:59,440
+and so be aware that this is quite a big
+
+565
+00:18:59,440 --> 00:19:01,200
+gap actually in any in any credential
+
+566
+00:19:01,200 --> 00:19:02,640
+theft logic based on
+
+567
+00:19:02,640 --> 00:19:04,480
+that kind of traditional access to lsat
+
+568
+00:19:04,480 --> 00:19:08,080
+so say sysmon process access
+
+569
+00:19:08,080 --> 00:19:09,600
+and the last example i'm just going to
+
+570
+00:19:09,600 --> 00:19:11,360
+run through pretty quickly is overpass
+
+571
+00:19:11,360 --> 00:19:12,960
+the hash
+
+572
+00:19:12,960 --> 00:19:16,320
+so for typical pass the hash attacks
+
+573
+00:19:16,320 --> 00:19:19,039
+what happens is you'll get a tool like
+
+574
+00:19:19,039 --> 00:19:20,799
+mimikats which will basically pass ls
+
+575
+00:19:20,799 --> 00:19:22,240
+memory it will enumerate the logon
+
+576
+00:19:22,240 --> 00:19:23,520
+sessions and basically
+
+577
+00:19:23,520 --> 00:19:25,919
+it will find the ntlm cache credentials
+
+578
+00:19:25,919 --> 00:19:26,720
+it'll basically just
+
+579
+00:19:26,720 --> 00:19:29,280
+directly overwrite them in memory
+
+580
+00:19:29,280 --> 00:19:32,720
+screen's gone off oh no it's back sorry
+
+581
+00:19:33,120 --> 00:19:37,520
+and then when you try to then access a
+
+582
+00:19:37,520 --> 00:19:38,960
+network resource
+
+583
+00:19:38,960 --> 00:19:40,640
+it will just supply these overwritten
+
+584
+00:19:40,640 --> 00:19:42,240
+credentials and so again you'll get a
+
+585
+00:19:42,240 --> 00:19:43,039
+logon session
+
+586
+00:19:43,039 --> 00:19:45,360
+as as the stolen credentials the
+
+587
+00:19:45,360 --> 00:19:48,080
+screen's flickering
+
+588
+00:19:51,440 --> 00:19:54,559
+oh sorry one second
+
+589
+00:19:57,360 --> 00:20:00,880
+um so for overpass the hash effectively
+
+590
+00:20:00,880 --> 00:20:02,559
+what you're doing is you're translating
+
+591
+00:20:02,559 --> 00:20:04,880
+an ntlm hash for a user
+
+592
+00:20:04,880 --> 00:20:07,919
+into a fully fledged tgt for that user
+
+593
+00:20:07,919 --> 00:20:09,840
+and so you're doing a similar thing but
+
+594
+00:20:09,840 --> 00:20:11,039
+you but this time you're sort of
+
+595
+00:20:11,039 --> 00:20:13,200
+injecting it into the kerberos provider
+
+596
+00:20:13,200 --> 00:20:15,840
+so you've you enumerate the login
+
+597
+00:20:15,840 --> 00:20:17,120
+sessions you find the appropriate place
+
+598
+00:20:17,120 --> 00:20:18,799
+and you patch in that new hash
+
+599
+00:20:18,799 --> 00:20:20,480
+but the key thing this is again this is
+
+600
+00:20:20,480 --> 00:20:22,720
+sitting in memory but then once you try
+
+601
+00:20:22,720 --> 00:20:22,960
+and
+
+602
+00:20:22,960 --> 00:20:24,400
+once you try and actually access some
+
+603
+00:20:24,400 --> 00:20:25,919
+remote resources it will kick off the
+
+604
+00:20:25,919 --> 00:20:26,400
+normal
+
+605
+00:20:26,400 --> 00:20:28,720
+kerberos authentication protocol so
+
+606
+00:20:28,720 --> 00:20:30,159
+you'll basically don't go too much into
+
+607
+00:20:30,159 --> 00:20:32,159
+these onto this but you'll get a tgt for
+
+608
+00:20:32,159 --> 00:20:35,919
+that that user um whose credentials you
+
+609
+00:20:35,919 --> 00:20:36,960
+have access to and then
+
+610
+00:20:36,960 --> 00:20:39,280
+you can access the domain as that user
+
+611
+00:20:39,280 --> 00:20:40,799
+um a couple of notes about
+
+612
+00:20:40,799 --> 00:20:42,480
+sort of quirks of how say mimikatz does
+
+613
+00:20:42,480 --> 00:20:44,960
+this so again firstly it creates this
+
+614
+00:20:44,960 --> 00:20:47,280
+kind of sacrificial net only process
+
+615
+00:20:47,280 --> 00:20:49,120
+and this is to preserve your tgt as i
+
+616
+00:20:49,120 --> 00:20:50,640
+mentioned but this does generate a new
+
+617
+00:20:50,640 --> 00:20:51,840
+logon session
+
+618
+00:20:51,840 --> 00:20:54,159
+um it will then acquire debug privilege
+
+619
+00:20:54,159 --> 00:20:56,400
+or impersonate a system token
+
+620
+00:20:56,400 --> 00:20:59,520
+but in order to be able to get a right
+
+621
+00:20:59,520 --> 00:21:01,039
+handle to lsas
+
+622
+00:21:01,039 --> 00:21:03,120
+and then as i said it will patch sorry
+
+623
+00:21:03,120 --> 00:21:04,320
+it will pause
+
+624
+00:21:04,320 --> 00:21:06,320
+lsa's memory find the appropriate login
+
+625
+00:21:06,320 --> 00:21:08,000
+session and then just patch in that new
+
+626
+00:21:08,000 --> 00:21:08,559
+hash
+
+627
+00:21:08,559 --> 00:21:10,559
+and then once again the normal kerberos
+
+628
+00:21:10,559 --> 00:21:12,240
+authentication process kicks off and you
+
+629
+00:21:12,240 --> 00:21:14,000
+have a tgt for that user
+
+630
+00:21:14,000 --> 00:21:15,520
+i don't have a demo for this for time
+
+631
+00:21:15,520 --> 00:21:17,840
+but um i'll be showing one shortly from
+
+632
+00:21:17,840 --> 00:21:20,879
+the defensive perspective
+
+633
+00:21:23,360 --> 00:21:24,720
+so the final part of this presentation
+
+634
+00:21:24,720 --> 00:21:27,039
+is going to look at how we can start to
+
+635
+00:21:27,039 --> 00:21:30,000
+detect these techniques
+
+636
+00:21:30,000 --> 00:21:31,120
+and as i mentioned the start of my
+
+637
+00:21:31,120 --> 00:21:32,960
+presentation my my research focus was
+
+638
+00:21:32,960 --> 00:21:35,280
+really developing user land hooks
+
+639
+00:21:35,280 --> 00:21:39,120
+um so a lot of the proof of concepts i'm
+
+640
+00:21:39,120 --> 00:21:40,000
+going to show
+
+641
+00:21:40,000 --> 00:21:42,320
+shortly use frida which is the binary
+
+642
+00:21:42,320 --> 00:21:43,120
+instrumentation
+
+643
+00:21:43,120 --> 00:21:46,240
+framework essentially um but i will show
+
+644
+00:21:46,240 --> 00:21:47,919
+native windows telemetry where
+
+645
+00:21:47,919 --> 00:21:49,440
+appropriate and
+
+646
+00:21:49,440 --> 00:21:50,799
+the really awesome thing about freedo is
+
+647
+00:21:50,799 --> 00:21:52,480
+it allows us to write
+
+648
+00:21:52,480 --> 00:21:55,120
+sort of custom and scriptable scriptable
+
+649
+00:21:55,120 --> 00:21:57,039
+detection logic on the fly
+
+650
+00:21:57,039 --> 00:21:58,720
+so we can because it's a hooking
+
+651
+00:21:58,720 --> 00:22:00,720
+framework we can analyze arguments pre
+
+652
+00:22:00,720 --> 00:22:01,919
+and post function call
+
+653
+00:22:01,919 --> 00:22:05,039
+and make decisions based on you know
+
+654
+00:22:05,039 --> 00:22:06,480
+parameters past the functions or the
+
+655
+00:22:06,480 --> 00:22:08,799
+other or what's returned to a function
+
+656
+00:22:08,799 --> 00:22:10,159
+and so this can be very powerful for
+
+657
+00:22:10,159 --> 00:22:12,480
+prototyping
+
+658
+00:22:12,480 --> 00:22:14,960
+effectively detection logic very quickly
+
+659
+00:22:14,960 --> 00:22:16,720
+um this is an example of a very basic
+
+660
+00:22:16,720 --> 00:22:20,000
+um 3d javascript template we use find
+
+661
+00:22:20,000 --> 00:22:22,400
+export by name to resolve the function
+
+662
+00:22:22,400 --> 00:22:23,919
+of interest and this returns a free
+
+663
+00:22:23,919 --> 00:22:26,000
+native pointer and then we use the
+
+664
+00:22:26,000 --> 00:22:28,000
+interceptor attached to start hooking
+
+665
+00:22:28,000 --> 00:22:30,400
+and the on enter and on leave callback
+
+666
+00:22:30,400 --> 00:22:32,000
+functions this is where the main guts of
+
+667
+00:22:32,000 --> 00:22:33,760
+ours of detection logic will reside
+
+668
+00:22:33,760 --> 00:22:36,000
+and here we can start looking at
+
+669
+00:22:36,000 --> 00:22:37,039
+arguments and
+
+670
+00:22:37,039 --> 00:22:40,799
+implementing our logic and so i started
+
+671
+00:22:40,799 --> 00:22:42,720
+um showing this kind of net only
+
+672
+00:22:42,720 --> 00:22:43,919
+technique
+
+673
+00:22:43,919 --> 00:22:46,640
+and the the two key signals for this was
+
+674
+00:22:46,640 --> 00:22:48,320
+create process with log on with that
+
+675
+00:22:48,320 --> 00:22:51,919
+um effectively the net only flag and the
+
+676
+00:22:51,919 --> 00:22:54,159
+effectively the make token gadget which
+
+677
+00:22:54,159 --> 00:22:55,679
+allowed you to craft
+
+678
+00:22:55,679 --> 00:22:57,280
+arbitrary tokens which was a combination
+
+679
+00:22:57,280 --> 00:22:59,600
+of logon user within their only flag
+
+680
+00:22:59,600 --> 00:23:00,880
+and then you impersonate the return
+
+681
+00:23:00,880 --> 00:23:03,520
+token so i've got a few demos with frida
+
+682
+00:23:03,520 --> 00:23:09,840
+just just showing these now
+
+683
+00:23:16,640 --> 00:23:18,480
+so this is an exact run through of the
+
+684
+00:23:18,480 --> 00:23:19,919
+the previous attack but i can show you
+
+685
+00:23:19,919 --> 00:23:21,280
+my free to hook here
+
+686
+00:23:21,280 --> 00:23:23,760
+we can see i'm resolving crepe posted
+
+687
+00:23:23,760 --> 00:23:25,520
+log on by export by name and then using
+
+688
+00:23:25,520 --> 00:23:28,159
+interceptor attached to start hooking it
+
+689
+00:23:28,159 --> 00:23:31,280
+and so now i'm attaching freeda to
+
+690
+00:23:31,280 --> 00:23:34,400
+command.xc and i can run through the
+
+691
+00:23:34,400 --> 00:23:36,720
+same steps so i use runners with that
+
+692
+00:23:36,720 --> 00:23:38,159
+net only flag
+
+693
+00:23:38,159 --> 00:23:39,919
+and then supply the administrator's
+
+694
+00:23:39,919 --> 00:23:41,440
+credentials
+
+695
+00:23:41,440 --> 00:23:42,880
+once again because it's cloned my access
+
+696
+00:23:42,880 --> 00:23:44,640
+token i'm the same user locally for any
+
+697
+00:23:44,640 --> 00:23:45,520
+access checks
+
+698
+00:23:45,520 --> 00:23:47,039
+but remotely it will supply the new
+
+699
+00:23:47,039 --> 00:23:49,440
+cache credentials and i'm a domain admin
+
+700
+00:23:49,440 --> 00:23:52,400
+on the network so if we look at my free
+
+701
+00:23:52,400 --> 00:23:53,440
+to hook now
+
+702
+00:23:53,440 --> 00:23:55,039
+we can see it spawned a new process and
+
+703
+00:23:55,039 --> 00:23:56,880
+we can see that process is called
+
+704
+00:23:56,880 --> 00:23:59,520
+create process with log on w um and
+
+705
+00:23:59,520 --> 00:24:00,880
+critically we can see
+
+706
+00:24:00,880 --> 00:24:02,320
+we can pull out the username password
+
+707
+00:24:02,320 --> 00:24:04,000
+etc but we can see that it's
+
+708
+00:24:04,000 --> 00:24:06,640
+submitted logon flags of net credentials
+
+709
+00:24:06,640 --> 00:24:07,600
+only which is
+
+710
+00:24:07,600 --> 00:24:09,200
+potentially a suspicious event that we
+
+711
+00:24:09,200 --> 00:24:11,520
+we want to alert on
+
+712
+00:24:11,520 --> 00:24:13,600
+and in this case just as for this proof
+
+713
+00:24:13,600 --> 00:24:15,679
+of concept i've added an entry
+
+714
+00:24:15,679 --> 00:24:17,679
+to the event log saying we've seen a
+
+715
+00:24:17,679 --> 00:24:18,799
+suspicious net only
+
+716
+00:24:18,799 --> 00:24:21,520
+log on session
+
+717
+00:24:23,360 --> 00:24:26,479
+for the second example
+
+718
+00:24:26,559 --> 00:24:29,120
+we're looking for that make token gadget
+
+719
+00:24:29,120 --> 00:24:30,720
+and so here i've used the covenant which
+
+720
+00:24:30,720 --> 00:24:31,120
+is a
+
+721
+00:24:31,120 --> 00:24:32,799
+open source c2 framework i've used a
+
+722
+00:24:32,799 --> 00:24:34,320
+powershell stager and we've got a shell
+
+723
+00:24:34,320 --> 00:24:35,120
+basically
+
+724
+00:24:35,120 --> 00:24:36,480
+and so i'm going to attach my friday
+
+725
+00:24:36,480 --> 00:24:39,039
+script to this powershell process
+
+726
+00:24:39,039 --> 00:24:40,960
+now if i switch to my attacker machine
+
+727
+00:24:40,960 --> 00:24:42,880
+i'm going to run the make token task
+
+728
+00:24:42,880 --> 00:24:44,159
+and this will do exactly the same it
+
+729
+00:24:44,159 --> 00:24:46,480
+will log on the user with the logon type
+
+730
+00:24:46,480 --> 00:24:48,000
+of new credentials so that's suspicious
+
+731
+00:24:48,000 --> 00:24:49,200
+now only flag and then start
+
+732
+00:24:49,200 --> 00:24:50,720
+impersonating that user
+
+733
+00:24:50,720 --> 00:24:53,919
+so we can run that task
+
+734
+00:24:55,039 --> 00:24:56,400
+and we can see that it successfully
+
+735
+00:24:56,400 --> 00:24:58,159
+impersonated it
+
+736
+00:24:58,159 --> 00:25:00,159
+so in terms of a free to hook well how
+
+737
+00:25:00,159 --> 00:25:01,520
+do we detect this well
+
+738
+00:25:01,520 --> 00:25:03,600
+again we want to monitor for someone
+
+739
+00:25:03,600 --> 00:25:05,679
+logging on a user
+
+740
+00:25:05,679 --> 00:25:09,840
+and then subsequently using that token
+
+741
+00:25:09,840 --> 00:25:11,679
+in a call to say impersonate logged in
+
+742
+00:25:11,679 --> 00:25:13,360
+user so in this case i've actually
+
+743
+00:25:13,360 --> 00:25:16,080
+hooked logon user xxw which is what
+
+744
+00:25:16,080 --> 00:25:18,400
+um logon user a and w both end up
+
+745
+00:25:18,400 --> 00:25:20,159
+calling and we can see that again
+
+746
+00:25:20,159 --> 00:25:22,159
+new credentials has that new credentials
+
+747
+00:25:22,159 --> 00:25:23,360
+flag has been
+
+748
+00:25:23,360 --> 00:25:26,559
+passed and then if we track that return
+
+749
+00:25:26,559 --> 00:25:28,000
+token we can see that that was
+
+750
+00:25:28,000 --> 00:25:29,760
+then passed to this impersonate logged
+
+751
+00:25:29,760 --> 00:25:32,000
+on user call which is suspicious
+
+752
+00:25:32,000 --> 00:25:33,120
+that's the kind of behavior we want to
+
+753
+00:25:33,120 --> 00:25:35,039
+learn from so once again we can omit an
+
+754
+00:25:35,039 --> 00:25:35,840
+event and
+
+755
+00:25:35,840 --> 00:25:38,880
+i've just written um a new entry to the
+
+756
+00:25:38,880 --> 00:25:39,679
+event log
+
+757
+00:25:39,679 --> 00:25:41,679
+showing that this potential make toe
+
+758
+00:25:41,679 --> 00:25:43,440
+take make token behavior has been
+
+759
+00:25:43,440 --> 00:25:45,919
+detected
+
+760
+00:25:52,240 --> 00:25:55,200
+in terms of other telemetry sources so
+
+761
+00:25:55,200 --> 00:25:56,159
+for those net
+
+762
+00:25:56,159 --> 00:25:58,640
+only log ons we can use the windows
+
+763
+00:25:58,640 --> 00:25:59,679
+event logs
+
+764
+00:25:59,679 --> 00:26:01,840
+and then for any process spawning signal
+
+765
+00:26:01,840 --> 00:26:03,520
+we can use process events
+
+766
+00:26:03,520 --> 00:26:06,320
+um no impersonation as far as i can see
+
+767
+00:26:06,320 --> 00:26:07,520
+has no native
+
+768
+00:26:07,520 --> 00:26:09,840
+real way to track and is also
+
+769
+00:26:09,840 --> 00:26:11,200
+exceptionally noisy unless you're
+
+770
+00:26:11,200 --> 00:26:14,320
+looking for targeted things
+
+771
+00:26:14,799 --> 00:26:17,039
+um i showed this before so event logs
+
+772
+00:26:17,039 --> 00:26:18,159
+four six two four
+
+773
+00:26:18,159 --> 00:26:21,200
+log ons um you wanna log on type nine
+
+774
+00:26:21,200 --> 00:26:22,880
+and then the logon process name is set
+
+775
+00:26:22,880 --> 00:26:24,480
+seclo so it's the secondary logon
+
+776
+00:26:24,480 --> 00:26:25,200
+service
+
+777
+00:26:25,200 --> 00:26:27,840
+and notice you can see the differing
+
+778
+00:26:27,840 --> 00:26:31,120
+username and then target outbound name
+
+779
+00:26:31,120 --> 00:26:33,200
+in terms of process data you might want
+
+780
+00:26:33,200 --> 00:26:34,400
+to look for
+
+781
+00:26:34,400 --> 00:26:35,840
+users so this is high or medium
+
+782
+00:26:35,840 --> 00:26:38,799
+integrity spawning processes
+
+783
+00:26:38,799 --> 00:26:40,880
+as the same user but a different auth id
+
+784
+00:26:40,880 --> 00:26:42,559
+hence it's a new logon session so it's a
+
+785
+00:26:42,559 --> 00:26:43,440
+net only
+
+786
+00:26:43,440 --> 00:26:45,600
+gadget and you might also want to ignore
+
+787
+00:26:45,600 --> 00:26:47,919
+things common admin tools like run ads
+
+788
+00:26:47,919 --> 00:26:49,200
+also note that because it goes through
+
+789
+00:26:49,200 --> 00:26:50,480
+the secondary logon service i don't
+
+790
+00:26:50,480 --> 00:26:52,000
+think you can spoof the pit as far as i
+
+791
+00:26:52,000 --> 00:26:54,400
+know for create process with logon
+
+792
+00:26:54,400 --> 00:26:55,760
+um i haven't had too much time to go on
+
+793
+00:26:55,760 --> 00:26:57,919
+this today but you could also take a bit
+
+794
+00:26:57,919 --> 00:26:58,559
+further
+
+795
+00:26:58,559 --> 00:27:00,400
+and look for processes spawning
+
+796
+00:27:00,400 --> 00:27:02,080
+processes as other users full stop and
+
+797
+00:27:02,080 --> 00:27:04,000
+again look for higher medium integrity
+
+798
+00:27:04,000 --> 00:27:07,120
+user processes um and this
+
+799
+00:27:07,120 --> 00:27:08,720
+caters for that case of someone stealing
+
+800
+00:27:08,720 --> 00:27:10,400
+a token and then spawning a new process
+
+801
+00:27:10,400 --> 00:27:12,080
+with it
+
+802
+00:27:12,080 --> 00:27:13,200
+and then again you might want to look
+
+803
+00:27:13,200 --> 00:27:15,520
+for you might want to ignore standard
+
+804
+00:27:15,520 --> 00:27:16,480
+admin tools
+
+805
+00:27:16,480 --> 00:27:19,919
+in doing this so the second technique we
+
+806
+00:27:19,919 --> 00:27:21,520
+looked at was past the ticket and the
+
+807
+00:27:21,520 --> 00:27:23,279
+the real indicator here was that lsa
+
+808
+00:27:23,279 --> 00:27:24,960
+called authentication package with the
+
+809
+00:27:24,960 --> 00:27:27,279
+curb submit ticket request and so i've
+
+810
+00:27:27,279 --> 00:27:34,480
+got a demo for this as well
+
+811
+00:27:34,480 --> 00:27:36,480
+so once again we can see i'm cosmo i've
+
+812
+00:27:36,480 --> 00:27:38,320
+got a tgt because i also actually have a
+
+813
+00:27:38,320 --> 00:27:38,799
+few
+
+814
+00:27:38,799 --> 00:27:41,520
+tgs's when i was accessing file shares
+
+815
+00:27:41,520 --> 00:27:42,799
+um and i can try and access domain
+
+816
+00:27:42,799 --> 00:27:46,559
+controller and i'm rightly denied again
+
+817
+00:27:46,559 --> 00:27:49,039
+i'm then going to attach frida to
+
+818
+00:27:49,039 --> 00:27:51,440
+mimikat
+
+819
+00:27:51,440 --> 00:27:53,520
+and then i'm going to apply the same
+
+820
+00:27:53,520 --> 00:27:58,158
+ticket as before by the the ptt command
+
+821
+00:27:58,799 --> 00:28:02,480
+and now what we can see is in my frida
+
+822
+00:28:02,480 --> 00:28:03,840
+hook so i've hooked lsa call
+
+823
+00:28:03,840 --> 00:28:05,279
+authentication package and we can
+
+824
+00:28:05,279 --> 00:28:07,279
+monitor for the type of message
+
+825
+00:28:07,279 --> 00:28:09,200
+um that we want to find which is in this
+
+826
+00:28:09,200 --> 00:28:10,320
+case curb submit
+
+827
+00:28:10,320 --> 00:28:13,919
+ticket request that data buffer there is
+
+828
+00:28:13,919 --> 00:28:15,120
+that big buffer i mentioned that's
+
+829
+00:28:15,120 --> 00:28:17,039
+passed to the function call and then i
+
+830
+00:28:17,039 --> 00:28:19,279
+can use the impact python libraries to
+
+831
+00:28:19,279 --> 00:28:21,600
+pass that kerberos to get out of memory
+
+832
+00:28:21,600 --> 00:28:24,320
+um and see what tickets being applied in
+
+833
+00:28:24,320 --> 00:28:25,440
+this case
+
+834
+00:28:25,440 --> 00:28:27,120
+the user is applying a ticket to
+
+835
+00:28:27,120 --> 00:28:28,799
+somewhat a different user not logged on
+
+836
+00:28:28,799 --> 00:28:29,440
+and this is
+
+837
+00:28:29,440 --> 00:28:32,159
+evidently pretty suspicious so again we
+
+838
+00:28:32,159 --> 00:28:34,320
+can say potential pass the ticket
+
+839
+00:28:34,320 --> 00:28:36,080
+attack detected and we can add something
+
+840
+00:28:36,080 --> 00:28:44,000
+to the event log
+
+841
+00:28:44,000 --> 00:28:46,720
+as so um i'll just give this along a bit
+
+842
+00:28:46,720 --> 00:28:47,279
+um
+
+843
+00:28:47,279 --> 00:28:49,520
+as a quick example as well i don't know
+
+844
+00:28:49,520 --> 00:28:50,559
+too much into how
+
+845
+00:28:50,559 --> 00:28:52,640
+the the guts this works but that's sorry
+
+846
+00:28:52,640 --> 00:28:54,399
+just confirming that i could access it
+
+847
+00:28:54,399 --> 00:28:56,840
+i'm now going to purge the cache and
+
+848
+00:28:56,840 --> 00:28:59,039
+then i'm going to actually
+
+849
+00:28:59,039 --> 00:29:02,559
+use the um the mimikatz
+
+850
+00:29:02,559 --> 00:29:04,960
+lsa dump inject command and i'm going to
+
+851
+00:29:04,960 --> 00:29:05,600
+get the
+
+852
+00:29:05,600 --> 00:29:07,679
+krbgt hash to basically make a golden
+
+853
+00:29:07,679 --> 00:29:08,880
+ticket
+
+854
+00:29:08,880 --> 00:29:09,919
+i'm not going to go too much into how
+
+855
+00:29:09,919 --> 00:29:11,919
+this works but it's the ridge 502
+
+856
+00:29:11,919 --> 00:29:13,520
+account and we can put out that ntlm
+
+857
+00:29:13,520 --> 00:29:15,840
+hash
+
+858
+00:29:16,960 --> 00:29:20,480
+and likewise here we can use this
+
+859
+00:29:20,480 --> 00:29:23,520
+the golden ticket command
+
+860
+00:29:23,520 --> 00:29:26,640
+and then we can see it if i check now
+
+861
+00:29:26,640 --> 00:29:28,159
+once again we can see lsa call
+
+862
+00:29:28,159 --> 00:29:29,840
+authentication package has been
+
+863
+00:29:29,840 --> 00:29:31,600
+been called and we can pick up this
+
+864
+00:29:31,600 --> 00:29:33,200
+ticket and so this is fake user
+
+865
+00:29:33,200 --> 00:29:35,200
+astro.teslabs you can specify any user
+
+866
+00:29:35,200 --> 00:29:36,240
+for a golden ticket
+
+867
+00:29:36,240 --> 00:29:38,880
+for a temporary period and this is
+
+868
+00:29:38,880 --> 00:29:39,440
+obviously
+
+869
+00:29:39,440 --> 00:29:40,880
+very suspicious as well so we can write
+
+870
+00:29:40,880 --> 00:29:42,720
+an event log as well and so the key
+
+871
+00:29:42,720 --> 00:29:44,000
+thing here is for
+
+872
+00:29:44,000 --> 00:29:45,440
+it doesn't really matter what kerberos
+
+873
+00:29:45,440 --> 00:29:46,880
+attack you use at the end of the day you
+
+874
+00:29:46,880 --> 00:29:48,559
+have to submit that ticket whether it's
+
+875
+00:29:48,559 --> 00:29:49,840
+on disk or a memory
+
+876
+00:29:49,840 --> 00:29:51,520
+via that function to apply it to your
+
+877
+00:29:51,520 --> 00:29:55,840
+your logon session
+
+878
+00:29:57,919 --> 00:29:59,760
+in terms of native telemetry sources i
+
+879
+00:29:59,760 --> 00:30:01,520
+looked at the kerberos etw providers i
+
+880
+00:30:01,520 --> 00:30:02,720
+couldn't really find anything that
+
+881
+00:30:02,720 --> 00:30:04,080
+seemed to capture what i want which was
+
+882
+00:30:04,080 --> 00:30:05,679
+which was quite disappointing
+
+883
+00:30:05,679 --> 00:30:07,360
+there's better logging on dc's but this
+
+884
+00:30:07,360 --> 00:30:08,799
+can be noisy and obviously isn't
+
+885
+00:30:08,799 --> 00:30:11,840
+the client side of it for the last
+
+886
+00:30:11,840 --> 00:30:14,399
+example i had overpassed the hash
+
+887
+00:30:14,399 --> 00:30:16,159
+again this had that great process of log
+
+888
+00:30:16,159 --> 00:30:18,320
+on now only gadget
+
+889
+00:30:18,320 --> 00:30:20,080
+we also had debug privilege and
+
+890
+00:30:20,080 --> 00:30:21,600
+impersonate system token
+
+891
+00:30:21,600 --> 00:30:23,840
+um debug privilege is very noisy in my
+
+892
+00:30:23,840 --> 00:30:25,679
+opinion so i've ignored that and
+
+893
+00:30:25,679 --> 00:30:26,880
+we're going to focus on impersonating a
+
+894
+00:30:26,880 --> 00:30:28,720
+system token which is a definitive
+
+895
+00:30:28,720 --> 00:30:30,000
+escalation of privilege right
+
+896
+00:30:30,000 --> 00:30:32,080
+you're going from high to system um
+
+897
+00:30:32,080 --> 00:30:33,440
+likewise you can look for right-handed
+
+898
+00:30:33,440 --> 00:30:34,799
+access but this what this is kind of a
+
+899
+00:30:34,799 --> 00:30:36,000
+traditional known technique and this
+
+900
+00:30:36,000 --> 00:30:38,399
+wasn't really the focus of my research
+
+901
+00:30:38,399 --> 00:30:41,039
+so i just have a final quick example of
+
+902
+00:30:41,039 --> 00:30:44,000
+overpass the hash
+
+903
+00:30:45,679 --> 00:30:47,360
+um and so in this in this scenario we're
+
+904
+00:30:47,360 --> 00:30:48,880
+simulating a credential shuffle so i'm
+
+905
+00:30:48,880 --> 00:30:50,080
+actually interactively logging
+
+906
+00:30:50,080 --> 00:30:53,120
+on the administrator user basically so
+
+907
+00:30:53,120 --> 00:30:55,600
+he has they have cache credentials in
+
+908
+00:30:55,600 --> 00:30:56,880
+memory that i can still
+
+909
+00:30:56,880 --> 00:30:59,440
+also note when you use run as sometimes
+
+910
+00:30:59,440 --> 00:31:01,600
+for ridge 500 it automatically elevates
+
+911
+00:31:01,600 --> 00:31:02,640
+so the processor
+
+912
+00:31:02,640 --> 00:31:05,840
+is already high integrity
+
+913
+00:31:07,279 --> 00:31:08,960
+so once again i can attach frida to
+
+914
+00:31:08,960 --> 00:31:10,880
+mimikats
+
+915
+00:31:10,880 --> 00:31:15,120
+i can elevate and then
+
+916
+00:31:15,200 --> 00:31:19,840
+i can dump credentials
+
+917
+00:31:24,320 --> 00:31:25,279
+so i can see the playing chess
+
+918
+00:31:25,279 --> 00:31:26,799
+credentials but for overpass the hash
+
+919
+00:31:26,799 --> 00:31:29,039
+i'm interested in that ntlm hash
+
+920
+00:31:29,039 --> 00:31:32,799
+so i can use that in to
+
+921
+00:31:32,799 --> 00:31:34,480
+spawn a new command prompt which i can
+
+922
+00:31:34,480 --> 00:31:37,440
+then move laterally with
+
+923
+00:31:41,200 --> 00:31:43,120
+again because i'm not only i'm the same
+
+924
+00:31:43,120 --> 00:31:45,200
+user locally again note the credentials
+
+925
+00:31:45,200 --> 00:31:46,799
+are not validated until you try and
+
+926
+00:31:46,799 --> 00:31:48,080
+authenticate remotely
+
+927
+00:31:48,080 --> 00:31:51,120
+and then i'm a domain admin
+
+928
+00:31:51,120 --> 00:31:54,000
+if i switch to freeda i've actually got
+
+929
+00:31:54,000 --> 00:31:55,519
+a new hook so basically i've hooked
+
+930
+00:31:55,519 --> 00:31:56,880
+empty set information thread which i
+
+931
+00:31:56,880 --> 00:31:57,840
+said is a wrapper for those
+
+932
+00:31:57,840 --> 00:31:59,519
+impersonation functions
+
+933
+00:31:59,519 --> 00:32:02,240
+i when it's being used to impersonate a
+
+934
+00:32:02,240 --> 00:32:02,880
+token
+
+935
+00:32:02,880 --> 00:32:05,279
+i query that that handle to the token in
+
+936
+00:32:05,279 --> 00:32:07,279
+flight and basically look what user is
+
+937
+00:32:07,279 --> 00:32:09,039
+and if it's a system token then this is
+
+938
+00:32:09,039 --> 00:32:10,320
+a suspicious event and we might want to
+
+939
+00:32:10,320 --> 00:32:11,440
+admit an event on it
+
+940
+00:32:11,440 --> 00:32:12,799
+and the second example here is just that
+
+941
+00:32:12,799 --> 00:32:14,240
+create process log on with those net
+
+942
+00:32:14,240 --> 00:32:15,679
+credentials so two of these are
+
+943
+00:32:15,679 --> 00:32:17,200
+potentially very suspicious behaviors
+
+944
+00:32:17,200 --> 00:32:17,760
+that we
+
+945
+00:32:17,760 --> 00:32:20,559
+we want to look for
+
+946
+00:32:25,360 --> 00:32:27,200
+in terms of telemetry again as i said
+
+947
+00:32:27,200 --> 00:32:28,960
+for net only stuff windows event logs
+
+948
+00:32:28,960 --> 00:32:30,240
+process events
+
+949
+00:32:30,240 --> 00:32:32,000
+um and then i didn't cover this but
+
+950
+00:32:32,000 --> 00:32:34,080
+right handle to access to lsas you can
+
+951
+00:32:34,080 --> 00:32:35,679
+look for sysmon event id10
+
+952
+00:32:35,679 --> 00:32:39,200
+so process access um as a note before i
+
+953
+00:32:39,200 --> 00:32:40,640
+wrap up i just want to highlight two
+
+954
+00:32:40,640 --> 00:32:41,279
+things so
+
+955
+00:32:41,279 --> 00:32:44,480
+from my research a lot of these signals
+
+956
+00:32:44,480 --> 00:32:46,559
+here are highly anomalous like the
+
+957
+00:32:46,559 --> 00:32:48,480
+these are pretty rare especially again
+
+958
+00:32:48,480 --> 00:32:49,760
+if you look for high medium
+
+959
+00:32:49,760 --> 00:32:52,799
+user activity these are rare
+
+960
+00:32:52,799 --> 00:32:54,559
+and i think quite high fidelity signals
+
+961
+00:32:54,559 --> 00:32:56,480
+of bad behavior again if you rule out
+
+962
+00:32:56,480 --> 00:32:58,480
+admin tools as well
+
+963
+00:32:58,480 --> 00:33:01,120
+the second thing is because apart from
+
+964
+00:33:01,120 --> 00:33:01,919
+impersonation
+
+965
+00:33:01,919 --> 00:33:03,919
+all of these calls are making rpc calls
+
+966
+00:33:03,919 --> 00:33:05,600
+to either the sec the secondary login
+
+967
+00:33:05,600 --> 00:33:06,720
+service or
+
+968
+00:33:06,720 --> 00:33:10,320
+um the lsa kerberos provider and so
+
+969
+00:33:10,320 --> 00:33:11,919
+a typical weakness of hook so you can
+
+970
+00:33:11,919 --> 00:33:13,519
+just make a direct cisco
+
+971
+00:33:13,519 --> 00:33:15,120
+in this case you can't do that because
+
+972
+00:33:15,120 --> 00:33:16,960
+it's not as simple right if you've ever
+
+973
+00:33:16,960 --> 00:33:17,440
+looked at
+
+974
+00:33:17,440 --> 00:33:18,720
+making rpc calls they're quite
+
+975
+00:33:18,720 --> 00:33:20,799
+complicated and so some of the
+
+976
+00:33:20,799 --> 00:33:22,240
+traditional weaknesses of hooks
+
+977
+00:33:22,240 --> 00:33:23,760
+are slightly mitigated by this it's not
+
+978
+00:33:23,760 --> 00:33:25,679
+impossible but it increases the barrier
+
+979
+00:33:25,679 --> 00:33:26,720
+of an attacker
+
+980
+00:33:26,720 --> 00:33:28,720
+being able to or wanting to spend time
+
+981
+00:33:28,720 --> 00:33:31,279
+doing that
+
+982
+00:33:31,679 --> 00:33:34,799
+and i shall wrap up there so hopefully
+
+983
+00:33:34,799 --> 00:33:35,919
+i've shown that
+
+984
+00:33:35,919 --> 00:33:37,760
+window security can be intimidating
+
+985
+00:33:37,760 --> 00:33:39,360
+things like kerberos ntlm can be
+
+986
+00:33:39,360 --> 00:33:40,880
+complicated but i hope
+
+987
+00:33:40,880 --> 00:33:43,200
+i've shown at high level conceptually
+
+988
+00:33:43,200 --> 00:33:45,120
+it's simple think of access tokens log
+
+989
+00:33:45,120 --> 00:33:45,600
+on
+
+990
+00:33:45,600 --> 00:33:47,760
+log on sessions and cache creds these
+
+991
+00:33:47,760 --> 00:33:49,279
+this is the framework from which it
+
+992
+00:33:49,279 --> 00:33:51,120
+works and which you can start
+
+993
+00:33:51,120 --> 00:33:53,120
+compromising domains from essentially
+
+994
+00:33:53,120 --> 00:33:54,559
+and hopefully i've shown that
+
+995
+00:33:54,559 --> 00:33:56,000
+because of these constraints
+
+996
+00:33:56,000 --> 00:33:57,760
+irrespective of what tools you use what
+
+997
+00:33:57,760 --> 00:34:00,080
+authentication provider you're abusing
+
+998
+00:34:00,080 --> 00:34:01,200
+basically attackers are always under the
+
+999
+00:34:01,200 --> 00:34:03,440
+same set of constraints they they always
+
+1000
+00:34:03,440 --> 00:34:05,120
+use these net only
+
+1001
+00:34:05,120 --> 00:34:08,079
+gadgets to um create these sacrificial
+
+1002
+00:34:08,079 --> 00:34:08,480
+net
+
+1003
+00:34:08,480 --> 00:34:11,359
+um logon sessions etc and so you'll see
+
+1004
+00:34:11,359 --> 00:34:13,199
+the same signals for irrespective of the
+
+1005
+00:34:13,199 --> 00:34:15,760
+the kinds of attacks um even unknowns
+
+1006
+00:34:15,760 --> 00:34:17,119
+actually don't know yet
+
+1007
+00:34:17,119 --> 00:34:20,239
+um and hopefully these techniques aren't
+
+1008
+00:34:20,239 --> 00:34:22,000
+necessarily supposed to be sort of prod
+
+1009
+00:34:22,000 --> 00:34:23,359
+prod ready
+
+1010
+00:34:23,359 --> 00:34:24,560
+but they show the art of the possible
+
+1011
+00:34:24,560 --> 00:34:25,918
+from both an offensive and defensive
+
+1012
+00:34:25,918 --> 00:34:27,918
+perspective so hopefully
+
+1013
+00:34:27,918 --> 00:34:29,839
+as a defense practitioner you can see
+
+1014
+00:34:29,839 --> 00:34:31,440
+kind of one attacker can do and you can
+
+1015
+00:34:31,440 --> 00:34:33,119
+assess your own ability to detect and
+
+1016
+00:34:33,119 --> 00:34:35,440
+respond and the tech use the edius
+
+1017
+00:34:35,440 --> 00:34:36,879
+you can you can see whether they can see
+
+1018
+00:34:36,879 --> 00:34:38,480
+this kind of stuff and it gives you a
+
+1019
+00:34:38,480 --> 00:34:39,359
+springboard for
+
+1020
+00:34:39,359 --> 00:34:41,918
+future threat hunting as well and i
+
+1021
+00:34:41,918 --> 00:34:45,359
+shall wrap up there thank you very much
+
+1022
+00:34:47,760 --> 00:34:51,440
+hello can you hear me
+
+1023
+00:34:53,199 --> 00:34:56,800
+perfect um thanks everyone for attending
+
+1024
+00:34:56,800 --> 00:35:00,079
+um my session today um i saw one really
+
+1025
+00:35:00,079 --> 00:35:02,000
+good question from michael
+
+1026
+00:35:02,000 --> 00:35:04,480
+um that was essentially about how do you
+
+1027
+00:35:04,480 --> 00:35:07,280
+operationalize the hook based detection
+
+1028
+00:35:07,280 --> 00:35:09,119
+and then do you recommend deploying
+
+1029
+00:35:09,119 --> 00:35:10,880
+freda in production
+
+1030
+00:35:10,880 --> 00:35:12,800
+um i think loosely there's kind of two
+
+1031
+00:35:12,800 --> 00:35:15,200
+concerns with any detection logic
+
+1032
+00:35:15,200 --> 00:35:18,720
+which i suppose from a sort of an edr
+
+1033
+00:35:18,720 --> 00:35:19,680
+perspective is
+
+1034
+00:35:19,680 --> 00:35:22,480
+a noise so how much how many false
+
+1035
+00:35:22,480 --> 00:35:23,839
+positives you get and then the actual
+
+1036
+00:35:23,839 --> 00:35:24,560
+performance
+
+1037
+00:35:24,560 --> 00:35:28,720
+implications of it um in terms of these
+
+1038
+00:35:28,720 --> 00:35:30,240
+specific hooks like
+
+1039
+00:35:30,240 --> 00:35:32,320
+testing getting an idea or feel for the
+
+1040
+00:35:32,320 --> 00:35:34,320
+actual activity and how rare it is is
+
+1041
+00:35:34,320 --> 00:35:36,800
+the number one thing for me at least to
+
+1042
+00:35:36,800 --> 00:35:39,040
+feel whether it's even worth even opera
+
+1043
+00:35:39,040 --> 00:35:41,680
+operationalizing it down the line anyway
+
+1044
+00:35:41,680 --> 00:35:45,040
+um hooks in particular can be you know
+
+1045
+00:35:45,040 --> 00:35:48,640
+some apis can be very noisy um they can
+
+1046
+00:35:48,640 --> 00:35:49,920
+be quite performance intensive so you
+
+1047
+00:35:49,920 --> 00:35:50,880
+have to be careful with
+
+1048
+00:35:50,880 --> 00:35:53,839
+with what exactly you're hooking so i
+
+1049
+00:35:53,839 --> 00:35:54,400
+think
+
+1050
+00:35:54,400 --> 00:35:57,119
+as well trying to get rid of many kind
+
+1051
+00:35:57,119 --> 00:35:57,520
+of
+
+1052
+00:35:57,520 --> 00:36:00,720
+superfluous apicals or events as soon as
+
+1053
+00:36:00,720 --> 00:36:02,560
+possible is also a really good way
+
+1054
+00:36:02,560 --> 00:36:05,760
+um of honing in on that exact um
+
+1055
+00:36:05,760 --> 00:36:07,680
+behavior you're looking for i think in
+
+1056
+00:36:07,680 --> 00:36:09,280
+this case these behaviors i've
+
+1057
+00:36:09,280 --> 00:36:11,280
+highlighted just happen
+
+1058
+00:36:11,280 --> 00:36:13,359
+they do seem to be really really rare in
+
+1059
+00:36:13,359 --> 00:36:14,880
+my experience um you
+
+1060
+00:36:14,880 --> 00:36:16,800
+you know if you look for in your kind of
+
+1061
+00:36:16,800 --> 00:36:18,160
+enterprise if you look for
+
+1062
+00:36:18,160 --> 00:36:20,079
+you know business users creating these
+
+1063
+00:36:20,079 --> 00:36:22,800
+net log on sessions and you know
+
+1064
+00:36:22,800 --> 00:36:26,240
+submitting new ttts to their um session
+
+1065
+00:36:26,240 --> 00:36:27,839
+this stuff is rare so it's a really good
+
+1066
+00:36:27,839 --> 00:36:29,680
+basis for detection if
+
+1067
+00:36:29,680 --> 00:36:31,359
+at a starting point and yeah you'll get
+
+1068
+00:36:31,359 --> 00:36:32,960
+a few false processes but at least it's
+
+1069
+00:36:32,960 --> 00:36:34,400
+high fidelity enough for us to be able
+
+1070
+00:36:34,400 --> 00:36:35,119
+to
+
+1071
+00:36:35,119 --> 00:36:38,160
+um make it valuable detection logic
+
+1072
+00:36:38,160 --> 00:36:40,960
+um in terms of operationalizing freeda i
+
+1073
+00:36:40,960 --> 00:36:43,280
+mean pending any license equipment
+
+1074
+00:36:43,280 --> 00:36:44,800
+licensed agreements like freedom is
+
+1075
+00:36:44,800 --> 00:36:46,400
+amazing it's really powerful
+
+1076
+00:36:46,400 --> 00:36:49,040
+and you may but it's obviously running
+
+1077
+00:36:49,040 --> 00:36:51,200
+python under the hood so
+
+1078
+00:36:51,200 --> 00:36:54,160
+um that may have performance
+
+1079
+00:36:54,160 --> 00:36:55,280
+implications
+
+1080
+00:36:55,280 --> 00:36:58,000
+um that you that you would want to worry
+
+1081
+00:36:58,000 --> 00:37:00,320
+about
+
+1082
+00:37:01,760 --> 00:37:03,760
+uh i'm just sorry i apologize between
+
+1083
+00:37:03,760 --> 00:37:05,359
+two screens i'm just looking at the
+
+1084
+00:37:05,359 --> 00:37:07,839
+discussion now to um
+
+1085
+00:37:07,839 --> 00:37:10,640
+another question
+
+1086
+00:37:12,800 --> 00:37:14,640
+would it be possible to use etw
+
+1087
+00:37:14,640 --> 00:37:16,240
+providers to enrich the data set and
+
+1088
+00:37:16,240 --> 00:37:17,839
+detect all the techniques
+
+1089
+00:37:17,839 --> 00:37:19,520
+especially the one not currently
+
+1090
+00:37:19,520 --> 00:37:21,440
+detected with standard you could do that
+
+1091
+00:37:21,440 --> 00:37:22,320
+i admit
+
+1092
+00:37:22,320 --> 00:37:24,079
+as i said before my my research was
+
+1093
+00:37:24,079 --> 00:37:25,440
+mainly focused on
+
+1094
+00:37:25,440 --> 00:37:27,920
+as i said developing used land hooks etw
+
+1095
+00:37:27,920 --> 00:37:30,320
+is an incredibly valuable resource for
+
+1096
+00:37:30,320 --> 00:37:33,440
+um a lot of kind of key windows events
+
+1097
+00:37:33,440 --> 00:37:36,480
+um so you could again providing you
+
+1098
+00:37:36,480 --> 00:37:37,920
+had the infrastructure in place to do
+
+1099
+00:37:37,920 --> 00:37:39,920
+this you could enrich the data set
+
+1100
+00:37:39,920 --> 00:37:41,200
+um with some of these things as i
+
+1101
+00:37:41,200 --> 00:37:43,119
+mentioned i was a bit disappointed with
+
+1102
+00:37:43,119 --> 00:37:44,000
+etw
+
+1103
+00:37:44,000 --> 00:37:46,240
+for some of the kerberos stuff because
+
+1104
+00:37:46,240 --> 00:37:47,280
+from either
+
+1105
+00:37:47,280 --> 00:37:51,040
+an rpc perspective calling into the lsa
+
+1106
+00:37:51,040 --> 00:37:54,000
+or the actual kerberos dtw provider i
+
+1107
+00:37:54,000 --> 00:37:55,680
+couldn't really find what i was looking
+
+1108
+00:37:55,680 --> 00:37:56,480
+for
+
+1109
+00:37:56,480 --> 00:37:58,000
+there is better logging on domain
+
+1110
+00:37:58,000 --> 00:37:59,520
+controllers but the purpose of this was
+
+1111
+00:37:59,520 --> 00:38:01,280
+to find client-side
+
+1112
+00:38:01,280 --> 00:38:05,200
+um manipulation style attacks um so
+
+1113
+00:38:05,200 --> 00:38:07,200
+for some things that there is a bit of a
+
+1114
+00:38:07,200 --> 00:38:09,680
+gap i think from the standard microsoft
+
+1115
+00:38:09,680 --> 00:38:12,160
+and even say things like cis month set i
+
+1116
+00:38:12,160 --> 00:38:13,520
+mean as i highlighted
+
+1117
+00:38:13,520 --> 00:38:15,200
+if you're if you're an attacker if you
+
+1118
+00:38:15,200 --> 00:38:17,520
+just use lsa called authentication
+
+1119
+00:38:17,520 --> 00:38:19,200
+package and do all your
+
+1120
+00:38:19,200 --> 00:38:21,280
+cred kind of manipulation through
+
+1121
+00:38:21,280 --> 00:38:22,400
+kerberos
+
+1122
+00:38:22,400 --> 00:38:24,480
+um if you know anyone looking for
+
+1123
+00:38:24,480 --> 00:38:25,920
+someone grabbing a handle or else
+
+1124
+00:38:25,920 --> 00:38:26,880
+or something you're not going to see any
+
+1125
+00:38:26,880 --> 00:38:30,160
+of that activity so um
+
+1126
+00:38:30,160 --> 00:38:32,800
+there are some limitations on what you
+
+1127
+00:38:32,800 --> 00:38:34,079
+can natively
+
+1128
+00:38:34,079 --> 00:38:37,040
+natively detect
+
+1129
+00:38:37,760 --> 00:38:39,599
+um i shall have a quick look for any
+
+1130
+00:38:39,599 --> 00:38:41,440
+more i'll give i'll wait a little bit if
+
+1131
+00:38:41,440 --> 00:38:43,520
+anyone has anything else otherwise i can
+
+1132
+00:38:43,520 --> 00:38:47,839
+wrap up um the session
+
+1133
+00:38:53,680 --> 00:38:55,440
+i guess yeah nothing else so i guess
+
+1134
+00:38:55,440 --> 00:38:56,480
+i'll leave it there yeah thank you very
+
+1135
+00:38:56,480 --> 00:39:00,720
+much for attending
+

@@ -1,0 +1,2972 @@
+﻿1
+00:00:15,210 --> 00:00:22,050
+So, I am Josh Farwell, a.k.a. Fondue. I only
+mention the hacker name because there are
+
+2
+00:00:22,050 --> 00:00:26,250
+people in the community who, like, can't seem
+to remember my real name, but they can remember
+
+3
+00:00:26,250 --> 00:00:28,500
+Fondue. So that's what we're going with.
+
+4
+00:00:28,500 --> 00:00:35,590
+I'm a security engineer at New Relic. I split
+my time between a few things. I work on Linux
+
+5
+00:00:35,590 --> 00:00:41,080
+security. I work on building visibility tools.
+And I do some purple-teaming, which is what
+
+6
+00:00:41,080 --> 00:00:44,960
+I call it when I do red-teaming but I'm looking
+at the source code.
+
+7
+00:00:44,960 --> 00:00:49,870
+And I have a former life as a Linux sysadmin
+and a SRE. And that really informs, kind of,
+
+8
+00:00:49,870 --> 00:00:56,678
+my approach to breaking stuff. I really like
+finding implementation problems, I like finding
+
+9
+00:00:56,679 --> 00:01:03,050
+bad practices. Finding bugs is cool too, but,
+yeah, people make some cool mistakes if you
+
+10
+00:01:03,050 --> 00:01:04,769
+know where to look. And, yeah.
+
+11
+00:01:04,769 --> 00:01:09,890
+I really like breaking computers. I like building
+stuff, and I'm kind of new at breaking stuff.
+
+12
+00:01:09,890 --> 00:01:14,940
+I think I've only been really focusing on
+it for about a year. But already had a lot
+
+13
+00:01:14,940 --> 00:01:18,890
+of fun and found some cool stuff. We're going
+to talk a little bit about it.
+
+14
+00:01:18,890 --> 00:01:24,799
+So, can I get a show of hands: Who here is
+familiar with the basics of how Docker works,
+
+15
+00:01:24,799 --> 00:01:26,280
+in Linux?
+
+16
+00:01:26,280 --> 00:01:31,080
+Everybody here is familiar? Okay, cool. We're
+gonna blow right past this then.
+
+17
+00:01:31,080 --> 00:01:37,780
+So, TL;DR: A container is basically just a
+set of namespaces that the kernel provides
+
+18
+00:01:37,780 --> 00:01:42,830
+to a set of processes. If you're interested
+in looking into these, these are the names
+
+19
+00:01:42,830 --> 00:01:45,200
+of things that you can look into.
+
+20
+00:01:45,200 --> 00:01:51,869
+I think the big ones are: 'cgroups:' which
+contain processes in a group and give them
+
+21
+00:01:51,869 --> 00:01:56,871
+resource limitations. So, that's memory, CPU,
+and I/O limitations. Not disk space, just
+
+22
+00:01:56,871 --> 00:01:58,339
+I/O.
+
+23
+00:01:58,340 --> 00:02:04,420
+Network namespace: which is, basically, the
+Linux network stack lets you pretend like
+
+24
+00:02:04,420 --> 00:02:08,460
+you are running your own interface. And then
+it transparently will forward ports from the
+
+25
+00:02:08,460 --> 00:02:11,430
+host into the container namespace.
+
+26
+00:02:11,430 --> 00:02:18,220
+And the virtualized filesystem, I'll touch
+on that little bit. So, it gives you a layered
+
+27
+00:02:18,220 --> 00:02:25,390
+filesystem with ... Yeah, I'm sorry. It's
+basically a 'chroot' with more features. With
+
+28
+00:02:25,390 --> 00:02:30,940
+a 'chroot' you would put that filesystem in
+a directory on a Linux host; With containers,
+
+29
+00:02:30,940 --> 00:02:32,990
+we often do more tricky stuff.
+
+30
+00:02:32,990 --> 00:02:37,280
+We have OverlayFS from Docker. I've seen people
+use QCOW. I've seen people use hard links.
+
+31
+00:02:37,280 --> 00:02:41,850
+And I've seen people use LVM volumes that
+they add to.
+
+32
+00:02:41,850 --> 00:02:46,960
+What is Docker? So, Docker and containers
+are not synonymous. Docker is a set of tools
+
+33
+00:02:46,960 --> 00:02:53,990
+around Linux containers. And it is a Linux
+daemon that will start up and shut down, run
+
+34
+00:02:53,990 --> 00:02:57,100
+C containers, and configure them and do stuff
+for them.
+
+35
+00:02:57,100 --> 00:03:02,810
+It is a command line client. Which is basically
+an HTTP client. And it image management with
+
+36
+00:03:02,810 --> 00:03:08,980
+overlay filesystems, including tooling around
+storing and pulling those images. And there
+
+37
+00:03:08,980 --> 00:03:11,730
+are many pre-packaged images available in
+Docker Hub.
+
+38
+00:03:11,730 --> 00:03:17,649
+And I think the big selling point with Docker
+is the ease of use and the velocity. You can
+
+39
+00:03:17,650 --> 00:03:22,870
+tell a developer, "Hey! I have put my open
+source stuff in a Docker container. It's already
+
+40
+00:03:22,870 --> 00:03:26,880
+set up for you. You don't have to do an installation.
+You don't have to manage dependencies. You
+
+41
+00:03:26,880 --> 00:03:32,450
+don't have to configure anything. You can
+just do 'docker run mything' and it'll just run.
+
+42
+00:03:32,450 --> 00:03:38,269
+This helps people get developers engaged with
+our products. And it's really, really, useful.
+
+43
+00:03:38,270 --> 00:03:44,880
+But, doing things that way, has some implications.
+And we're gonna talk about why that may not
+
+44
+00:03:44,880 --> 00:03:47,380
+be a great idea.
+
+45
+00:03:47,380 --> 00:03:51,600
+Docker prides itself on being very easy to
+automate. All of the things are done at the
+
+46
+00:03:51,600 --> 00:03:56,230
+command line. You can really get rolling with
+just a few Bash scripts.
+
+47
+00:03:56,230 --> 00:04:02,290
+And there's a lot of tooling around Docker
+for orchestrating production environments.
+
+48
+00:04:02,290 --> 00:04:08,280
+So, like, tooling around getting the containers
+to hosts and running the daemon on multiple
+
+49
+00:04:08,280 --> 00:04:12,570
+hosts and managing clusters of services.
+
+50
+00:04:12,570 --> 00:04:20,320
+Docker is historically a pain point for security.
+The Docker project, kind of, made some mistakes
+
+51
+00:04:20,320 --> 00:04:27,139
+in their early days. Some issues with the
+idea, of like, access as authorization, I've
+
+52
+00:04:27,139 --> 00:04:32,889
+heard people say. Meaning, they don't put
+authentication on important APIs. Such as,
+
+53
+00:04:32,889 --> 00:04:36,919
+the Docker daemon API and the Docker Registry
+API.
+
+54
+00:04:36,919 --> 00:04:41,139
+Segmentation and access control are challenging
+in Docker environments because of how dynamic
+
+55
+00:04:41,139 --> 00:04:45,561
+everything is. You have a service, and you
+have, like, a big cluster of hosts. Sometimes
+
+56
+00:04:45,561 --> 00:04:52,239
+those clusters are in different cloud environments.
+Or different geographic locations. And those
+
+57
+00:04:52,240 --> 00:04:55,889
+services can spin up on any host in the cluster.
+
+58
+00:04:55,889 --> 00:05:00,289
+And, so, managing network segmentation in
+a traditional way, the way that I was used
+
+59
+00:05:00,289 --> 00:05:05,130
+to, back in the day when I was a Linux sysadmin,
+is very difficult.
+
+60
+00:05:05,130 --> 00:05:08,949
+Modern implementations have fixed some of
+these issues. There's better access control
+
+61
+00:05:08,949 --> 00:05:18,460
+these days. There's better control over container
+processes. And there is better controls for
+
+62
+00:05:18,460 --> 00:05:26,419
+Docker image management with Docker Notary.
+But it's still a pentester goldmine.
+
+63
+00:05:26,419 --> 00:05:31,740
+The kernel is a huge attack surface for Docker,
+still. Alex talked about that, I think, a
+
+64
+00:05:31,740 --> 00:05:36,259
+little bit in the previous talk. And the container
+escapes and attacking the kernel, really,
+
+65
+00:05:36,259 --> 00:05:38,520
+has a high impact.
+
+66
+00:05:38,520 --> 00:05:43,698
+Docker registries and image management are
+not handled well by default. By default you
+
+67
+00:05:43,699 --> 00:05:47,740
+download a registry and you start running
+it. And there's no authentication. There's
+
+68
+00:05:47,740 --> 00:05:50,860
+no authorization. There's no hookups. You
+just ‘push’ stuff to there and ‘pull’
+
+69
+00:05:50,860 --> 00:05:52,140
+stuff from there.
+
+70
+00:05:52,140 --> 00:05:58,110
+That can be problematic when it's your package
+registry. And developers will Docker ‘pull’
+
+71
+00:05:58,110 --> 00:06:02,520
+anything. You can trick developers into Docker
+‘pulling’ things that they probably shouldn't
+
+72
+00:06:02,520 --> 00:06:08,068
+‘pull.’ And people build automation around
+these insecure practices. They build processes
+
+73
+00:06:08,069 --> 00:06:11,199
+around these workflows that have problems.
+
+74
+00:06:11,199 --> 00:06:16,039
+People are still finding new issues with Docker.
+Particularly, this summer, I think Alex demo'd
+
+75
+00:06:16,039 --> 00:06:21,009
+some issues with Docker for Windows. And it
+seems like, you know, the Docker project will
+
+76
+00:06:21,009 --> 00:06:26,360
+focus in one area of security, do a really
+good job, and then kind of move on to the
+
+77
+00:06:26,360 --> 00:06:29,520
+next thing. And they still haven't gotten
+to everything, yet.
+
+78
+00:06:29,520 --> 00:06:35,789
+Cool. We're going to talk about the basics
+of using the client. Just for some context
+
+79
+00:06:35,789 --> 00:06:38,590
+for the stuff I'm going to do later.
+
+80
+00:06:38,590 --> 00:06:46,060
+Docker 'build:' What we do is, we can build
+Docker images on our local system using Docker
+
+81
+00:06:46,060 --> 00:06:49,919
+files, which I will get into in a minute.
+Docker 'build' is the command to do this.
+
+82
+00:06:49,919 --> 00:06:54,748
+Docker 'ps' will list things on a Docker host;
+List the containers that are running.
+
+83
+00:06:54,749 --> 00:07:00,520
+Docker 'pull' will pull an image from a registry.
+In this case, we're pulling Ubuntu from the
+
+84
+00:07:00,520 --> 00:07:05,520
+Docker Hub registry and this is actually shorthand
+for 'library/ubuntu' as the path. This is
+
+85
+00:07:05,520 --> 00:07:08,748
+also not great that they do this.
+
+86
+00:07:08,749 --> 00:07:16,379
+And, Docker 'run,' the '-it' is basically
+an interactive TTY. So, that will launch it
+
+87
+00:07:16,379 --> 00:07:19,810
+as a shell that you can actually work with
+at the command line.
+
+88
+00:07:19,810 --> 00:07:23,979
+If you have a running container and you want
+to do stuff in it, you do Docker 'exec -it.'
+
+89
+00:07:23,979 --> 00:07:27,800
+And then pass at the '$CONTAINER_ID,'
+which is a hash.
+
+90
+00:07:27,800 --> 00:07:32,680
+And Docker 'commit,' will actually allow you
+to save something that's in a running container
+
+91
+00:07:32,680 --> 00:07:36,490
+to an image. Which is really, really, cool.
+
+92
+00:07:36,490 --> 00:07:41,509
+Tags: Docker uses tags to manage images. An
+image doesn't really have a name, it has a
+
+93
+00:07:41,509 --> 00:07:47,169
+tag. It can have multiple tags. This is how
+you change, er, add a tag to a given container.
+
+94
+00:07:47,169 --> 00:07:52,080
+And Docker ‘push' will put it into a registry.
+And you can think of a registry as,
+
+95
+00:07:52,080 --> 00:07:57,520
+basically, a package repository in Linux.
+It's not any different. Like, you pull down
+
+96
+00:07:57,520 --> 00:08:00,240
+binaries and then run them.
+
+97
+00:08:00,240 --> 00:08:05,410
+Linux folks have a lot of tools and ideas
+around how to do this safely. Namely, they
+
+98
+00:08:05,410 --> 00:08:12,409
+put signatures on things and they guard those
+keys with their life. Docker folks don't do
+
+99
+00:08:12,409 --> 00:08:15,810
+that, and it's exploitable.
+
+100
+00:08:15,810 --> 00:08:21,159
+We'll talk about Docker files really quick.
+This is an example of a Docker file that I wrote
+
+101
+00:08:21,159 --> 00:08:25,139
+for ... I think I was doing some SDR stuff
+with this.
+
+102
+00:08:25,139 --> 00:08:30,550
+I think the important things to note here
+are the 'from,' that is the base container
+
+103
+00:08:30,550 --> 00:08:35,210
+that we are importing. So, we import that
+image and then we build on top of that image.
+
+104
+00:08:35,210 --> 00:08:40,710
+And, as you can see, it's basically a script.
+It's very similar to, like, 'config' management
+
+105
+00:08:40,710 --> 00:08:45,160
+scripts or a Bash script that you might run
+in to bootstrap a system.
+
+106
+00:08:45,160 --> 00:08:52,660
+Right here I'm installing a bunch of packages
+and down below, we will have 1-2 or both,
+
+107
+00:08:52,660 --> 00:08:57,501
+entries called 'CMD' and 'ENTRYPOINT.' These
+are important. This is what the Docker container
+
+108
+00:08:57,501 --> 00:09:05,000
+... 'ENTRYPOINT' is a binary or a program
+that Docker runs when the container starts
+
+109
+00:09:05,000 --> 00:09:11,370
+and 'CMD' is default argument, the first argument
+that you pass the container when you wanna
+
+110
+00:09:11,370 --> 00:09:12,370
+run stuff.
+
+111
+00:09:12,370 --> 00:09:15,040
+So you can have it ... If you have a container
+that's for a service, a lot of the times,
+
+112
+00:09:15,040 --> 00:09:20,689
+people will put in 'CMD' the instantiation
+of their service and then they don't put anything
+
+113
+00:09:20,690 --> 00:09:24,930
+in the Docker 'run,' you just do Docker 'run
+container,' it knows what the 'CMD' is and
+
+114
+00:09:24,930 --> 00:09:26,069
+will run it.
+
+115
+00:09:26,070 --> 00:09:31,490
+Workflows: And I'm going to talk about this
+because I think it's important to understand
+
+116
+00:09:31,490 --> 00:09:36,720
+the context of how people are using Docker.
+
+117
+00:09:36,720 --> 00:09:40,510
+We have two styles here. These are just example
+workflows.
+
+118
+00:09:40,510 --> 00:09:46,290
+YOLO style: So, a developer's on their machine,
+they're working on their service, they don't
+
+119
+00:09:46,290 --> 00:09:50,060
+really want to mess with writing a Docker
+file so they just, you know, get a shell in
+
+120
+00:09:50,060 --> 00:09:56,270
+the container, do stuff. And then hit 'Docker
+commit,' save the image, and then ‘push’
+
+121
+00:09:56,270 --> 00:10:00,439
+it directly to production hosts and drop mic
+-- Done. Right?
+
+122
+00:10:00,440 --> 00:10:05,750
+You can do this with Docker, it works. The
+reason it works is because Docker container
+
+123
+00:10:05,750 --> 00:10:10,610
+running on your local system is going to,
+basically, run the same on the production
+
+124
+00:10:10,610 --> 00:10:13,840
+system with some caveats.
+
+125
+00:10:13,840 --> 00:10:18,570
+The runtime configuration does matter. Particularly
+if you're doing, like, volumes, trying to
+
+126
+00:10:18,570 --> 00:10:24,080
+pass in host filesystem resources to the container.
+But in general, like, you can get away with
+
+127
+00:10:24,080 --> 00:10:29,100
+just committing an image and pushing it out.
+Not a good idea.
+
+128
+00:10:29,100 --> 00:10:31,770
+[ in quotations for emphasis ]
+Enterprise-ready style.
+
+129
+00:10:31,770 --> 00:10:35,300
+Most of the time, people write Docker files
+into their source code. They'll put it, like,
+
+130
+00:10:35,300 --> 00:10:39,380
+in the root directory for that given service,
+that given project.
+
+131
+00:10:39,380 --> 00:10:45,740
+They'll push their stuff into their source
+code repository, like Git, or Github Enterprise.
+
+132
+00:10:45,740 --> 00:10:49,840
+That will kick off a build using Git hooks,
+as an example.
+
+133
+00:10:49,840 --> 00:10:54,720
+The build, a lot of people use Jenkins for
+this ... Jenkins will pull in the source code,
+
+134
+00:10:54,720 --> 00:11:00,940
+build it, and then it will push the container
+image it builds into a container registry.
+
+135
+00:11:00,940 --> 00:11:06,250
+And then the build will kick off deployment
+with the container orchestration and then
+
+136
+00:11:06,250 --> 00:11:12,240
+the container orchestration layer, whether
+that's Docker Swarm, Kubernetes is used ... That's
+
+137
+00:11:12,240 --> 00:11:17,630
+not exactly Docker but it can run Docker containers.
+There are plenty of others. People also write
+
+138
+00:11:17,630 --> 00:11:24,330
+their own in bash or terraform, whatever using
+system D to run containers and services. There's
+
+139
+00:11:24,330 --> 00:11:27,730
+lots of different options. But that's generally
+how it works.
+
+140
+00:11:27,730 --> 00:11:32,300
+So, CI builds it, pushes to registry, kicks
+off a deploy, the deploy pulls that image
+
+141
+00:11:32,300 --> 00:11:33,300
+back.
+
+142
+00:11:33,300 --> 00:11:41,160
+I'm getting to the good stuff. Oh, here! Here's
+the good stuff. Let's break some stuff.
+
+143
+00:11:41,160 --> 00:11:46,380
+One of the things that I've found in Docker
+environments is that people are still making
+
+144
+00:11:46,380 --> 00:11:52,189
+the same old mistakes. The Docker host daemon
+is one of the first places to look if you're
+
+145
+00:11:52,190 --> 00:11:55,780
+doing an engagement with someone you know
+runs Docker. Right?
+
+146
+00:11:55,780 --> 00:12:02,270
+It is an HTTP interface over a Unix domain
+and socket. This is weird. It's kinda weird.
+
+147
+00:12:02,270 --> 00:12:08,090
+The reason they did this was because it used
+to be bound to a TCP socket, port 2375. And
+
+148
+00:12:08,090 --> 00:12:12,831
+they do have authentication as an option,
+but it didn't come on by default. And they
+
+149
+00:12:12,831 --> 00:12:15,030
+found that people don't actually use it.
+
+150
+00:12:15,030 --> 00:12:22,180
+So, they moved it to '/var/run/docker.sock'
+and this is what the local Docker client uses
+
+151
+00:12:22,180 --> 00:12:26,170
+to talk to the Docker daemon.
+
+152
+00:12:26,170 --> 00:12:31,479
+'/var/run/docker.sock' is usually owned by
+Docker group and it has read/write permissions
+
+153
+00:12:31,480 --> 00:12:36,740
+for Docker group. So, if you put a user in
+the Docker group they can just do stuff with
+
+154
+00:12:36,740 --> 00:12:45,570
+it. This is problematic and can result in
+privilege escalation problems.
+
+155
+00:12:45,570 --> 00:12:51,000
+If we do right here, the Docker socket has
+rights to do a whole lot of stuff on a host.
+
+156
+00:12:51,000 --> 00:12:56,330
+It can basically do whatever it wants if you
+tell it to. In this case, we're telling it
+
+157
+00:12:56,330 --> 00:13:02,570
+to run in privilege mode which means running
+as root. And we are mounting 'slash' to a
+
+158
+00:13:02,570 --> 00:13:07,250
+directory called '/hostroot' inside the container
+and then we're going to 'cat' '/etc/shadow'
+
+159
+00:13:07,250 --> 00:13:09,240
+from the host.
+
+160
+00:13:09,240 --> 00:13:15,810
+Now, this is great as a local privilege escalation
+bug. A lot of people do configure their systems
+
+161
+00:13:15,810 --> 00:13:21,050
+like this. And people don't realize what they're
+doing. I've seen folks, like, put in sudoers
+
+162
+00:13:21,050 --> 00:13:29,430
+file, you know, 'sudo/docker/run/*' with no
+password. And then they mask other things
+
+163
+00:13:29,430 --> 00:13:33,160
+and make you use a password for them when
+this is exactly the same as running 'sudo'
+
+164
+00:13:33,160 --> 00:13:34,160
+without a password.
+
+165
+00:13:34,160 --> 00:13:38,589
+The jury is out. Some people disagree on whether
+or not that's a good idea. I, personally,
+
+166
+00:13:38,590 --> 00:13:41,340
+don't think it's a good idea.
+
+167
+00:13:41,340 --> 00:13:47,630
+This is how you find those things on your
+network. So, I'm actually running Nmap here.
+
+168
+00:13:47,630 --> 00:13:53,120
+This is a python library that pulls in Nmap
+and gives you an out JSON, just for convenience.
+
+169
+00:13:53,120 --> 00:13:58,290
+And what we're doing here is we're just scanning
+for port 2375 on a given network. And then
+
+170
+00:13:58,290 --> 00:14:01,550
+we're using the Docker API client.
+
+171
+00:14:01,550 --> 00:14:09,699
+The cool thing about this is if we have version
+'auto,' as a flag here online 29. That will
+
+172
+00:14:09,700 --> 00:14:14,720
+work for all of the older versions of the
+daemon. The library will figure out which
+
+173
+00:14:14,720 --> 00:14:17,060
+API call to make.
+
+174
+00:14:17,060 --> 00:14:22,060
+And that ping, CLI ping, if you can successfully
+do that and you get a return '200,' that means
+
+175
+00:14:22,060 --> 00:14:27,069
+you can do code execution on that host. It's
+done, done deal. Right?
+
+176
+00:14:27,070 --> 00:14:31,760
+So, this is how you look for those. Run this
+in your next engagement, see if you can find
+
+177
+00:14:31,760 --> 00:14:36,530
+stuff. I may or may not have run this on the
+internet. I may have found stuff.
+
+178
+00:14:36,530 --> 00:14:43,199
+I'm going to touch on Docker for Windows and
+Docker for Mac a little bit. This is what
+
+179
+00:14:43,200 --> 00:14:46,740
+most developers use on their local machines.
+
+180
+00:14:46,740 --> 00:14:51,530
+Alex went into some great stuff with Docker
+for Windows. I believe he was demonstrating
+
+181
+00:14:51,530 --> 00:14:56,630
+CVE-2018-15514, which is Stephen Seely's work.
+
+182
+00:14:56,630 --> 00:15:03,550
+Both of these attacks ... There's also a great
+talk at Blackhat in 2017 about attacking the
+
+183
+00:15:03,550 --> 00:15:09,380
+TCP socket using LLMNR host rebinding attacks.
+And these are both just attacking the Docker
+
+184
+00:15:09,380 --> 00:15:10,790
+API.
+
+185
+00:15:10,790 --> 00:15:16,780
+If you're interested in doing deep persistence
+inside of developer machines, the Blackhat
+
+186
+00:15:16,780 --> 00:15:22,730
+talk actually talks about some post-exploitation
+stuff that's really great. They essentially
+
+187
+00:15:22,730 --> 00:15:29,351
+mount the Linux VM that's running on these
+systems, they mount the root there and do
+
+188
+00:15:29,351 --> 00:15:35,460
+an infection of the VM. And then continually
+start infecting containers in the local registry.
+
+189
+00:15:35,460 --> 00:15:37,150
+Which is pretty sweet.
+
+190
+00:15:37,150 --> 00:15:44,110
+And these do run as VMs. They originally ran
+as VirtualBox VMs which is a poor choice.
+
+191
+00:15:44,110 --> 00:15:49,490
+They now use a native operating system APIs
+to run as a VM.
+
+192
+00:15:49,490 --> 00:15:55,750
+And, yeah, Docker for Mac actually seems pretty
+good. I've poked at it pretty hard, I use
+
+193
+00:15:55,750 --> 00:16:01,110
+it. The isolation between the VM and host
+seems fairly robust, the network isolation
+
+194
+00:16:01,110 --> 00:16:02,770
+seems fairly robust.
+
+195
+00:16:02,770 --> 00:16:09,650
+And you can't really mount anything good on
+the OS 10 host into the container. It masks,
+
+196
+00:16:09,650 --> 00:16:13,709
+'/system/,' and '/library/' and all of those
+good things.
+
+197
+00:16:13,710 --> 00:16:20,470
+You touch the host with your own UID and GID,
+so if I'm running the Docker daemon as Josh,
+
+198
+00:16:20,470 --> 00:16:28,720
+that's the only rights that the containers
+will have on the host filesystem. Unlike Linux,
+
+199
+00:16:28,720 --> 00:16:29,720
+right?
+
+200
+00:16:29,720 --> 00:16:35,800
+Docker Registries: And this I'm a little ticked
+off about, to be perfectly honest. And the
+
+201
+00:16:35,800 --> 00:16:44,329
+reason I'm ticked off is because Docker registries
+are problematic by default. They don't really
+
+202
+00:16:44,330 --> 00:16:49,280
+prompt you to set up authentication or at
+least they haven't until very very recently.
+
+203
+00:16:49,280 --> 00:16:55,939
+And they will actually sell you a version
+of the registry that uses Docker Notary, has
+
+204
+00:16:55,940 --> 00:17:01,990
+the keys all set up, they'll support you in
+doing that, and it has LDAP integration all
+
+205
+00:17:01,990 --> 00:17:03,250
+set up.
+
+206
+00:17:03,250 --> 00:17:07,780
+But, if you want to do that on your own you're
+kind of, you are, you're on your own. You
+
+207
+00:17:07,780 --> 00:17:12,869
+kind of have to figure it out. And the thing
+that I've learned is that engineers don't
+
+208
+00:17:12,869 --> 00:17:20,648
+really have a good reason to figure it out,
+often. They don't really think about this
+
+209
+00:17:20,648 --> 00:17:26,619
+in the same way they think about package repositories
+or source code. They're internal threat model
+
+210
+00:17:26,619 --> 00:17:27,619
+doesn't match up.
+
+211
+00:17:27,619 --> 00:17:30,690
+And so, if you go and kind of let them run
+rampant, they'll just set these up and you
+
+212
+00:17:30,691 --> 00:17:36,690
+can just ‘push’ to them. And there's no
+signatures on any of the images. They're hashed,
+
+213
+00:17:36,690 --> 00:17:42,920
+so you can compare hashes by yourself, the
+system doesn't actually support this. Until
+
+214
+00:17:42,920 --> 00:17:47,990
+fairly recently, didn't support any signature
+or trust verification of images.
+
+215
+00:17:47,990 --> 00:17:52,779
+And the best part of these, they often straddle
+corporate and prod networks. Because, in order
+
+216
+00:17:52,779 --> 00:17:56,409
+to enable developer workflows where they need
+to ‘pull’ down containers and ‘push’
+
+217
+00:17:56,409 --> 00:18:02,720
+up containers from their local systems, but
+the orchestration needs to pull containers
+
+218
+00:18:02,720 --> 00:18:07,960
+in order to deploy them, so the easy way to
+deal with that is to stick it on both. And
+
+219
+00:18:07,960 --> 00:18:12,940
+people do that. It's bad.
+
+220
+00:18:12,940 --> 00:18:20,080
+How do we enumerate vulnerable registries?
+This is a pretty good 'curl.' This one will
+
+221
+00:18:20,080 --> 00:18:23,889
+work. There's also a version one of the registry
+you can check out the documentation for the
+
+222
+00:18:23,890 --> 00:18:25,570
+API there.
+
+223
+00:18:25,570 --> 00:18:31,950
+I will show you here. This is what that returns.
+It just returns like an empty hash there if
+
+224
+00:18:31,950 --> 00:18:34,590
+you hit it on '/v2.'
+
+225
+00:18:34,590 --> 00:18:40,909
+And we want to see if we can push there. Right?
+What we're trying to do is overwrite an existing
+
+226
+00:18:40,910 --> 00:18:45,899
+image with an image of our own. And this is
+how we test that.
+
+227
+00:18:45,899 --> 00:18:50,689
+We can tag a local image. 'Ubuntu' is really
+easy. I have that on my machine. So, we're
+
+228
+00:18:50,690 --> 00:19:00,279
+tagging it with the 'target domain name/some
+path/some container name.' And we'll 'push'
+
+229
+00:19:00,279 --> 00:19:01,279
+it.
+
+230
+00:19:01,279 --> 00:19:04,710
+And if you can 'push' there, you can likely
+push over existing tags. And what I've found
+
+231
+00:19:04,710 --> 00:19:11,730
+is that when you do the 'push,' it will push
+it up and then it will check if you're authorized.
+
+232
+00:19:11,730 --> 00:19:13,500
+If it's even doing that at all.
+
+233
+00:19:13,500 --> 00:19:19,249
+This is an example of what it looks like to
+'push.' As you can see, I'm running a registry
+
+234
+00:19:19,249 --> 00:19:24,309
+locally for testing. And so, the 'docker run'
+at the top is just me starting up a registry.
+
+235
+00:19:24,309 --> 00:19:27,753
+It's bound to 'port: 5000' so we can check
+it out.
+
+236
+00:19:27,753 --> 00:19:34,020
+I check to make sure the registry is there.
+I 'tag' a container with a tag that will push
+
+237
+00:19:34,020 --> 00:19:39,129
+to that registry. And I try it. And this is
+what it looks like. It pushes up each layer
+
+238
+00:19:39,129 --> 00:19:43,559
+of the OverlayFS and shows the hash. And then
+will show the hash for the whole image at
+
+239
+00:19:43,559 --> 00:19:44,559
+the end.
+
+240
+00:19:44,559 --> 00:19:51,200
+And if I want to check to see if it's there,
+I do the 'container name /tags/list' and I
+
+241
+00:19:51,200 --> 00:19:53,600
+can see that it's there.
+
+242
+00:19:53,600 --> 00:20:00,530
+And yeah, the other way to take a look at
+this is to look at '/catalog.' This will show
+
+243
+00:20:00,530 --> 00:20:06,440
+you just a big list of all of the containers
+that are in that registry. And you can start
+
+244
+00:20:06,440 --> 00:20:09,150
+looking at names and picking stuff to infect.
+
+245
+00:20:09,150 --> 00:20:15,390
+It does some pagination. And I've run into
+issues with performance every once in a while.
+
+246
+00:20:15,390 --> 00:20:20,730
+Where, like, a Docker registry will stop responding
+to me and start timing out. So it may take
+
+247
+00:20:20,730 --> 00:20:24,200
+you a little while. But if you've got some
+time, you can just sit in a network and hit
+
+248
+00:20:24,200 --> 00:20:29,289
+this a bunch and get the whole list of stuff.
+
+249
+00:20:29,289 --> 00:20:37,039
+So, we have a registry. We know what tags
+are there. That's great. What do we 'push'
+
+250
+00:20:37,039 --> 00:20:41,440
+to? How do we know what to 'push' to? 'Cause
+it's not so simple as just, "Oh, I'm gonna
+
+251
+00:20:41,440 --> 00:20:46,879
+pick a container that says authorization in
+it. Or pick a service and try to infect that
+
+252
+00:20:46,879 --> 00:20:49,539
+service that I'm targeting."
+
+253
+00:20:49,539 --> 00:20:54,899
+Because of how the CI works and how the images
+get pushed up and in what order, it's very
+
+254
+00:20:54,899 --> 00:21:01,610
+likely that if you are pushing to, like, a
+'latest' tag in Docker that it will get overwritten
+
+255
+00:21:01,610 --> 00:21:05,789
+by someone else. Someone who is trying to
+deploy things.
+
+256
+00:21:05,789 --> 00:21:11,230
+This is kind of a representation of when that
+happens. The orchestration is only going to
+
+257
+00:21:11,230 --> 00:21:17,629
+deploy your new stuff when a deploy is kicked
+off. So, when a new build has happened and
+
+258
+00:21:17,629 --> 00:21:22,639
+a new image is ready for you. Or when a service
+is adding more instances it will pull.
+
+259
+00:21:22,640 --> 00:21:29,999
+A new image is pushed to that registry right
+after the build is done. Right? So, if we
+
+260
+00:21:29,999 --> 00:21:35,899
+are putting in a side-channel image and trying
+to get it infected and someone goes in, makes
+
+261
+00:21:35,899 --> 00:21:42,399
+a commit, and does new build, it will push
+right over your new tag and deploy it. And
+
+262
+00:21:42,400 --> 00:21:49,240
+then your stuff doesn't get deployed. Which
+is lame.
+
+263
+00:21:49,240 --> 00:21:54,580
+Good for us; People use base containers which
+is great. So, this is a very common use pattern.
+
+264
+00:21:54,580 --> 00:21:58,509
+It's falling out of favor for a lot of reasons.
+And this is one good reason for it to fall
+
+265
+00:21:58,509 --> 00:22:00,249
+out of favor.
+
+266
+00:22:00,249 --> 00:22:04,460
+They are often imported in the 'FROM' in the
+beginning of the Docker file. And what people
+
+267
+00:22:04,460 --> 00:22:10,080
+will do is, the SREs will sit down and go,
+"Wow, people are using all of this time, you
+
+268
+00:22:10,080 --> 00:22:13,449
+know, just getting their basic containers
+set up and getting their dependencies put
+
+269
+00:22:13,450 --> 00:22:18,950
+in. We want to make it easy for them, so,
+we're going to make a 'base' container that
+
+270
+00:22:18,950 --> 00:22:24,639
+has all of the things that they might need
+and knows the things we want it to do for
+
+271
+00:22:24,639 --> 00:22:28,918
+orchestration to work right. And everyone
+will save time and it will be great."
+
+272
+00:22:28,919 --> 00:22:32,749
+What actually happens is that these 'base'
+containers then just immediately get stale.
+
+273
+00:22:32,749 --> 00:22:37,619
+[Snaps] Like, immediately. And changing them
+becomes problematic because you have all of
+
+274
+00:22:37,619 --> 00:22:41,668
+these disparate services that depend on them.
+And you don't know what those disparate services
+
+275
+00:22:41,669 --> 00:22:44,929
+need from that base container.
+
+276
+00:22:44,929 --> 00:22:52,129
+And if we push into a base container as an
+attacker and push to that tag what will happen
+
+277
+00:22:52,129 --> 00:22:57,320
+is: that when someone does a build on a service,
+the CI will go, "Oh, okay. That's that base
+
+278
+00:22:57,320 --> 00:23:00,240
+container. I'll pull down that image." They
+pull it down and then it will add to that
+
+279
+00:23:00,240 --> 00:23:06,080
+image in the build and then push it back to
+the services tag. Which means that our exploits
+
+280
+00:23:06,080 --> 00:23:09,090
+are, like, in the middle of that image.
+
+281
+00:23:09,090 --> 00:23:13,230
+And yeah! This works really really well. And
+it's really easy to find these containers.
+
+282
+00:23:13,230 --> 00:23:17,250
+You just look for things with 'base' in the
+name. Like, everyone puts base in the name
+
+283
+00:23:17,250 --> 00:23:18,250
+of their base containers.
+
+284
+00:23:18,250 --> 00:23:23,600
+Particularly, they'll put, like, their company
+name there. So if you see a, you know, 'company
+
+285
+00:23:23,600 --> 00:23:26,879
+name/baseubuntu,' that's a good one. That's
+a good one.
+
+286
+00:23:26,880 --> 00:23:31,309
+And the best thing is, you don't need to guess.
+If you have the time, you can just start pulling
+
+287
+00:23:31,309 --> 00:23:35,509
+down containers from the registry and look
+in the Docker files. If you open up those
+
+288
+00:23:35,509 --> 00:23:38,240
+containers, the Docker files are probably
+going to be right there. And you can just
+
+289
+00:23:38,240 --> 00:23:43,299
+look and start seeing what people are importing.
+And you can very easily identify a good tag
+
+290
+00:23:43,299 --> 00:23:47,129
+to push to. Or you can just infect everything.
+
+291
+00:23:47,129 --> 00:23:53,559
+There's no reason not to on some level. I
+think it's really easy to set up a Bash script
+
+292
+00:23:53,559 --> 00:23:57,389
+that just starts pulling down containers and
+infecting them. And it kind of doesn't matter
+
+293
+00:23:57,389 --> 00:24:02,248
+whether or not a bunch of them get overwritten
+if a few of them don't. Right? It's a little
+
+294
+00:24:02,249 --> 00:24:04,269
+bit louder, but it would work.
+
+295
+00:24:04,269 --> 00:24:08,080
+We're going to talk about the malware that
+we're actually putting in these things.
+
+296
+00:24:08,080 --> 00:24:14,350
+Because a lot of our normal Linux persistence
+tricks don't work very well, I found ... We
+
+297
+00:24:14,350 --> 00:24:18,988
+don't have any 'init.' Or any services running
+in most containers. Some people do, but you
+
+298
+00:24:18,989 --> 00:24:22,629
+don't know who's going to and who's not. And
+you don't know how they're going to do it.
+
+299
+00:24:22,629 --> 00:24:28,889
+So you don't know whether you need to write
+to '/etc/system/D' or whether you need to
+
+300
+00:24:28,890 --> 00:24:35,909
+write to '/etc/init/D.' It really depends
+on what they're going in their 'CMD' and 'ENTRYPOINT.'
+
+301
+00:24:35,909 --> 00:24:37,619
+So, I don't bother with that.
+
+302
+00:24:37,619 --> 00:24:43,600
+We can't do kernel modules either. Because,
+unless you're doing really crazy stuff, you
+
+303
+00:24:43,600 --> 00:24:47,360
+can't really load kernel modules into the
+host kernel from a container. And that kernel
+
+304
+00:24:47,360 --> 00:24:50,129
+is the host kernel. Right?
+
+305
+00:24:50,129 --> 00:24:55,738
+And shell and profile injection are finicky.
+I've had issues with this. It's reasonable
+
+306
+00:24:55,739 --> 00:25:00,380
+to assume they would work. And I may not have
+been able to just get it right, but, I was
+
+307
+00:25:00,380 --> 00:25:05,259
+not able to get it to fire things over in
+the profile. It had trouble.
+
+308
+00:25:05,259 --> 00:25:11,139
+And we could put something in 'CMD' and 'ENTRYPOINT,'
+you know? Just make the 'CMD' 'run evilthing.sh.'
+
+309
+00:25:11,139 --> 00:25:15,408
+But 'CMD' might get overwritten by the person
+who runs the container. And 'ENTRYPOINT' might
+
+310
+00:25:15,409 --> 00:25:21,019
+get stomped on by whoever is building on top
+of your base container. So, not great.
+
+311
+00:25:21,019 --> 00:25:27,070
+I went for infecting Linux software instead.
+Which sounds hard, it's not hard. Musl and
+
+312
+00:25:27,070 --> 00:25:34,189
+glibc: musl being a libc alternative used
+in Alpine, which is a very popular container
+
+313
+00:25:34,190 --> 00:25:38,129
+that people use. Glibc being glibc.
+
+314
+00:25:38,129 --> 00:25:42,498
+It's an option to do that. I don't understand
+those libraries very well. You could very
+
+315
+00:25:42,499 --> 00:25:45,740
+easily, like, identify part of that library
+that always gets loaded and put your stuff
+
+316
+00:25:45,740 --> 00:25:46,740
+in there.
+
+317
+00:25:46,740 --> 00:25:51,690
+I just went for the shell binary because I
+know it runs. And it's simple and not hard
+
+318
+00:25:51,690 --> 00:25:58,989
+to figure out. '/bin/ash' is run in Alpine,
+'/bin/dash' is what Ubuntu uses. They's actually
+
+319
+00:25:58,989 --> 00:26:03,220
+a link from '/bin/sh' to '/bin/dash.' And
+you could also do '/bash' which is also very
+
+320
+00:26:03,220 --> 00:26:04,799
+popular.
+
+321
+00:26:04,799 --> 00:26:10,509
+And it's important to note that Docker containers
+use '/bin/sh -c' command to run whatever is
+
+322
+00:26:10,509 --> 00:26:18,230
+in 'CMD.' So, it's going to run 'sh;' It has
+to. It also runs it in the 'build.'
+
+323
+00:26:18,230 --> 00:26:24,650
+So, we're going to look at my infection here.
+This super 1337 hax0r stuff, oh man! I stole
+
+324
+00:26:24,650 --> 00:26:33,499
+this straight off of StackOverflow. This is
+just so I can find a process by it's name
+
+325
+00:26:33,499 --> 00:26:36,909
+so that I don't start up multiple versions
+of my shell.
+
+326
+00:26:36,909 --> 00:26:44,519
+And here's the good stuff: Bam! See if you
+can find it. Do you see it? Line 253. That's
+
+327
+00:26:44,519 --> 00:26:48,659
+it. It calls 'popen.' That's it. It's not
+hard.
+
+328
+00:26:48,659 --> 00:26:53,429
+Like, this is going to spawn a process called
+'/usr/bin/watchdog,' we're going to store
+
+329
+00:26:53,429 --> 00:26:57,779
+a file there. That's bad, that's going to
+be our reverse shell. And every time 'sh'
+
+330
+00:26:57,779 --> 00:27:00,509
+runs it's going to check and see if it's already
+running the 'watchdog.'
+
+331
+00:27:00,509 --> 00:27:05,419
+If it's not, it will run it. It's so easy.
+This is not hard. This is just in the main
+
+332
+00:27:05,419 --> 00:27:09,220
+command loop. And yeah, this took, like, two
+hours to figure out. It's not hard.
+
+333
+00:27:09,220 --> 00:27:16,299
+Now, we can be a lot sneakier than this, like
+I mention. We can put stuff into 'libc,' but
+
+334
+00:27:16,299 --> 00:27:20,700
+honestly, I don't know that it's that important
+most of the time. People don't look inside
+
+335
+00:27:20,700 --> 00:27:26,299
+their containers at what processes are running.
+And if they do, it's very easy for them to
+
+336
+00:27:26,299 --> 00:27:30,158
+go, "Oh, there's a process running called
+'Watchdog.' Man, those SREs are really looking
+
+337
+00:27:30,159 --> 00:27:33,169
+out for me. They've got a 'Watchdog' in my
+container. That's perfect."
+
+338
+00:27:33,169 --> 00:27:36,669
+Particularly since they've imported this base
+container from somewhere they don't know.
+
+339
+00:27:36,669 --> 00:27:39,200
+And then they don't know what's running in
+it. They didn't look at the Docker file. They
+
+340
+00:27:39,200 --> 00:27:41,499
+just imported it and they're using it.
+
+341
+00:27:41,499 --> 00:27:46,480
+So, yeah, be sneaky if you're doing this for
+real. But if you're trying to demo this for
+
+342
+00:27:46,480 --> 00:27:50,309
+engineers, don't bother. Just do this.
+
+343
+00:27:50,309 --> 00:27:53,980
+I'm using Hershell as a reverse shell. I mention
+this simple because I wanted to give them
+
+344
+00:27:53,980 --> 00:28:00,600
+credit. 'Cause it's a sweet program. And because
+it uses SSL certificate pinning which I thought
+
+345
+00:28:00,600 --> 00:28:03,998
+was really cool for running in a production
+environment. Making sure that no one else
+
+346
+00:28:03,999 --> 00:28:06,499
+is going to swipe my shell, right?
+
+347
+00:28:06,499 --> 00:28:10,190
+Let's do a demo of how this works.
+
+348
+00:28:10,190 --> 00:28:19,179
+You all see that okay? Yeah. Totally. Alright.
+
+349
+00:28:19,179 --> 00:28:26,779
+So, first we're going to demo putting in the
+exploit into a container. Right?
+
+350
+00:28:26,779 --> 00:28:34,570
+So, we've got our folder here. We've got 'evil.sh,'
+which is our prebuilt infected Dash binary.
+
+351
+00:28:34,570 --> 00:28:38,201
+I'm not going to make you sit through the
+compilation. And we've got Hershell which
+
+352
+00:28:38,201 --> 00:28:41,500
+has been built with our C2 all set up.
+
+353
+00:28:41,500 --> 00:28:50,889
+Oh, and I've gotta run the C2. Yeah. There
+we go. Super fancy C2.
+
+354
+00:28:50,889 --> 00:29:00,629
+Alright, so, we're going to do this. 'Docker
+run.' And we'll just start with Ubuntu.
+
+355
+00:29:00,629 --> 00:29:05,529
+Alright. Oh, I did forget something important
+there.
+
+356
+00:29:05,529 --> 00:29:17,279
+So, we're going to use '-v' to mount our current
+directory into the container. We'll go there.
+
+357
+00:29:17,279 --> 00:29:32,039
+And we'll copy this in. And copy this in.
+And oh my god, we're done. Done deal. Infected.
+
+358
+00:29:32,039 --> 00:29:34,080
+Holy crap.
+
+359
+00:29:34,080 --> 00:29:38,740
+We're going to save this. Right? Come over
+here.
+
+360
+00:29:38,740 --> 00:29:46,899
+I see this running container here. That's
+us. I'll stretch this out a little bit. Here
+
+361
+00:29:46,899 --> 00:29:47,918
+we go.
+
+362
+00:29:47,919 --> 00:29:54,509
+And we'll do 'docker commit.' Doink. And we'll
+bind it to our ... This is our, remember our
+
+363
+00:29:54,509 --> 00:30:05,700
+registry that's running, right? And 'company
+name/base-ubuntu.' And we'll do 'docker push.'
+
+364
+00:30:05,700 --> 00:30:08,309
+There. Done.
+
+365
+00:30:08,309 --> 00:30:13,769
+So, that was really easy, right? Took a long
+time.
+
+366
+00:30:13,769 --> 00:30:14,970
+[ laughs ]
+
+367
+00:30:14,970 --> 00:30:20,429
+Very very, uh, sophisticated technical stuff
+there. Not hard at all. And I'm making that
+
+368
+00:30:20,429 --> 00:30:24,860
+point because I want to, like, I think that
+sometimes people think that these attacks
+
+369
+00:30:24,860 --> 00:30:29,010
+are really, really hard to do and they have
+to be a super genius to figure this out. You
+
+370
+00:30:29,010 --> 00:30:31,220
+don't. You really don't. This is so easy.
+
+371
+00:30:31,220 --> 00:30:35,259
+And this will show up in the Docker history.
+And if you're doing IOCs for this, look through
+
+372
+00:30:35,259 --> 00:30:39,730
+Docker history. Catch Alex's talk if you are
+interested in how to do that. It will show
+
+373
+00:30:39,730 --> 00:30:40,730
+up there.
+
+374
+00:30:40,730 --> 00:30:45,870
+But this won't show up in the Docker file
+and engineers assume that whatever is in the
+
+375
+00:30:45,870 --> 00:30:49,570
+Docker file that their CI build is what's
+in the image. They don't even think about
+
+376
+00:30:49,570 --> 00:30:51,580
+it.
+
+377
+00:30:51,580 --> 00:30:55,609
+We're going to demonstrate what happens when
+you run this. And actually, the cool thing
+
+378
+00:30:55,609 --> 00:30:59,939
+is that build will also run our exploit.
+
+379
+00:30:59,940 --> 00:31:05,129
+So, we have this service called 'return 200.'
+I'll show you what the service does real quick.
+
+380
+00:31:05,129 --> 00:31:13,248
+It returns 200. And we'll look at the Docker
+file. And this is a very typical ... This
+
+381
+00:31:13,249 --> 00:31:15,840
+is what a Docker file will look like for a
+service that you're trying to infect.
+
+382
+00:31:15,840 --> 00:31:21,199
+And as you can see, they're importing our
+base container that we infected here. Right?
+
+383
+00:31:21,200 --> 00:31:34,940
+So, we will do ... Do we have our C2? We got
+our C2. Okay, we're good.
+
+384
+00:31:34,940 --> 00:31:41,809
+'Docker run.' Oh man, you're watching me type.
+
+385
+00:31:41,809 --> 00:31:43,529
+[ audience laughter ]
+
+386
+00:31:43,529 --> 00:31:52,779
+There we go. And, as you can see, we're running
+the container here. And we got shell. Woohoo!
+
+387
+00:31:52,779 --> 00:31:53,779
+[ clapping in the audience ]
+
+388
+00:31:53,779 --> 00:31:56,590
+We can check out our environment here. Look
+at stuff.
+
+389
+00:31:56,590 --> 00:32:07,149
+One thing I did want to show is during the
+Docker build it also emits shells. So, we'll
+
+390
+00:32:07,150 --> 00:32:20,840
+do 'docker build -f Dockerfile -t return200
+.' And as you can see, yeah. We're inside
+
+391
+00:32:20,840 --> 00:32:22,309
+of the Docker build.
+
+392
+00:32:22,309 --> 00:32:26,460
+And if you pause processes here. Like if we
+pause 'aptget y update,' which is what the
+
+393
+00:32:26,460 --> 00:32:35,221
+Docker build was running ... Let's see if
+we can.. Hmm, I think it's 'kill.' Ahh, I
+
+394
+00:32:35,221 --> 00:32:39,470
+can't remember what 'kill' command it is.
+Um, so, I won't screw it up.
+
+395
+00:32:39,470 --> 00:32:44,249
+But, we can pause it there and the Docker
+build will just hang out. And if it's, like,
+
+396
+00:32:44,249 --> 00:32:47,990
+running in Jenkins, that means the Jenkins
+build will just, like, chills forever and
+
+397
+00:32:47,990 --> 00:32:52,540
+pauses. And, that's one way to get a developer's
+attention is to pause their Jenkins build
+
+398
+00:32:52,540 --> 00:32:54,350
+for three hours while you're poking around.
+
+399
+00:32:54,350 --> 00:33:01,209
+Um, but if you're quick, and if you script
+it, you can just, like, start hitting APIs,
+
+400
+00:33:01,210 --> 00:33:05,700
+start stealing environment stuff. Often times
+people will pass really good stuff to their
+
+401
+00:33:05,700 --> 00:33:11,729
+Jenkins builds because their builds need databases
+for whatever.
+
+402
+00:33:11,729 --> 00:33:15,730
+And yeah, often times the build environment
+will also be on a cool network segment that
+
+403
+00:33:15,730 --> 00:33:20,749
+might have interesting stuff. So, it's really
+cool to check out what's in the build environment
+
+404
+00:33:20,749 --> 00:33:21,749
+first.
+
+405
+00:33:21,749 --> 00:33:25,899
+But yeah, so this will get 'build,' it'll
+get pushed out, and then the orchestration
+
+406
+00:33:25,899 --> 00:33:27,199
+will deploy it.
+
+407
+00:33:27,200 --> 00:33:36,279
+What do I do now that I'm in? Figure out where
+you are. So, you might be in multiple places.
+
+408
+00:33:36,279 --> 00:33:42,049
+And I recommend, definitely, using C2 that
+will handle multiple connections for you.
+
+409
+00:33:42,049 --> 00:33:46,490
+Because you will probably end up in at least
+two places most of the time. And you may end
+
+410
+00:33:46,490 --> 00:33:48,769
+up in completely different countries.
+
+411
+00:33:48,769 --> 00:33:54,289
+So, figure out A) Whether you're in a container.
+There are people who have gone over this at
+
+412
+00:33:54,289 --> 00:33:58,889
+length but I just check the host name. Usually
+if the host name's a hash, I'm probably in
+
+413
+00:33:58,889 --> 00:34:00,508
+a container.
+
+414
+00:34:00,509 --> 00:34:05,619
+And you check out what's running there. Do
+'ps,' figure out what service it is.
+
+415
+00:34:05,619 --> 00:34:13,429
+And the other thing I would look at immediately
+is: look for secrets. Env is great. People
+
+416
+00:34:13,429 --> 00:34:18,201
+often will inject secrets into shell environments
+that run time with Docker containers. This
+
+417
+00:34:18,201 --> 00:34:22,770
+is, like, a very common use pattern. So, just
+run env. You'll get secrets.
+
+418
+00:34:22,770 --> 00:34:30,168
+There are also container orchestration things
+that will mount files to the filesystem. So,
+
+419
+00:34:30,168 --> 00:34:32,359
+check out mount.
+
+420
+00:34:32,359 --> 00:34:39,328
+Check out anything. And, definitely do your
+homework on what people are using at your
+
+421
+00:34:39,329 --> 00:34:45,299
+given target. See if you can figure it out.
+Looking at their job listings might help.
+
+422
+00:34:45,299 --> 00:34:51,100
+And, yeah. AWS credentials are often really
+common there. Try and see what you can do
+
+423
+00:34:51,100 --> 00:34:52,879
+with those.
+
+424
+00:34:52,879 --> 00:34:57,470
+And I would poke at the kernel as well, to
+start. See if they patched their stuff or
+
+425
+00:34:57,470 --> 00:35:01,890
+not. 'Cause if they didn't, you might be able
+to get host execution really easy that way.
+
+426
+00:35:01,890 --> 00:35:08,270
+But the really good stuff is just by making
+HTTP requests to freakin' everything.
+
+427
+00:35:08,270 --> 00:35:14,099
+And one thing that I found is that in these
+environments there's often information that's
+
+428
+00:35:14,099 --> 00:35:19,380
+available for free. And that containers have
+a lot of privileges to information about the
+
+429
+00:35:19,380 --> 00:35:22,600
+environment. 'Cause they need to figure out
+what they need to connect to. Because everything
+
+430
+00:35:22,600 --> 00:35:26,500
+is dynamic, they often need to use some other
+service to do that.
+
+431
+00:35:26,500 --> 00:35:33,040
+Most people call this service discovery. There
+are open source solutions for this. But often
+
+432
+00:35:33,040 --> 00:35:38,430
+people will build their own stuff. So, go
+out and try and find this. Do Nmap scans,
+
+433
+00:35:38,430 --> 00:35:41,310
+grab banners, and then just, like, start making
+requests to things.
+
+434
+00:35:41,310 --> 00:35:45,369
+And go and look at the images that you downloaded
+from the registry and see if you can identify,
+
+435
+00:35:45,369 --> 00:35:49,069
+"Oh, that service is running here. I know
+what the source code is for that. I can look
+
+436
+00:35:49,069 --> 00:35:52,720
+at what it's doing and get it to do stuff
+for me."
+
+437
+00:35:52,720 --> 00:35:58,618
+Container orchestration APIs, oh jeez. So,
+people leave these open. Kubernetes has had
+
+438
+00:35:58,619 --> 00:36:04,799
+this and it's been in the news a bunch. This
+is the same issue as the Docker socket being
+
+439
+00:36:04,799 --> 00:36:11,680
+open on the daemon. You can do stuff. And
+people often do not secure these. So, learn
+
+440
+00:36:11,680 --> 00:36:13,980
+how to use them. Learn how to find them and
+find them.
+
+441
+00:36:13,980 --> 00:36:21,060
+Marathon is very popular. Kubernetes is very
+popular. There are many others. Find those.
+
+442
+00:36:21,060 --> 00:36:22,790
+They're real good.
+
+443
+00:36:22,790 --> 00:36:28,390
+Cloud URL metadata urls are similar to this.
+There have been, you know, check out Hackeroni,
+
+444
+00:36:28,390 --> 00:36:36,098
+about a lot of issues with the SSRF getting
+chained into metadata url access in AWS. Or
+
+445
+00:36:36,099 --> 00:36:40,720
+Google compute engine. You can also that from
+this, really easy.
+
+446
+00:36:40,720 --> 00:36:47,118
+And I think it's important to note that most
+things are proxied in these environments.
+
+447
+00:36:47,119 --> 00:36:54,050
+So, the host is mounting ... It is forwarding
+a port on the host into the container's network
+
+448
+00:36:54,050 --> 00:36:59,770
+namespace and usually it pushes out or makes
+available some configuration for some proxy
+
+449
+00:36:59,770 --> 00:37:07,839
+to use to then set up a virtual IP and a DNS
+name and forward the traffic from usually,
+
+450
+00:37:07,839 --> 00:37:11,670
+port 80 or 443 into the special port in the
+container.
+
+451
+00:37:11,670 --> 00:37:17,930
+So, get used to messing with host headers
+and trying different stuff. Do your research.
+
+452
+00:37:17,930 --> 00:37:22,980
+Traefic is one that's really really popular
+with folks. It actually works really good
+
+453
+00:37:22,980 --> 00:37:24,069
+and it's pretty secure.
+
+454
+00:37:24,069 --> 00:37:27,980
+But people do their own stuff. See if you
+can find the container that holds it. And
+
+455
+00:37:27,980 --> 00:37:32,059
+see if you can see what they're doing from
+middleware. Definitely.
+
+456
+00:37:32,059 --> 00:37:40,960
+Okay, how do I deal with this? Access control
+and authentication for important APIs is a
+
+457
+00:37:40,960 --> 00:37:45,291
+good place to start. And you'd think, like,
+"Oh, you know, Josh, this is dumb. People
+
+458
+00:37:45,291 --> 00:37:50,109
+are definitely not going to just run those
+without passwords on them." They will! They
+
+459
+00:37:50,109 --> 00:37:51,910
+do. They definitely do.
+
+460
+00:37:51,910 --> 00:37:57,759
+And they don't do it because they're dumb,
+they do it because secrets are hard in dynamic
+
+461
+00:37:57,760 --> 00:38:06,619
+environments. It's not easy to authorize and
+authenticate the various services that they
+
+462
+00:38:06,619 --> 00:38:10,200
+have running that they need to be able to
+push things into registries, that need to
+
+463
+00:38:10,200 --> 00:38:12,779
+be able to pull things down.
+
+464
+00:38:12,780 --> 00:38:20,480
+And there's a lot of value in this culture
+on being able to move fast, not having friction.
+
+465
+00:38:20,480 --> 00:38:24,500
+It's really easy for folks to see authentication
+as friction to getting done what they need
+
+466
+00:38:24,500 --> 00:38:25,690
+to get done.
+
+467
+00:38:25,690 --> 00:38:29,920
+And I think there's not a great understanding
+of the threat model and of how this can actually
+
+468
+00:38:29,920 --> 00:38:34,920
+work. So, people don't do it. People don't
+do it.
+
+469
+00:38:34,920 --> 00:38:40,631
+And, if people are just putting a set of credentials,
+LDAP credentials in front of their Docker
+
+470
+00:38:40,631 --> 00:38:45,670
+registry, then you're one set of credentials
+away from pwnage. If it's still sitting on
+
+471
+00:38:45,670 --> 00:38:49,240
+your, you know, corporate network and that's
+all you did with it ... I don't think that
+
+472
+00:38:49,240 --> 00:38:54,270
+you're really, like, really digging into what
+the threat model actually represents.
+
+473
+00:38:54,270 --> 00:39:00,319
+I think that people should be running these
+on isolated network segments if at all possible.
+
+474
+00:39:00,319 --> 00:39:03,630
+I think that you should have very strict access
+control lists. And I don't think that anyone
+
+475
+00:39:03,630 --> 00:39:07,940
+except for the CI, the place where the Docker
+container got built, should be able to 'push'
+
+476
+00:39:07,940 --> 00:39:10,840
+there. And this is all possible to do.
+
+477
+00:39:10,840 --> 00:39:14,760
+You should do threat models and attack simulations
+on your CI and on your developer tools. This
+
+478
+00:39:14,760 --> 00:39:16,970
+is something that, like, gets overlooked.
+
+479
+00:39:16,970 --> 00:39:21,680
+People do a really good job of testing their
+products that go to their customers. But then
+
+480
+00:39:21,680 --> 00:39:26,899
+often the developer tools, because they're
+behind the VPN, people don't think about them.
+
+481
+00:39:26,900 --> 00:39:31,880
+And people don't threat model them. Definitely
+do this. You will find good stuff.
+
+482
+00:39:31,880 --> 00:39:38,720
+Use Docker Notary, and Docker Notary's not
+great. It's okay. Docker Notary doesn't actually
+
+483
+00:39:38,720 --> 00:39:41,859
+sign images, as I understand it.
+
+484
+00:39:41,859 --> 00:39:50,900
+What Docker Notary does is it signs a commit
+to a registry. So, the person who pushes that
+
+485
+00:39:50,900 --> 00:39:56,080
+stuff to the registry, they sign when they
+committed it in the commit has the hash of
+
+486
+00:39:56,080 --> 00:39:59,930
+the image that they want it on. The image
+itself doesn't have any signature attached
+
+487
+00:39:59,930 --> 00:40:04,308
+to it. So, it's only, like ... The only way
+to validate it is to ask the registry where
+
+488
+00:40:04,309 --> 00:40:08,480
+it came from, "Hey is this cool?" It's better
+than nothing, though.
+
+489
+00:40:08,480 --> 00:40:15,450
+And there are proprietary solutions to this.
+There may be some ways to do it that I'm not
+
+490
+00:40:15,450 --> 00:40:20,700
+thinking of. And Docker will sell it to you
+and give you support for it.
+
+491
+00:40:20,700 --> 00:40:24,589
+But yeah, I think that people, you really
+need to think about where your images come
+
+492
+00:40:24,589 --> 00:40:28,549
+from and who built them and when they were
+pushed there.
+
+493
+00:40:28,550 --> 00:40:35,500
+And you should patch your stuff. You really
+should patch your stuff. The kernel is a huge
+
+494
+00:40:35,500 --> 00:40:41,400
+attack surface and you can do a lot to limit
+what containers can do. But, unless you patch
+
+495
+00:40:41,400 --> 00:40:44,130
+your stuff, it's not going to help.
+
+496
+00:40:44,130 --> 00:40:47,829
+And patch levels in containers often fall
+behind. And that's where we ... That's kind
+
+497
+00:40:47,829 --> 00:40:53,410
+of the first step of attacking these things.
+If you can get code execution inside a container
+
+498
+00:40:53,410 --> 00:40:59,520
+because you were running an out of date version
+of a library, you can use all the post-exploitation
+
+499
+00:40:59,520 --> 00:41:03,630
+stuff right there. It's really easy.
+
+500
+00:41:03,630 --> 00:41:08,970
+I will talk a little bit about Seccomp and
+SELinux. This limits what processes can do
+
+501
+00:41:08,970 --> 00:41:15,149
+inside of a host. Seccomp is really cool.
+It whitelists system calls to the kernel.
+
+502
+00:41:15,150 --> 00:41:19,260
+There are some system calls that have to be
+blacklisted or that have to be denied because
+
+503
+00:41:19,260 --> 00:41:23,180
+otherwise Docker security wouldn't work at
+all. And that's why it exists.
+
+504
+00:41:23,180 --> 00:41:30,930
+But you can whitelist as many or as few sys-calls
+as you want. This is a great idea and it's
+
+505
+00:41:30,930 --> 00:41:37,270
+really cool, but I think that unless you are
+at a place of maturity where you are, you
+
+506
+00:41:37,270 --> 00:41:42,410
+know, protecting your stuff; Unless you have
+a really good story around the sanctity of
+
+507
+00:41:42,410 --> 00:41:47,270
+your images, I don't know that this is going
+to help.
+
+508
+00:41:47,270 --> 00:41:52,619
+And, it's useful for mitigating kernel attacks
+but it doesn't stop me from making HTTP requests
+
+509
+00:41:52,619 --> 00:41:56,319
+in general. Because what else is a Docker
+container going to need to do other than,
+
+510
+00:41:56,319 --> 00:42:01,170
+like, make HTTP requests to other Docker containers?
+That's the whole architecture. Like, if you're
+
+511
+00:42:01,170 --> 00:42:05,069
+going to have to whitelist the stuff that
+I care about, right?
+
+512
+00:42:05,069 --> 00:42:09,680
+And yeah, make sure that you've done all of
+the basics before you start pushing on this
+
+513
+00:42:09,680 --> 00:42:11,029
+for people.
+
+514
+00:42:11,029 --> 00:42:21,380
+This is a good slide: Collaborate early. And
+this is really difficult. I think that it
+
+515
+00:42:21,380 --> 00:42:31,309
+is difficult for security people to make their
+voice heard in the early architecture conversations
+
+516
+00:42:31,309 --> 00:42:34,059
+that people have when they're setting this
+stuff up.
+
+517
+00:42:34,059 --> 00:42:38,869
+And often what happens is, is people will
+set stuff up, it'll be a test, it'll be something
+
+518
+00:42:38,869 --> 00:42:43,690
+they're playing with, and then it'll immediately
+... You know, that becomes production now.
+
+519
+00:42:43,690 --> 00:42:51,550
+And all of the loosey-goosey stuff with the
+APIs becomes just the way we do things.
+
+520
+00:42:51,550 --> 00:42:57,670
+And once someone has built automation around
+that, you're really screwed. Because it becomes
+
+521
+00:42:57,670 --> 00:43:01,299
+a lot more onerous to figure out how to fix
+it.
+
+522
+00:43:01,299 --> 00:43:06,710
+So you should go get involved early. And make
+sure that you, you know, do training with
+
+523
+00:43:06,710 --> 00:43:10,900
+your engineers. Figure out what they're actually
+working on. Ask them questions.
+
+524
+00:43:10,900 --> 00:43:15,140
+And understand the problems that they're trying
+to solve. Because the problems that they're
+
+525
+00:43:15,140 --> 00:43:19,830
+trying to solve are not easy. It's not as
+easy as just saying, like, "put authentication
+
+526
+00:43:19,830 --> 00:43:23,670
+on that." Like, you have to have a plan for,
+"well, how do you manage secrets? What's a
+
+527
+00:43:23,670 --> 00:43:25,270
+safe way to manage secrets?"
+
+528
+00:43:25,270 --> 00:43:30,788
+And secrets is a huge part of how to make
+this work right. A lot of people have talked
+
+529
+00:43:30,789 --> 00:43:35,460
+about secrets management in dynamic environments
+that are better at it than I am. So I will
+
+530
+00:43:35,460 --> 00:43:38,760
+refer you to them. Turtles All the Way Down
+is a good thing to look up. There's someone
+
+531
+00:43:38,760 --> 00:43:46,990
+at Netflix that gave a talk about how they
+do secrets management. TL;DR signed attestations
+
+532
+00:43:46,990 --> 00:43:52,430
+provided by AWS, so, you know, pass off your
+'turtles' to AWS and let AWS do it.
+
+533
+00:43:52,430 --> 00:43:57,828
+I think that is a pretty solid solution. But
+it's one thing to say it and another thing
+
+534
+00:43:57,829 --> 00:44:03,549
+to implement it. This is a long term project
+and it is a dependency for this kind of orchestration
+
+535
+00:44:03,549 --> 00:44:07,140
+work. So, get in on it.
+
+536
+00:44:07,140 --> 00:44:11,640
+And yeah, you should threat model stuff often
+because it's going to change a lot. They will
+
+537
+00:44:11,640 --> 00:44:16,970
+change directions often and they will discover
+new problems with what they're doing often.
+
+538
+00:44:16,970 --> 00:44:20,870
+And they will have tight timelines to fix
+them. So you really need to pair. You need
+
+539
+00:44:20,870 --> 00:44:25,299
+to be embedded. And you need to threat model
+their stuff continuously as they come up with
+
+540
+00:44:25,299 --> 00:44:27,509
+new ideas.
+
+541
+00:44:27,510 --> 00:44:33,780
+So, let's say you are past that stage and
+they're already running stuff and it's not
+
+542
+00:44:33,780 --> 00:44:38,290
+secure. What do you do? I think that doing
+the purple team thing is a really good way
+
+543
+00:44:38,290 --> 00:44:40,029
+to do it.
+
+544
+00:44:40,029 --> 00:44:44,600
+And it's one thing if a, you know, 'cause
+anyone you hire to do penetration testing
+
+545
+00:44:44,600 --> 00:44:48,690
+should, like, already know about all this
+stuff and be able to tell you immediately.
+
+546
+00:44:48,690 --> 00:44:52,309
+Like, "You left your Docker sockets open.
+You need to fix that."
+
+547
+00:44:52,309 --> 00:44:56,560
+It has a lot of impact if you, yourself, go
+and exploit these issues for your engineers.
+
+548
+00:44:56,560 --> 00:45:02,180
+If you're embedding with engineers and trying
+to help them do Docker security, being in
+
+549
+00:45:02,180 --> 00:45:07,490
+the habit of doing write-ups for them, showing
+them what you're doing, explaining how it
+
+550
+00:45:07,490 --> 00:45:12,779
+works, can really really get their attention
+and have a real impact on them. Because they
+
+551
+00:45:12,780 --> 00:45:19,510
+conceive, "Okay, it's not super genius hackers
+that we hire to do a pentest that did this.
+
+552
+00:45:19,510 --> 00:45:26,059
+It is people who, like me, they're .. it's
+just Josh. He's just like an engineer. He's
+
+553
+00:45:26,059 --> 00:45:31,349
+not a super genius. He has a similar background
+to me. He comes from the same place. I understand
+
+554
+00:45:31,349 --> 00:45:36,490
+him and he walked through this with me and
+I understand. Oh, I could have found this.
+
+555
+00:45:36,490 --> 00:45:38,569
+I could have figured this out."
+
+556
+00:45:38,569 --> 00:45:43,089
+And ask them to think evil with post-exploitation
+stuff. And go, "Well, what would you do if
+
+557
+00:45:43,089 --> 00:45:48,680
+you were in a container and you were in our
+environment? How would you wreck our day?"
+
+558
+00:45:48,680 --> 00:45:52,160
+And they will come up with some great stuff.
+They will come up with really good stuff.
+
+559
+00:45:52,160 --> 00:45:56,920
+'Cause they know where the bodies are buried.
+And if you can, like, engage them in conversation
+
+560
+00:45:56,920 --> 00:46:00,650
+that's getting them to talk about that stuff,
+instead of a conversation where they're defensive,
+
+561
+00:46:00,650 --> 00:46:02,520
+that's really really good.
+
+562
+00:46:02,520 --> 00:46:08,349
+And yeah, show them that you're on their side.
+You know? I think a lot of times, a lot of
+
+563
+00:46:08,349 --> 00:46:15,670
+times the discourse around these kind of issues
+that are, you know, "no-brainer" issues isn't
+
+564
+00:46:15,670 --> 00:46:22,250
+very helpful. And definitely, like, take a
+tact of being helpful. Take a tact of understanding
+
+565
+00:46:22,250 --> 00:46:27,680
+the business use case for what they're doing.
+And help them compromise and figure out what
+
+566
+00:46:27,680 --> 00:46:29,279
+to do.
+
+567
+00:46:29,280 --> 00:46:33,880
+So, in conclusion, Docker is powerful and
+exploiting it is powerful. It's real good
+
+568
+00:46:33,880 --> 00:46:40,079
+stuff. And the historical issues are still
+exploitable in many cases. You will find this
+
+569
+00:46:40,079 --> 00:46:45,630
+stuff. You need to be very careful with images,
+with build environments, and with registries.
+
+570
+00:46:45,630 --> 00:46:49,130
+And you should be demo'ing these risks for
+your engineers and showing them what's up.
+
+571
+00:46:49,130 --> 00:46:50,130
+Cool, does anyone have any questions?
+
+572
+00:46:50,130 --> 00:46:51,130
+No? Sweet.
+
+573
+00:46:51,130 --> 00:46:52,130
+Oh, right here? What's up?
+
+574
+00:46:52,130 --> 00:46:57,990
+[Audience:] I'm curious, so you made a point
+about talking about base images not being
+
+575
+00:46:57,990 --> 00:47:11,129
+[inaudible] ... What are alternatives to base
+images if you're not already down that path
+
+576
+00:47:11,130 --> 00:47:12,510
+yet?
+
+577
+00:47:12,510 --> 00:47:20,160
+[Josh Farwell:] Sure. The question is, I talked
+about base images a little bit and about how
+
+578
+00:47:20,160 --> 00:47:23,580
+it's a little bit of an anti-pattern. How
+can I deal with that?
+
+579
+00:47:23,580 --> 00:47:29,319
+Um, I deal with it by copy pasting stuff,
+honestly. And I think that, like, in a lot
+
+580
+00:47:29,319 --> 00:47:32,890
+of cases ... So, what people are trying to
+do, they're trying to save themselves work.
+
+581
+00:47:32,890 --> 00:47:36,868
+And I think that the pattern of doing a base
+image works really well for things within
+
+582
+00:47:36,869 --> 00:47:40,150
+a specific project that have shared dependencies.
+
+583
+00:47:40,150 --> 00:47:44,900
+But it also serves engineers really well to
+understand what their dependencies actually
+
+584
+00:47:44,900 --> 00:47:48,960
+are and how to bootstrap a Docker container
+for it.
+
+585
+00:47:48,960 --> 00:47:53,900
+Like, it's not ... It's installing some packages
+and doing some configuration and I think it's,
+
+586
+00:47:53,900 --> 00:48:01,039
+like, reasonable to and expect them to be
+able to do that and I think that when we talk
+
+587
+00:48:01,039 --> 00:48:06,120
+about, like, do engineers need to understand
+the orchestration stuff, do they need to really
+
+588
+00:48:06,120 --> 00:48:08,359
+get into how Docker works, not necessarily.
+
+589
+00:48:08,360 --> 00:48:15,869
+But they should know how to, like, from a
+image that has been signed that's in the library
+
+590
+00:48:15,869 --> 00:48:20,910
+in the Docker Hub ... So, yeah, I think that
+you will repeat things, you will install a
+
+591
+00:48:20,910 --> 00:48:25,930
+lot of the same packages, you should just
+put those in the Docker file.
+
+592
+00:48:25,930 --> 00:48:30,220
+And I think that, like, Docker files that
+are one Docker file that go all the way down
+
+593
+00:48:30,220 --> 00:48:34,038
+on are really easy to read and really easy
+to debug. Because then you don't have things
+
+594
+00:48:34,039 --> 00:48:37,000
+happening in a binary image over here that
+you need to go discover.
+
+595
+00:48:37,000 --> 00:48:38,560
+So, um, yeah. Does that answer your question?
+
+596
+00:48:38,560 --> 00:48:39,560
+[Audience:] Yeah.
+
+597
+00:48:39,560 --> 00:48:40,560
+[Josh Farwell:] Cool. Any other questions?
+
+598
+00:48:40,560 --> 00:48:41,560
+What's up?
+
+599
+00:48:41,560 --> 00:48:42,560
+[Audience:] It's kind of crazy so that Docker
+registries don't have authentication by default.
+
+600
+00:48:42,560 --> 00:48:43,560
+[Josh Farwell:] Yep, correct.
+
+601
+00:48:43,560 --> 00:48:44,560
+[Audience:] And so, what are the options for
+locking them down and how hard is that for
+
+602
+00:48:44,560 --> 00:48:46,000
+companies to do?
+
+603
+00:48:46,000 --> 00:49:03,260
+[Josh Farwell:] Sure, um, so, the Docker registry
+does have some hooks for doing, I believe
+
+604
+00:49:03,260 --> 00:49:08,452
+it's LDAP authentication. And they'll sell
+it to you. That's the easiest way is to buy
+
+605
+00:49:08,452 --> 00:49:09,570
+it from them.
+
+606
+00:49:09,570 --> 00:49:16,410
+I've also seen folks put stuff in front of
+registries. Like, doing HTTP password with
+
+607
+00:49:16,410 --> 00:49:21,680
+LDAP. Again, I don't think that authentication
+is really the end all be all of protecting
+
+608
+00:49:21,680 --> 00:49:25,859
+the registry. Like, if it's, you know, one
+set of credentials away from getting pwned,
+
+609
+00:49:25,859 --> 00:49:32,089
+like, that's not solving the problem. And,
+yeah, I think, like, really the way to deal
+
+610
+00:49:32,089 --> 00:49:37,709
+with the problem is to use Docker Notary and
+do signed commits.
+
+611
+00:49:37,709 --> 00:49:42,578
+And I think that, like, you know, you should
+think about it exactly the same way you think
+
+612
+00:49:42,579 --> 00:49:47,700
+about your source code. Like we have 2FA on
+our source code. We are pretty crazy about
+
+613
+00:49:47,700 --> 00:49:51,538
+checking the logs and making sure that stuff
+is good there. Like, do the same thing with
+
+614
+00:49:51,539 --> 00:49:53,260
+the registry.
+
+615
+00:49:53,260 --> 00:49:58,559
+And you know, it's HTTP, so you can proxy
+it and you can look at the access logs, and
+
+616
+00:49:58,559 --> 00:50:02,961
+you can see when people are pushing things
+and you can do alerting on that as well. So ...
+
+617
+00:50:02,961 --> 00:50:07,410
+Any other questions? Nope? Cool, thank you.
+
+618
+00:50:07,410 --> 00:50:08,960
+[ audience applause ]
+

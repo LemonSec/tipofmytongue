@@ -1,0 +1,2276 @@
+1
+00:00:00,320 --> 00:00:17,689
+Herald: Our next talk is on "the plain simple
+reality of entropy", and
+
+2
+00:00:17,689 --> 00:00:21,570
+we all know that you need randomness and entropy
+
+3
+00:00:21,570 --> 00:00:23,990
+if you want to do something like encryption
+
+4
+00:00:23,990 --> 00:00:26,140
+or generate keys.
+
+5
+00:00:26,140 --> 00:00:28,830
+And if you don't want to do it the xkcd way,
+
+6
+00:00:28,830 --> 00:00:31,779
+using only 4 as the random number,
+
+7
+00:00:31,779 --> 00:00:37,430
+you need a cryptographically secure pseudorandom
+number generator,
+
+8
+00:00:37,430 --> 00:00:39,710
+and what is this, how it works,
+
+9
+00:00:39,710 --> 00:00:41,719
+and where you can find one,
+
+10
+00:00:41,719 --> 00:00:44,170
+will be the topic of this talk.
+
+11
+00:00:44,170 --> 00:00:47,170
+So I present to you Filippo Valsorda,
+
+12
+00:00:47,170 --> 00:00:52,440
+on "How I learned to stop worrying and love
+urandom".
+
+13
+00:00:52,440 --> 00:00:54,680
+applause
+
+14
+00:00:54,680 --> 00:01:03,440
+FV: Hello. Okay, I'm very glad so many people
+showed up,
+
+15
+00:01:03,440 --> 00:01:06,580
+even if I essentially gave away the entire
+content of the talk
+
+16
+00:01:06,580 --> 00:01:09,700
+in the description.
+
+17
+00:01:09,700 --> 00:01:11,430
+Want me to stop, to leave, something?
+
+18
+00:01:11,430 --> 00:01:12,479
+Okay? No.
+
+19
+00:01:12,479 --> 00:01:15,100
+Anyway, hi! I'm Filippo Valsorda,
+
+20
+00:01:15,100 --> 00:01:16,490
+I work for CloudFlare,
+
+21
+00:01:16,490 --> 00:01:18,869
+I do cryptography and systems engineering,
+
+22
+00:01:18,869 --> 00:01:22,950
+I recently implemented the DNSSEC implementation
+
+23
+00:01:22,950 --> 00:01:25,829
+of the CloudFlare DNS server,
+
+24
+00:01:25,829 --> 00:01:31,750
+and maybe in April 2014, you used my Heartbleed
+test.
+
+25
+00:01:31,750 --> 00:01:33,200
+Anyway,
+
+26
+00:01:33,200 --> 00:01:34,659
+applause
+
+27
+00:01:34,659 --> 00:01:39,020
+Well, thank you!
+
+28
+00:01:39,020 --> 00:01:44,360
+Okay. Anyway, I'm here to tell you about random
+bytes.
+
+29
+00:01:44,360 --> 00:01:46,369
+So, here are some random bytes.
+
+30
+00:01:46,369 --> 00:01:50,119
+They're pretty good, you can use them.
+
+31
+00:01:50,119 --> 00:01:52,479
+laughter
+
+32
+00:01:52,479 --> 00:01:55,649
+But, if you need more,
+
+33
+00:01:55,649 --> 00:01:59,420
+Amazon sells this excellent book
+
+34
+00:01:59,420 --> 00:02:04,820
+full of a million random numbers.
+
+35
+00:02:04,820 --> 00:02:07,670
+Anyway. More seriously,
+
+36
+00:02:07,670 --> 00:02:10,630
+random numbers are central to a lot of
+
+37
+00:02:10,630 --> 00:02:16,050
+the security protocols and systems of our
+modern technology.
+
+38
+00:02:16,050 --> 00:02:19,310
+The most obvious is encryption keys.
+
+39
+00:02:19,310 --> 00:02:22,020
+You obviously want your encryption key to
+be random,
+
+40
+00:02:22,020 --> 00:02:24,220
+to be really hard to predict,
+
+41
+00:02:24,220 --> 00:02:26,140
+and you want your encryption key to be different
+
+42
+00:02:26,140 --> 00:02:29,080
+from the person next to you.
+
+43
+00:02:29,080 --> 00:02:30,250
+Unless you're doing key escrow,
+
+44
+00:02:30,250 --> 00:02:32,520
+which, well, we don't point.
+
+45
+00:02:32,520 --> 00:02:37,160
+So, a lot of other different systems
+
+46
+00:02:37,160 --> 00:02:41,130
+use randomness to prevent all kinds of attack.
+
+47
+00:02:41,130 --> 00:02:43,600
+In particular, one amongst many,
+
+48
+00:02:43,600 --> 00:02:45,780
+DNS, using random query IDs
+
+49
+00:02:45,780 --> 00:02:48,640
+to prevent Kaminsky attacks.
+
+50
+00:02:48,640 --> 00:02:55,450
+So, what makes a stream, a source of random
+bytes, good?
+
+51
+00:02:55,450 --> 00:02:59,190
+What are we looking for when we look for good
+random bytes?
+
+52
+00:02:59,190 --> 00:03:03,560
+First of all, we look for uniform random bytes.
+
+53
+00:03:03,560 --> 00:03:07,380
+Every time we draw a random byte from our
+random byte source
+
+54
+00:03:07,380 --> 00:03:09,510
+we want to have the same probability
+
+55
+00:03:09,510 --> 00:03:13,590
+to get all values, from 0 to 255.
+
+56
+00:03:13,590 --> 00:03:18,510
+For example, you don't want your distribution
+to look like this.
+
+57
+00:03:18,510 --> 00:03:21,150
+This is RC4.
+
+58
+00:03:21,150 --> 00:03:23,880
+But that's not enough.
+
+59
+00:03:23,880 --> 00:03:28,370
+You also want your random bytes to be completely
+unpredictable.
+
+60
+00:03:28,370 --> 00:03:33,190
+And here is where the task actually becomes
+difficult.
+
+61
+00:03:33,190 --> 00:03:36,640
+Because if you think about it, we are programming
+computers.
+
+62
+00:03:36,640 --> 00:03:38,650
+Computers are very deterministic machines,
+
+63
+00:03:38,650 --> 00:03:43,770
+even if they don't feel like they are.
+
+64
+00:03:43,770 --> 00:03:45,830
+And they're essentially machines built
+
+65
+00:03:45,830 --> 00:03:51,870
+to sequentially execute always the same set
+of instructions,
+
+66
+00:03:51,870 --> 00:03:54,450
+which we call code.
+
+67
+00:03:54,450 --> 00:03:56,560
+And when we ask them, at some point,
+
+68
+00:03:56,560 --> 00:03:58,950
+to do something that is completely different
+
+69
+00:03:58,950 --> 00:04:00,900
+every time they do it,
+
+70
+00:04:00,900 --> 00:04:03,730
+and two equal computers should do it differently,
+
+71
+00:04:03,730 --> 00:04:05,260
+we get in trouble.
+
+72
+00:04:05,260 --> 00:04:11,310
+So, where can a computer source this randomness?
+
+73
+00:04:11,310 --> 00:04:15,220
+Where can a computer find unpredictability,
+
+74
+00:04:15,220 --> 00:04:17,579
+if it can't have its own?
+
+75
+00:04:17,579 --> 00:04:21,700
+Obviously, in our messy meat world.
+
+76
+00:04:21,700 --> 00:04:23,440
+In our physical world,
+
+77
+00:04:23,440 --> 00:04:27,970
+where everything is not always happening the
+same way.
+
+78
+00:04:27,970 --> 00:04:32,060
+So, user input: every time you type on the
+keyboard,
+
+79
+00:04:32,060 --> 00:04:33,820
+you do that with different timings.
+
+80
+00:04:33,820 --> 00:04:35,180
+When you move your mouse around,
+
+81
+00:04:35,180 --> 00:04:37,320
+you do that differently every time.
+
+82
+00:04:37,320 --> 00:04:40,720
+Or, simply, reading from disk.
+
+83
+00:04:40,720 --> 00:04:45,190
+Every time your computer reads something from
+disk,
+
+84
+00:04:45,190 --> 00:04:49,210
+it takes a slightly different amount of time.
+
+85
+00:04:49,210 --> 00:04:53,400
+Or interrupt times, I/O, you get the idea.
+
+86
+00:04:53,400 --> 00:04:56,880
+So, all these events are visible to the kernel.
+
+87
+00:04:56,880 --> 00:04:59,190
+The kernel is the component of your system
+
+88
+00:04:59,190 --> 00:05:03,250
+which is controlling all these interactions
+
+89
+00:05:03,250 --> 00:05:05,820
+with the outside world, and can measure them
+
+90
+00:05:05,820 --> 00:05:09,850
+and observe them with the right precision.
+
+91
+00:05:09,850 --> 00:05:14,100
+And each of these events can have
+
+92
+00:05:14,100 --> 00:05:16,990
+a wide or narrow range of possible values,
+
+93
+00:05:16,990 --> 00:05:19,200
+for example, when you read from disk,
+
+94
+00:05:19,200 --> 00:05:25,190
+it might take from 0.17 nanoseconds to 1.3
+nanoseconds.
+
+95
+00:05:25,190 --> 00:05:29,070
+I made numbers up.
+
+96
+00:05:29,070 --> 00:05:33,600
+How wide this range is what we call entropy.
+
+97
+00:05:33,600 --> 00:05:36,140
+Essentially it is how many different values,
+
+98
+00:05:36,140 --> 00:05:40,750
+how spread apart the values are,
+
+99
+00:05:40,750 --> 00:05:45,250
+which also means how easy they are to predict.
+
+100
+00:05:45,250 --> 00:05:48,610
+But something they definitely aren't is uniform.
+
+101
+00:05:48,610 --> 00:05:51,140
+Because as I said, for example, reading from
+disk
+
+102
+00:05:51,140 --> 00:05:53,420
+might take in a specific range,
+
+103
+00:05:53,420 --> 00:05:56,510
+definitely not from 0 to 255 nanoseconds.
+
+104
+00:05:56,510 --> 00:05:58,990
+That would be...
+
+105
+00:05:58,990 --> 00:06:01,310
+And usually they're not enough to satisfy
+
+106
+00:06:01,310 --> 00:06:04,310
+all our random bytes needs.
+
+107
+00:06:04,310 --> 00:06:07,680
+So, now we have some unpredictability.
+
+108
+00:06:07,680 --> 00:06:12,150
+We have some events that we can see from our
+system,
+
+109
+00:06:12,150 --> 00:06:15,900
+and we want to turn that into a stream of
+random bytes
+
+110
+00:06:15,900 --> 00:06:18,770
+that we can use to generate SSH keys,
+
+111
+00:06:18,770 --> 00:06:21,950
+and DNS query IDs, etc.
+
+112
+00:06:21,950 --> 00:06:24,870
+Enter a CSPRNG.
+
+113
+00:06:24,870 --> 00:06:29,220
+Cryptographers like their acronyms very long.
+
+114
+00:06:29,220 --> 00:06:33,500
+It's a cryptographically secure pseudorandom
+number generator.
+
+115
+00:06:33,500 --> 00:06:36,630
+applause
+
+116
+00:06:36,630 --> 00:06:39,910
+It's not that hard to pronounce!
+
+117
+00:06:39,910 --> 00:06:41,670
+Okay, it is.
+
+118
+00:06:41,670 --> 00:06:45,620
+Anyway, it's nothing else than a cryptographic
+tool
+
+119
+00:06:45,620 --> 00:06:51,560
+that takes some input and generates an unlimited,
+
+120
+00:06:51,560 --> 00:06:52,590
+reasonably unlimited,
+
+121
+00:06:52,590 --> 00:06:56,990
+stream of random uniform bytes,
+
+122
+00:06:56,990 --> 00:07:03,340
+which depend on all and only the input you
+gave to the CSPRNG.
+
+123
+00:07:03,340 --> 00:07:05,780
+So you can see how we can use this.
+
+124
+00:07:05,780 --> 00:07:09,930
+We have this amount of random events,
+
+125
+00:07:09,930 --> 00:07:13,090
+we feed that into the CSPRNG,
+
+126
+00:07:13,090 --> 00:07:17,010
+and we get out random bytes that we can use
+for everything.
+
+127
+00:07:17,010 --> 00:07:21,940
+So, to understand how a CSPRNG works,
+
+128
+00:07:21,940 --> 00:07:26,620
+I decided to simply present you with a very
+simple one.
+
+129
+00:07:26,620 --> 00:07:28,560
+One based on hash functions.
+
+130
+00:07:28,560 --> 00:07:31,889
+I assume that everyone in the hall
+
+131
+00:07:31,889 --> 00:07:34,950
+knows essentially what hash functions are.
+
+132
+00:07:34,950 --> 00:07:39,370
+But the properties we care about today of
+hash functions are:
+
+133
+00:07:39,370 --> 00:07:43,090
+The fact that the output is uniform.
+
+134
+00:07:43,090 --> 00:07:45,870
+If you take the output of a hash function,
+
+135
+00:07:45,870 --> 00:07:48,490
+all the bits should be indistinguishable from
+random,
+
+136
+00:07:48,490 --> 00:07:51,660
+if you don't know the input.
+
+137
+00:07:51,660 --> 00:07:54,730
+It's impossible to reverse a hash function.
+
+138
+00:07:54,730 --> 00:07:57,180
+If I give you the output of a hash function,
+
+139
+00:07:57,180 --> 00:07:59,690
+you should know nothing more than before
+
+140
+00:07:59,690 --> 00:08:03,120
+about what the input of the hash function
+is,
+
+141
+00:08:03,120 --> 00:08:05,970
+unless you can specifically figure out the
+input
+
+142
+00:08:05,970 --> 00:08:09,840
+and try the hash function.
+
+143
+00:08:09,840 --> 00:08:13,430
+And finally, it takes a limited amount of
+input,
+
+144
+00:08:13,430 --> 00:08:16,540
+and makes a fixed amount of output.
+
+145
+00:08:16,540 --> 00:08:18,820
+These are the properties we are going to use
+
+146
+00:08:18,820 --> 00:08:23,639
+to build a CSPRNG out of hash functions.
+
+147
+00:08:23,639 --> 00:08:26,699
+So. This is how it works.
+
+148
+00:08:26,699 --> 00:08:27,919
+We start with a pool.
+
+149
+00:08:27,919 --> 00:08:32,169
+We call "pool" an array of bytes,
+
+150
+00:08:32,169 --> 00:08:35,150
+and we fill it with zeros to start.
+
+151
+00:08:35,150 --> 00:08:37,510
+And every time a new event comes in,
+
+152
+00:08:37,510 --> 00:08:40,679
+for example, you moved the mouse around,
+
+153
+00:08:40,679 --> 00:08:41,929
+we take that event,
+
+154
+00:08:41,929 --> 00:08:44,890
+we serialize it to some binary format,
+
+155
+00:08:44,890 --> 00:08:46,040
+doesn't really matter.
+
+156
+00:08:46,040 --> 00:08:52,080
+For example, mouse is at position 15 to 835.
+
+157
+00:08:52,080 --> 00:08:53,140
+And we hash together,
+
+158
+00:08:53,140 --> 00:08:56,830
+we hash the concatenation of our pool,
+
+159
+00:08:56,830 --> 00:08:59,330
+which for now is just zeros,
+
+160
+00:08:59,330 --> 00:09:03,279
+and the serialization of this event.
+
+161
+00:09:03,279 --> 00:09:06,339
+We hash them together, we get an output,
+
+162
+00:09:06,339 --> 00:09:10,010
+and that's our new value of the pool.
+
+163
+00:09:10,010 --> 00:09:10,970
+And we repeat.
+
+164
+00:09:10,970 --> 00:09:15,450
+Now, instead of zeros, we have the output
+from before.
+
+165
+00:09:15,450 --> 00:09:19,940
+Now we have this output, and a new event happens.
+
+166
+00:09:19,940 --> 00:09:25,860
+A disk read happens, and it takes exactly
+1.27589 nanoseconds.
+
+167
+00:09:25,860 --> 00:09:33,510
+And we hash together the old contents of the
+pool,
+
+168
+00:09:33,510 --> 00:09:38,390
+this information, disk read happened and it
+took this amount of time,
+
+169
+00:09:38,390 --> 00:09:42,440
+we hash them together and we get a new value
+of the pool.
+
+170
+00:09:42,440 --> 00:09:45,250
+You see where this is going.
+
+171
+00:09:45,250 --> 00:09:46,540
+We keep doing this.
+
+172
+00:09:46,540 --> 00:09:48,890
+Every time a new event comes in,
+
+173
+00:09:48,890 --> 00:09:51,000
+every time the mouse moves,
+
+174
+00:09:51,000 --> 00:09:53,630
+every time a CPU interrupt is raised,
+
+175
+00:09:53,630 --> 00:09:56,230
+every time disk read happens,
+
+176
+00:09:56,230 --> 00:09:58,940
+we call this stirring function
+
+177
+00:09:58,940 --> 00:10:02,730
+to mix this event into this pool.
+
+178
+00:10:02,730 --> 00:10:04,920
+And what do we end up with?
+
+179
+00:10:04,920 --> 00:10:07,640
+We end up with what we call an entropy pool.
+
+180
+00:10:07,640 --> 00:10:13,830
+Now, to figure this value, you need exactly
+all the events
+
+181
+00:10:13,830 --> 00:10:16,410
+that lead to this value.
+
+182
+00:10:16,410 --> 00:10:19,450
+If you're an attacker, and you really want
+to figure out
+
+183
+00:10:19,450 --> 00:10:21,520
+what my entropy pool is,
+
+184
+00:10:21,520 --> 00:10:25,399
+you don't, you're not supposed to have any
+better way
+
+185
+00:10:25,399 --> 00:10:28,810
+to figure it out than to guess all the different
+
+186
+00:10:28,810 --> 00:10:32,050
+hard disk timings and mouse movements that
+happened
+
+187
+00:10:32,050 --> 00:10:35,230
+all the way up to now.
+
+188
+00:10:35,230 --> 00:10:41,089
+Okay? So now we have this essentially unpredictable
+value,
+
+189
+00:10:41,089 --> 00:10:43,870
+but now we want to generate keys out of it,
+
+190
+00:10:43,870 --> 00:10:48,899
+and we can't just use these few bytes here.
+
+191
+00:10:48,899 --> 00:10:53,180
+So we can use again hash functions.
+
+192
+00:10:53,180 --> 00:10:54,300
+Same hash function.
+
+193
+00:10:54,300 --> 00:10:58,310
+We take the entropy pool, and we hash it with
+a counter.
+
+194
+00:10:58,310 --> 00:11:02,800
+You want 5000 random bits? Sure.
+
+195
+00:11:02,800 --> 00:11:04,540
+You hash entropy pool and 0,
+
+196
+00:11:04,540 --> 00:11:09,860
+hash entropy pool and 1, and 2, 3, 4, 5, 6,
+7, 8, 9.
+
+197
+00:11:09,860 --> 00:11:13,399
+You get all these outputs, you concatenate
+them,
+
+198
+00:11:13,399 --> 00:11:18,660
+and now you have 5000 bits, which are as unpredictable
+
+199
+00:11:18,660 --> 00:11:23,420
+as all the events that were stirred into the
+pool.
+
+200
+00:11:23,420 --> 00:11:25,700
+Let's think about it for a second.
+
+201
+00:11:25,700 --> 00:11:28,550
+We said that hash functions are not invertible,
+
+202
+00:11:28,550 --> 00:11:31,279
+so even if you know one of the outputs,
+
+203
+00:11:31,279 --> 00:11:34,410
+you can't get back to the entropy pool.
+
+204
+00:11:34,410 --> 00:11:37,110
+And we said that hash functions have,
+
+205
+00:11:37,110 --> 00:11:41,480
+that with hash functions, all the bits in
+input
+
+206
+00:11:41,480 --> 00:11:43,670
+affect all the bits of the output.
+
+207
+00:11:43,670 --> 00:11:46,790
+So even if just the counter changes
+
+208
+00:11:46,790 --> 00:11:50,180
+between one rand and the other,
+
+209
+00:11:50,180 --> 00:11:52,250
+the output is completely unrelated.
+
+210
+00:11:52,250 --> 00:11:55,970
+So, did we get what we want?
+
+211
+00:11:55,970 --> 00:11:58,270
+It's uniform, because we said before,
+
+212
+00:11:58,270 --> 00:12:00,930
+hash functions' outputs are uniform.
+
+213
+00:12:00,930 --> 00:12:04,380
+It's unpredictable, because the only way an
+attacker has
+
+214
+00:12:04,380 --> 00:12:07,870
+to figure out what the output will be
+
+215
+00:12:07,870 --> 00:12:12,890
+is imagine or brute-force or observe, I guess,
+
+216
+00:12:12,890 --> 00:12:17,160
+all the hard-disk timings and user inputs,
+
+217
+00:12:17,160 --> 00:12:20,380
+which is impossible for a third party.
+
+218
+00:12:20,380 --> 00:12:22,380
+And it's unlimited, because we can keep
+
+219
+00:12:22,380 --> 00:12:25,260
+incrementing that counter forever.
+
+220
+00:12:25,260 --> 00:12:29,010
+Now, really please don't go implement this
+scheme
+
+221
+00:12:29,010 --> 00:12:32,100
+and say "Filippo told me it was okay".
+
+222
+00:12:32,100 --> 00:12:33,060
+No.
+
+223
+00:12:33,060 --> 00:12:38,160
+Also because it's exactly not what this talk
+is about.
+
+224
+00:12:38,160 --> 00:12:44,550
+So, if CSPRNGs, if we have this tool
+
+225
+00:12:44,550 --> 00:12:48,180
+to turn some unpredictable events
+
+226
+00:12:48,180 --> 00:12:51,600
+into an unlimited stream of random bytes,
+
+227
+00:12:51,600 --> 00:12:53,230
+which is what we need,
+
+228
+00:12:53,230 --> 00:12:55,160
+and we have all these unpredictable events
+
+229
+00:12:55,160 --> 00:12:57,750
+observed by the kernel,
+
+230
+00:12:57,750 --> 00:13:01,990
+doesn't it make sense to just put a CSPRNG
+in the kernel
+
+231
+00:13:01,990 --> 00:13:05,490
+and just have the kernel run the CSPRNG
+
+232
+00:13:05,490 --> 00:13:09,250
+when we need random bytes?
+
+233
+00:13:09,250 --> 00:13:12,830
+It's such a good idea that it's exactly what
+Linux did,
+
+234
+00:13:12,830 --> 00:13:15,730
+and all the other operating systems.
+
+235
+00:13:15,730 --> 00:13:18,850
+In Linux, it's called /dev/urandom,
+
+236
+00:13:18,850 --> 00:13:22,740
+and it looks like a file, you read it like
+a file,
+
+237
+00:13:22,740 --> 00:13:25,240
+and it's technically a character device
+
+238
+00:13:25,240 --> 00:13:27,800
+and every time you read 100 bytes from it,
+
+239
+00:13:27,800 --> 00:13:31,360
+it runs a CSPRNG, on an entropy pool
+
+240
+00:13:31,360 --> 00:13:34,920
+not different from the one I've presented,
+
+241
+00:13:34,920 --> 00:13:41,279
+and this entropy pool is stirred with all
+the events
+
+242
+00:13:41,279 --> 00:13:46,680
+that the kernel saw happen from its privileged
+position.
+
+243
+00:13:46,680 --> 00:13:50,610
+Other operating systems have something similar.
+
+244
+00:13:50,610 --> 00:13:54,890
+OS X and BSD have /dev/random
+
+245
+00:13:54,890 --> 00:13:59,170
+which is exactly what /dev/urandom is on Linux,
+
+246
+00:13:59,170 --> 00:14:01,110
+and on Windows you can get something similar
+
+247
+00:14:01,110 --> 00:14:06,640
+with a CryptGenRandom call.
+
+248
+00:14:06,640 --> 00:14:08,260
+One last thing.
+
+249
+00:14:08,260 --> 00:14:11,120
+Putting the CSPRNG in the kernel
+
+250
+00:14:11,120 --> 00:14:13,390
+is not only about convenience,
+
+251
+00:14:13,390 --> 00:14:15,279
+it's also about security.
+
+252
+00:14:15,279 --> 00:14:16,740
+Because, first of all,
+
+253
+00:14:16,740 --> 00:14:19,540
+the kernel is the entity that can observe
+
+254
+00:14:19,540 --> 00:14:21,930
+the unpredictable events.
+
+255
+00:14:21,930 --> 00:14:25,660
+If you take a CSPRNG, which is just code,
+
+256
+00:14:25,660 --> 00:14:27,640
+so you can implement your own,
+
+257
+00:14:27,640 --> 00:14:30,120
+and you implement it in your library,
+
+258
+00:14:30,120 --> 00:14:32,100
+or in your application,
+
+259
+00:14:32,100 --> 00:14:33,360
+now you have the problem of,
+
+260
+00:14:33,360 --> 00:14:38,180
+how do you take the random, the unpredictable
+events
+
+261
+00:14:38,180 --> 00:14:42,130
+from the kernel and take them to the application?
+
+262
+00:14:42,130 --> 00:14:45,959
+This is something that you can forget to do,
+
+263
+00:14:45,959 --> 00:14:46,790
+often,
+
+264
+00:14:46,790 --> 00:14:48,420
+or do wrong.
+
+265
+00:14:48,420 --> 00:14:52,459
+And, moreover, the kernel can protect
+
+266
+00:14:52,459 --> 00:14:55,430
+the memory space of the entropy pool
+
+267
+00:14:55,430 --> 00:14:58,209
+much better than applications.
+
+268
+00:14:58,209 --> 00:15:00,180
+For example, applications can fork,
+
+269
+00:15:00,180 --> 00:15:02,640
+there's a whole lot of different things
+
+270
+00:15:02,640 --> 00:15:05,220
+that applications can get wrong.
+
+271
+00:15:05,220 --> 00:15:10,160
+And finally, you have one single centralized
+implementation
+
+272
+00:15:10,160 --> 00:15:13,990
+that is reasonably easy to audit.
+
+273
+00:15:13,990 --> 00:15:19,000
+I don't know, was anyone managing Debian servers
+in 2008?
+
+274
+00:15:19,000 --> 00:15:20,410
+laughter
+
+275
+00:15:20,410 --> 00:15:24,720
+Just asking. Unrelated. Right.
+
+276
+00:15:24,720 --> 00:15:29,000
+So, yeah. /dev/urandom.
+
+277
+00:15:29,000 --> 00:15:34,260
+So, we have a solution, right?
+
+278
+00:15:34,260 --> 00:15:37,839
+We have a tool to turn unpredictable events
+
+279
+00:15:37,839 --> 00:15:42,010
+into an unlimited uniform stream of random
+bytes,
+
+280
+00:15:42,010 --> 00:15:46,339
+we have a source of unpredictable events,
+
+281
+00:15:46,339 --> 00:15:48,680
+solved!
+
+282
+00:15:48,680 --> 00:15:50,350
+What are everybody talking about?
+
+283
+00:15:50,350 --> 00:15:52,800
+Why is there even a need for a talk?
+
+284
+00:15:52,800 --> 00:16:01,600
+Well. Sadly, there's some common misconceptions
+in the field,
+
+285
+00:16:01,600 --> 00:16:05,760
+which is also why I'm here to give this talk.
+
+286
+00:16:05,760 --> 00:16:10,790
+One of the most common is fueled by the very
+Linux man pages.
+
+287
+00:16:10,790 --> 00:16:13,839
+The recent versions are better but
+
+288
+00:16:13,839 --> 00:16:16,510
+they still give you this impression
+
+289
+00:16:16,510 --> 00:16:19,890
+that if you want real security,
+
+290
+00:16:19,890 --> 00:16:21,589
+you should be using /dev/random,
+
+291
+00:16:21,589 --> 00:16:24,820
+because /dev/urandom is okay, but, hmm, kinda...
+
+292
+00:16:24,820 --> 00:16:29,459
+and, well, we want real security, right?
+
+293
+00:16:29,459 --> 00:16:31,510
+But you might ask yourself, okay,
+
+294
+00:16:31,510 --> 00:16:34,430
+if /dev/urandom is a CSPRNG,
+
+295
+00:16:34,430 --> 00:16:38,200
+and a CSPRNG is all I need,
+
+296
+00:16:38,200 --> 00:16:40,390
+what else can I get,
+
+297
+00:16:40,390 --> 00:16:44,800
+what does /dev/random have more?
+
+298
+00:16:44,800 --> 00:16:48,100
+Well, the idea of this talk is giving you
+the knowledge
+
+299
+00:16:48,100 --> 00:16:52,450
+to figure out by yourself whether you need
+/dev/random or not.
+
+300
+00:16:52,450 --> 00:16:54,779
+So, first I explained how a CSPRNG works,
+
+301
+00:16:54,779 --> 00:16:58,140
+now I'm going to go a bit into the details
+
+302
+00:16:58,140 --> 00:17:01,880
+of how /dev/urandom and /dev/random work.
+
+303
+00:17:01,880 --> 00:17:06,289
+These are taken directly from the kernel source.
+
+304
+00:17:06,289 --> 00:17:11,378
+Both /dev/urandom and /dev/random are...
+
+305
+00:17:11,378 --> 00:17:13,689
+Yeah. Sorry.
+
+306
+00:17:13,689 --> 00:17:16,409
+Essentially, everything I'm going to say now
+
+307
+00:17:16,409 --> 00:17:19,628
+applies to both /dev/urandom and /dev/random.
+
+308
+00:17:19,628 --> 00:17:24,189
+They both are based on a pool of 4000 bits,
+
+309
+00:17:24,189 --> 00:17:29,149
+not dissimilar from the one of the CSPRNG
+we played with before,
+
+310
+00:17:29,149 --> 00:17:36,340
+which is implemented as a series of 32-bits
+words, I think.
+
+311
+00:17:36,340 --> 00:17:39,409
+The pool is mixed with all the unpredictable
+events,
+
+312
+00:17:39,409 --> 00:17:41,469
+using a CRC-like function.
+
+313
+00:17:41,469 --> 00:17:44,539
+This is not a cryptographically secure hash
+function,
+
+314
+00:17:44,539 --> 00:17:47,979
+but this is just about how the unpredictable
+events,
+
+315
+00:17:47,979 --> 00:17:52,519
+the interrupts, the disk timings, are stirred
+
+316
+00:17:52,519 --> 00:17:55,649
+into the internal pool.
+
+317
+00:17:55,649 --> 00:17:58,009
+Every time one of these events happens,
+
+318
+00:17:58,009 --> 00:18:00,330
+this very fast function kicks in
+
+319
+00:18:00,330 --> 00:18:07,419
+and stirs the pool with the unpredictable
+event.
+
+320
+00:18:07,419 --> 00:18:13,090
+Then extraction, so actual random byte generation,
+
+321
+00:18:13,090 --> 00:18:14,539
+happens with SHA-1.
+
+322
+00:18:14,539 --> 00:18:17,019
+So you want some random bytes from the kernel,
+
+323
+00:18:17,019 --> 00:18:21,539
+what the kernel does is just run SHA-1 on
+the pool,
+
+324
+00:18:21,539 --> 00:18:22,759
+give you the output,
+
+325
+00:18:22,759 --> 00:18:26,799
+and also take the output and feed it back
+into the pool
+
+326
+00:18:26,799 --> 00:18:28,619
+using that mixing function.
+
+327
+00:18:28,619 --> 00:18:31,840
+This is a big difference, you might have noticed,
+
+328
+00:18:31,840 --> 00:18:35,119
+from our design, which is a counter,
+
+329
+00:18:35,119 --> 00:18:38,820
+because keeping counters, turns out, is still
+hard.
+
+330
+00:18:38,820 --> 00:18:43,629
+And they can reset, you can lose count, that's
+bad.
+
+331
+00:18:43,629 --> 00:18:48,739
+Also, this has more security properties against
+compromise.
+
+332
+00:18:48,739 --> 00:18:51,200
+So what is does is simply that,
+
+333
+00:18:51,200 --> 00:18:54,149
+when it generates output, it also stirs it
+back,
+
+334
+00:18:54,149 --> 00:18:55,350
+and if you need more output,
+
+335
+00:18:55,350 --> 00:18:57,809
+SHA-1 again on the new pool
+
+336
+00:18:57,809 --> 00:19:00,509
+gives output and stirs it back into the pool,
+
+337
+00:19:00,509 --> 00:19:03,309
+so that the pool keeps changing.
+
+338
+00:19:03,309 --> 00:19:06,989
+Now, both /dev/urandom and /dev/random
+
+339
+00:19:06,989 --> 00:19:09,730
+do the exact same thing.
+
+340
+00:19:09,730 --> 00:19:13,409
+Same code, same sizes, same entropy sources,
+
+341
+00:19:13,409 --> 00:19:15,159
+literally in the source,
+
+342
+00:19:15,159 --> 00:19:18,070
+random_read is a call to extract_entropy_user,
+
+343
+00:19:18,070 --> 00:19:23,210
+urandom_read is a call to extract_entropy_user.
+
+344
+00:19:23,210 --> 00:19:26,730
+The only difference is
+
+345
+00:19:26,730 --> 00:19:30,119
+I finally get to what's special about /dev/random,
+
+346
+00:19:30,119 --> 00:19:34,320
+is that it tries to do a couple of really
+hard and weird things.
+
+347
+00:19:34,320 --> 00:19:39,149
+First, it tries to guess how many bits of
+entropy
+
+348
+00:19:39,149 --> 00:19:43,529
+were mixed into the pool after each unpredictable
+event.
+
+349
+00:19:43,529 --> 00:19:46,450
+This is already very hard, because, think
+about it,
+
+350
+00:19:46,450 --> 00:19:53,190
+a disk read took 1.735 nanoseconds. Great.
+
+351
+00:19:53,190 --> 00:19:56,340
+We don't know how many different values this
+might take.
+
+352
+00:19:56,340 --> 00:19:59,570
+We don't know if this is a spinning hard disk,
+
+353
+00:19:59,570 --> 00:20:01,950
+which has timings all over the place,
+
+354
+00:20:01,950 --> 00:20:05,379
+or if it's a SSD which almost always takes
+the same time.
+
+355
+00:20:05,379 --> 00:20:07,700
+So we don't know how much predictable this
+is.
+
+356
+00:20:07,700 --> 00:20:08,769
+So this is already hard,
+
+357
+00:20:08,769 --> 00:20:13,460
+figuring out how unpredictable the pool is.
+
+358
+00:20:13,460 --> 00:20:18,359
+So it keeps a counter, arbitrary number of
+how many bits
+
+359
+00:20:18,359 --> 00:20:21,330
+of entropy, how much unpredictability
+
+360
+00:20:21,330 --> 00:20:24,590
+there is in this pool.
+
+361
+00:20:24,590 --> 00:20:27,860
+And then, when you run the hash function on
+the pool,
+
+362
+00:20:27,860 --> 00:20:30,799
+it decreases this count,
+
+363
+00:20:30,799 --> 00:20:33,950
+it reduces this number.
+
+364
+00:20:33,950 --> 00:20:37,909
+And if this number gets too low, it blocks
+you.
+
+365
+00:20:37,909 --> 00:20:39,489
+So you're reading from /dev/random,
+
+366
+00:20:39,489 --> 00:20:41,479
+this number dwindles,
+
+367
+00:20:41,479 --> 00:20:44,210
+so now you're still reading from /dev/random
+
+368
+00:20:44,210 --> 00:20:45,320
+but you're blocked
+
+369
+00:20:45,320 --> 00:20:48,889
+until more unpredictable events happen.
+
+370
+00:20:48,889 --> 00:20:52,379
+This is useless in the modern world.
+
+371
+00:20:52,379 --> 00:20:53,889
+Because entropy does not decrease.
+
+372
+00:20:53,889 --> 00:20:59,229
+Entropy does not run out, and everything freezes.
+
+373
+00:20:59,229 --> 00:21:01,029
+Once the pool becomes unpredictable
+
+374
+00:21:01,029 --> 00:21:04,429
+because too many different events contributed
+
+375
+00:21:04,429 --> 00:21:06,729
+to how the entropy pool looks like,
+
+376
+00:21:06,729 --> 00:21:08,710
+it's forever unpredictable,
+
+377
+00:21:08,710 --> 00:21:12,519
+because the attacker doesn't learn anything
+from the output.
+
+378
+00:21:12,519 --> 00:21:15,859
+Obviously, unless the CSPRNG is broken
+
+379
+00:21:15,859 --> 00:21:19,629
+and is leaking information about the entropy
+pool.
+
+380
+00:21:19,629 --> 00:21:23,129
+However, saying that CSPRNGs are broken
+
+381
+00:21:23,129 --> 00:21:29,229
+is equivalent to saying that a lot of cryptography
+constructs are broken.
+
+382
+00:21:29,229 --> 00:21:31,659
+It's saying that stream ciphers are broken,
+
+383
+00:21:31,659 --> 00:21:34,340
+it's saying that CTR mode is broken,
+
+384
+00:21:34,340 --> 00:21:36,659
+it's saying that TLS and PGP are broken,
+
+385
+00:21:36,659 --> 00:21:39,470
+because they're both about reusing the same
+key
+
+386
+00:21:39,470 --> 00:21:42,299
+for multiple packets or messages.
+
+387
+00:21:42,299 --> 00:21:45,269
+So if cryptographers didn't know how to build
+
+388
+00:21:45,269 --> 00:21:47,769
+a secure CSPRNG,
+
+389
+00:21:47,769 --> 00:21:50,029
+it would mean that cryptographers weren't
+able
+
+390
+00:21:50,029 --> 00:21:54,749
+to build most of the things we're relying
+on today.
+
+391
+00:21:54,749 --> 00:21:57,169
+It would mean that cryptography was doomed.
+
+392
+00:21:57,169 --> 00:22:02,059
+Now, I'm not DJB, I can't tell you if cryptography
+is doomed.
+
+393
+00:22:02,059 --> 00:22:05,590
+But I can tell you that if cryptography is
+doomed,
+
+394
+00:22:05,590 --> 00:22:08,210
+your problem is not your CSPRNG.
+
+395
+00:22:08,210 --> 00:22:09,330
+laughter
+
+396
+00:22:09,330 --> 00:22:12,529
+So, cryptography relies on being able
+
+397
+00:22:12,529 --> 00:22:16,389
+to build secure CSPRNGs.
+
+398
+00:22:16,389 --> 00:22:17,129
+And on the other hand,
+
+399
+00:22:17,129 --> 00:22:20,950
+that makes /dev/random blocking useless, obviously.
+
+400
+00:22:20,950 --> 00:22:23,320
+It can be unacceptable, too, because
+
+401
+00:22:23,320 --> 00:22:25,700
+you get a TLS request, and you're like
+
+402
+00:22:25,700 --> 00:22:29,009
+"I have that HTTP page, but wait a second,
+
+403
+00:22:29,009 --> 00:22:31,619
+I need someone to start typing
+
+404
+00:22:31,619 --> 00:22:36,720
+on the keyboard of the rack to serve it to
+you."
+
+405
+00:22:36,720 --> 00:22:38,009
+And it can even be dangerous,
+
+406
+00:22:38,009 --> 00:22:40,080
+because you're essentially giving away information
+
+407
+00:22:40,080 --> 00:22:42,619
+about what other users in the system are doing
+
+408
+00:22:42,619 --> 00:22:46,059
+to other users.
+
+409
+00:22:46,059 --> 00:22:47,519
+On the other hand,
+
+410
+00:22:47,519 --> 00:22:50,320
+/dev/urandom is safe for any cryptography
+use
+
+411
+00:22:50,320 --> 00:22:51,739
+you want to use it for.
+
+412
+00:22:51,739 --> 00:22:54,019
+You want to generate long-term keys...
+
+413
+00:22:54,019 --> 00:22:59,529
+My GPG keys are generated from /dev/urandom.
+
+414
+00:22:59,529 --> 00:23:01,899
+And I'm not the only one saying this,
+
+415
+00:23:01,899 --> 00:23:06,369
+BoringSSL, Python, Go, Ruby, use /dev/urandom
+
+416
+00:23:06,369 --> 00:23:09,809
+as the only source, the only CSPRNG.
+
+417
+00:23:09,809 --> 00:23:13,070
+Sandstorm even replaces /dev/random with it.
+
+418
+00:23:13,070 --> 00:23:15,220
+And here is a long list of people
+
+419
+00:23:15,220 --> 00:23:20,259
+saying exactly what I'm here on stage to tell
+you.
+
+420
+00:23:20,259 --> 00:23:26,119
+So, I hope that at the end of this, you see
+
+421
+00:23:26,119 --> 00:23:29,600
+that you don't actually need /dev/random,
+
+422
+00:23:29,600 --> 00:23:31,450
+as well as you don't need to keep measuring
+
+423
+00:23:31,450 --> 00:23:33,869
+how much entropy you have in the pool,
+
+424
+00:23:33,869 --> 00:23:35,570
+you don't need to refill the pool
+
+425
+00:23:35,570 --> 00:23:37,840
+with things like haveged or
+
+426
+00:23:37,840 --> 00:23:39,960
+I don't know how to pronounce it.
+
+427
+00:23:39,960 --> 00:23:45,919
+Actually I've even seen people take output
+from /dev/urandom
+
+428
+00:23:45,919 --> 00:23:49,349
+and pipe it back as root into /dev/random
+
+429
+00:23:49,349 --> 00:23:51,989
+so that the entropy doesn't run out,
+
+430
+00:23:51,989 --> 00:23:58,179
+which is exactly what the kernel is doing!
+
+431
+00:23:58,179 --> 00:24:03,359
+Which is, obviously, a pretty upvoted answer
+on StackOverflow.
+
+432
+00:24:03,359 --> 00:24:04,779
+laughter
+
+433
+00:24:04,779 --> 00:24:08,549
+Anyway. And finally,
+
+434
+00:24:08,549 --> 00:24:10,489
+random number quality does not decrease,
+
+435
+00:24:10,489 --> 00:24:13,259
+there are not like premium-level random numbers
+
+436
+00:24:13,259 --> 00:24:18,169
+and then they kinda rot after you use them
+for a while.
+
+437
+00:24:18,169 --> 00:24:21,419
+No, that's not a thing.
+
+438
+00:24:21,419 --> 00:24:26,349
+Okay. So, there is only one small case
+
+439
+00:24:26,349 --> 00:24:29,659
+in which /dev/urandom does not do exactly
+
+440
+00:24:29,659 --> 00:24:33,590
+what we would expect it to do, which is early
+at boot.
+
+441
+00:24:33,590 --> 00:24:34,389
+If you think about it,
+
+442
+00:24:34,389 --> 00:24:38,529
+everything we said is about using unpredictable
+events
+
+443
+00:24:38,529 --> 00:24:40,659
+to build up unpredictability.
+
+444
+00:24:40,659 --> 00:24:43,509
+As soon as you boot the machine,
+
+445
+00:24:43,509 --> 00:24:47,559
+you don't have observed enough events yet.
+
+446
+00:24:47,559 --> 00:24:50,889
+So this got embedded devices,
+
+447
+00:24:50,889 --> 00:24:55,519
+this got the Raspberry Pi recently,
+
+448
+00:24:55,519 --> 00:24:57,809
+essentially it's a Linux shortcoming,
+
+449
+00:24:57,809 --> 00:25:00,200
+which by now it's too late to fix,
+
+450
+00:25:00,200 --> 00:25:02,389
+which is the fact that /dev/urandom will not
+block
+
+451
+00:25:02,389 --> 00:25:05,999
+even at boot, before being initialized.
+
+452
+00:25:05,999 --> 00:25:09,710
+The solution in most cases is just that the
+distribution
+
+453
+00:25:09,710 --> 00:25:12,809
+should save the state of the pool at power-off,
+
+454
+00:25:12,809 --> 00:25:15,570
+and reload it at power-on,
+
+455
+00:25:15,570 --> 00:25:18,849
+or block until the pool is initialized.
+
+456
+00:25:18,849 --> 00:25:22,999
+So, your distribution probably solves this
+for you anyway.
+
+457
+00:25:22,999 --> 00:25:28,159
+So, to sum up, CSPRNGs are pretty cool, and
+they work.
+
+458
+00:25:28,159 --> 00:25:30,809
+You don't need /dev/random.
+
+459
+00:25:30,809 --> 00:25:33,529
+You shouldn't use userspace CSPRNGs
+
+460
+00:25:33,529 --> 00:25:35,820
+because they're very easy to get wrong.
+
+461
+00:25:35,820 --> 00:25:38,710
+And if you need 100 random bytes,
+
+462
+00:25:38,710 --> 00:25:42,029
+read 100 bytes from /dev/urandom.
+
+463
+00:25:42,029 --> 00:25:43,699
+That's it!
+
+464
+00:25:43,699 --> 00:25:54,529
+applause
+
+465
+00:25:54,529 --> 00:25:58,009
+I glossed over a lot of different ways to
+do it wrong,
+
+466
+00:25:58,009 --> 00:26:01,489
+so if you have questions about why not this
+other thing,
+
+467
+00:26:01,489 --> 00:26:03,119
+please, come forward.
+
+468
+00:26:03,119 --> 00:26:07,249
+Herald: Okay, and because people on the stream
+can't be here in person,
+
+469
+00:26:07,249 --> 00:26:09,720
+we will start with questions from the Internet.
+
+470
+00:26:09,720 --> 00:26:13,960
+Q: The first question is: How do you explain,
+
+471
+00:26:13,960 --> 00:26:18,059
+regarding what you explained of /dev/random
+versus /dev/urandom,
+
+472
+00:26:18,059 --> 00:26:21,340
+the fact that on the 4.3.3 kernel, /dev/random
+output
+
+473
+00:26:21,340 --> 00:26:25,710
+is identical with something from /dev/input
+something?
+
+474
+00:26:25,710 --> 00:26:26,710
+Someone claimed that.
+
+475
+00:26:26,710 --> 00:26:30,220
+FV: I'm sorry, you have to repeat. On the
+what?
+
+476
+00:26:30,220 --> 00:26:34,489
+Q: On a kernel 4.3.3, someone claims that
+sometimes,
+
+477
+00:26:34,489 --> 00:26:37,220
+the output from /dev/random, or /dev/unrandom,
+
+478
+00:26:37,220 --> 00:26:39,700
+is identical to something that comes from
+/dev/input,
+
+479
+00:26:39,700 --> 00:26:41,999
+like an input device.
+
+480
+00:26:41,999 --> 00:26:45,659
+FV: I'm not sure I got what system, but...
+
+481
+00:26:45,659 --> 00:26:47,450
+oh my god, what system?
+
+482
+00:26:47,450 --> 00:26:50,590
+Q: Linux, Linux 4.3.3, the guy claims.
+
+483
+00:26:50,590 --> 00:26:53,559
+FV: That sounds like a pretty bad bug, but...
+
+484
+00:26:53,559 --> 00:26:55,259
+I don't know.
+
+485
+00:26:55,259 --> 00:26:57,580
+If that's the case, I'm not aware of it,
+
+486
+00:26:57,580 --> 00:26:59,289
+because I read the kernel source,
+
+487
+00:26:59,289 --> 00:27:03,590
+and it's really a call to extract_entropy_user.
+
+488
+00:27:03,590 --> 00:27:04,609
+File a bug report, maybe?
+
+489
+00:27:04,609 --> 00:27:06,159
+No, I mean, I'm joking.
+
+490
+00:27:06,159 --> 00:27:08,720
+I would be happy to talk about this offline.
+
+491
+00:27:08,720 --> 00:27:12,039
+Herald: Is there another question from the
+stream?
+
+492
+00:27:12,039 --> 00:27:14,279
+Q: Yes, I have two more questions.
+
+493
+00:27:14,279 --> 00:27:17,039
+One is: What do you think about hardware entropy
+generators,
+
+494
+00:27:17,039 --> 00:27:17,830
+or hardware random generators?
+
+495
+00:27:17,830 --> 00:27:22,599
+FV: Aha! I have a slide for this!
+
+496
+00:27:22,599 --> 00:27:29,379
+laughter
+
+497
+00:27:29,379 --> 00:27:32,999
+So, hardware random number generators, very
+quickly.
+
+498
+00:27:32,999 --> 00:27:37,299
+Some CPUs on some platforms have real random
+number generators.
+
+499
+00:27:37,299 --> 00:27:40,570
+Essentially, I'm told they use electrical
+noises
+
+500
+00:27:40,570 --> 00:27:43,499
+to give you actual randomness.
+
+501
+00:27:43,499 --> 00:27:47,190
+Linux has support for them, and, if they're
+loaded,
+
+502
+00:27:47,190 --> 00:27:50,169
+they will immediately be used to refuel this
+pool,
+
+503
+00:27:50,169 --> 00:27:53,849
+and they will also be used as the initialization
+vectors
+
+504
+00:27:53,849 --> 00:27:56,219
+for the SHA-1 of this extraction.
+
+505
+00:27:56,219 --> 00:27:59,440
+So, if they're turned on, you don't have to
+worry about them,
+
+506
+00:27:59,440 --> 00:28:03,479
+and they will make /dev/urandom work even
+better.
+
+507
+00:28:03,479 --> 00:28:05,019
+Yep.
+
+508
+00:28:05,019 --> 00:28:08,779
+applause
+
+509
+00:28:08,779 --> 00:28:11,149
+Herald: Okay, quick question from the stream.
+
+510
+00:28:11,149 --> 00:28:16,919
+Q: Yeah, someone wants your opinion about
+entropy-gathering daemons
+
+511
+00:28:16,919 --> 00:28:18,200
+like havege daemons.
+
+512
+00:28:18,200 --> 00:28:21,210
+FV: There was probably a time when they had
+
+513
+00:28:21,210 --> 00:28:26,749
+their reason to exist, maybe because Linux
+implementations
+
+514
+00:28:26,749 --> 00:28:30,080
+of this entropy gathering was not that good,
+
+515
+00:28:30,080 --> 00:28:33,309
+today they don't really have reason to exist.
+
+516
+00:28:33,309 --> 00:28:36,629
+Herald: Okay, thank you. And microphone 4,
+please.
+
+517
+00:28:36,629 --> 00:28:40,469
+Q: Hello. I wanted to ask about the early
+boot problem.
+
+518
+00:28:40,469 --> 00:28:45,919
+You say that we should mix, that we should
+save the state
+
+519
+00:28:45,919 --> 00:28:51,940
+of /dev/urandom, what happens if a machine
+crashes?
+
+520
+00:28:51,940 --> 00:28:54,769
+Wouldn't you restart from an earlier state
+of /dev/urandom?
+
+521
+00:28:54,769 --> 00:28:59,289
+FV: Hm, yeah, I think that the correct way
+to do this is,
+
+522
+00:28:59,289 --> 00:29:06,019
+as soon as, even before the input is used
+to initialize the pool,
+
+523
+00:29:06,019 --> 00:29:09,409
+the one from the last shutdown,
+
+524
+00:29:09,409 --> 00:29:12,379
+it should be deleted from the disk,
+
+525
+00:29:12,379 --> 00:29:13,419
+and the disk flushed.
+
+526
+00:29:13,419 --> 00:29:16,849
+Yes, it's kind of hard, yes.
+
+527
+00:29:16,849 --> 00:29:20,359
+Herald: Okay, and unfortunately we are running
+out of time,
+
+528
+00:29:20,359 --> 00:29:24,169
+because we have to clear this room. And you
+have a short announcement?
+
+529
+00:29:24,169 --> 00:29:30,009
+FV: Oh, yeah! Tomorrow, at 15.30, I am giving
+a quick workshop
+
+530
+00:29:30,009 --> 00:29:34,799
+about how to implement a Vaudenay padding
+oracle attack in Hall 14.
+
+531
+00:29:34,799 --> 00:29:39,359
+I think it doesn't take as many people as
+are here now...
+
+532
+00:29:39,359 --> 00:29:40,799
+so maybe I shouldn't have said that.
+
+533
+00:29:40,799 --> 00:29:44,169
+Herald: Okay, then! Thanks again, Filippo,
+for the talk.
+
+534
+00:29:44,169 --> 00:29:48,459
+applause

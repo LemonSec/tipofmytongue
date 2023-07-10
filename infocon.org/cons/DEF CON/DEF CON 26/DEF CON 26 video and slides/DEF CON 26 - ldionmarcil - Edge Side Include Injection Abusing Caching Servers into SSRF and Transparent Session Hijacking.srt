@@ -1,0 +1,1078 @@
+﻿00:00:00.100-->00:00:06.306
+>>uh, Louis here, this is his
+first talk at DefCon and um,
+give him a round of applause
+
+00:00:06.306-->00:00:11.311
+[applause] cheers. >>Yeah! Yeah!
+[from audience] >>And uh, he
+wants to talk to you about
+
+00:00:14.248-->00:00:19.253
+exploiting cache services cache
+servers um so, I’ll-I’m going to
+let him go and uh enjoy.
+
+00:00:26.360-->00:00:31.365
+>>Alright, so, thanks everyone
+for coming, last day of DefCon,
+let’s do this. So, this is edge
+
+00:00:34.301-->00:00:38.639
+side include injection, abusing
+caching servers into server side
+request forgery and transparent
+
+00:00:38.639-->00:00:44.244
+session hijacking. So, I know
+that’s a very long title, um
+meant to mention some of the
+
+00:00:44.244-->00:00:49.149
+many things you can do with edge
+side includes, especially when
+your injecting it. So for the
+
+00:00:49.149-->00:00:53.654
+rest of this talk I’ll be
+referring to edge side includes
+as ESI for convenience, because
+
+00:00:53.654-->00:00:59.059
+that’s a mouthful. Um, so during
+this talk we’ll learn about edge
+side includes, uh we’ll talk
+
+00:00:59.059-->00:01:04.398
+about the problem that it was
+created to solve, uh we’ll then
+talk about the problems that it
+
+00:01:04.398-->00:01:08.969
+created by introducing it in an
+unsafe manner and then we’ll
+talk about mitigation and
+
+00:01:08.969-->00:01:14.808
+migration. So my name is Louis
+Dion-Marcil, I work at GoSecure
+in Montreal and to give some
+
+00:01:14.808-->00:01:20.781
+context on what ESI injection
+is, basically it’s a new class
+of attacks. Of course it targets
+
+00:01:20.781-->00:01:25.552
+ESI enabled caching servers, so
+it’s not a wide spread attack uh
+unlike what James Kettle
+
+00:01:25.552-->00:01:30.624
+presented at blackout two days
+ago. So this is really targeting
+ESI engines. So, this was
+
+00:01:30.624-->00:01:35.896
+discovered by a mistake
+basically uh one of my
+colleagues [indiscernible] was
+
+00:01:35.896-->00:01:42.135
+tasked with reviewing the
+caching configuration for one of
+our clients so, our client which
+
+00:01:42.135-->00:01:47.641
+is a large ISP basically wanted
+a cache overview of the security
+features and we kept seeing
+
+00:01:47.641-->00:01:53.981
+references to ESI, kept coming
+up ad shot includes, so we’re a
+bunch at GoSecure and we had
+
+00:01:53.981-->00:01:58.151
+never heard of that, none of us
+ever heard about that so we
+started looking into
+
+00:01:58.151-->00:02:03.156
+documentation, and we saw that
+the first and final
+specification from ESI was in
+
+00:02:03.156-->00:02:08.662
+2001 and I don’t know if you
+were doing web development 17
+years ago but security was not
+
+00:02:08.662-->00:02:13.700
+invented yet. So, we started
+looking into vendor
+documentation because the
+
+00:02:13.700-->00:02:19.673
+specification was so old we
+thought this can’t be right and
+we kept seeing stuff like that.
+
+00:02:19.673-->00:02:24.344
+Word art, word art in
+documentation is always a good
+sign from an attackers
+
+00:02:24.344-->00:02:30.350
+perspective because it tells
+you, well I wasn’t even in high
+school when this was done so
+
+00:02:30.350-->00:02:33.653
+like ok. So, the documentation
+isn’t going to help us so I am
+going to explain it to you, so,
+
+00:02:33.653-->00:02:38.025
+basically let’s look at this
+more permanent web page example.
+So, you have a weather web page,
+
+00:02:38.025-->00:02:43.964
+and to the end user, this is a
+single http response right? But,
+to the end-to the ESI server,
+
+00:02:43.964-->00:02:49.870
+the ESI caching server, this is
+multiple fragments, and these
+fragments were invented to do
+
+00:02:49.870-->00:02:55.575
+one thing which is invalidate
+individual elements of a web
+page instead of invalidating the
+
+00:02:55.575-->00:03:00.614
+whole document. So, when you
+think of caching usually you’ll
+cache a static file, and ESI is
+
+00:03:00.614-->00:03:06.686
+invented to cache dynamic files.
+So for the forecast, Monday,
+Tuesday labels, you can keep
+
+00:03:06.686-->00:03:11.858
+that as static fragment but the
+forecast for example 27 degrees,
+you can invalidate that within
+
+00:03:11.858-->00:03:15.929
+the next hour. So, with this
+knowledge, we know that there
+has to be a way from the
+
+00:03:15.929-->00:03:20.300
+application server to tell the
+caching server where fragments
+stop, where they start and where
+
+00:03:20.300-->00:03:26.306
+to begin. So, this is done
+through fragment markers. Those
+fragment markers are in the http
+
+00:03:26.306-->00:03:31.244
+response and they look like
+this. So you have the ESI tag,
+followed by an action, it’s
+
+00:03:31.244-->00:03:37.551
+basically xml tag right? It’s
+instead of having uh secure
+layout you just have tags inside
+
+00:03:37.551-->00:03:42.889
+of the http response, which is
+going to get strict once it’s
+evaluated by the esi engine. So
+
+00:03:42.889-->00:03:47.527
+these tags are parsed when a
+specific http header is sent by
+the application server, so
+
+00:03:47.527-->00:03:51.731
+you’re not able to inject ESI
+everywhere, but usually when
+they use ESI it’s implemented
+
+00:03:51.731-->00:03:57.437
+everywhere. So, let’s look at
+our first feature, we have ESI
+includes. ESI includes are in my
+
+00:03:57.437-->00:04:03.910
+opinion uh the most relevant ESI
+tag. So you have two files, to
+exam- to show how this works,
+
+00:04:03.910-->00:04:10.083
+you have page 1 the html and
+page 2. Page 1 is sitting on the
+ESI server, the second one is on
+
+00:04:10.083-->00:04:15.856
+another server called api. And
+you can see in page 1 you have
+an ESI tag, which is an include
+
+00:04:15.856-->00:04:21.228
+tag, pointing to page 2. Now,
+two things can happen here, you
+can have a cache hit or a cache
+
+00:04:21.228-->00:04:26.399
+miss. If you have a cache hit,
+it means that the ESI engine can
+just replace the tag with the
+
+00:04:26.399-->00:04:32.105
+content of page 2, easy enough.
+If it’s not there, or if the
+cache entry is invalidated
+
+00:04:32.105-->00:04:37.110
+because it’s been too long, well
+you have to fetch this file
+because so the ESI engine sorry
+
+00:04:37.110-->00:04:42.516
+is gonna do a side request for
+this file to fill in the blanks,
+so whatever happens, this is
+
+00:04:42.516-->00:04:47.854
+what your end user is gonna
+have. You’re gonna have the cup
+then filled by the engine. So,
+
+00:04:47.854-->00:04:51.158
+to illustrate how this works,
+let’s look at a great example of
+a cache miss. So, you have your
+
+00:04:51.158-->00:04:56.396
+clients, your load balancers and
+your servers. So your client is
+going to request 1 dot html and
+
+00:04:56.396-->00:05:00.333
+the caching server has a cache
+miss, meaning the file is no
+longer valid. It has to go and
+
+00:05:00.333-->00:05:05.572
+get it. So, this is done through
+the outstream server. So, the
+load balancer requests this file
+
+00:05:05.572-->00:05:11.244
+to the cache se- to the
+application server, this is sent
+back with an ESI tag saying hey
+
+00:05:11.244-->00:05:16.750
+please fill in the blanks with 2
+dot html, so this tag is farsed
+on the caching server and the
+
+00:05:16.750-->00:05:21.955
+side request is sent to the api
+server. Now, the api server
+responds with the contents of
+
+00:05:21.955-->00:05:28.328
+page 2, and the ESI engine is
+able to fill in the blanks. Our
+second feature before delving
+
+00:05:28.328-->00:05:32.666
+into exploitation is ESI
+variables. So, they’re very
+simple feature, it’s a very
+
+00:05:32.666-->00:05:37.404
+simple feature it has no
+attributes so no xml attributes
+and basically the content of the
+
+00:05:37.404-->00:05:42.475
+tags gets expended to access
+metadata about the current http
+transaction. So you’re going to
+
+00:05:42.475-->00:05:47.681
+be able to access stuff like
+this, so the http user agent,
+cookies, query strings,
+
+00:05:47.681-->00:05:53.954
+basically anything relating to
+the current http transaction.
+So, now we know about ESI
+
+00:05:53.954-->00:05:58.892
+includes, we know about ESI
+variables, we also know that the
+tags are sent by the application
+
+00:05:58.892-->00:06:04.264
+server, they go through the
+caching serve and this is where
+they are parsed. But there is a
+
+00:06:04.264-->00:06:08.501
+very important question that we
+have to ask ourselves, is how
+can an ESI engine know which
+
+00:06:08.501-->00:06:13.406
+tags are legitimate and which
+tags are injected by a malicious
+user. Think about the cross tag
+
+00:06:13.406-->00:06:17.577
+scripting, it’s basically the
+same thing except we’re not
+exploiting browsers. So, that’s
+
+00:06:17.577-->00:06:22.215
+a very important question and
+that’s the problem it’s that it
+can’t. And you’re able to inject
+
+00:06:22.215-->00:06:28.021
+ESI tags and do basically
+whatever you want with the cache
+server. So, to illustrate this,
+
+00:06:28.021-->00:06:32.125
+let’s look at a very basic
+example of an ESI injection. So,
+you have the content of the city
+
+00:06:32.125-->00:06:36.396
+get parameter that’s echoed back
+into http response. Um the
+caching server is going to parse
+
+00:06:36.396-->00:06:40.934
+anything that is sent there. So,
+you can put ESI bar in there
+pointing to the users php
+
+00:06:40.934-->00:06:47.374
+session id. If you do php know
+that this is http only cookie,
+meaning the gyro script is not
+
+00:06:47.374-->00:06:51.878
+able to access this. So, if I’m
+able to access this from a
+caching server perspective, I
+
+00:06:51.878-->00:06:57.717
+can effectively leak a session
+cookie and effectively take over
+the account, and this works as
+
+00:06:57.717-->00:07:03.290
+expected. Let’s try to build a
+payload in order to do this. So,
+we’re going to look at 2 ESI
+
+00:07:03.290-->00:07:08.728
+engine implementation. First of
+all is, we’re going to look at
+apache traffic server. So, I
+
+00:07:08.728-->00:07:12.465
+looked at this one for two
+reasons, first of all because
+it’s used by high profile
+
+00:07:12.465-->00:07:17.470
+organizations, so, Shodan tells
+us that it is used by Apple,
+Yahoo and Comcast. The second
+
+00:07:17.470-->00:07:22.309
+feature, the second reason is
+because they have uh initial,
+the initial uh ESI stack
+
+00:07:22.309-->00:07:26.680
+implemented. But, the added
+bonus features, some of which
+are security features, our first
+
+00:07:26.680-->00:07:31.051
+security feature is cookie
+whitelisting. So, even if you’re
+able to inject ESI attacks,
+
+00:07:31.051-->00:07:34.321
+sometimes you’re not going to be
+able to access the cookies
+because they’re not whitelisted.
+
+00:07:34.321-->00:07:37.891
+If you want to access the
+cookies, you have to
+preemptively configure the
+
+00:07:37.891-->00:07:43.129
+traffic server to say you can
+access this cookie. But, by
+reading the documentation you
+
+00:07:43.129-->00:07:49.002
+also find out about another ESI
+variable called http header. It
+allows you to refer to any
+
+00:07:49.002-->00:07:54.007
+header, smart. Meaning, that you
+can access the cookies, so the
+whitelisting doesn’t work it’s
+
+00:07:57.010-->00:08:01.948
+so easy to bypass. So that was
+fixed when I reported it two
+months ago pretty fixed qui- uh
+
+00:08:01.948-->00:08:07.253
+quick fix, so, good for them. So
+let’s build a bru- a proof of
+concept to do http only session
+
+00:08:07.253-->00:08:13.126
+hijacking without javascript.
+So, I built an image source tag,
+you can do basically any tag
+
+00:08:13.126-->00:08:17.597
+that requests the http header
+but this is fine. So, it’s
+pointing to able the local which
+
+00:08:17.597-->00:08:22.669
+is an attacker enabled server or
+which have a web server pointing
+there, so the file name that is
+
+00:08:22.669-->00:08:26.906
+going to be requested by the
+victims browser is an ESI tag
+pointing to their own header
+
+00:08:26.906-->00:08:31.945
+cookie. So when this is going to
+go through the traffic server,
+it’s going to expand the value
+
+00:08:31.945-->00:08:37.050
+with the session cookie, then
+the browser is going to request
+it’s url. I’m going to access
+
+00:08:37.050-->00:08:43.223
+this in my http logs. So now
+let’s look at how this would
+look in a real world example, oh
+
+00:08:43.223-->00:08:48.895
+it’s working alright, so I built
+a very simple message board so
+you have your victim on the left
+
+00:08:48.895-->00:08:51.998
+you have your attacker on the
+right it’s two different browser
+so there’s no cookie
+
+00:08:51.998-->00:08:57.203
+contamination. On the middle you
+have basically everything that
+is stored in the database so you
+
+00:08:57.203-->00:09:02.809
+have hi-hey, so you can see what
+it looks like being sent to the
+application server. So now our
+
+00:09:02.809-->00:09:07.714
+attacker is going to put the
+evil dot local code, basically
+they payload we just looked at,
+
+00:09:07.714-->00:09:12.719
+so, the file has the header for
+the cookie and he’s going to hit
+send afterwards. This is going
+
+00:09:15.121-->00:09:20.026
+to pollute the database of the
+application server. Now when
+they send it, you can see in the
+
+00:09:20.026-->00:09:24.064
+database it sent properly, it’s
+stored, everything is working
+fine, and then the attacker by
+
+00:09:24.064-->00:09:28.501
+refreshing the page after
+sending it basically attack
+themselves. So they’re going to
+
+00:09:28.501-->00:09:32.472
+leak their own cookies because
+the browser is going to send a
+side request for that image,
+
+00:09:32.472-->00:09:37.043
+which is not really an image.
+Now, we’re going to wait for the
+victim to refresh the page, and
+
+00:09:37.043-->00:09:43.283
+we should effectively steal
+their session. And as you can
+see, the session cookie appears
+
+00:09:43.283-->00:09:47.287
+so we just stole their http only
+cookie, we’re able to take over
+the session completely and
+
+00:09:47.287-->00:09:51.558
+become that user. So, we’re
+gonna look at the session
+completely, we confirm that it’s
+
+00:09:51.558-->00:09:56.496
+http only, we’re gonna replace
+our own value with the one that
+we just stole through ESI
+
+00:09:56.496-->00:10:01.501
+injection, we’re going to save
+that cookie, save it. And then
+once we refresh we should become
+
+00:10:06.239-->00:10:11.244
+the victim. There you go, so you
+have http only, cookie hijacking
+without javascript through ESI
+
+00:10:14.147-->00:10:19.152
+injection. So that’s nice, but
+you need to inject a page for
+which a user is going to travel
+
+00:10:21.888-->00:10:23.890
+to, sometimes that’s not always
+easy. Sometimes think about Self
+XSSS the impact could be great,
+
+00:10:23.890-->00:10:25.892
+but you’re only attacking
+yourself so let’s try to crack
+the impact up a notch. So, I
+
+00:10:25.892-->00:10:27.894
+looked another- at another ESI
+implementation which is oracle
+web cache. So oracle web cache
+
+00:10:27.894-->00:10:29.896
+is usually sitting on top of
+weblogic application servers.
+It’s not necessarily sitting on
+
+00:10:29.896-->00:10:34.901
+top of that, but we’ve seen it
+sitting on that so I looked at
+it because it’s usually high
+
+00:10:39.138-->00:10:44.143
+scale application and also
+because the initial ESI
+specification is implemented and
+
+00:10:50.049-->00:10:55.054
+they also have bonus features
+like ats they went with the
+least secure option, which is
+
+00:11:00.426-->00:11:05.098
+they added the ESI inline tag.
+This tag is pretty easy to
+understand, it allows you to
+
+00:11:05.098-->00:11:10.670
+override the engine- the ESI, it
+allows the ESI engine to
+override any cache entry with
+
+00:11:10.670-->00:11:15.842
+arbitrary data. So, here we’re
+going to override jquery dot js
+with arbitrary content, what a
+
+00:11:15.842-->00:11:21.347
+great idea. So, jquery dot js is
+gonna be filled with the content
+that you see here which is
+
+00:11:21.347-->00:11:27.053
+basically an ajax request, so
+once the user is gonna refresh
+the file, should trigger ajax
+
+00:11:27.053-->00:11:32.492
+request to our able the local
+server and this is gonna get
+expanded. Meaning that I’m going
+
+00:11:32.492-->00:11:36.629
+to get their cookie again
+because there is no uh cookie
+whitelisting in oracle web
+
+00:11:36.629-->00:11:42.135
+cache. So now we know we can
+override file and we can make
+the browser do anything. So, the
+
+00:11:42.135-->00:11:47.907
+browser is going to request this
+file, because we took over
+jquery dot js. So let’s look at
+
+00:11:47.907-->00:11:53.880
+a demonstration of this, which
+is already running for some
+reason, um what do I do this-
+
+00:11:53.880-->00:11:59.552
+alright, so we have the same
+application server but now it’s
+super safe, because the sys
+
+00:11:59.552-->00:12:06.225
+admin is uh, they notice
+basically that html was not
+being striped so ESI was also
+
+00:12:06.225-->00:12:10.196
+being injected well, there was a
+possibility of ESI injection.
+Now we can see that our victim
+
+00:12:10.196-->00:12:14.701
+was confirming that jquery dot
+js exists and the content is
+valid, so we have jquery 3 dot 3
+
+00:12:14.701-->00:12:19.906
+dot 1, now our victim is going
+to refresh uh the attacker’s
+going to put sorry a payload
+
+00:12:19.906-->00:12:24.811
+just to see if html and coding
+or escaping is working, as you
+can see the attacker is no
+
+00:12:24.811-->00:12:30.350
+longer able to put html charset
+meaning that html is effectively
+mitigated, so that’s a problem
+
+00:12:30.350-->00:12:35.221
+from an attackers perspective.
+Now the attacker sees a new
+feature which is a user list.
+
+00:12:35.221-->00:12:39.959
+This user list will reflect
+anything that is in the search
+box, so that’s a pretty good
+
+00:12:39.959-->00:12:46.933
+vector for either self xxs or
+ESI injection. And we can see
+here that html is not escaped,
+
+00:12:46.933-->00:12:52.071
+so we’re able to put our ESI
+payload in there which is going
+to overwrite jquery dot js. So,
+
+00:12:52.071-->00:12:56.976
+the attacker puts it there,
+submits it, it’s echoed back in
+the http response and now if
+
+00:12:56.976-->00:13:02.749
+everything works properly,
+jquery dot js should be
+overwritten. Now the attacker
+
+00:13:02.749-->00:13:08.388
+has effectively polluted jquery
+dot js, nice. Now the victim can
+just refresh the page and once
+
+00:13:08.388-->00:13:14.060
+anyone refreshes any page on
+this website, they’re gonna send
+us their cookie so there you go,
+
+00:13:14.060-->00:13:19.065
+we just overwrote an
+arby-arbitrary file with
+arbitrary content meaning I can
+
+00:13:19.065-->00:13:24.570
+either deface the website and
+steal anyone's session using
+ESI. So that was uh basically
+
+00:13:24.570-->00:13:26.572
+proof of concept you overwrite
+arbitrary cache entries and leak
+html cookies, you can use
+
+00:13:26.572-->00:13:31.577
+javascript but as you can see,
+it’s not really necessary. So
+now let’s talk about mitigation,
+
+00:13:36.616-->00:13:41.854
+so if you like web application
+firewalls, you have mod
+security. Uh, it’s a pretty
+
+00:13:41.854-->00:13:47.193
+popular product, it’s gotten way
+better in the last years, and if
+you use the OWASP core rule set
+
+00:13:47.193-->00:13:51.230
+you’re good for ESI. we talked
+with one of the developers for
+the mod security team and they
+
+00:13:51.230-->00:13:57.837
+basically said we already strip
+anything that is xml like which
+includes the-the chart set for
+
+00:13:57.837-->00:14:03.276
+ESI, so you’re good with that.
+If you don’t want to use a waf
+or if you don’t use a patch you
+
+00:14:03.276-->00:14:08.514
+can use proactive escaping and
+what I mean by proactive
+escaping is- you might think
+
+00:14:08.514-->00:14:13.653
+that sense you’re okay, like
+you’re escaping html everywhere
+so ESIs the same chart set I
+
+00:14:13.653-->00:14:18.091
+should be good. Well, not
+necessarily because when you
+think about it contextualized
+
+00:14:18.091-->00:14:24.230
+effort of escaping will often
+ignore html and json meaning
+that html is never escaping json
+
+00:14:24.230-->00:14:29.769
+because the content type is
+already telling the browser,
+interpret this as html. But
+
+00:14:29.769-->00:14:35.274
+we’re not exploiting browsers,
+we’re exploiting cache servers.
+So here, I can put an ESI
+
+00:14:35.274-->00:14:40.747
+include tag in a json response
+and it should work fine right?
+There’s just one small problem,
+
+00:14:40.747-->00:14:46.185
+we have an invalid ESI tag
+because of those backslashes
+because of the double quotes.
+
+00:14:46.185-->00:14:51.090
+But, ESI engines add a very
+flexible syntax which is nice
+and I can just drop them. So,
+
+00:14:51.090-->00:14:56.062
+this will allow me to do server
+side request forgery in a json
+response. Let’s look at a brief
+
+00:14:56.062-->00:15:01.768
+example of this, so you have
+effective rest api sitting on
+slash api slash me, which is
+
+00:15:01.768-->00:15:05.838
+going to response basically a
+small json payload. So you see
+that my full name here is Louis
+
+00:15:05.838-->00:15:11.911
+Dion-Marcil and I can overwrite
+this with an ESI include tag.
+This ESI include tag is going to
+
+00:15:11.911-->00:15:17.283
+say please fetch rest server
+slash server status which is
+just some server sitting on the
+
+00:15:17.283-->00:15:22.455
+local area network of the cache
+server and you can see in the
+response in the reddish area, it
+
+00:15:22.455-->00:15:27.126
+went ahead and fetched that file
+for me. Meaning that I can do
+server side request forgery with
+
+00:15:27.126-->00:15:32.498
+ESI includes. Now, most ESI
+engines won’t allow you to do
+server side request forgery on
+
+00:15:32.498-->00:15:38.004
+arbitrary hosts so you have to
+whitelist them prior to doing
+ESI include with them. But some
+
+00:15:38.004-->00:15:41.474
+implementations will just allow
+you to do server side request
+forgery through anything. For
+
+00:15:41.474-->00:15:46.312
+example, squid cache just allows
+you to do ESI included whatever
+you want so that’s pretty nice.
+
+00:15:46.312-->00:15:52.518
+Uh to illustrate what this looks
+like, I just changed the content
+tag to text html so that you can
+
+00:15:52.518-->00:15:57.290
+see the json response is the
+gre- greenish area, the reddish
+area basically the content of
+
+00:15:57.290-->00:16:01.761
+the server side request forgery
+through ESI injection. So, to
+illustrate how that worked I’ve
+
+00:16:01.761-->00:16:05.998
+used the same imagery that I did
+before, so you have your slash
+me which responds with an ESI
+
+00:16:05.998-->00:16:12.271
+tag saying please get that file
+for me, the file is stacked and
+then the content of step 5 and 3
+
+00:16:12.271-->00:16:17.777
+gets concatenated together and I
+get the content of the server of
+the effectively the server side
+
+00:16:17.777-->00:16:23.850
+request forgery, it kept it
+content by ESI includes. Um,
+okay, so if you want to do ESI
+
+00:16:23.850-->00:16:29.422
+injection, you need to first
+identify if you’re messing with
+an ESI enabled caching server.
+
+00:16:29.422-->00:16:33.326
+Um, someone on twitter called
+Alex Birsan came up with a
+pretty smart solution, which is
+
+00:16:33.326-->00:16:39.198
+leveraging ESI comments. ESI
+comments basically are tags that
+are going to get stripped by
+
+00:16:39.198-->00:16:44.370
+your ESI enabled server. So if
+you have this html comment
+looking tag and its ESI which is
+
+00:16:44.370-->00:16:48.307
+removed from the http response,
+your ESI engine has removed it,
+if you do the same thing but
+
+00:16:48.307-->00:16:50.309
+instead of ESI in the comments
+you put something completely
+different for example, foo bar
+
+00:16:50.309-->00:16:52.311
+or just foo, and this one does
+come back, then you’re probably
+messing with an ESI engine. If
+
+00:16:52.311-->00:16:54.313
+you don’t want to mess with
+manual detection, because it’s
+pretty painful, you can use
+
+00:16:54.313-->00:16:56.315
+automatic detection. So you have
+burp active scan plus plus, uh
+burp upload scanner, and
+
+00:16:56.315-->00:16:58.317
+acunetix which all can detect
+ESI injections. Um, I’m not sure
+how acunetix does it but I know
+
+00:16:58.317-->00:17:00.253
+that burp active scan plus plus
+and burp upload scanner are
+using the aforementioned
+
+00:17:00.253-->00:17:05.258
+heuristic, so it’s pretty
+reliable. If you thing that ESI
+inj- well ESI as a feature is a
+
+00:17:10.696-->00:17:15.701
+good example of um of robust
+caching mechanism and you want
+to implement that, I personally
+
+00:17:32.919-->00:17:38.157
+wouldn’t go with ESI because
+basically it’s pretty broken,
+but you can use cloudfare
+
+00:17:38.157-->00:17:43.095
+workers, which are basically
+javascript files sitting on edge
+servers. Uh someone on twitter
+
+00:17:43.095-->00:17:48.334
+called Lukas Rieder came up with
+uh modern ESI if you will, which
+is basically a javascript file
+
+00:17:48.334-->00:17:54.373
+that’s going to allow to do uh
+basically fragmentation of your
+http response so you can see on
+
+00:17:54.373-->00:17:59.946
+the bottom screenshot you have a
+fragment pointing to footer, and
+that footer, is specified in
+
+00:17:59.946-->00:18:06.118
+http header which is so much
+more secure than just pointing
+to the resource in the http
+
+00:18:06.118-->00:18:10.690
+response, because if you’ve done
+any web testing in the past 10
+years, you’ll know that http
+
+00:18:10.690-->00:18:15.061
+response splitting or just
+injecting it with headers is so
+much harder than it was 10 years
+
+00:18:15.061-->00:18:19.732
+ago. So most frameworks will
+just not allow you to do that.
+So if you have to inject in two
+
+00:18:19.732-->00:18:24.737
+places instead of just one, it’s
+of course much smarter, and it’s
+probably a lot faster too. Uh so
+
+00:18:26.973-->00:18:32.011
+this is basically ESI injection,
+uh there’s a lot of research to
+be done with this, uh, we
+
+00:18:32.011-->00:18:36.949
+documented this I think in
+April, uh to this url so
+basically how our prior research
+
+00:18:36.949-->00:18:42.989
+we analyze I think half a dozen
+ESI engines some of which are
+pretty famous if you may, so you
+
+00:18:42.989-->00:18:47.994
+have xmi websphere, varnish,
+fastly and squid uh we found a
+whole bunch of bugs like denial
+
+00:18:50.463-->00:18:56.702
+of service with squid, we found
+um basically xss, filter bypass
+for chrome, so a whole bunch of
+
+00:18:56.702-->00:19:01.440
+interesting stuff, so if you
+want to go ahead and search for
+more ESI bugs, I think you’ll
+
+00:19:01.440-->00:19:07.847
+find a lot of them. Um, I think
+this is my time, I might have 1
+minute and a half for questions
+
+00:19:07.847-->00:19:12.852
+[applause].
+

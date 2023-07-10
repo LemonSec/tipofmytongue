@@ -1,0 +1,2560 @@
+﻿1
+00:00:10,490 --> 00:00:15,950
+so this this talk is on efficient
+
+2
+00:00:14,210 --> 00:00:19,250
+management of temporary data in data
+
+3
+00:00:15,950 --> 00:00:21,740
+processing workloads so let's start all
+
+4
+00:00:19,250 --> 00:00:25,610
+by talking about temporary data a little
+
+5
+00:00:21,740 --> 00:00:27,799
+bit in the first set of minutes so data
+
+6
+00:00:25,610 --> 00:00:30,980
+processing for emerge like spark flame
+
+7
+00:00:27,800 --> 00:00:33,590
+Hadoop they have to deal with different
+
+8
+00:00:30,980 --> 00:00:35,660
+types of temporary data with temporary
+
+9
+00:00:33,590 --> 00:00:39,080
+data we mean data that has a limited
+
+10
+00:00:35,660 --> 00:00:41,860
+limited lifetime examples of such data
+
+11
+00:00:39,080 --> 00:00:44,960
+are broadcast they don't in SPARC
+
+12
+00:00:41,860 --> 00:00:47,000
+shuffle they don't spark or DD caching
+
+13
+00:00:44,960 --> 00:00:48,739
+or any other similar data set in other
+
+14
+00:00:47,000 --> 00:00:50,809
+frameworks
+
+15
+00:00:48,739 --> 00:00:53,570
+we say broadcast and shuffle are
+
+16
+00:00:50,809 --> 00:00:55,459
+examples of in clock shop temper data
+
+17
+00:00:53,570 --> 00:00:58,520
+because the lifetime of that data is
+
+18
+00:00:55,460 --> 00:01:01,090
+bound to the lifetime of a job there is
+
+19
+00:00:58,520 --> 00:01:04,009
+also in to chop temporary data which
+
+20
+00:01:01,090 --> 00:01:07,100
+like intermediate results shared between
+
+21
+00:01:04,009 --> 00:01:10,360
+chops in more complex workflows think
+
+22
+00:01:07,100 --> 00:01:13,070
+about a machine learning workflow where
+
+23
+00:01:10,360 --> 00:01:14,570
+your training phase is operating on
+
+24
+00:01:13,070 --> 00:01:17,360
+pre-processed data that has been
+
+25
+00:01:14,570 --> 00:01:19,369
+computed by a MapReduce job that
+
+26
+00:01:17,360 --> 00:01:22,070
+pre-process data just like shuffle data
+
+27
+00:01:19,369 --> 00:01:24,350
+or broadcast data has a limited lifetime
+
+28
+00:01:22,070 --> 00:01:29,029
+bound to the duration of the workflow in
+
+29
+00:01:24,350 --> 00:01:30,949
+this case so it turns out that temporary
+
+30
+00:01:29,030 --> 00:01:36,890
+data is in fact an important class of
+
+31
+00:01:30,950 --> 00:01:39,950
+data 97% of all queries and people in
+
+32
+00:01:36,890 --> 00:01:42,439
+the TPS benchmark been run on SPARC have
+
+33
+00:01:39,950 --> 00:01:46,820
+at least one one broadcaster shuffle
+
+34
+00:01:42,439 --> 00:01:48,529
+operation rifle a recent paper from
+
+35
+00:01:46,820 --> 00:01:50,750
+Facebook on optimizing shuffle
+
+36
+00:01:48,530 --> 00:01:52,700
+performance reports that 50 percent of
+
+37
+00:01:50,750 --> 00:01:54,920
+all jobs at Facebook have at least one
+
+38
+00:01:52,700 --> 00:01:56,780
+shuffle operation and similarly was
+
+39
+00:01:54,920 --> 00:01:58,189
+machine only workloads many machine only
+
+40
+00:01:56,780 --> 00:02:01,250
+workloads actually consist of multiple
+
+41
+00:01:58,189 --> 00:02:04,250
+jobs sharing data between jobs and there
+
+42
+00:02:01,250 --> 00:02:08,269
+are several frameworks to manage those
+
+43
+00:02:04,250 --> 00:02:09,889
+kind of workloads so what's the problem
+
+44
+00:02:08,269 --> 00:02:11,079
+with temporary data or how temporary
+
+45
+00:02:09,889 --> 00:02:13,548
+data is being managed
+
+46
+00:02:11,079 --> 00:02:16,010
+there's actually two issues I want to
+
+47
+00:02:13,549 --> 00:02:18,079
+talk about the first issue is related to
+
+48
+00:02:16,010 --> 00:02:21,019
+performance turns out that it's very
+
+49
+00:02:18,079 --> 00:02:23,150
+difficult to leverage fast network
+
+50
+00:02:21,020 --> 00:02:25,070
+and storage hardware particularly for
+
+51
+00:02:23,150 --> 00:02:27,800
+shuffle and broadcast operations
+
+52
+00:02:25,070 --> 00:02:30,230
+this figure shows just gives you an idea
+
+53
+00:02:27,800 --> 00:02:33,080
+how bad the situation is so this is
+
+54
+00:02:30,230 --> 00:02:36,170
+showing the throughput on the y-axis and
+
+55
+00:02:33,080 --> 00:02:38,540
+the runtime on the x axis of a terasort
+
+56
+00:02:36,170 --> 00:02:41,899
+work or sorting sorting workload in
+
+57
+00:02:38,540 --> 00:02:43,429
+SPARC on a hundred gigabit cluster so
+
+58
+00:02:41,900 --> 00:02:46,490
+across there was a hundred gigabit
+
+59
+00:02:43,430 --> 00:02:48,230
+ethernet network this in this case the
+
+60
+00:02:46,490 --> 00:02:49,610
+data set is entirely in the RMS are we
+
+61
+00:02:48,230 --> 00:02:52,459
+not hitting disk at any point in time
+
+62
+00:02:49,610 --> 00:02:54,320
+and as you can see the bandwidth is
+
+63
+00:02:52,460 --> 00:02:57,160
+never going above five to ten gigabits
+
+64
+00:02:54,320 --> 00:02:59,750
+per second that's unfortunate because
+
+65
+00:02:57,160 --> 00:03:02,240
+sorting is actually one of the most I'll
+
+66
+00:02:59,750 --> 00:03:04,190
+intensive workloads you can think of the
+
+67
+00:03:02,240 --> 00:03:05,750
+entire input data set literally has to
+
+68
+00:03:04,190 --> 00:03:07,760
+be shuffled over the network at least
+
+69
+00:03:05,750 --> 00:03:09,410
+once so it would be fantastic if we
+
+70
+00:03:07,760 --> 00:03:14,149
+could make better use of the networking
+
+71
+00:03:09,410 --> 00:03:16,970
+or in this case now this this type of
+
+72
+00:03:14,150 --> 00:03:18,440
+performance issues this this is this is
+
+73
+00:03:16,970 --> 00:03:20,210
+related to shuffle here similar
+
+74
+00:03:18,440 --> 00:03:22,010
+performance issues have been shown for
+
+75
+00:03:20,210 --> 00:03:25,580
+other types of temporary data and there
+
+76
+00:03:22,010 --> 00:03:27,170
+are papers from the past that basically
+
+77
+00:03:25,580 --> 00:03:30,530
+document these kind of performance
+
+78
+00:03:27,170 --> 00:03:32,329
+issues now let's talk about the second
+
+79
+00:03:30,530 --> 00:03:34,370
+issue which is related more to the
+
+80
+00:03:32,330 --> 00:03:38,170
+software architecture of these systems
+
+81
+00:03:34,370 --> 00:03:40,610
+turns out that assume assume you want to
+
+82
+00:03:38,170 --> 00:03:42,290
+address those performance issues because
+
+83
+00:03:40,610 --> 00:03:44,680
+you may have an idea how to integrate
+
+84
+00:03:42,290 --> 00:03:46,940
+networking in a sort of in a better way
+
+85
+00:03:44,680 --> 00:03:50,330
+within your shuffle or broadcast
+
+86
+00:03:46,940 --> 00:03:53,510
+operations um that's gonna be painful to
+
+87
+00:03:50,330 --> 00:03:55,070
+do because temporary data management is
+
+88
+00:03:53,510 --> 00:03:56,690
+often tightly integrated with the
+
+89
+00:03:55,070 --> 00:03:59,060
+compute framework so you would have to
+
+90
+00:03:56,690 --> 00:04:01,250
+go and rework your shuffle module your
+
+91
+00:03:59,060 --> 00:04:03,950
+broadcast module the way already caching
+
+92
+00:04:01,250 --> 00:04:05,870
+is implemented and by the time you get
+
+93
+00:04:03,950 --> 00:04:07,850
+all these modules work efficiently on a
+
+94
+00:04:05,870 --> 00:04:09,709
+hundred gigabit network you find out
+
+95
+00:04:07,850 --> 00:04:12,709
+that they're not using flash effectively
+
+96
+00:04:09,709 --> 00:04:14,450
+and maybe you find out that they don't
+
+97
+00:04:12,709 --> 00:04:16,339
+support storage disaggregation bill
+
+98
+00:04:14,450 --> 00:04:18,048
+right so you would have again to go and
+
+99
+00:04:16,339 --> 00:04:19,700
+look at each of these modules and once
+
+100
+00:04:18,048 --> 00:04:21,409
+you've done that you still have only
+
+101
+00:04:19,700 --> 00:04:23,120
+looked at one framework but maybe your
+
+102
+00:04:21,410 --> 00:04:26,120
+workflow consists of multiple chops
+
+103
+00:04:23,120 --> 00:04:29,419
+running in different frameworks right so
+
+104
+00:04:26,120 --> 00:04:31,400
+clearly we don't want to modify the
+
+105
+00:04:29,419 --> 00:04:32,539
+shuffle broadcast modules all these
+
+106
+00:04:31,400 --> 00:04:33,388
+different orders for the different
+
+107
+00:04:32,540 --> 00:04:35,490
+frameworks
+
+108
+00:04:33,389 --> 00:04:38,699
+each time you want to support a new
+
+109
+00:04:35,490 --> 00:04:40,620
+hardware or a new deployment mode in
+
+110
+00:04:38,699 --> 00:04:44,729
+this word we argue that a more flexible
+
+111
+00:04:40,620 --> 00:04:47,129
+approach to developers is to separate at
+
+112
+00:04:44,729 --> 00:04:49,680
+least logically data processing from
+
+113
+00:04:47,129 --> 00:04:52,500
+temporary data management instead of
+
+114
+00:04:49,680 --> 00:04:54,360
+directly exchanging data between tasks
+
+115
+00:04:52,500 --> 00:04:57,539
+which is what current implementations
+
+116
+00:04:54,360 --> 00:05:00,090
+for broadcast and shuffle are doing data
+
+117
+00:04:57,539 --> 00:05:02,068
+sharing should be implemented as storage
+
+118
+00:05:00,090 --> 00:05:06,469
+operations on top of an external
+
+119
+00:05:02,069 --> 00:05:08,550
+distributed data store and by doing so
+
+120
+00:05:06,469 --> 00:05:10,439
+supporting new hardware or new
+
+121
+00:05:08,550 --> 00:05:13,349
+deployment modes becomes much more easy
+
+122
+00:05:10,439 --> 00:05:15,060
+right now if your data store is running
+
+123
+00:05:13,349 --> 00:05:17,279
+efficiently on a hundred gigabit Network
+
+124
+00:05:15,060 --> 00:05:19,080
+your shuffle implementation will
+
+125
+00:05:17,279 --> 00:05:21,990
+immediately pick it up if your data
+
+126
+00:05:19,080 --> 00:05:23,729
+store is able to run in as disaggregated
+
+127
+00:05:21,990 --> 00:05:25,169
+environment your shuffle operation will
+
+128
+00:05:23,729 --> 00:05:28,349
+be able to run in a disaggregated
+
+129
+00:05:25,169 --> 00:05:30,210
+environment now obviously the next
+
+130
+00:05:28,349 --> 00:05:32,639
+question is how should that beta still
+
+131
+00:05:30,210 --> 00:05:35,310
+look like can we use any of the existing
+
+132
+00:05:32,639 --> 00:05:36,870
+distributed storage platforms like a
+
+133
+00:05:35,310 --> 00:05:39,930
+disturbance eval you store or a
+
+134
+00:05:36,870 --> 00:05:42,389
+distributed file system and so we set
+
+135
+00:05:39,930 --> 00:05:44,729
+out to kind of better understand the
+
+136
+00:05:42,389 --> 00:05:47,430
+requirements of temporary data storage
+
+137
+00:05:44,729 --> 00:05:49,500
+by looking at the size distribution of
+
+138
+00:05:47,430 --> 00:05:52,020
+temporary data for different workloads
+
+139
+00:05:49,500 --> 00:05:54,960
+this graph here shows the amount of
+
+140
+00:05:52,020 --> 00:05:59,909
+broadcast and shuffle data generated per
+
+141
+00:05:54,960 --> 00:06:02,159
+task for a TP CD s workload a page rank
+
+142
+00:05:59,909 --> 00:06:03,990
+workload on a Twitter graph and the
+
+143
+00:06:02,159 --> 00:06:06,919
+machine on a workload on the Kokua
+
+144
+00:06:03,990 --> 00:06:11,250
+framework all of this executed on a
+
+145
+00:06:06,919 --> 00:06:14,789
+spark cluster and the main observation
+
+146
+00:06:11,250 --> 00:06:18,240
+here is that the data range is what it's
+
+147
+00:06:14,789 --> 00:06:20,430
+a quite wide range of data so it starts
+
+148
+00:06:18,240 --> 00:06:24,000
+from a few kilobytes all the way up to
+
+149
+00:06:20,430 --> 00:06:26,909
+one gigabyte and what does that mean in
+
+150
+00:06:24,000 --> 00:06:29,430
+terms of data storage in terms of data
+
+151
+00:06:26,909 --> 00:06:33,089
+storage over the last years the research
+
+152
+00:06:29,430 --> 00:06:35,909
+community has come up with some really
+
+153
+00:06:33,089 --> 00:06:38,009
+good high performance storage platforms
+
+154
+00:06:35,909 --> 00:06:43,500
+covering both ends of this of the
+
+155
+00:06:38,009 --> 00:06:46,020
+spectrum like RAM Cloud pilaf I haven't
+
+156
+00:06:43,500 --> 00:06:49,740
+mentioned Bill of here but our examples
+
+157
+00:06:46,020 --> 00:06:50,580
+of low latency key value stores already
+
+158
+00:06:49,740 --> 00:06:52,589
+may based
+
+159
+00:06:50,580 --> 00:06:55,159
+giving you really good performance for
+
+160
+00:06:52,589 --> 00:06:57,899
+small data sets right
+
+161
+00:06:55,159 --> 00:07:00,539
+octopus is an example of a recent
+
+162
+00:06:57,899 --> 00:07:03,569
+example of a file system that is also
+
+163
+00:07:00,539 --> 00:07:05,430
+our DNA based running on flash giving
+
+164
+00:07:03,569 --> 00:07:08,669
+you high bandwidth access to large data
+
+165
+00:07:05,430 --> 00:07:11,459
+sets but turns out that finding a
+
+166
+00:07:08,669 --> 00:07:15,000
+storage platform that is able to operate
+
+167
+00:07:11,459 --> 00:07:17,909
+well across the full spectrum offering
+
+168
+00:07:15,000 --> 00:07:20,759
+high performance for any size of data is
+
+169
+00:07:17,909 --> 00:07:23,159
+a much harder problem right many storage
+
+170
+00:07:20,759 --> 00:07:26,699
+platforms either don't support orbited
+
+171
+00:07:23,159 --> 00:07:29,069
+arbitrary data sizes or they are not
+
+172
+00:07:26,699 --> 00:07:31,050
+performing well for the entire spectrum
+
+173
+00:07:29,069 --> 00:07:34,169
+and often the limitations are actually
+
+174
+00:07:31,050 --> 00:07:36,330
+by design in a distributor as a key
+
+175
+00:07:34,169 --> 00:07:38,219
+value pair in a distributed key-value
+
+176
+00:07:36,330 --> 00:07:41,190
+store is always stored on one server
+
+177
+00:07:38,219 --> 00:07:43,800
+limiting the access boundaries to that
+
+178
+00:07:41,190 --> 00:07:46,379
+key value pair if if the packets if the
+
+179
+00:07:43,800 --> 00:07:49,319
+data gets really large on the other hand
+
+180
+00:07:46,379 --> 00:07:52,139
+the file systems just typically cannot
+
+181
+00:07:49,319 --> 00:07:54,690
+meet the latency cannot match the
+
+182
+00:07:52,139 --> 00:07:58,740
+latency of a key of key value stores due
+
+183
+00:07:54,690 --> 00:08:01,379
+to additional metadata operations so the
+
+184
+00:07:58,740 --> 00:08:04,319
+need to perform well for a wide range of
+
+185
+00:08:01,379 --> 00:08:06,060
+data sizes put us a new grant where
+
+186
+00:08:04,319 --> 00:08:09,389
+you're saying okay let's build something
+
+187
+00:08:06,060 --> 00:08:12,539
+new right and once we are about to build
+
+188
+00:08:09,389 --> 00:08:14,159
+something new let's ask ourselves what
+
+189
+00:08:12,539 --> 00:08:16,740
+are the requirements we need to fulfill
+
+190
+00:08:14,159 --> 00:08:19,019
+well first we need to support large
+
+191
+00:08:16,740 --> 00:08:21,060
+volumes of data shuffle data can be as
+
+192
+00:08:19,019 --> 00:08:23,219
+large as the input data so clearly a
+
+193
+00:08:21,060 --> 00:08:26,430
+purely in memory based approach is not
+
+194
+00:08:23,219 --> 00:08:27,839
+cost-effective we also need to think
+
+195
+00:08:26,430 --> 00:08:30,120
+about the abstractions we want to
+
+196
+00:08:27,839 --> 00:08:32,429
+provide to the data processing framework
+
+197
+00:08:30,120 --> 00:08:34,890
+right a key value interface might be a
+
+198
+00:08:32,429 --> 00:08:37,679
+good abstraction for storing broadcast
+
+199
+00:08:34,890 --> 00:08:39,448
+objects a file system streaming
+
+200
+00:08:37,679 --> 00:08:42,149
+bios-based abstraction might be good
+
+201
+00:08:39,448 --> 00:08:43,169
+match for store for caching input
+
+202
+00:08:42,149 --> 00:08:46,649
+datasets
+
+203
+00:08:43,169 --> 00:08:48,600
+fetch from HDFS or so but neither a key
+
+204
+00:08:46,649 --> 00:08:49,559
+value or a file system abstraction might
+
+205
+00:08:48,600 --> 00:08:52,290
+be a good match for
+
+206
+00:08:49,559 --> 00:08:55,089
+shuffle data which is written randomly
+
+207
+00:08:52,290 --> 00:08:57,530
+and read sequentially
+
+208
+00:08:55,090 --> 00:09:00,200
+we also need scalability at least need
+
+209
+00:08:57,530 --> 00:09:03,319
+to be a scalable as the data processing
+
+210
+00:09:00,200 --> 00:09:06,190
+framework probably more scalable because
+
+211
+00:09:03,320 --> 00:09:09,590
+you want to share the storage platform
+
+212
+00:09:06,190 --> 00:09:12,590
+across multiple jobs there are also
+
+213
+00:09:09,590 --> 00:09:15,320
+requirements that may require less
+
+214
+00:09:12,590 --> 00:09:17,240
+attention in a temporary data storage
+
+215
+00:09:15,320 --> 00:09:21,080
+system like full tolerance or durability
+
+216
+00:09:17,240 --> 00:09:24,770
+right so temporary data is often stored
+
+217
+00:09:21,080 --> 00:09:26,450
+only for a short amount of time and data
+
+218
+00:09:24,770 --> 00:09:29,060
+processing frameworks often have full
+
+219
+00:09:26,450 --> 00:09:30,590
+tolerance baked them you know in a sense
+
+220
+00:09:29,060 --> 00:09:31,160
+that they can recompute data if it's
+
+221
+00:09:30,590 --> 00:09:33,920
+being lost
+
+222
+00:09:31,160 --> 00:09:36,170
+so maybe replicating each data items
+
+223
+00:09:33,920 --> 00:09:37,610
+three times is an overkill that doesn't
+
+224
+00:09:36,170 --> 00:09:39,620
+mean we don't need fault tolerance at
+
+225
+00:09:37,610 --> 00:09:41,720
+the end of the day it's it's a trade-off
+
+226
+00:09:39,620 --> 00:09:44,510
+padeen or it depends on the likelihood
+
+227
+00:09:41,720 --> 00:09:46,940
+of losing data it's a trade-off between
+
+228
+00:09:44,510 --> 00:09:50,360
+the cost of adding fault tolerance
+
+229
+00:09:46,940 --> 00:09:54,430
+versus the cost a free computing data so
+
+230
+00:09:50,360 --> 00:09:56,840
+based on these requirements we've
+
+231
+00:09:54,430 --> 00:09:58,959
+designed node kernel which is a new
+
+232
+00:09:56,840 --> 00:10:02,300
+storage architecture for temporary data
+
+233
+00:09:58,960 --> 00:10:05,360
+at the high level no kernel fuses cut
+
+234
+00:10:02,300 --> 00:10:08,060
+off file system semantics with key value
+
+235
+00:10:05,360 --> 00:10:10,940
+semantics to give you the best of both
+
+236
+00:10:08,060 --> 00:10:13,880
+worlds if you want so it's gonna work
+
+237
+00:10:10,940 --> 00:10:15,650
+well for small data sets it's gonna give
+
+238
+00:10:13,880 --> 00:10:17,630
+you low latency for small data sets and
+
+239
+00:10:15,650 --> 00:10:18,890
+it's gonna work well for large data sets
+
+240
+00:10:17,630 --> 00:10:21,230
+as well giving your high bandwidth
+
+241
+00:10:18,890 --> 00:10:24,530
+access to large data sets no kernel is
+
+242
+00:10:21,230 --> 00:10:26,720
+designed with modern hardware in mind so
+
+243
+00:10:24,530 --> 00:10:28,819
+many of the design decisions in know
+
+244
+00:10:26,720 --> 00:10:32,360
+kernel are actually direct consequences
+
+245
+00:10:28,820 --> 00:10:35,240
+from some of the characteristics in fast
+
+246
+00:10:32,360 --> 00:10:38,840
+networking storage hardware so let's
+
+247
+00:10:35,240 --> 00:10:41,300
+dive into the data model off of no
+
+248
+00:10:38,840 --> 00:10:45,580
+kernel so no kernel exposes a
+
+249
+00:10:41,300 --> 00:10:48,260
+hierarchical namespace of notes
+
+250
+00:10:45,580 --> 00:10:50,510
+applications can create new nodes lookup
+
+251
+00:10:48,260 --> 00:10:54,800
+nodes rename nodes delete nodes and so
+
+252
+00:10:50,510 --> 00:10:57,020
+on but and and and and the hierarchical
+
+253
+00:10:54,800 --> 00:10:58,939
+namespace is is convenient because it
+
+254
+00:10:57,020 --> 00:11:00,620
+allows applications to separate
+
+255
+00:10:58,940 --> 00:11:03,410
+different types of temporary data and
+
+256
+00:11:00,620 --> 00:11:06,380
+also separate logically data from
+
+257
+00:11:03,410 --> 00:11:08,400
+different jobs within a single storage
+
+258
+00:11:06,380 --> 00:11:12,240
+namespace
+
+259
+00:11:08,400 --> 00:11:14,400
+now unlike a file system for instance
+
+260
+00:11:12,240 --> 00:11:19,140
+where the data is entirely stored in
+
+261
+00:11:14,400 --> 00:11:22,829
+files data in a note in an oak kernel
+
+262
+00:11:19,140 --> 00:11:26,189
+can be attached to any node so no kernel
+
+263
+00:11:22,830 --> 00:11:27,990
+defines a note a type node where that
+
+264
+00:11:26,190 --> 00:11:32,070
+has operations to append data to a node
+
+265
+00:11:27,990 --> 00:11:34,740
+to update data that has been written
+
+266
+00:11:32,070 --> 00:11:39,840
+already and to read data that has been
+
+267
+00:11:34,740 --> 00:11:42,990
+written now note no current also defines
+
+268
+00:11:39,840 --> 00:11:46,800
+several specific node types these know
+
+269
+00:11:42,990 --> 00:11:48,750
+types are tailored to particular types
+
+270
+00:11:46,800 --> 00:11:51,209
+of temporary data and offer special
+
+271
+00:11:48,750 --> 00:11:54,780
+functionality to support that so for
+
+272
+00:11:51,210 --> 00:11:57,990
+instance there is a directory and a file
+
+273
+00:11:54,780 --> 00:12:00,750
+node type right the directory has an
+
+274
+00:11:57,990 --> 00:12:01,650
+additional operation to enumerate all of
+
+275
+00:12:00,750 --> 00:12:04,320
+its children
+
+276
+00:12:01,650 --> 00:12:08,280
+so directories and files are a good
+
+277
+00:12:04,320 --> 00:12:12,090
+abstraction to - - for instance for
+
+278
+00:12:08,280 --> 00:12:13,770
+caching of input datasets there is also
+
+279
+00:12:12,090 --> 00:12:16,680
+a table and the key value node
+
+280
+00:12:13,770 --> 00:12:18,960
+abstraction table has put get operations
+
+281
+00:12:16,680 --> 00:12:21,089
+to insert a new key value node into the
+
+282
+00:12:18,960 --> 00:12:24,020
+system or to atomically replace and
+
+283
+00:12:21,090 --> 00:12:29,160
+already existing key value node and
+
+284
+00:12:24,020 --> 00:12:31,680
+those table abstractions are helpful to
+
+285
+00:12:29,160 --> 00:12:35,790
+organize or to store data that has
+
+286
+00:12:31,680 --> 00:12:38,099
+regular updates and then there is also a
+
+287
+00:12:35,790 --> 00:12:40,230
+bag abstraction that goes in concert
+
+288
+00:12:38,100 --> 00:12:43,320
+with the file abstraction the bag is
+
+289
+00:12:40,230 --> 00:12:45,330
+basically a flat directory of files but
+
+290
+00:12:43,320 --> 00:12:49,320
+it has an additional operation to read
+
+291
+00:12:45,330 --> 00:12:52,170
+the full content of all of its files
+
+292
+00:12:49,320 --> 00:12:55,500
+within the bag as if the bag was a
+
+293
+00:12:52,170 --> 00:12:57,959
+single large file and the bag
+
+294
+00:12:55,500 --> 00:13:01,110
+abstraction as we see later is very
+
+295
+00:12:57,960 --> 00:13:02,940
+helpful in a in a shuffle operation
+
+296
+00:13:01,110 --> 00:13:05,460
+because we can actually map each
+
+297
+00:13:02,940 --> 00:13:10,110
+partition in a shuffle operation to one
+
+298
+00:13:05,460 --> 00:13:13,020
+bag now let's take a look at how how
+
+299
+00:13:10,110 --> 00:13:14,910
+data is stored in the know kernel
+
+300
+00:13:13,020 --> 00:13:18,060
+architecture and the system architecture
+
+301
+00:13:14,910 --> 00:13:20,459
+as if this is a this is a typo here I
+
+302
+00:13:18,060 --> 00:13:22,229
+see this is a trapeze
+
+303
+00:13:20,460 --> 00:13:24,360
+no colonel Crale is actually our
+
+304
+00:13:22,230 --> 00:13:27,420
+implementation of the architecture we'll
+
+305
+00:13:24,360 --> 00:13:29,430
+get to that in a moment but so the
+
+306
+00:13:27,420 --> 00:13:31,020
+system architecture is actually not much
+
+307
+00:13:29,430 --> 00:13:32,699
+different than the system architecture
+
+308
+00:13:31,020 --> 00:13:36,180
+of let's say a distributed file system
+
+309
+00:13:32,700 --> 00:13:37,710
+or like HDFS so GFS so data is chopped
+
+310
+00:13:36,180 --> 00:13:40,290
+up into blocks and the blocks are
+
+311
+00:13:37,710 --> 00:13:43,260
+distributed across multiple storage
+
+312
+00:13:40,290 --> 00:13:45,060
+servers one difference in no colonel is
+
+313
+00:13:43,260 --> 00:13:46,950
+that the storage servers are logically
+
+314
+00:13:45,060 --> 00:13:48,390
+grouped together into so-called storage
+
+315
+00:13:46,950 --> 00:13:50,570
+classes and the simplest way to think
+
+316
+00:13:48,390 --> 00:13:53,730
+about a storage class is that it is
+
+317
+00:13:50,570 --> 00:13:56,040
+containing all the storage servers that
+
+318
+00:13:53,730 --> 00:13:57,840
+store blocks of a particular type so you
+
+319
+00:13:56,040 --> 00:13:59,790
+might have a storage class for DRM
+
+320
+00:13:57,840 --> 00:14:01,860
+consisting of all storage servers
+
+321
+00:13:59,790 --> 00:14:03,800
+storing blocks in DRAM and then you may
+
+322
+00:14:01,860 --> 00:14:05,880
+have a storage class for flash
+
+323
+00:14:03,800 --> 00:14:11,760
+consisting of all storage services
+
+324
+00:14:05,880 --> 00:14:14,310
+storing blocks in flash now the the
+
+325
+00:14:11,760 --> 00:14:16,710
+decision about which storage class to
+
+326
+00:14:14,310 --> 00:14:18,479
+use for a node and how to distribute the
+
+327
+00:14:16,710 --> 00:14:20,040
+blocks across the storage service those
+
+328
+00:14:18,480 --> 00:14:24,960
+decisions are made by the metadata
+
+329
+00:14:20,040 --> 00:14:29,069
+servers in the system and the metadata
+
+330
+00:14:24,960 --> 00:14:33,030
+server state they maintain a pool of
+
+331
+00:14:29,070 --> 00:14:35,160
+free blocks and then the application is
+
+332
+00:14:33,030 --> 00:14:37,709
+a pending data to a node the metadata
+
+333
+00:14:35,160 --> 00:14:40,650
+server has to decide which block to take
+
+334
+00:14:37,710 --> 00:14:43,410
+out of the free list of which storage
+
+335
+00:14:40,650 --> 00:14:45,060
+class to to store that particular data
+
+336
+00:14:43,410 --> 00:14:46,920
+and in oak in the no current
+
+337
+00:14:45,060 --> 00:14:50,130
+architecture we're advocating a policy
+
+338
+00:14:46,920 --> 00:14:53,819
+called hierarchical theory which means
+
+339
+00:14:50,130 --> 00:14:56,220
+that the storage server will always try
+
+340
+00:14:53,820 --> 00:14:58,590
+to allocate a block from the fastest
+
+341
+00:14:56,220 --> 00:15:00,600
+performing tier it means that it will
+
+342
+00:14:58,590 --> 00:15:04,050
+try to allocate it'll only allocate a
+
+343
+00:15:00,600 --> 00:15:10,050
+flash block if there is no block in DRAM
+
+344
+00:15:04,050 --> 00:15:12,329
+available across the entire cluster you
+
+345
+00:15:10,050 --> 00:15:14,099
+may also observe that the metadata
+
+346
+00:15:12,330 --> 00:15:16,080
+server metadata plane consists of
+
+347
+00:15:14,100 --> 00:15:18,360
+multiple metadata servers the reason for
+
+348
+00:15:16,080 --> 00:15:20,130
+that is that we partitioned the storage
+
+349
+00:15:18,360 --> 00:15:22,920
+namespace across multiple metadata
+
+350
+00:15:20,130 --> 00:15:25,800
+servers by hash partitioning it so each
+
+351
+00:15:22,920 --> 00:15:29,719
+of the metadata server is responsible
+
+352
+00:15:25,800 --> 00:15:29,719
+for one subtree in the storage namespace
+
+353
+00:15:30,080 --> 00:15:34,259
+given that architecture was a metadata
+
+354
+00:15:33,480 --> 00:15:36,329
+plane and
+
+355
+00:15:34,259 --> 00:15:38,459
+the plane almost every of these data
+
+356
+00:15:36,329 --> 00:15:41,660
+operations to append or read or update
+
+357
+00:15:38,459 --> 00:15:45,059
+data require two operations one
+
+358
+00:15:41,660 --> 00:15:47,009
+involving the metadata server to find
+
+359
+00:15:45,059 --> 00:15:50,009
+out which storage server has the block
+
+360
+00:15:47,009 --> 00:15:52,319
+and one operation to actually read or
+
+361
+00:15:50,009 --> 00:15:54,239
+write the book and this message form is
+
+362
+00:15:52,319 --> 00:15:56,728
+illustrated by this figure for the
+
+363
+00:15:54,239 --> 00:16:01,799
+example of appending data to a key value
+
+364
+00:15:56,729 --> 00:16:05,639
+node and the the point of that figure is
+
+365
+00:16:01,799 --> 00:16:07,649
+to show that the the fact that in no
+
+366
+00:16:05,639 --> 00:16:10,559
+colonel we're using an additional
+
+367
+00:16:07,649 --> 00:16:13,949
+metadata plane that gives us extra
+
+368
+00:16:10,559 --> 00:16:15,689
+flexibility because in every operation
+
+369
+00:16:13,949 --> 00:16:17,579
+we can literally the metadata server can
+
+370
+00:16:15,689 --> 00:16:19,769
+decide what is the best storage server
+
+371
+00:16:17,579 --> 00:16:22,738
+to store that block what is this best
+
+372
+00:16:19,769 --> 00:16:25,949
+storage here to do store that block but
+
+373
+00:16:22,739 --> 00:16:28,279
+clearly that is going to cost us extra
+
+374
+00:16:25,949 --> 00:16:32,878
+round trips and this in the case of a
+
+375
+00:16:28,279 --> 00:16:34,139
+key value node put operation this is
+
+376
+00:16:32,879 --> 00:16:35,669
+going to be two extra round trips
+
+377
+00:16:34,139 --> 00:16:37,169
+because we in the end we also have to
+
+378
+00:16:35,669 --> 00:16:40,999
+inform the metadata server about the new
+
+379
+00:16:37,169 --> 00:16:44,220
+size so those two extra round trips are
+
+380
+00:16:40,999 --> 00:16:46,230
+two round trips more than what you would
+
+381
+00:16:44,220 --> 00:16:49,169
+get in a normal let's say distributed
+
+382
+00:16:46,230 --> 00:16:51,689
+key-value store doing a put and the line
+
+383
+00:16:49,169 --> 00:16:53,759
+of thought in a no kernel is that with
+
+384
+00:16:51,689 --> 00:16:56,099
+current and upcoming networking low
+
+385
+00:16:53,759 --> 00:16:58,319
+latency networking fabrics we can
+
+386
+00:16:56,100 --> 00:17:02,220
+minimize the overhead of such a metadata
+
+387
+00:16:58,319 --> 00:17:05,128
+operation to a few microseconds and this
+
+388
+00:17:02,220 --> 00:17:06,720
+is what gets us to cray-cray is our
+
+389
+00:17:05,128 --> 00:17:09,240
+implementation of the no kernel
+
+390
+00:17:06,720 --> 00:17:12,449
+architecture it's using low latency or
+
+391
+00:17:09,240 --> 00:17:14,220
+DMA based or IPC to minimize those those
+
+392
+00:17:12,449 --> 00:17:17,939
+metadata the overhead of those metadata
+
+393
+00:17:14,220 --> 00:17:21,659
+operations trail is coming with two
+
+394
+00:17:17,939 --> 00:17:24,299
+storage classes one exporting flash that
+
+395
+00:17:21,659 --> 00:17:26,010
+is being accessed over nvme over fabrics
+
+396
+00:17:24,299 --> 00:17:27,839
+there's not going to be enough time to
+
+397
+00:17:26,010 --> 00:17:30,240
+talk about enemy or fabrics here but
+
+398
+00:17:27,839 --> 00:17:34,110
+think of it as a really fast way to
+
+399
+00:17:30,240 --> 00:17:38,370
+access remote flash over our DMA and the
+
+400
+00:17:34,110 --> 00:17:40,889
+second storage class is is exposing DRAM
+
+401
+00:17:38,370 --> 00:17:43,979
+that is accessed over already-married
+
+402
+00:17:40,889 --> 00:17:46,860
+Wyant operations and trail is open
+
+403
+00:17:43,980 --> 00:17:47,559
+source amazing Apache project incubator
+
+404
+00:17:46,860 --> 00:17:51,100
+projects
+
+405
+00:17:47,559 --> 00:17:55,210
+beginning of last year now let's look at
+
+406
+00:17:51,100 --> 00:17:58,178
+how this performs this is an evolution
+
+407
+00:17:55,210 --> 00:18:01,570
+on 16 notes on a hundred gig network the
+
+408
+00:17:58,179 --> 00:18:05,559
+nodes have 2056 cue by the DRAM some
+
+409
+00:18:01,570 --> 00:18:08,200
+Intel opt and SSDs in there and the main
+
+410
+00:18:05,559 --> 00:18:10,360
+questions we try to answer is first is
+
+411
+00:18:08,200 --> 00:18:12,399
+Crale really giving you good performance
+
+412
+00:18:10,360 --> 00:18:14,918
+for the full spectrum we said we need
+
+413
+00:18:12,399 --> 00:18:17,350
+the system to perform well for small and
+
+414
+00:18:14,919 --> 00:18:20,830
+large values is it allowing you to
+
+415
+00:18:17,350 --> 00:18:23,799
+translate accelerate workloads by using
+
+416
+00:18:20,830 --> 00:18:25,210
+a modern hardware effectively how are
+
+417
+00:18:23,799 --> 00:18:27,429
+the abstractions of creo are they
+
+418
+00:18:25,210 --> 00:18:29,320
+flexible enough so we can build a let's
+
+419
+00:18:27,429 --> 00:18:30,580
+say shuffle inch engine easily on top of
+
+420
+00:18:29,320 --> 00:18:34,360
+it
+
+421
+00:18:30,580 --> 00:18:36,699
+and can be easily play around with Crale
+
+422
+00:18:34,360 --> 00:18:38,949
+in a way that it gives us flexibility
+
+423
+00:18:36,700 --> 00:18:42,249
+can be a can we enable storage
+
+424
+00:18:38,950 --> 00:18:45,330
+tessellation flashed hearing easily
+
+425
+00:18:42,249 --> 00:18:49,629
+without having to go and modify the
+
+426
+00:18:45,330 --> 00:18:54,699
+higher-level modules so this figure here
+
+427
+00:18:49,629 --> 00:18:58,990
+is showing you on the left side the
+
+428
+00:18:54,700 --> 00:19:02,860
+performance off Crale for small value
+
+429
+00:18:58,990 --> 00:19:05,379
+get operations so this is a this
+
+430
+00:19:02,860 --> 00:19:07,899
+involves the the full message flow of
+
+431
+00:19:05,379 --> 00:19:10,209
+shown before including a metadata
+
+432
+00:19:07,899 --> 00:19:13,959
+operation and the read operation due to
+
+433
+00:19:10,210 --> 00:19:17,379
+get 256 bytes out of a storage server
+
+434
+00:19:13,960 --> 00:19:20,289
+and we showed us for both the DRAM tier
+
+435
+00:19:17,379 --> 00:19:23,559
+and the SSD here and you can see we're
+
+436
+00:19:20,289 --> 00:19:27,779
+getting down to values that are very
+
+437
+00:19:23,559 --> 00:19:31,389
+close to the hardware limits so the DRM
+
+438
+00:19:27,779 --> 00:19:35,559
+latency here is a little bit above 10
+
+439
+00:19:31,389 --> 00:19:37,360
+microseconds that's reasonably low on an
+
+440
+00:19:35,559 --> 00:19:40,629
+RD mailing Kiki may be accessed remotely
+
+441
+00:19:37,360 --> 00:19:43,299
+rhyming like 3 microseconds and for the
+
+442
+00:19:40,629 --> 00:19:46,029
+opt and here we are a little bit higher
+
+443
+00:19:43,299 --> 00:19:48,100
+than 20 microseconds and the raw access
+
+444
+00:19:46,029 --> 00:19:50,440
+to a remote all time is about 15
+
+445
+00:19:48,100 --> 00:19:53,199
+microseconds and you can see we are
+
+446
+00:19:50,440 --> 00:19:54,759
+getting quite stable latencies up to a
+
+447
+00:19:53,200 --> 00:19:57,580
+point where we're hitting either the
+
+448
+00:19:54,759 --> 00:19:59,270
+heart of a limit or the limit of a
+
+449
+00:19:57,580 --> 00:20:01,820
+single metadata server increase
+
+450
+00:19:59,270 --> 00:20:05,389
+so for the DRN case we are hitting 8
+
+451
+00:20:01,820 --> 00:20:07,340
+million I ops which is the limit of the
+
+452
+00:20:05,390 --> 00:20:10,450
+of a single metadata server in Inc rail
+
+453
+00:20:07,340 --> 00:20:13,399
+and for the optin benchmark we're
+
+454
+00:20:10,450 --> 00:20:15,530
+hitting the limit of the device at a
+
+455
+00:20:13,400 --> 00:20:18,020
+slightly lower value on the right hand
+
+456
+00:20:15,530 --> 00:20:20,960
+side you see a similar benchmark for a
+
+457
+00:20:18,020 --> 00:20:23,770
+large data set where we are looking at
+
+458
+00:20:20,960 --> 00:20:28,400
+the throughput of reading that data set
+
+459
+00:20:23,770 --> 00:20:30,770
+and again you can see that for DRAM we
+
+460
+00:20:28,400 --> 00:20:32,960
+are getting close to honey getting 200
+
+461
+00:20:30,770 --> 00:20:35,809
+gigabits per second read bandits very
+
+462
+00:20:32,960 --> 00:20:40,309
+quickly for small IO sizes and for flash
+
+463
+00:20:35,809 --> 00:20:42,050
+it takes a little bit higher io sizes to
+
+464
+00:20:40,309 --> 00:20:43,670
+get the reasonably good throughput and
+
+465
+00:20:42,050 --> 00:20:46,129
+we're not getting all the way to to line
+
+466
+00:20:43,670 --> 00:20:50,120
+speed but it's still a fairly good
+
+467
+00:20:46,130 --> 00:20:52,309
+performance now that we have seen that
+
+468
+00:20:50,120 --> 00:20:53,479
+trial can give you a reasonably good
+
+469
+00:20:52,309 --> 00:20:56,120
+performance across the full spectrum
+
+470
+00:20:53,480 --> 00:20:58,400
+let's see where did the abstractions we
+
+471
+00:20:56,120 --> 00:21:02,090
+design in Crale are helpful and allow us
+
+472
+00:20:58,400 --> 00:21:06,050
+to build its a higher-level operations
+
+473
+00:21:02,090 --> 00:21:07,490
+effectively this is a shuffle the the
+
+474
+00:21:06,050 --> 00:21:10,730
+basic architecture of a shuffle
+
+475
+00:21:07,490 --> 00:21:12,620
+operation in SPARC I assume many of you
+
+476
+00:21:10,730 --> 00:21:14,720
+guys are familiar roughly what a shuffle
+
+477
+00:21:12,620 --> 00:21:17,479
+operation is doing and how it is working
+
+478
+00:21:14,720 --> 00:21:19,190
+so then the map tasks they are getting
+
+479
+00:21:17,480 --> 00:21:21,350
+data and they're partitioning the data
+
+480
+00:21:19,190 --> 00:21:23,420
+into multiple buckets shown with
+
+481
+00:21:21,350 --> 00:21:25,189
+multiple colors in this case and then
+
+482
+00:21:23,420 --> 00:21:28,010
+once the map phase is finished the
+
+483
+00:21:25,190 --> 00:21:30,230
+reduced phases is it consists of a set
+
+484
+00:21:28,010 --> 00:21:32,690
+of reduce tasks where each reduce tasks
+
+485
+00:21:30,230 --> 00:21:34,210
+is assigned to one bucket and is
+
+486
+00:21:32,690 --> 00:21:37,130
+fetching all the data of that market
+
+487
+00:21:34,210 --> 00:21:41,300
+using the krail bag abstraction we can
+
+488
+00:21:37,130 --> 00:21:44,740
+model such a shuffle operation easily by
+
+489
+00:21:41,300 --> 00:21:47,840
+having the map task by assigning a
+
+490
+00:21:44,740 --> 00:21:50,900
+partition to one bank right and then
+
+491
+00:21:47,840 --> 00:21:54,800
+each map task is partitioning its data
+
+492
+00:21:50,900 --> 00:21:57,860
+into a set of files one file per back
+
+493
+00:21:54,800 --> 00:22:00,889
+write one file per partition once the
+
+494
+00:21:57,860 --> 00:22:04,178
+map has finished the reduced task simply
+
+495
+00:22:00,890 --> 00:22:08,570
+reads the entire bag for that particular
+
+496
+00:22:04,179 --> 00:22:10,610
+partition they are assigned to and this
+
+497
+00:22:08,570 --> 00:22:12,310
+is showing how this performs on a
+
+498
+00:22:10,610 --> 00:22:14,620
+hundred gigabit network compare
+
+499
+00:22:12,310 --> 00:22:16,210
+to the defaults of lan janine spoke so
+
+500
+00:22:14,620 --> 00:22:22,500
+this is a group by benchmark which is
+
+501
+00:22:16,210 --> 00:22:25,630
+stressing the shuffle engine it's it's a
+
+502
+00:22:22,500 --> 00:22:30,400
+it's a group i on eight million keys for
+
+503
+00:22:25,630 --> 00:22:32,050
+k sized perky and you can see that the
+
+504
+00:22:30,400 --> 00:22:34,360
+figure shows the performance for
+
+505
+00:22:32,050 --> 00:22:37,080
+different numbers of course so you can
+
+506
+00:22:34,360 --> 00:22:40,270
+see we are about five times faster with
+
+507
+00:22:37,080 --> 00:22:45,000
+the cradle based shuffle engine with a
+
+508
+00:22:40,270 --> 00:22:47,530
+single core then then then the vanilla
+
+509
+00:22:45,000 --> 00:22:49,900
+sparkle fair and even if you're throwing
+
+510
+00:22:47,530 --> 00:22:51,399
+eight course on the vanilla spark
+
+511
+00:22:49,900 --> 00:22:55,390
+software we are still about two times
+
+512
+00:22:51,400 --> 00:22:57,190
+faster with a single core so this
+
+513
+00:22:55,390 --> 00:22:59,290
+performance translates to eat a better
+
+514
+00:22:57,190 --> 00:23:04,090
+performance or better efficiency as in
+
+515
+00:22:59,290 --> 00:23:07,600
+less course um now the last figure on
+
+516
+00:23:04,090 --> 00:23:10,030
+the show is that one value proposition
+
+517
+00:23:07,600 --> 00:23:12,219
+of this architecture right we said we
+
+518
+00:23:10,030 --> 00:23:14,020
+want to decouple temp temporary data
+
+519
+00:23:12,220 --> 00:23:15,610
+management from data processing one
+
+520
+00:23:14,020 --> 00:23:19,090
+value proposition from these
+
+521
+00:23:15,610 --> 00:23:22,449
+architectures that you can change your
+
+522
+00:23:19,090 --> 00:23:23,590
+configuration in inc rail and it will
+
+523
+00:23:22,450 --> 00:23:25,330
+immediately be picked up by the
+
+524
+00:23:23,590 --> 00:23:28,090
+higher-level operations so you can for
+
+525
+00:23:25,330 --> 00:23:31,810
+instance play around with the drm cash
+
+526
+00:23:28,090 --> 00:23:35,020
+drm flash ratio or you can deploy Crale
+
+527
+00:23:31,810 --> 00:23:37,750
+as a disaggregated storage platform and
+
+528
+00:23:35,020 --> 00:23:39,970
+immediately that will be picked up by by
+
+529
+00:23:37,750 --> 00:23:45,730
+your shuffle operation and this is an
+
+530
+00:23:39,970 --> 00:23:48,640
+example that shows the value of creo and
+
+531
+00:23:45,730 --> 00:23:51,250
+the flexibility of creo by changing the
+
+532
+00:23:48,640 --> 00:23:52,960
+ratio between DRM and flash so we're
+
+533
+00:23:51,250 --> 00:23:58,810
+changing the ratio between DRM and flash
+
+534
+00:23:52,960 --> 00:24:02,050
+we export in Crale from initially 100 to
+
+535
+00:23:58,810 --> 00:24:04,870
+zero means the entire trail deployment
+
+536
+00:24:02,050 --> 00:24:07,510
+is is DRM based and the zero 200 means
+
+537
+00:24:04,870 --> 00:24:09,219
+the entire deployment is flash based and
+
+538
+00:24:07,510 --> 00:24:14,140
+on the very left you see the performance
+
+539
+00:24:09,220 --> 00:24:15,550
+of vanilla spark sorting benchmark if
+
+540
+00:24:14,140 --> 00:24:18,610
+you're certain 200 gigabytes in this
+
+541
+00:24:15,550 --> 00:24:19,800
+case so two things that this figure is
+
+542
+00:24:18,610 --> 00:24:22,810
+showing first of all we are
+
+543
+00:24:19,800 --> 00:24:24,610
+substantially faster independent of
+
+544
+00:24:22,810 --> 00:24:26,290
+whether be using the RM flash
+
+545
+00:24:24,610 --> 00:24:30,309
+and the second is we can easily adjust
+
+546
+00:24:26,290 --> 00:24:33,010
+the ratio between flash and and DRM and
+
+547
+00:24:30,309 --> 00:24:36,730
+thereby trade-off performance for cost
+
+548
+00:24:33,010 --> 00:24:38,200
+so by putting in all flash instead of
+
+549
+00:24:36,730 --> 00:24:41,280
+theorem you're paying about 48 percent
+
+550
+00:24:38,200 --> 00:24:45,880
+penalty but we can reduce the cost
+
+551
+00:24:41,280 --> 00:24:48,399
+substantially so that's basically the
+
+552
+00:24:45,880 --> 00:24:50,830
+end of the the technical part
+
+553
+00:24:48,400 --> 00:24:52,090
+conclusions is that sharing temporary
+
+554
+00:24:50,830 --> 00:24:55,240
+data efficiently in data processing
+
+555
+00:24:52,090 --> 00:24:58,360
+frameworks is is challenging challenging
+
+556
+00:24:55,240 --> 00:25:01,030
+because it's difficult to to implement
+
+557
+00:24:58,360 --> 00:25:02,469
+it efficiently and flexible in a
+
+558
+00:25:01,030 --> 00:25:06,070
+flexible manner so that you can support
+
+559
+00:25:02,470 --> 00:25:07,809
+new hardware new deployment modes and no
+
+560
+00:25:06,070 --> 00:25:10,030
+kernel is a distributed storage
+
+561
+00:25:07,809 --> 00:25:12,428
+architecture that is designed for
+
+562
+00:25:10,030 --> 00:25:14,620
+temporary storage it's a fusing file
+
+563
+00:25:12,429 --> 00:25:16,480
+system and key value semantics into a
+
+564
+00:25:14,620 --> 00:25:19,030
+single store and it's designed for
+
+565
+00:25:16,480 --> 00:25:20,710
+modern hardware and Apache Crale is our
+
+566
+00:25:19,030 --> 00:25:23,830
+current implementation of this
+
+567
+00:25:20,710 --> 00:25:26,919
+architecture it's open source it's using
+
+568
+00:25:23,830 --> 00:25:30,250
+our DNA and NVAF to access theorem and
+
+569
+00:25:26,919 --> 00:25:33,010
+flash and is able to accelerate spark
+
+570
+00:25:30,250 --> 00:25:35,740
+workloads and and other workloads that
+
+571
+00:25:33,010 --> 00:25:38,169
+are shown in the paper I also want to
+
+572
+00:25:35,740 --> 00:25:41,380
+point out that all the code is open
+
+573
+00:25:38,169 --> 00:25:43,299
+source the the storage system of course
+
+574
+00:25:41,380 --> 00:25:45,700
+the shuffle engine is open source as
+
+575
+00:25:43,299 --> 00:25:49,299
+well and in the paper we have also YC
+
+576
+00:25:45,700 --> 00:25:52,690
+speed benchmarks benchmark numbers and
+
+577
+00:25:49,299 --> 00:25:55,120
+the YCC benchmark is actually officially
+
+578
+00:25:52,690 --> 00:25:59,260
+part of the YCC benchmark suite since
+
+579
+00:25:55,120 --> 00:26:01,689
+since a month so with that I'm happy to
+
+580
+00:25:59,260 --> 00:26:02,400
+take questions we have time for one
+
+581
+00:26:01,690 --> 00:26:03,430
+question
+
+582
+00:26:02,400 --> 00:26:06,489
+[Applause]
+
+583
+00:26:03,430 --> 00:26:06,489
+[Music]
+
+584
+00:26:11,960 --> 00:26:16,830
+Peter matica from that app which and so
+
+585
+00:26:14,850 --> 00:26:18,120
+you have so you said you have a single
+
+586
+00:26:16,830 --> 00:26:20,340
+namespace bit about the different types
+
+587
+00:26:18,120 --> 00:26:23,100
+but do you by any chance provide like a
+
+588
+00:26:20,340 --> 00:26:25,580
+dual access like can you use a kV API in
+
+589
+00:26:23,100 --> 00:26:31,500
+the fat man or in file I be on the same
+
+590
+00:26:25,580 --> 00:26:34,710
+on the same name or so a single node in
+
+591
+00:26:31,500 --> 00:26:40,470
+a namespace is always bound to it to a
+
+592
+00:26:34,710 --> 00:26:43,620
+particular type so I have a maybe I can
+
+593
+00:26:40,470 --> 00:26:45,900
+show this example here I don't know if
+
+594
+00:26:43,620 --> 00:26:49,169
+you can read this well but this is
+
+595
+00:26:45,900 --> 00:26:50,850
+showing the APR in Crale so when you
+
+596
+00:26:49,170 --> 00:26:53,040
+create a new node in the heart in the
+
+597
+00:26:50,850 --> 00:26:55,770
+storage hierarchy you notes are at and
+
+598
+00:26:53,040 --> 00:26:58,200
+identified with path names and you have
+
+599
+00:26:55,770 --> 00:27:02,070
+to specify a type when you create a new
+
+600
+00:26:58,200 --> 00:27:03,780
+node so at the at the creation time you
+
+601
+00:27:02,070 --> 00:27:05,570
+decide what type of node you want to
+
+602
+00:27:03,780 --> 00:27:09,000
+create and then that node is basically
+
+603
+00:27:05,570 --> 00:27:15,629
+being is fixed for for the rest of your
+
+604
+00:27:09,000 --> 00:27:18,690
+usage I thank you from Samsung
+
+605
+00:27:15,630 --> 00:27:23,400
+Electronics so thank you for great talks
+
+606
+00:27:18,690 --> 00:27:25,770
+I'm curious why you use the obtain SSD
+
+607
+00:27:23,400 --> 00:27:29,550
+rather than no more no more tears your
+
+608
+00:27:25,770 --> 00:27:33,180
+accuracy Assisting so we use both and
+
+609
+00:27:29,550 --> 00:27:36,720
+the paper has numbers for both for this
+
+610
+00:27:33,180 --> 00:27:39,030
+talk there was just not enough time to
+
+611
+00:27:36,720 --> 00:27:43,050
+cover all those benchmarks but we use
+
+612
+00:27:39,030 --> 00:27:46,260
+both and I've selected to obtain numbers
+
+613
+00:27:43,050 --> 00:27:49,919
+for forestal so what do you think about
+
+614
+00:27:46,260 --> 00:27:54,240
+the performance requirement to use to
+
+615
+00:27:49,920 --> 00:27:58,010
+you still need a kind of mbm style or
+
+616
+00:27:54,240 --> 00:28:00,400
+latency or just no more flash latency I
+
+617
+00:27:58,010 --> 00:28:07,390
+mean
+
+618
+00:28:00,400 --> 00:28:10,400
+Correll is not necessarily making any
+
+619
+00:28:07,390 --> 00:28:12,530
+any statement about this so the the
+
+620
+00:28:10,400 --> 00:28:15,050
+basic idea is the different types of
+
+621
+00:28:12,530 --> 00:28:16,790
+technologies are out there and we build
+
+622
+00:28:15,050 --> 00:28:19,280
+a system that allows you to integrate
+
+623
+00:28:16,790 --> 00:28:20,659
+these different technologies and one way
+
+624
+00:28:19,280 --> 00:28:22,310
+you can integrate it into kreyòl is
+
+625
+00:28:20,660 --> 00:28:24,650
+through different storage classes so if
+
+626
+00:28:22,310 --> 00:28:26,960
+you have different types of if you have
+
+627
+00:28:24,650 --> 00:28:30,230
+flash and you have non-volatile memory
+
+628
+00:28:26,960 --> 00:28:32,810
+and you have disk you can integrate them
+
+629
+00:28:30,230 --> 00:28:35,180
+as different tiers and you can decide
+
+630
+00:28:32,810 --> 00:28:37,159
+how the system should interact with
+
+631
+00:28:35,180 --> 00:28:39,980
+these tiers and you can also decide on a
+
+632
+00:28:37,160 --> 00:28:42,050
+on a per node basis this is something I
+
+633
+00:28:39,980 --> 00:28:43,970
+haven't shown on which particular
+
+634
+00:28:42,050 --> 00:28:45,919
+storage class a certain node should
+
+635
+00:28:43,970 --> 00:28:48,890
+preferably be allocated on but the
+
+636
+00:28:45,920 --> 00:28:50,900
+system is designed to embrace multiple
+
+637
+00:28:48,890 --> 00:28:54,230
+technologies current and future
+
+638
+00:28:50,900 --> 00:28:55,910
+technologies thank you all right let's
+
+639
+00:28:54,230 --> 00:28:58,540
+thank all the speakers and that's the
+
+640
+00:28:55,910 --> 00:28:58,540
+end of the session
+

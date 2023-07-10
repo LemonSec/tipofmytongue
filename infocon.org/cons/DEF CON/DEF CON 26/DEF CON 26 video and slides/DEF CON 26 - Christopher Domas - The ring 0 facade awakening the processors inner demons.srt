@@ -1,0 +1,1310 @@
+﻿00:00:00.267-->00:00:05.272
+>>Here’s Mr. Domas. Domas.
+[applause] >>Alright [applause]
+alright uh, thanks everyone uh,
+
+00:00:10.577-->00:00:15.649
+let’s go ahead and dive in so
+the fundamental premise behind
+this presentation is that just
+
+00:00:15.649-->00:00:19.286
+because we have code running at
+ring 0, just because we have
+code running in the most
+
+00:00:19.286-->00:00:24.391
+protected, privileged realm of
+the processor, it doesn’t
+necessarily mean that we have
+
+00:00:24.391-->00:00:29.429
+access to everything on that
+processor. So, I want to explore
+that idea, um, today. But, uh
+
+00:00:29.429-->00:00:33.133
+first the most important part of
+any presentation, the part the
+lawyer’s put in a disclaimer, um
+
+00:00:33.133-->00:00:36.937
+all this research is stuff I did
+independently, this does not
+reflect in anyway on my
+
+00:00:36.937-->00:00:41.842
+employer, this is not there
+opinions, this is purely my own
+speculation and ideas. Um, but
+
+00:00:41.842-->00:00:44.978
+with that out of the way, my
+name is Christopher Domas, I’m a
+cyber security researcher, I
+
+00:00:44.978-->00:00:49.483
+spent the last few years sort of
+poking around low level
+processor security, and one of
+
+00:00:49.483-->00:00:54.755
+the things I really like about
+this is trying to find ways to
+expose secrets on processors,
+
+00:00:54.755-->00:00:59.493
+things that we’re not supposed
+to know about or not supposed to
+have uh access to. So, for this
+
+00:00:59.493-->00:01:03.163
+particular presentation, I want
+to look at the idea of what are
+called model specific registers,
+
+00:01:03.163-->00:01:08.001
+and uh in x86. So, these
+registers, are used for lot’s of
+different miscellaneous things,
+
+00:01:08.001-->00:01:11.905
+things like debugging and
+execution tracing, and
+performance monitoring, and you
+
+00:01:11.905-->00:01:17.377
+can adjust your clock speed on
+the processor through MSRs, you
+can toggle thermal controls, and
+
+00:01:17.377-->00:01:22.182
+thermal sensors and safety
+mechanisms on and off through
+MSRs, you can adjust cache
+
+00:01:22.182-->00:01:26.353
+behavior with these model
+specific registers they do all
+sorts of miscellaneous kind of
+
+00:01:26.353-->00:01:30.791
+crazy things, but you can dig a
+lot deeper than that and start
+to find some scary stuff that
+
+00:01:30.791-->00:01:36.129
+MSRs are sometimes responsible
+for. For example, it is known
+that some undocumented model
+
+00:01:36.129-->00:01:41.601
+specific registers toggle
+really, really powerful debug
+features on the processor.
+
+00:01:41.601-->00:01:46.340
+There’s actually really, really
+good evidence that some firmware
+is using undocumented model
+
+00:01:46.340-->00:01:52.713
+specific registers to enable
+previously disabled cores on the
+processor. And if you saw my
+
+00:01:52.713-->00:01:57.784
+project rosenbridge presentation
+yesterday, what we saw is that
+some MSRs are actually used for
+
+00:01:57.784-->00:02:03.223
+things like toggling hardware
+back doors on the processor, so
+there’s really, really
+
+00:02:03.223-->00:02:06.927
+incredible functionality tied up
+in these registers that most
+people don’t have a lot of
+
+00:02:06.927-->00:02:10.864
+familiarity with. So it’s
+definitely something that we
+want to investigate more, so
+
+00:02:10.864-->00:02:16.603
+just a little bit of background
+on how you use these MSRs before
+we get uh diving into some
+
+00:02:16.603-->00:02:20.974
+really interesting facets of
+them. Basically, the way MSRs
+work are you have to be in ring
+
+00:02:20.974-->00:02:26.380
+0 in order to access an MSR, and
+then you access an MSR not by
+its name but by it’s address,
+
+00:02:26.380-->00:02:31.551
+and MSRs have addresses between
+0 and 4 gigabytes, and only a
+very very small portion of that
+
+00:02:31.551-->00:02:36.690
+address space is implemented. On
+most processors, something like
+tens of MSRs on an order
+
+00:02:36.690-->00:02:41.461
+processor, or hundreds on a
+modern processor, but not many
+in the scheme of things. Um,
+
+00:02:41.461-->00:02:46.166
+MSRs are 64 bits and you read
+them with a read MSR assembly
+instruction and you write them
+
+00:02:46.166-->00:02:52.739
+with a write MSR assembly
+instruction. So, um when I
+started looking into this, uh
+
+00:02:52.739-->00:02:57.577
+what I wanted to figure out was
+sort of like well how deep to
+MSRs go? What real functionality
+
+00:02:57.577-->00:03:01.715
+is there that I might be able to
+tinker with. So, I stumbled
+across this patent from via that
+
+00:03:01.715-->00:03:05.986
+we actually looked at yesterday
+if you were here, um, in this
+patent they casually mention
+
+00:03:05.986-->00:03:09.656
+that accessing some of the
+internal control registers,
+they’re talking about the MSRs
+
+00:03:09.656-->00:03:14.361
+in this situation, can enable
+the user to bypass security
+mechanisms, for example,
+
+00:03:14.361-->00:03:18.532
+allowing ring 0 access at ring
+3. In other words, allowing you
+to reach into the kernel from
+
+00:03:18.532-->00:03:23.070
+userland, something that should
+never be possible, and they go
+onto say for these reasons, the
+
+00:03:23.070-->00:03:28.408
+various x86 processor
+manufacturers have not publicly
+documented any description of
+
+00:03:28.408-->00:03:33.146
+the address or function of some
+control MSRs. So, that part got
+my attention, it’s kind of like
+
+00:03:33.146-->00:03:36.883
+the Streisand effect right,
+you’re telling me that hey there
+are these really really powerful
+
+00:03:36.883-->00:03:40.854
+MSRs out there and we’re not
+going to tell you any more.
+Well, of course that just makes
+
+00:03:40.854-->00:03:45.192
+me want to find out more about
+them. And if we keep reading
+through the patent um, we start
+
+00:03:45.192-->00:03:50.430
+to learn some other interesting
+things, they say, nevertheless
+the existence and location of
+
+00:03:50.430-->00:03:55.135
+some of these the undocumented
+control MSRs, are easily found
+by programmers, who typically
+
+00:03:55.135-->00:04:00.107
+then publish their findings for
+all to use. Specifically, what
+they’re concerned about here is
+
+00:04:00.107-->00:04:05.278
+people reverse engineering
+firmware, where firmware is
+using these undocumented MSRs,
+
+00:04:05.278-->00:04:08.148
+then somebody whose reverse
+engineering the firmware,
+somebody who's looking at it can
+
+00:04:08.148-->00:04:14.054
+very trivially see that these
+MSRs exist and figure out what
+they’re being used for. Um, but
+
+00:04:14.054-->00:04:16.890
+from a manufacturer's
+perspective they’ve got a
+dilemma, they want to be able to
+
+00:04:16.890-->00:04:22.195
+tell their customers, there
+OEMs, the people using their
+chips um and building boards
+
+00:04:22.195-->00:04:26.266
+from their chips, they want to
+be able to tell their customers
+about these MSRs, uh but
+
+00:04:26.266-->00:04:31.471
+disclosing this information to
+their customers, would result in
+the secret of the control MSRs,
+
+00:04:31.471-->00:04:35.308
+basically becoming widely known
+when somebody looks at the
+firmware, and thus being useable
+
+00:04:35.308-->00:04:40.280
+by anyone on any processor. So
+this patent is actually
+proposing a solution to this
+
+00:04:40.280-->00:04:45.118
+problem um, there-there
+proposing a technique where the
+microprocessor itself would
+
+00:04:45.118-->00:04:49.990
+include a secret key,
+manufactured internally within
+the microprocessor and
+
+00:04:49.990-->00:04:55.795
+externally invisible. And this
+microprocessor would have
+encryption configured to decrypt
+
+00:04:55.795-->00:05:00.901
+a user supplied password, using
+the secret key in order to
+generate a decrypted result in
+
+00:05:00.901-->00:05:05.038
+response to user instruct- uh
+instruction on the
+microprocessor to access the
+
+00:05:05.038-->00:05:09.676
+control register so they are
+basically saying they are
+password protecting the read MSR
+
+00:05:09.676-->00:05:14.915
+and write MSR assembly
+instructions for very very
+special powerful secret model
+
+00:05:14.915-->00:05:21.054
+specific registers, so, um
+that’s-that’s a little bit scary
+from-from a security
+
+00:05:21.054-->00:05:25.692
+perspective, uh right? Like
+that’s that’s not the way I
+think things should be working.
+
+00:05:25.692-->00:05:30.997
+Basically, they’re saying we’re
+going to give third parties
+trusted keys to secret pieces of
+
+00:05:30.997-->00:05:35.635
+you’re processor, and you the
+end user, aren’t going to have
+access to this, so um,
+
+00:05:35.635-->00:05:39.506
+that-that’s a little bit
+unsettling from my perspective.
+Like, basically, the question
+
+00:05:39.506-->00:05:45.212
+then is well could my processor
+right now on this computer have
+these secret undocumented, all
+
+00:05:45.212-->00:05:50.684
+powerful, password protected
+registers in it and I don’t even
+know because these things aren’t
+
+00:05:50.684-->00:05:55.488
+documented anywhere, because
+nobody knows about this, um, it
+turns out the answer to that is
+
+00:05:55.488-->00:06:01.094
+yes, this has been done before
+and we know this has been done
+before on the AMD K7 and K8
+
+00:06:01.094-->00:06:06.099
+processors um they were actually
+using password protected MSRs,
+the exact thing just described
+
+00:06:06.099-->00:06:11.037
+uh, uh in this patent, um and
+this was discovered exactly like
+the patent was worried about,
+
+00:06:11.037-->00:06:14.474
+this was discovered through
+firmware reverse engineering,
+people saw these MSRs being
+
+00:06:14.474-->00:06:19.379
+accessed, and they saw the
+password that the firmware was
+using to access them, now the K7
+
+00:06:19.379-->00:06:23.583
+and K8 had a very simple
+password protection scheme, it
+was just a 32 bit password
+
+00:06:23.583-->00:06:29.789
+loaded it into a general purpose
+register so, let’s start looking
+at the K7 and K8 just as a case
+
+00:06:29.789-->00:06:34.694
+study, basically let’s try to
+treat these processors as a
+black box, assume we didn’t know
+
+00:06:34.694-->00:06:39.866
+this going in and see if we can
+find a better approach to
+identifying password protected
+
+00:06:39.866-->00:06:45.705
+registers on, uh on x86, and I
+think that’s important um
+because we shouldn’t have to
+
+00:06:45.705-->00:06:49.976
+wait until we’ve already been
+owned, we shouldn’t have to wait
+until somebody else is accessing
+
+00:06:49.976-->00:06:53.913
+the secrets of our processor in
+order to figure out that this
+stuff exists, we should have
+
+00:06:53.913-->00:06:58.251
+some kind of means of detecting
+this kind of stuff on our own.
+So, that’s what I wanted to
+
+00:06:58.251-->00:07:02.956
+develop, a means of detecting
+these password protected
+registers, uh, uh before, before
+
+00:07:02.956-->00:07:08.161
+other people started using them.
+So, here’s how things worked in
+AMD, uh basically you would move
+
+00:07:08.161-->00:07:12.999
+a magic 32 bit die, the password
+into the edi register, then you
+would move the address of the
+
+00:07:12.999-->00:07:18.004
+msr that you’re trying to access
+into the ecx register, and then
+you would issue a read msr
+
+00:07:18.004-->00:07:23.777
+instruction, and then uh, a
+couple of different things could
+happen, if that msr that you’re
+
+00:07:23.777-->00:07:28.481
+trying to access doesn’t
+actually exist on the processor,
+the cpu would gen, would
+
+00:07:28.481-->00:07:33.553
+generate what’s called a general
+protection exception. On the
+other hand, if that msr existed,
+
+00:07:33.553-->00:07:38.892
+but you had the wrong password,
+the CPU would generate a general
+protection exception so thats
+
+00:07:38.892-->00:07:45.198
+uh-uh creates a problem for our
+research here, we get the same
+results, in both cases. In other
+
+00:07:45.198-->00:07:50.870
+words, um, in order to detect
+that our CPU has password
+protected registers that we’re
+
+00:07:50.870-->00:07:57.377
+being kept out of, uh, we have
+to both guess the model specific
+register address, and guess the
+
+00:07:57.377-->00:08:02.716
+MSR password, um guessing either
+one of those two things wrong,
+gives us the exact same
+
+00:08:02.716-->00:08:06.152
+behavior, gives us a general
+protection exception, that means
+we have to guess a 32 bit
+
+00:08:06.152-->00:08:11.458
+address and a 32 bit password,
+we have to guess 64 bits of
+information correctly in order
+
+00:08:11.458-->00:08:16.529
+to just attach that a password
+protected register exists on our
+processor. If you look at even
+
+00:08:16.529-->00:08:20.867
+the simplest embodiment of
+password protected registers,
+just 32 bit processors like AMD
+
+00:08:20.867-->00:08:25.972
+was using, um if you could make
+a billion such guesses per
+second, it would take you 600
+
+00:08:25.972-->00:08:30.276
+years of processing in order to
+find all of the password
+protected registers on your
+
+00:08:30.276-->00:08:34.748
+processor. So, we need a better
+way, we need to figure out well
+how could we detect that our
+
+00:08:34.748-->00:08:39.919
+processor has password protected
+registers without actually
+needing to know the password
+
+00:08:39.919-->00:08:43.723
+first. And the secret to
+figuring this out is sort of
+realizing that this assembly is
+
+00:08:43.723-->00:08:48.395
+actually a high level
+abstraction. Um underneath the
+hood of your processor, each x86
+
+00:08:48.395-->00:08:53.266
+assembly instruction is actually
+broken out into uh into micro
+ops for execution by the CPU
+
+00:08:53.266-->00:08:59.139
+core. So, if we start thinking
+about what might uh the
+microcode behind a read MSR
+
+00:08:59.139-->00:09:04.077
+assembly instruction look like,
+it might look something like
+this. Underneath the hood, the
+
+00:09:04.077-->00:09:08.415
+microcode needs to figure out
+what MSR you’re trying to access
+and figure out how to give you
+
+00:09:08.415-->00:09:13.620
+the contents of that MSR, so it
+might check well are you trying
+to access MSR number 1, if so it
+
+00:09:13.620-->00:09:17.857
+will figure out how to handle
+MSR number 1. Otherwise, are you
+trying to access MSR 6, if so,
+
+00:09:17.857-->00:09:22.162
+it’ll give you the contents of
+MSR 6 etcetera, etcetera until
+the very end, if it hasn’t
+
+00:09:22.162-->00:09:25.632
+figured out uh, any of the
+existing MSRs that you’re trying
+to access, that must mean that
+
+00:09:25.632-->00:09:29.869
+you’re trying to access an MSR
+that doesn’t exist, so it throws
+a general protection exception,
+
+00:09:29.869-->00:09:33.139
+um, you might think well maybe
+this is implemented as a jump
+table, we’ll see some evidence
+
+00:09:33.139-->00:09:37.210
+coming up that that this is
+actually, can’t be implemented
+as a jump table. But that’s sort
+
+00:09:37.210-->00:09:41.815
+of one a possible-possible
+implementation for microcode
+behind that read MSR
+
+00:09:41.815-->00:09:46.186
+instruction. So, we can look at
+a little permutation for that to
+see what it might look like uh,
+
+00:09:46.186-->00:09:51.825
+if microcode was trying to
+service a password protected
+model specific register, so in
+
+00:09:51.825-->00:09:56.529
+this situation, I’m saying um
+MSR number leap code is a
+password protected MSR and I’m
+
+00:09:56.529-->00:10:00.834
+trying to access it, so what the
+microcode is going to do is well
+are you trying to access MSR 1,
+
+00:10:00.834-->00:10:05.872
+nope, MSR 6, nope, oh you’re
+trying to access MSR lead code.
+Well after that then it’s is
+
+00:10:05.872-->00:10:11.311
+your password correct? In this
+case, is the ebx register feed
+face, if so, um it’ll service
+
+00:10:11.311-->00:10:15.615
+that MSR, otherwise it’ll
+through a general protection
+exception, so there’s, there’s a
+
+00:10:15.615-->00:10:21.588
+key observation here, um there
+are two different paths that the
+microcode took in order to get
+
+00:10:21.588-->00:10:26.226
+to the same result, in both
+situations it ended up drawing a
+general protection exception, um
+
+00:10:26.226-->00:10:29.429
+but there are two different
+paths it took, so let’s look at
+the path that the microcode
+
+00:10:29.429-->00:10:34.334
+takes if I try to access an MSR
+that doesn’t exist, so let’s say
+I try to access MSR number
+
+00:10:34.334-->00:10:40.106
+12345678, which doesn’t exist on
+this processor, it checks are
+you accessing 1,6 leap code,
+
+00:10:40.106-->00:10:43.943
+nope, then I’m going to throw a
+general protection exception.
+Um, but let’s look at the path
+
+00:10:43.943-->00:10:48.581
+that the microcode took if you
+tried to access a password
+protected register, uh with the
+
+00:10:48.581-->00:10:52.852
+wrong password, so, I’m trying
+to access MSR leap code here but
+I have the wrong password. Here,
+
+00:10:52.852-->00:10:57.490
+it checks MSR 1, 6, leap code,
+oh okay, you’re accessing leap
+code, do you have the right
+
+00:10:57.490-->00:11:03.296
+password? No, throw a general
+protection exception. So, two
+different paths, depending on
+
+00:11:03.296-->00:11:09.068
+whether that pat- or MSR
+existed, and/or whether you had
+the correct password. So, uh,
+
+00:11:09.068-->00:11:13.239
+since there are two different
+paths here, the timing on each
+path, should be slightly
+
+00:11:13.239-->00:11:19.078
+different, and that opens, this
+uh microcode up to a side uh
+timing side channel attack,
+
+00:11:19.078-->00:11:22.515
+where uh what you can do is you
+can have a read MSR instruction
+in the middle and on either side
+
+00:11:22.515-->00:11:28.321
+of that read MSR instruction,
+you have read time stamp
+counters in order to uh am I
+
+00:11:28.321-->00:11:32.425
+missing something, oh okay
+thanks, ha, you have read time
+stamp counter instructions in
+
+00:11:32.425-->00:11:37.430
+order to detect how long that
+read MSR instruction uh took to
+access. Um, so what that looks
+
+00:11:39.699-->00:11:44.704
+like when you uh actually uh
+execute on the x axis here I
+have, uh the MSR numbers that
+
+00:11:48.374-->00:11:53.580
+I’m trying to access, on the y
+axis, I have the time it takes
+to access each MSR. Now, the
+
+00:11:53.580-->00:11:58.151
+light gray lines that you see
+there, those are the implemented
+MSRs, I’m less interested in
+
+00:11:58.151-->00:12:01.454
+those for this research, what
+I’m actually interested in, is
+that black line along the
+
+00:12:01.454-->00:12:06.259
+bottom, that’s how long it takes
+to access the faulting MSRs, the
+MSRs that the processor is
+
+00:12:06.259-->00:12:12.565
+telling me don’t really exist on
+this processor. So what we can
+do, with this uh timing side
+
+00:12:12.565-->00:12:16.269
+channel attack, basically,
+looking at that graph that we
+just generated, it lets us
+
+00:12:16.269-->00:12:21.975
+speculate about what the
+underlying microcode for the m-
+read MSR instruction must uh,
+
+00:12:21.975-->00:12:27.513
+must look like. Specifically, I
+can start focusing on um
+variations in the observed fault
+
+00:12:27.513-->00:12:31.384
+times for uh accessing the
+various MSRs, so, if you look at
+this graph carefully, if you
+
+00:12:31.384-->00:12:35.455
+look at this black line along
+the bottom, what you see is that
+there are these discrete
+
+00:12:35.455-->00:12:41.227
+regions, for different groups of
+MSRs, um and that sort of tells
+us, uh tells us that the
+
+00:12:41.227-->00:12:46.099
+microcode must be identifying
+these different MSR groups,
+prior to checking for specific
+
+00:12:46.099-->00:12:51.537
+MSRs, in other words, the model
+for this x86 micr or for the uh
+microcode behind the read MSR
+
+00:12:51.537-->00:12:55.742
+instruction, looks something
+like this. It’s first going to
+check are you trying to access
+
+00:12:55.742-->00:13:01.814
+an MSR between 0 and 174, if so,
+um it will figure out exactly
+which MSR you’re accessing and
+
+00:13:01.814-->00:13:06.419
+service that that request. Um,
+then it will check are you
+trying to access an MSR between
+
+00:13:06.419-->00:13:10.690
+174 and 200, if so, it will
+figure out how to service that
+request, breaking things into
+
+00:13:10.690-->00:13:14.827
+groups like this actually let’s
+it handle the read MSR
+instruction a lot faster than it
+
+00:13:14.827-->00:13:19.265
+would checking MSRs 1 by 1. But,
+if you look carefully at this
+model that we came up with based
+
+00:13:19.265-->00:13:23.302
+on a timing attack, there’s
+something a little bit unusual
+about 2 of these checks,
+
+00:13:23.302-->00:13:28.441
+highlighted in red here, um 2 of
+these checks, we can detect from
+the timings that the microcode
+
+00:13:28.441-->00:13:33.513
+is explicitly checking for these
+regions, but it doesn’t seem to
+be doing anything for those
+
+00:13:33.513-->00:13:37.517
+regions. In both cases, it just
+throws a general protection
+exception and that doesn’t make
+
+00:13:37.517-->00:13:42.655
+a lot of sense, um why on earth
+would microcode be checking for
+these regions if there weren’t
+
+00:13:42.655-->00:13:48.761
+even any visible or accessible
+MSRs within those regions, well
+the only explanation for that is
+
+00:13:48.761-->00:13:53.132
+that there really are MSRs
+inside of those mysterious
+regions, they’re just not giving
+
+00:13:53.132-->00:13:58.371
+us access to them. In other
+words, those are probably the
+password protected regions on
+
+00:13:58.371-->00:14:03.276
+this processor. So, if we, if we
+make that assumption and we’re
+actually able to reduce our
+
+00:14:03.276-->00:14:08.281
+search space, our MSR search
+space, um by 99.999 percent,
+which actually makes cracking
+
+00:14:10.316-->00:14:16.089
+individual MSRs inside of those
+regions, feasible. We can
+essentially try all possible 32
+
+00:14:16.089-->00:14:20.760
+bit values and all of the GPRs,
+all of the emx registers in
+order to crack what the password
+
+00:14:20.760-->00:14:25.998
+must be for those password
+protected registers. So this
+works, um we’re able to crack
+
+00:14:25.998-->00:14:31.637
+the passwords on the AMD K8, uh
+in one day instead of 600 years
+like it would have taken without
+
+00:14:31.637-->00:14:37.110
+the timing attack. And we find
+out the password 9c5a203a loaded
+into the edi registers unlocks
+
+00:14:37.110-->00:14:42.115
+one of those specific ranges
+that we detected through our
+timing attack. That other range,
+
+00:14:44.383-->00:14:50.323
+um c00 etcetera, um that one
+didn’t have any password
+protected registers in it the uh
+
+00:14:50.323-->00:14:55.328
+microcode is doing some check on
+that range but um there’s no
+telling why. So uh, I do want to
+
+00:14:58.030-->00:15:01.167
+emphasize like this region and
+this password were already
+known, people have discovered
+
+00:15:01.167-->00:15:05.905
+this through firmware reverse
+engineering uh a while ago, but
+this is the first time we’ve had
+
+00:15:05.905-->00:15:12.078
+an approach for uncovering these
+password protected MSRs without
+first observing them in use. Um,
+
+00:15:12.078-->00:15:17.383
+and this, this side chanel um
+attack into microcode offers
+some really powerful
+
+00:15:17.383-->00:15:21.988
+opportunities to really figure
+out what’s going on under the
+hood of our processor things
+
+00:15:21.988-->00:15:26.192
+that are just sort of being kept
+from us like these password
+protected registers. So, the
+
+00:15:26.192-->00:15:31.464
+question then is what-what else
+can we find um with an attack
+like this. So, I started
+
+00:15:31.464-->00:15:37.069
+scanning, um, a bunch of
+different processors using this
+MSR timing technique,and uh I
+
+00:15:37.069-->00:15:41.307
+wanted to share some of those
+results with you uh quickly. So,
+here’s what we found on a newer
+
+00:15:41.307-->00:15:46.379
+AMD processor, it no longer has
+uh some of the timing dips that
+the K8 had,um which kind of
+
+00:15:46.379-->00:15:52.852
+suggests that newer proc-newer
+AMDs got rid of this password
+check. Here’s a Via C3 scan,
+
+00:15:52.852-->00:15:57.123
+where uh they didn’t have any
+unusual timings on faulting
+registers, but they had these
+
+00:15:57.123-->00:16:02.061
+two enormous spikes at uh 133,
+and 1133; those MSRs took over a
+hundred thousand cycles to
+
+00:16:04.530-->00:16:10.069
+access um, there is no feasible
+explanation for why reading an
+MSR should take over a hundred
+
+00:16:10.069-->00:16:15.575
+thousand cycles. That’s 3 orders
+of magnitude longer, than the
+next longest MSR took to access,
+
+00:16:15.575-->00:16:20.413
+um, that’s ample time to be
+doing encryption, or, any other
+um number of interesting things.
+
+00:16:20.413-->00:16:25.184
+So, that definitely warrants
+some more scrutiny, uh the Via
+Nano had this uh interesting
+
+00:16:25.184-->00:16:31.691
+spike on the left where uh
+inexplicably a small range of
+MSRs uh, uh seemed to be
+
+00:16:31.691-->00:16:37.663
+protected, um intel adams, intel
+core i5, also had some
+interesting timing patterns
+
+00:16:37.663-->00:16:42.134
+where you can see these little
+blips in the fall times where
+you can see I’m asking the
+
+00:16:42.134-->00:16:46.973
+processor does this MSR exist,
+it says no, does this one exist?
+No, does this exist? No, does
+
+00:16:46.973-->00:16:51.510
+this exist? And it thinks for a
+little bit, and says no, it’s
+like well if it didn’t exist
+
+00:16:51.510-->00:16:56.949
+just like all the ones right
+around it [laughter] why did you
+have to think for a little bit
+
+00:16:56.949-->00:17:01.621
+in order to respond [laughter].
+Um, it’s, it’s really
+interesting behavior and it-it
+
+00:17:01.621-->00:17:06.692
+made me nervous, um, seeing
+these-these blips. At, the end
+of the day I tried running my
+
+00:17:06.692-->00:17:10.997
+password cracking approach on
+this, and um I failed. I tried a
+lot of different things to crack
+
+00:17:10.997-->00:17:16.369
+64 bit passwords, I tried other
+types of side channel attacks in
+order to detect more complex
+
+00:17:16.369-->00:17:21.274
+password mechanisms. I wasn’t
+able to uncover any new
+passwords this way, um and
+
+00:17:21.274-->00:17:26.178
+sometimes that’s just the way
+research turns out. But, we’re
+still left with this glaring
+
+00:17:26.178-->00:17:31.918
+question, um almost all of these
+processors had weird timing
+anomalies within the microcode
+
+00:17:31.918-->00:17:34.921
+and we don’t have any other way
+to see what the microcode is
+doing, so we’re left to
+
+00:17:34.921-->00:17:39.792
+speculate. So, what is causing
+these timing anomalies, well,
+there’s a lot of possibilities,
+
+00:17:39.792-->00:17:43.496
+um, one could be more advanced
+password checks, that’s exactly
+what that Via patent that we
+
+00:17:43.496-->00:17:47.733
+looked at at the beginning of
+the presentation was describing.
+Um, it could be something like
+
+00:17:47.733-->00:17:51.537
+that, um, it could be that some
+of these MSRs are only
+accessible in ultra
+
+00:17:51.537-->00:17:56.208
+priv-privileged modes like MSRs
+are only accessible in system
+management mode. Intel has
+
+00:17:56.208-->00:18:02.081
+patents on MSRs that are only
+accessible to authenticated code
+modules. Or, it could be
+
+00:18:02.081-->00:18:06.118
+something benign, for example,
+it could be that the microcode
+is checking the processor
+
+00:18:06.118-->00:18:11.190
+family, the model, the stepping.
+Um, basically what that would do
+is it would allow you to use one
+
+00:18:11.190-->00:18:16.929
+microcode update on a variety of
+different processor families, so
+um that’s possible too. In fact,
+
+00:18:16.929-->00:18:20.566
+it kind of looked like that was
+probably what was happening on
+the intel processors,um, those
+
+00:18:20.566-->00:18:25.571
+little blips actually seem to
+align with documented MSRs on
+the other processor families,
+
+00:18:28.007-->00:18:33.145
+um, but, so, so it’s kind of
+nice to think, well maybe we’re
+in the clear. Maybe, password
+
+00:18:33.145-->00:18:38.117
+protected registers don’t really
+exist beyond the K7 and K8 since
+we couldn’t find anything here,
+
+00:18:38.117-->00:18:42.121
+but sadly that’s um that’s not
+the case. Uh, at the end of this
+research I had a friend of mine
+
+00:18:42.121-->00:18:46.092
+send me his x86 firmware
+database and I wrote a little
+instruction grepping tool to
+
+00:18:46.092-->00:18:51.530
+look through for certain
+assembly instruction patterns um
+and I was very quickly able to
+
+00:18:51.530-->00:18:57.636
+find a new previously
+undisclosed um, uh MSR password,
+38 uh odcbof in the esi
+
+00:18:57.636-->00:19:02.708
+register, is an MSR password
+being used by hundreds of
+different firmwares, across many
+
+00:19:02.708-->00:19:08.581
+different vendors, you can even
+find this magic number being
+used to access MSRs in the
+
+00:19:08.581-->00:19:13.886
+windows kernel. But, nobody in
+the public has ever seen this,
+so, we are still in a situation
+
+00:19:13.886-->00:19:18.657
+where third parties are being
+given keys to our processors,
+that we ourselves do not
+
+00:19:18.657-->00:19:24.263
+possess, um I think our uh, th
+our cra, our password scanning
+tool that I introduced here
+
+00:19:24.263-->00:19:29.535
+didn’t find this because I only
+had so many processors at my
+disposal. I scanned 12
+
+00:19:29.535-->00:19:34.340
+processors, I found 11 um with
+timing anomalies, but that’s
+obviously not every processor
+
+00:19:34.340-->00:19:38.477
+out there, so, um more scans
+need to be done to figure out
+exactly what this is being used
+
+00:19:38.477-->00:19:42.081
+for, it’s sort of an open
+question right now. Uh, so at
+the end of the day, I really
+
+00:19:42.081-->00:19:46.052
+think this research is
+interesting but we’ve raised a
+lot more questions, uh then
+
+00:19:46.052-->00:19:50.589
+we’ve answered. Um, we found a
+really interesting timing
+attack, and we found some
+
+00:19:50.589-->00:19:54.927
+suspicious things and I think
+the stakes here are really,
+really high, um it’s clear that
+
+00:19:54.927-->00:20:00.199
+MSRs are being used for lots of
+powerful things, um, they
+control all the details of your
+
+00:20:00.199-->00:20:04.870
+processor and until now nobody's
+ever had ways to look into what
+they were actually doing. So, I
+
+00:20:04.870-->00:20:09.241
+think this research is really
+promising, um this timing side
+channel attack on specific
+
+00:20:09.241-->00:20:13.512
+assembly instructions is
+entirely new, and gives us a
+really cool way to sort of
+
+00:20:13.512-->00:20:19.085
+uncover some processor secrets
+that nobody’s ever found before.
+Um, so I’m excited about that.
+
+00:20:19.085-->00:20:23.522
+What I really would like is for
+people to use this and scan
+their own processors, I am open
+
+00:20:23.522-->00:20:30.262
+sourcing this as project night
+shift, you can find us on github
+dot com slash xoreaxeaxeax. Um,
+
+00:20:30.262-->00:20:34.834
+I haven’t been able to get that
+up yet, but that should be up um
+probably by Monday. What I
+
+00:20:34.834-->00:20:39.605
+really would love is for people
+to run this scan on their
+systems, send me the log so that
+
+00:20:39.605-->00:20:44.477
+we can try to collect a database
+of processors that have these
+unusual timing anomalies. Maybe,
+
+00:20:44.477-->00:20:48.347
+when we get enough samples, we
+can actually figure out what in
+the heck is going on, on some of
+
+00:20:48.347-->00:20:52.384
+these systems. Other stuff you
+can find there, project
+rosenbridge is the back door
+
+00:20:52.384-->00:20:56.188
+that I talked about yesterday if
+you were around. Sandsifter is a
+processor, fuzzer mofiscator an
+
+00:20:56.188-->00:21:00.292
+intresting single instruction c
+compiler, and some other stuff
+I’ve, I’ve tinkered with over
+
+00:21:00.292-->00:21:03.963
+the years. Um, I love talking
+about this stuff if anyone has
+feedback or ideas that they’d
+
+00:21:03.963-->00:21:08.067
+like to discuss um, I’m going to
+have to step out to make room
+for the next speaker, but please
+
+00:21:08.067-->00:21:14.507
+grab me out-out the door here.
+Um, otherwise you can contact me
+on twitter at xoreaxeaxeax, or
+
+00:21:14.507-->00:21:19.078
+if you want to have a more
+verbose conversation please send
+me an email uh same thing at
+
+00:21:19.078-->00:21:24.083
+gmail dot com. So thank you
+everybody, I’ll be right outside
+[applause].
+

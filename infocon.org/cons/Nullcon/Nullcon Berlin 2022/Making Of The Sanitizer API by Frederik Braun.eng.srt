@@ -1,0 +1,3744 @@
+﻿1
+00:00:03,600 --> 00:00:05,359
+all right welcome to my presentation
+
+2
+00:00:05,359 --> 00:00:07,279
+about the senipes api
+
+3
+00:00:07,279 --> 00:00:09,040
+uh welcome everyone
+
+4
+00:00:09,040 --> 00:00:11,040
+so
+
+5
+00:00:11,040 --> 00:00:13,599
+unfortunately crossfit scripting is
+
+6
+00:00:13,599 --> 00:00:16,000
+still a largely unsolved problem in
+
+7
+00:00:16,000 --> 00:00:17,840
+practice i mean
+
+8
+00:00:17,840 --> 00:00:20,000
+on the one hand we have lots of advice
+
+9
+00:00:20,000 --> 00:00:22,560
+and toolings and mitigations but on the
+
+10
+00:00:22,560 --> 00:00:25,439
+other hand xss is still the most
+
+11
+00:00:25,439 --> 00:00:27,920
+reported security vulnerability for the
+
+12
+00:00:27,920 --> 00:00:29,599
+better of a decade
+
+13
+00:00:29,599 --> 00:00:32,399
+and i believe that with recent trends in
+
+14
+00:00:32,399 --> 00:00:34,079
+for example single-player paycheck
+
+15
+00:00:34,079 --> 00:00:36,399
+applications and electron
+
+16
+00:00:36,399 --> 00:00:38,480
+um a growing number of those xss
+
+17
+00:00:38,480 --> 00:00:40,800
+vulnerabilities are dom-based cross-site
+
+18
+00:00:40,800 --> 00:00:43,200
+scripting vulnerabilities so today i
+
+19
+00:00:43,200 --> 00:00:44,800
+want to talk about dom-based cross-site
+
+20
+00:00:44,800 --> 00:00:46,000
+scripting
+
+21
+00:00:46,000 --> 00:00:48,079
+and how i believe that it could be
+
+22
+00:00:48,079 --> 00:00:50,000
+tackled more easily with a sanitizer
+
+23
+00:00:50,000 --> 00:00:53,199
+that would be built into the browser
+
+24
+00:00:53,199 --> 00:00:54,879
+we will also go through some roadblocks
+
+25
+00:00:54,879 --> 00:00:56,640
+that we've encountered in our journey so
+
+26
+00:00:56,640 --> 00:00:57,680
+far
+
+27
+00:00:57,680 --> 00:00:59,840
+and
+
+28
+00:00:59,920 --> 00:01:02,239
+the sanitizing api is currently a draft
+
+29
+00:01:02,239 --> 00:01:03,199
+in the
+
+30
+00:01:03,199 --> 00:01:06,400
+w3c incubator group
+
+31
+00:01:06,400 --> 00:01:08,240
+and there are prototype implementations
+
+32
+00:01:08,240 --> 00:01:10,720
+in chrome and firefox by the end of this
+
+33
+00:01:10,720 --> 00:01:11,520
+talk
+
+34
+00:01:11,520 --> 00:01:13,840
+you will know what the sanitizer api is
+
+35
+00:01:13,840 --> 00:01:15,520
+supposed to be doing and how to test
+
+36
+00:01:15,520 --> 00:01:17,520
+where that actually delivers
+
+37
+00:01:17,520 --> 00:01:18,320
+and
+
+38
+00:01:18,320 --> 00:01:20,159
+this specification is joint work with
+
+39
+00:01:20,159 --> 00:01:24,400
+mario hyderish and daniel fogelhan
+
+40
+00:01:24,400 --> 00:01:26,479
+all right my name is frederic brown i'm
+
+41
+00:01:26,479 --> 00:01:28,159
+a staff security engineer at mozilla
+
+42
+00:01:28,159 --> 00:01:30,240
+here in berlin and i've been working on
+
+43
+00:01:30,240 --> 00:01:32,640
+web and browser security as a secure as
+
+44
+00:01:32,640 --> 00:01:34,640
+a security researcher as a hacker as a
+
+45
+00:01:34,640 --> 00:01:35,759
+teacher
+
+46
+00:01:35,759 --> 00:01:36,560
+um
+
+47
+00:01:36,560 --> 00:01:39,119
+for about 15 years now
+
+48
+00:01:39,119 --> 00:01:40,400
+all right
+
+49
+00:01:40,400 --> 00:01:43,840
+very first let's take a brief minute
+
+50
+00:01:43,840 --> 00:01:45,360
+and ensure that we have a shared
+
+51
+00:01:45,360 --> 00:01:46,799
+understanding of dom best cross
+
+52
+00:01:46,799 --> 00:01:48,159
+subscription
+
+53
+00:01:48,159 --> 00:01:51,200
+um and i'm going to use and reuse this
+
+54
+00:01:51,200 --> 00:01:53,680
+line of code throughout the presentation
+
+55
+00:01:53,680 --> 00:01:55,280
+so we can follow along
+
+56
+00:01:55,280 --> 00:01:56,479
+and
+
+57
+00:01:56,479 --> 00:01:59,680
+what it's doing food.inner html equals
+
+58
+00:01:59,680 --> 00:02:02,880
+evil is that there is some random html
+
+59
+00:02:02,880 --> 00:02:04,799
+element called two
+
+60
+00:02:04,799 --> 00:02:07,600
+and we are assigning some attacker
+
+61
+00:02:07,600 --> 00:02:09,520
+control string even
+
+62
+00:02:09,520 --> 00:02:11,200
+and that's really all it takes for dom
+
+63
+00:02:11,200 --> 00:02:12,879
+based cross-site scripting
+
+64
+00:02:12,879 --> 00:02:14,720
+and an important point that i want to
+
+65
+00:02:14,720 --> 00:02:16,160
+make here is that
+
+66
+00:02:16,160 --> 00:02:18,640
+dom based crosstalk scripting is really
+
+67
+00:02:18,640 --> 00:02:20,959
+purely client-side and sort of in scope
+
+68
+00:02:20,959 --> 00:02:22,480
+for everything the browser is seeing and
+
+69
+00:02:22,480 --> 00:02:24,720
+doing
+
+70
+00:02:26,319 --> 00:02:28,160
+as a bit of an aside i'm seeing this
+
+71
+00:02:28,160 --> 00:02:30,640
+presentation as the sequel to two
+
+72
+00:02:30,640 --> 00:02:32,480
+previous presentations of mine where in
+
+73
+00:02:32,480 --> 00:02:35,040
+2019 i talked about
+
+74
+00:02:35,040 --> 00:02:37,200
+um finding and fixing domestic crosstabs
+
+75
+00:02:37,200 --> 00:02:38,879
+scripting specifically in the firefox
+
+76
+00:02:38,879 --> 00:02:41,200
+user interface where crosshair scripting
+
+77
+00:02:41,200 --> 00:02:42,720
+really means taking over the browser
+
+78
+00:02:42,720 --> 00:02:44,640
+outside of the sandbox
+
+79
+00:02:44,640 --> 00:02:46,879
+um and then last year i presented a bit
+
+80
+00:02:46,879 --> 00:02:48,800
+of a generalized approach
+
+81
+00:02:48,800 --> 00:02:51,599
+um to help make this work for
+
+82
+00:02:51,599 --> 00:02:53,840
+more or less all kinds of single page
+
+83
+00:02:53,840 --> 00:02:57,440
+applications or javascript web apps
+
+84
+00:02:57,440 --> 00:02:58,480
+um
+
+85
+00:02:58,480 --> 00:02:59,920
+and yeah the slides of these talks will
+
+86
+00:02:59,920 --> 00:03:01,519
+be linked from this presentation which i
+
+87
+00:03:01,519 --> 00:03:03,280
+will share after this presentation but
+
+88
+00:03:03,280 --> 00:03:05,680
+the takeaway really is that i found and
+
+89
+00:03:05,680 --> 00:03:07,280
+fixed lots of dom-based cross-site
+
+90
+00:03:07,280 --> 00:03:09,360
+scripting issues in the past
+
+91
+00:03:09,360 --> 00:03:11,280
+and i kind of observed lots of various
+
+92
+00:03:11,280 --> 00:03:14,000
+people trying to fix those with
+
+93
+00:03:14,000 --> 00:03:16,560
+let's say mediocre success
+
+94
+00:03:16,560 --> 00:03:19,920
+and the approaches i noticed
+
+95
+00:03:19,920 --> 00:03:21,599
+i sort of grouped them into three
+
+96
+00:03:21,599 --> 00:03:24,000
+different categories oftentimes people
+
+97
+00:03:24,000 --> 00:03:26,080
+didn't actually want to use html at all
+
+98
+00:03:26,080 --> 00:03:27,599
+and they could just you know fix this by
+
+99
+00:03:27,599 --> 00:03:30,000
+assigning to a food or text content
+
+100
+00:03:30,000 --> 00:03:31,120
+instead
+
+101
+00:03:31,120 --> 00:03:32,640
+um
+
+102
+00:03:32,640 --> 00:03:34,239
+and then there are some where people try
+
+103
+00:03:34,239 --> 00:03:36,400
+to do some smart encoding and escaping
+
+104
+00:03:36,400 --> 00:03:38,640
+and it sometimes worked and it didn't
+
+105
+00:03:38,640 --> 00:03:39,440
+um
+
+106
+00:03:39,440 --> 00:03:41,200
+and then there were also some where
+
+107
+00:03:41,200 --> 00:03:43,519
+people really did want to mess with html
+
+108
+00:03:43,519 --> 00:03:45,760
+and they had no intertwined spaghetti
+
+109
+00:03:45,760 --> 00:03:47,519
+code parts where somewhere there was a
+
+110
+00:03:47,519 --> 00:03:49,040
+template and somewhere else there was
+
+111
+00:03:49,040 --> 00:03:51,120
+some sort of user input and at the very
+
+112
+00:03:51,120 --> 00:03:52,959
+end it all comes together and it causes
+
+113
+00:03:52,959 --> 00:03:54,799
+dummies across the scripting and i
+
+114
+00:03:54,799 --> 00:03:57,439
+believe that most of all of those bugs
+
+115
+00:03:57,439 --> 00:03:59,439
+not just you know the last half of how
+
+116
+00:03:59,439 --> 00:04:01,599
+they were fixed all of those could be
+
+117
+00:04:01,599 --> 00:04:02,799
+fixed
+
+118
+00:04:02,799 --> 00:04:04,319
+with a sanitizer
+
+119
+00:04:04,319 --> 00:04:06,239
+so this is the sanitizer presentation
+
+120
+00:04:06,239 --> 00:04:08,640
+let's talk about sanitizers
+
+121
+00:04:08,640 --> 00:04:09,760
+um
+
+122
+00:04:09,760 --> 00:04:12,239
+what would we expect of the sanitizer to
+
+123
+00:04:12,239 --> 00:04:14,879
+do exactly
+
+124
+00:04:14,879 --> 00:04:16,880
+in essence the implementation of a
+
+125
+00:04:16,880 --> 00:04:19,600
+sanitizer can be grouped into three
+
+126
+00:04:19,600 --> 00:04:22,960
+steps first of all the html sanitizer is
+
+127
+00:04:22,960 --> 00:04:25,600
+taking some sort of input and passing
+
+128
+00:04:25,600 --> 00:04:28,479
+that string into an html representation
+
+129
+00:04:28,479 --> 00:04:30,320
+for example a tree or a document or
+
+130
+00:04:30,320 --> 00:04:31,440
+whatever
+
+131
+00:04:31,440 --> 00:04:34,639
+second the html parser will take that
+
+132
+00:04:34,639 --> 00:04:38,080
+tree representation of the html and walk
+
+133
+00:04:38,080 --> 00:04:39,680
+through the tree look at all the
+
+134
+00:04:39,680 --> 00:04:41,360
+elements and attributes that might be
+
+135
+00:04:41,360 --> 00:04:42,560
+undesirable
+
+136
+00:04:42,560 --> 00:04:46,479
+third the sanitizer is going to
+
+137
+00:04:46,479 --> 00:04:47,600
+take that
+
+138
+00:04:47,600 --> 00:04:49,040
+tree representation that has now been
+
+139
+00:04:49,040 --> 00:04:51,919
+modified or sanitized and serialize it
+
+140
+00:04:51,919 --> 00:04:53,440
+back into string this isn't something
+
+141
+00:04:53,440 --> 00:04:55,040
+that every sanitizer will do but
+
+142
+00:04:55,040 --> 00:04:56,880
+oftentimes they will see realize at the
+
+143
+00:04:56,880 --> 00:04:59,040
+end throughout this presentation i will
+
+144
+00:04:59,040 --> 00:05:01,919
+use the term serial serialization for
+
+145
+00:05:01,919 --> 00:05:04,800
+the step from free representation to a
+
+146
+00:05:04,800 --> 00:05:07,759
+string and the term parsing for you know
+
+147
+00:05:07,759 --> 00:05:09,280
+taking the input string and making some
+
+148
+00:05:09,280 --> 00:05:12,240
+sort of tree representation
+
+149
+00:05:12,240 --> 00:05:15,759
+let's note in this specific example that
+
+150
+00:05:15,759 --> 00:05:16,560
+the
+
+151
+00:05:16,560 --> 00:05:18,880
+very first step the parser already had
+
+152
+00:05:18,880 --> 00:05:22,400
+to decide where this unclosed p element
+
+153
+00:05:22,400 --> 00:05:25,840
+had to be closed um and also obviously
+
+154
+00:05:25,840 --> 00:05:27,919
+how this on error attribute had to be
+
+155
+00:05:27,919 --> 00:05:29,759
+removed happened in the second step in
+
+156
+00:05:29,759 --> 00:05:32,800
+the senator step so the final resulting
+
+157
+00:05:32,800 --> 00:05:33,680
+string
+
+158
+00:05:33,680 --> 00:05:36,160
+doesn't only have the on error attribute
+
+159
+00:05:36,160 --> 00:05:38,080
+removed but also the p element closed
+
+160
+00:05:38,080 --> 00:05:41,199
+this will be important later
+
+161
+00:05:41,199 --> 00:05:43,199
+one single takeaway i believe is that
+
+162
+00:05:43,199 --> 00:05:45,919
+the html parser sanitizer is mostly an
+
+163
+00:05:45,919 --> 00:05:48,320
+html parser
+
+164
+00:05:48,320 --> 00:05:50,160
+and the clear benefit i see in the
+
+165
+00:05:50,160 --> 00:05:52,720
+context of the sanitizer api
+
+166
+00:05:52,720 --> 00:05:55,840
+is that this security tool can reuse the
+
+167
+00:05:55,840 --> 00:05:57,919
+parser that is already in the browser
+
+168
+00:05:57,919 --> 00:05:59,919
+which makes it kind of future proof for
+
+169
+00:05:59,919 --> 00:06:02,800
+all sorts of developments in the html
+
+170
+00:06:02,800 --> 00:06:04,240
+syntax
+
+171
+00:06:04,240 --> 00:06:06,000
+um
+
+172
+00:06:06,000 --> 00:06:08,400
+and i believe that's a huge benefit
+
+173
+00:06:08,400 --> 00:06:11,280
+so when providing this ap as an api we
+
+174
+00:06:11,280 --> 00:06:13,280
+thought about various things we want to
+
+175
+00:06:13,280 --> 00:06:14,160
+do
+
+176
+00:06:14,160 --> 00:06:15,039
+and
+
+177
+00:06:15,039 --> 00:06:16,080
+um
+
+178
+00:06:16,080 --> 00:06:17,759
+let's think for a brief moment what we
+
+179
+00:06:17,759 --> 00:06:20,160
+would require of a sanitizer to do
+
+180
+00:06:20,160 --> 00:06:21,759
+besides these three
+
+181
+00:06:21,759 --> 00:06:24,400
+simple steps
+
+182
+00:06:24,400 --> 00:06:26,639
+so the goals we had in mind
+
+183
+00:06:26,639 --> 00:06:27,600
+when
+
+184
+00:06:27,600 --> 00:06:30,160
+working on the sanitizer
+
+185
+00:06:30,160 --> 00:06:31,680
+and we'll go through them one by one
+
+186
+00:06:31,680 --> 00:06:34,080
+throughout this presentation uh first of
+
+187
+00:06:34,080 --> 00:06:36,160
+all we believe it's time that there is
+
+188
+00:06:36,160 --> 00:06:38,960
+somewhat canonical definition of what of
+
+189
+00:06:38,960 --> 00:06:42,160
+of a safe subset of html that is known
+
+190
+00:06:42,160 --> 00:06:44,400
+to not cause cross-site scripting
+
+191
+00:06:44,400 --> 00:06:46,880
+because when you now look at a sanitizer
+
+192
+00:06:46,880 --> 00:06:49,199
+or you look at and sanitizers you find
+
+193
+00:06:49,199 --> 00:06:50,800
+and definitions of what they think is
+
+194
+00:06:50,800 --> 00:06:52,440
+safe or is not safe
+
+195
+00:06:52,440 --> 00:06:53,759
+[Music]
+
+196
+00:06:53,759 --> 00:06:55,919
+secondly we really want the sanitizer
+
+197
+00:06:55,919 --> 00:06:59,759
+api to be safe by default that means
+
+198
+00:06:59,759 --> 00:07:02,560
+there is no possible way that using the
+
+199
+00:07:02,560 --> 00:07:04,560
+sanitizer api will lead to cross-site
+
+200
+00:07:04,560 --> 00:07:06,960
+scripting in an application
+
+201
+00:07:06,960 --> 00:07:09,680
+next up we really want to avoid all
+
+202
+00:07:09,680 --> 00:07:11,440
+kinds of parsing mistakes again i said
+
+203
+00:07:11,440 --> 00:07:13,120
+we want to use the father that's into
+
+204
+00:07:13,120 --> 00:07:16,080
+the browser um
+
+205
+00:07:16,080 --> 00:07:16,960
+and
+
+206
+00:07:16,960 --> 00:07:19,360
+next up we do want the sanitizer to be
+
+207
+00:07:19,360 --> 00:07:21,520
+configurable right i'm pretty sure there
+
+208
+00:07:21,520 --> 00:07:23,280
+are many applications out there that
+
+209
+00:07:23,280 --> 00:07:25,360
+have an opinion of what they deem as
+
+210
+00:07:25,360 --> 00:07:28,240
+safe html and i want them to be able
+
+211
+00:07:28,240 --> 00:07:30,479
+to use it in a much stricter fashion
+
+212
+00:07:30,479 --> 00:07:33,039
+than what we default to but most
+
+213
+00:07:33,039 --> 00:07:34,560
+importantly we believe that the
+
+214
+00:07:34,560 --> 00:07:36,960
+sanitizer api should not be configurable
+
+215
+00:07:36,960 --> 00:07:39,599
+in a way that does violate the second
+
+216
+00:07:39,599 --> 00:07:41,599
+principle here that does result in
+
+217
+00:07:41,599 --> 00:07:44,080
+exercise again
+
+218
+00:07:44,080 --> 00:07:46,000
+and next up i believe it's time for some
+
+219
+00:07:46,000 --> 00:07:48,479
+sort of responsibility shift that fixing
+
+220
+00:07:48,479 --> 00:07:51,520
+cross-site scripting is not really the
+
+221
+00:07:51,520 --> 00:07:53,680
+task of every single web developer out
+
+222
+00:07:53,680 --> 00:07:57,199
+there but really the task of the browser
+
+223
+00:07:57,199 --> 00:07:59,120
+and if it becomes a browser bug it will
+
+224
+00:07:59,120 --> 00:08:01,440
+hopefully be fixed more quickly than you
+
+225
+00:08:01,440 --> 00:08:02,639
+know
+
+226
+00:08:02,639 --> 00:08:04,800
+very individual web application security
+
+227
+00:08:04,800 --> 00:08:05,759
+bus
+
+228
+00:08:05,759 --> 00:08:08,160
+okay so i suppose we remember this one
+
+229
+00:08:08,160 --> 00:08:10,240
+from before
+
+230
+00:08:10,240 --> 00:08:11,360
+in the end
+
+231
+00:08:11,360 --> 00:08:13,440
+what i want the sanitizer api to do is
+
+232
+00:08:13,440 --> 00:08:16,319
+really provide a safe version of this
+
+233
+00:08:16,319 --> 00:08:18,720
+basically say here is an element i want
+
+234
+00:08:18,720 --> 00:08:21,440
+to append some html stuff to it but i
+
+235
+00:08:21,440 --> 00:08:24,319
+don't want to cause cross-site scripting
+
+236
+00:08:24,319 --> 00:08:25,520
+so
+
+237
+00:08:25,520 --> 00:08:28,160
+really the first idea we had was
+
+238
+00:08:28,160 --> 00:08:31,280
+sort of admittedly a black screen um
+
+239
+00:08:31,280 --> 00:08:34,240
+heavily um inspired by various
+
+240
+00:08:34,240 --> 00:08:36,479
+um libraries out there
+
+241
+00:08:36,479 --> 00:08:38,799
+and in the end we think maybe there
+
+242
+00:08:38,799 --> 00:08:40,719
+should be a senate has a constructor and
+
+243
+00:08:40,719 --> 00:08:43,360
+then you pass some options configuration
+
+244
+00:08:43,360 --> 00:08:45,600
+and whatnot and in the end you want to
+
+245
+00:08:45,600 --> 00:08:47,279
+sanitize some input
+
+246
+00:08:47,279 --> 00:08:49,839
+and then you have you know fixed process
+
+247
+00:08:49,839 --> 00:08:50,880
+scripting
+
+248
+00:08:50,880 --> 00:08:52,240
+um
+
+249
+00:08:52,240 --> 00:08:54,080
+but really thinking about our very first
+
+250
+00:08:54,080 --> 00:08:55,200
+idea
+
+251
+00:08:55,200 --> 00:08:56,000
+um
+
+252
+00:08:56,000 --> 00:08:58,320
+and you know using it in in our example
+
+253
+00:08:58,320 --> 00:09:01,040
+line we kind of realized
+
+254
+00:09:01,040 --> 00:09:03,200
+two things and i will walk through this
+
+255
+00:09:03,200 --> 00:09:05,279
+slowly first of all let's recap the
+
+256
+00:09:05,279 --> 00:09:07,440
+sanitizer is again
+
+257
+00:09:07,440 --> 00:09:10,959
+parsing sanitizing and serializing
+
+258
+00:09:10,959 --> 00:09:14,160
+um but what is the inner html assignment
+
+259
+00:09:14,160 --> 00:09:16,080
+in the next step in the
+
+260
+00:09:16,080 --> 00:09:18,959
+same line of code really doing
+
+261
+00:09:18,959 --> 00:09:21,680
+well inner html
+
+262
+00:09:21,680 --> 00:09:24,800
+passing the output of the sanitizer
+
+263
+00:09:24,800 --> 00:09:26,480
+and then appending it to the current
+
+264
+00:09:26,480 --> 00:09:27,600
+document
+
+265
+00:09:27,600 --> 00:09:29,040
+so
+
+266
+00:09:29,040 --> 00:09:31,839
+now we're using two passes again
+
+267
+00:09:31,839 --> 00:09:34,000
+pausing twice as bad i i believe most of
+
+268
+00:09:34,000 --> 00:09:36,480
+you might already know this but when you
+
+269
+00:09:36,480 --> 00:09:38,720
+pass things twice and in a somewhat
+
+270
+00:09:38,720 --> 00:09:41,920
+different context then any really any
+
+271
+00:09:41,920 --> 00:09:44,720
+tiny difference will be used by an
+
+272
+00:09:44,720 --> 00:09:45,920
+attacker
+
+273
+00:09:45,920 --> 00:09:48,240
+to to misuse the two different
+
+274
+00:09:48,240 --> 00:09:51,279
+interpretations and cause security
+
+275
+00:09:51,279 --> 00:09:53,360
+issues down the line this is also known
+
+276
+00:09:53,360 --> 00:09:56,320
+as mxss or mutation xss
+
+277
+00:09:56,320 --> 00:09:58,240
+and secondly it's also very inefficient
+
+278
+00:09:58,240 --> 00:10:00,560
+to pass basically the very same input
+
+279
+00:10:00,560 --> 00:10:02,000
+twice
+
+280
+00:10:02,000 --> 00:10:02,880
+so
+
+281
+00:10:02,880 --> 00:10:04,880
+this is the api that we came up with
+
+282
+00:10:04,880 --> 00:10:07,680
+after this realization which seemed a
+
+283
+00:10:07,680 --> 00:10:09,200
+bit more reasonable
+
+284
+00:10:09,200 --> 00:10:11,360
+we default to a nice function called
+
+285
+00:10:11,360 --> 00:10:12,959
+sanitize that gives you a document
+
+286
+00:10:12,959 --> 00:10:16,480
+fragment which is basically
+
+287
+00:10:16,480 --> 00:10:19,120
+a dom detail of an html element with
+
+288
+00:10:19,120 --> 00:10:20,880
+some elements underneath
+
+289
+00:10:20,880 --> 00:10:22,800
+and we still give this ugly function
+
+290
+00:10:22,800 --> 00:10:24,480
+called sanitize to string to developers
+
+291
+00:10:24,480 --> 00:10:27,440
+if they really want a string
+
+292
+00:10:27,440 --> 00:10:29,519
+and then we tell people to sort of use
+
+293
+00:10:29,519 --> 00:10:30,880
+this
+
+294
+00:10:30,880 --> 00:10:31,680
+um
+
+295
+00:10:31,680 --> 00:10:33,519
+and here we were we had this implemented
+
+296
+00:10:33,519 --> 00:10:36,079
+as a prototype in firefox in chrome
+
+297
+00:10:36,079 --> 00:10:38,640
+and we were looking for feedback and as
+
+298
+00:10:38,640 --> 00:10:40,000
+you know when you work on something that
+
+299
+00:10:40,000 --> 00:10:41,519
+you feel is important
+
+300
+00:10:41,519 --> 00:10:42,399
+um
+
+301
+00:10:42,399 --> 00:10:44,000
+you wait for feedback and you don't
+
+302
+00:10:44,000 --> 00:10:46,880
+design it just by yourself um so we were
+
+303
+00:10:46,880 --> 00:10:48,880
+kind of looking for baxia and
+
+304
+00:10:48,880 --> 00:10:50,399
+people had bus
+
+305
+00:10:50,399 --> 00:10:52,720
+um i'm going to present two of them but
+
+306
+00:10:52,720 --> 00:10:54,560
+naturally there were more so the first
+
+307
+00:10:54,560 --> 00:10:56,480
+one wasn't even a security bug a
+
+308
+00:10:56,480 --> 00:10:58,320
+colleague of mine anna van casteven who
+
+309
+00:10:58,320 --> 00:11:00,959
+is editor of co-editor of the html
+
+310
+00:11:00,959 --> 00:11:03,279
+specification set well the sanitizer api
+
+311
+00:11:03,279 --> 00:11:05,680
+is just less expressive than in html and
+
+312
+00:11:05,680 --> 00:11:08,079
+i said yeah okay well um
+
+313
+00:11:08,079 --> 00:11:09,600
+and admittedly i didn't really
+
+314
+00:11:09,600 --> 00:11:11,279
+completely understand what he meant with
+
+315
+00:11:11,279 --> 00:11:13,680
+less expressive i for a long while i
+
+316
+00:11:13,680 --> 00:11:15,600
+didn't really get the bug to be honest
+
+317
+00:11:15,600 --> 00:11:16,959
+but the example he gave is really
+
+318
+00:11:16,959 --> 00:11:18,240
+interesting so i'm going to share this
+
+319
+00:11:18,240 --> 00:11:19,279
+with you
+
+320
+00:11:19,279 --> 00:11:20,560
+so
+
+321
+00:11:20,560 --> 00:11:22,160
+without the sanitizer when you have a
+
+322
+00:11:22,160 --> 00:11:24,720
+table element and you assign through
+
+323
+00:11:24,720 --> 00:11:27,360
+inner html a table row and a table cell
+
+324
+00:11:27,360 --> 00:11:29,519
+then naturally you get a table row and a
+
+325
+00:11:29,519 --> 00:11:31,600
+table cell with the table element but
+
+326
+00:11:31,600 --> 00:11:34,399
+when you're using the sanitizer
+
+327
+00:11:34,399 --> 00:11:36,000
+you don't
+
+328
+00:11:36,000 --> 00:11:36,800
+and
+
+329
+00:11:36,800 --> 00:11:39,120
+why
+
+330
+00:11:39,120 --> 00:11:41,120
+so
+
+331
+00:11:41,120 --> 00:11:42,560
+and in fact
+
+332
+00:11:42,560 --> 00:11:45,680
+an important thing is that for example
+
+333
+00:11:45,680 --> 00:11:48,240
+in the html syntax there are different
+
+334
+00:11:48,240 --> 00:11:50,880
+definitions of what's supposed to happen
+
+335
+00:11:50,880 --> 00:11:53,360
+when you do inner html equals for
+
+336
+00:11:53,360 --> 00:11:56,800
+different types of elements so the html
+
+337
+00:11:56,800 --> 00:11:59,120
+syntax is actually very verbose about
+
+338
+00:11:59,120 --> 00:12:02,560
+all the things you can put under
+
+339
+00:12:02,560 --> 00:12:06,880
+one element and some others and
+
+340
+00:12:06,880 --> 00:12:08,959
+one time you take away from long studies
+
+341
+00:12:08,959 --> 00:12:10,560
+of the html
+
+342
+00:12:10,560 --> 00:12:13,040
+specification is that there are really
+
+343
+00:12:13,040 --> 00:12:16,399
+two frag two parsing algorithms in the
+
+344
+00:12:16,399 --> 00:12:19,360
+html specification so the first parsing
+
+345
+00:12:19,360 --> 00:12:21,040
+algorithm in the specification is the
+
+346
+00:12:21,040 --> 00:12:22,880
+document parser it more or less assumes
+
+347
+00:12:22,880 --> 00:12:26,000
+nothing it consumes bytes including for
+
+348
+00:12:26,000 --> 00:12:28,800
+example a doctype a character set and
+
+349
+00:12:28,800 --> 00:12:31,920
+whatnot and it gives you a full document
+
+350
+00:12:31,920 --> 00:12:33,279
+that's not really useful for our use
+
+351
+00:12:33,279 --> 00:12:34,639
+case right because we're not dealing
+
+352
+00:12:34,639 --> 00:12:36,639
+with full html documents and then
+
+353
+00:12:36,639 --> 00:12:39,519
+there's the html fragment parser which
+
+354
+00:12:39,519 --> 00:12:40,880
+basically
+
+355
+00:12:40,880 --> 00:12:43,440
+just takes a tiny bit of html but
+
+356
+00:12:43,440 --> 00:12:46,480
+notably the fragment parser is not just
+
+357
+00:12:46,480 --> 00:12:48,720
+an algorithm that takes input it takes
+
+358
+00:12:48,720 --> 00:12:51,040
+input and a context which is really
+
+359
+00:12:51,040 --> 00:12:54,000
+important for the parsing of html
+
+360
+00:12:54,000 --> 00:12:55,600
+so
+
+361
+00:12:55,600 --> 00:12:57,760
+given that our sanitizer
+
+362
+00:12:57,760 --> 00:12:59,519
+api implementation shouldn't return a
+
+363
+00:12:59,519 --> 00:13:01,519
+document we kind of try to use the
+
+364
+00:13:01,519 --> 00:13:03,920
+fragment parsing algorithm underneath
+
+365
+00:13:03,920 --> 00:13:04,959
+um
+
+366
+00:13:04,959 --> 00:13:06,480
+oh and that's the slide that i probably
+
+367
+00:13:06,480 --> 00:13:09,440
+should skip to a minute ago um
+
+368
+00:13:09,440 --> 00:13:10,320
+so
+
+369
+00:13:10,320 --> 00:13:11,839
+the really
+
+370
+00:13:11,839 --> 00:13:13,839
+really really notable thing is that you
+
+371
+00:13:13,839 --> 00:13:17,360
+need to pass given some context and
+
+372
+00:13:17,360 --> 00:13:19,519
+going back to the specific example table
+
+373
+00:13:19,519 --> 00:13:21,760
+element in html is supposed to work
+
+374
+00:13:21,760 --> 00:13:24,000
+radically different from diff dot in
+
+375
+00:13:24,000 --> 00:13:26,560
+html
+
+376
+00:13:27,680 --> 00:13:30,000
+and what we had in the first
+
+377
+00:13:30,000 --> 00:13:32,000
+iteration of the sanitizer api
+
+378
+00:13:32,000 --> 00:13:33,600
+implementation is
+
+379
+00:13:33,600 --> 00:13:36,399
+some sort of cheat we made up a context
+
+380
+00:13:36,399 --> 00:13:38,000
+element element more and a lot more or
+
+381
+00:13:38,000 --> 00:13:39,600
+less on the fly and said it's probably
+
+382
+00:13:39,600 --> 00:13:41,519
+going to be used in body
+
+383
+00:13:41,519 --> 00:13:42,959
+um
+
+384
+00:13:42,959 --> 00:13:45,519
+and that's actually something that lots
+
+385
+00:13:45,519 --> 00:13:48,639
+of sanitizer libraries out there i do
+
+386
+00:13:48,639 --> 00:13:50,320
+and it works for them right they usually
+
+387
+00:13:50,320 --> 00:13:52,880
+don't have to deal with let's say table
+
+388
+00:13:52,880 --> 00:13:54,800
+cells specifically
+
+389
+00:13:54,800 --> 00:13:56,320
+um
+
+390
+00:13:56,320 --> 00:13:58,880
+and it's fine for a library to basically
+
+391
+00:13:58,880 --> 00:14:01,920
+support the subset of html but for a web
+
+392
+00:14:01,920 --> 00:14:03,680
+api they want to ship in our browsers we
+
+393
+00:14:03,680 --> 00:14:06,320
+kind of have to support all of html
+
+394
+00:14:06,320 --> 00:14:08,959
+so that really didn't work for us
+
+395
+00:14:08,959 --> 00:14:11,120
+um
+
+396
+00:14:11,120 --> 00:14:13,279
+and before i show you how we solve this
+
+397
+00:14:13,279 --> 00:14:14,720
+specific issue i'm going to show you the
+
+398
+00:14:14,720 --> 00:14:17,440
+next bug which is kind of another puzzle
+
+399
+00:14:17,440 --> 00:14:20,240
+piece of of the solution we came up with
+
+400
+00:14:20,240 --> 00:14:24,079
+the next bug was a true sanitizer bypass
+
+401
+00:14:24,079 --> 00:14:26,320
+filed and reported by security
+
+402
+00:14:26,320 --> 00:14:29,519
+researcher michael benkowski
+
+403
+00:14:29,519 --> 00:14:31,839
+and
+
+404
+00:14:32,079 --> 00:14:33,680
+i'm going through
+
+405
+00:14:33,680 --> 00:14:35,760
+i'm going to walk through this with you
+
+406
+00:14:35,760 --> 00:14:37,920
+but slowly and step by step so don't
+
+407
+00:14:37,920 --> 00:14:39,440
+worry um
+
+408
+00:14:39,440 --> 00:14:41,279
+let's note how this example is taking
+
+409
+00:14:41,279 --> 00:14:42,800
+some sort of string
+
+410
+00:14:42,800 --> 00:14:44,800
+and then putting this into the sanitizer
+
+411
+00:14:44,800 --> 00:14:47,519
+api and then afterwards putting this
+
+412
+00:14:47,519 --> 00:14:50,480
+into iframe source
+
+413
+00:14:51,120 --> 00:14:52,720
+in the first step
+
+414
+00:14:52,720 --> 00:14:55,040
+when the input is passed through
+
+415
+00:14:55,040 --> 00:14:57,040
+sanitized to string we get a
+
+416
+00:14:57,040 --> 00:14:59,440
+representation like this there's an svg
+
+417
+00:14:59,440 --> 00:15:01,680
+element there's an svg font element
+
+418
+00:15:01,680 --> 00:15:04,160
+there's an svg title there's an html
+
+419
+00:15:04,160 --> 00:15:06,160
+view element all right then the
+
+420
+00:15:06,160 --> 00:15:09,199
+sanitizer of course it has to serialize
+
+421
+00:15:09,199 --> 00:15:10,880
+it because the function let's return the
+
+422
+00:15:10,880 --> 00:15:14,000
+string um
+
+423
+00:15:14,000 --> 00:15:15,920
+and then we get this kind of source code
+
+424
+00:15:15,920 --> 00:15:18,399
+which kind of looks the same svg
+
+425
+00:15:18,399 --> 00:15:21,760
+font title view element
+
+426
+00:15:21,760 --> 00:15:24,480
+and the image the image thingy is still
+
+427
+00:15:24,480 --> 00:15:26,639
+within the rel attribute
+
+428
+00:15:26,639 --> 00:15:28,079
+of the view element
+
+429
+00:15:28,079 --> 00:15:31,040
+but now when it's being passed
+
+430
+00:15:31,040 --> 00:15:33,360
+in the iframe source.assignment it's
+
+431
+00:15:33,360 --> 00:15:36,079
+going through the document parser so the
+
+432
+00:15:36,079 --> 00:15:38,000
+document parser has a different notion
+
+433
+00:15:38,000 --> 00:15:41,199
+of how to pass this bit of html
+
+434
+00:15:41,199 --> 00:15:43,199
+and you end up with an svg element an
+
+435
+00:15:43,199 --> 00:15:45,360
+html font element
+
+436
+00:15:45,360 --> 00:15:48,399
+an html title and
+
+437
+00:15:48,399 --> 00:15:50,399
+an image and that's you know that's
+
+438
+00:15:50,399 --> 00:15:51,920
+where the cross scripting occurs and
+
+439
+00:15:51,920 --> 00:15:54,160
+that's very undesirable right we said
+
+440
+00:15:54,160 --> 00:15:56,399
+the sanitizer api shouldn't ever allow
+
+441
+00:15:56,399 --> 00:15:59,839
+some sort of cross-set scripting
+
+442
+00:15:59,839 --> 00:16:01,920
+so my takeaway was to you know just burn
+
+443
+00:16:01,920 --> 00:16:04,320
+all paths um
+
+444
+00:16:04,320 --> 00:16:06,320
+we are reminded again that parsing twice
+
+445
+00:16:06,320 --> 00:16:09,839
+is really bad for good reasons and also
+
+446
+00:16:09,839 --> 00:16:12,240
+it's less less efficient
+
+447
+00:16:12,240 --> 00:16:13,360
+um
+
+448
+00:16:13,360 --> 00:16:14,240
+and
+
+449
+00:16:14,240 --> 00:16:16,720
+i don't ask you to read this i just want
+
+450
+00:16:16,720 --> 00:16:20,000
+to say i was really angry i wanted to
+
+451
+00:16:20,000 --> 00:16:22,160
+provide an api that was useful and
+
+452
+00:16:22,160 --> 00:16:24,240
+usable for developers out there
+
+453
+00:16:24,240 --> 00:16:26,000
+but i'm going to save you months of my
+
+454
+00:16:26,000 --> 00:16:28,240
+agony and tell you what we came up with
+
+455
+00:16:28,240 --> 00:16:30,880
+as a result
+
+456
+00:16:31,040 --> 00:16:32,240
+and
+
+457
+00:16:32,240 --> 00:16:34,000
+this is kind of how we envision the
+
+458
+00:16:34,000 --> 00:16:36,800
+sanitizer api right now and i believe
+
+459
+00:16:36,800 --> 00:16:38,959
+the beauty of that is we can have all
+
+460
+00:16:38,959 --> 00:16:41,279
+the things that i mentioned before we
+
+461
+00:16:41,279 --> 00:16:43,519
+are parsing this evil string in the
+
+462
+00:16:43,519 --> 00:16:46,160
+context of a specific element
+
+463
+00:16:46,160 --> 00:16:48,480
+we do specify a sanitizer that
+
+464
+00:16:48,480 --> 00:16:50,480
+explicitly say how it should be
+
+465
+00:16:50,480 --> 00:16:53,199
+sanitized and we can append it to the
+
+466
+00:16:53,199 --> 00:16:54,959
+document in the very same step so we
+
+467
+00:16:54,959 --> 00:16:57,279
+don't have to parse it again later on
+
+468
+00:16:57,279 --> 00:16:59,680
+and what i believe the very best thing
+
+469
+00:16:59,680 --> 00:17:01,680
+about this is that given that the
+
+470
+00:17:01,680 --> 00:17:04,480
+sanitizer in a default configuration is
+
+471
+00:17:04,480 --> 00:17:07,039
+guaranteed to never cause process
+
+472
+00:17:07,039 --> 00:17:08,400
+scripting
+
+473
+00:17:08,400 --> 00:17:10,000
+we can make it optional
+
+474
+00:17:10,000 --> 00:17:12,480
+and that's pretty much the shortest
+
+475
+00:17:12,480 --> 00:17:15,199
+and especially in comparison a shorter
+
+476
+00:17:15,199 --> 00:17:18,319
+version of saying append some stuff to
+
+477
+00:17:18,319 --> 00:17:20,720
+some element and don't cause any
+
+478
+00:17:20,720 --> 00:17:22,720
+cross-set scripting
+
+479
+00:17:22,720 --> 00:17:24,880
+um and it's supposed to be guaranteed
+
+480
+00:17:24,880 --> 00:17:26,799
+browser by the browser so if someone
+
+481
+00:17:26,799 --> 00:17:29,039
+finds a crosshair scripting issue in a
+
+482
+00:17:29,039 --> 00:17:31,760
+code line like this that's basically not
+
+483
+00:17:31,760 --> 00:17:33,520
+your problem as a web developer but it's
+
+484
+00:17:33,520 --> 00:17:35,840
+a browser problem so hopefully someone
+
+485
+00:17:35,840 --> 00:17:39,678
+gets a bug bounty and it's fixed
+
+486
+00:17:40,640 --> 00:17:41,840
+naturally
+
+487
+00:17:41,840 --> 00:17:44,480
+nobody should believe someone who stay
+
+488
+00:17:44,480 --> 00:17:46,400
+standing on stage and saying this is
+
+489
+00:17:46,400 --> 00:17:48,960
+secure
+
+490
+00:17:49,120 --> 00:17:50,799
+so here are some further security
+
+491
+00:17:50,799 --> 00:17:53,280
+considerations and the fuzzy edges of
+
+492
+00:17:53,280 --> 00:17:54,799
+our thread model
+
+493
+00:17:54,799 --> 00:17:57,200
+and we will walk through those topics
+
+494
+00:17:57,200 --> 00:17:58,840
+step by
+
+495
+00:17:58,840 --> 00:18:02,400
+step first of all server side xss
+
+496
+00:18:02,400 --> 00:18:05,200
+is naturally completely out of scope for
+
+497
+00:18:05,200 --> 00:18:07,679
+the sanitizer api uh first of all i
+
+498
+00:18:07,679 --> 00:18:09,039
+started by talking about dom based
+
+499
+00:18:09,039 --> 00:18:10,720
+crosstalk scripting right so remember
+
+500
+00:18:10,720 --> 00:18:12,080
+this is about dom based crosstalk
+
+501
+00:18:12,080 --> 00:18:13,919
+scripting
+
+502
+00:18:13,919 --> 00:18:15,120
+secondly
+
+503
+00:18:15,120 --> 00:18:17,039
+some of you might believe hey but i can
+
+504
+00:18:17,039 --> 00:18:19,120
+do javascript on the server right with
+
+505
+00:18:19,120 --> 00:18:20,720
+node.js
+
+506
+00:18:20,720 --> 00:18:21,919
+yes
+
+507
+00:18:21,919 --> 00:18:23,600
+but node.js does not have an
+
+508
+00:18:23,600 --> 00:18:26,160
+implementation of html or the dom
+
+509
+00:18:26,160 --> 00:18:28,080
+and if it has i'm pretty sure it
+
+510
+00:18:28,080 --> 00:18:30,320
+wouldn't match the implementation of the
+
+511
+00:18:30,320 --> 00:18:33,360
+browser that your user might be using so
+
+512
+00:18:33,360 --> 00:18:35,280
+you could do that but you'd be at risk
+
+513
+00:18:35,280 --> 00:18:36,000
+of
+
+514
+00:18:36,000 --> 00:18:37,919
+reintroducing parsing issues which maybe
+
+515
+00:18:37,919 --> 00:18:40,559
+you don't want to
+
+516
+00:18:40,840 --> 00:18:44,080
+um next up dom clobbering i'm going to
+
+517
+00:18:44,080 --> 00:18:46,480
+explain this attack for a second
+
+518
+00:18:46,480 --> 00:18:48,160
+i believe this attack was first
+
+519
+00:18:48,160 --> 00:18:51,520
+described by gareth hayes in 2013 and
+
+520
+00:18:51,520 --> 00:18:53,360
+the idea is that you're injecting some
+
+521
+00:18:53,360 --> 00:18:55,679
+sort of html elements
+
+522
+00:18:55,679 --> 00:18:58,640
+to confuse javascript code down the line
+
+523
+00:18:58,640 --> 00:19:01,200
+and in this example someone's injecting
+
+524
+00:19:01,200 --> 00:19:03,280
+an element with a name attribute of
+
+525
+00:19:03,280 --> 00:19:05,520
+child nodes and then
+
+526
+00:19:05,520 --> 00:19:07,600
+code below will basically try to walk
+
+527
+00:19:07,600 --> 00:19:10,559
+through the child nodes of the form
+
+528
+00:19:10,559 --> 00:19:11,679
+element
+
+529
+00:19:11,679 --> 00:19:13,679
+and it won't actually walk through the
+
+530
+00:19:13,679 --> 00:19:16,480
+real children of the form element but to
+
+531
+00:19:16,480 --> 00:19:18,640
+just those that have been injected which
+
+532
+00:19:18,640 --> 00:19:19,770
+is kind of unfortunate
+
+533
+00:19:19,770 --> 00:19:21,840
+[Music]
+
+534
+00:19:21,840 --> 00:19:23,200
+by default
+
+535
+00:19:23,200 --> 00:19:25,679
+the sanitizer api as it's implemented in
+
+536
+00:19:25,679 --> 00:19:27,440
+a browser is not implemented in
+
+537
+00:19:27,440 --> 00:19:29,679
+javascript so when it's iterating over
+
+538
+00:19:29,679 --> 00:19:31,840
+dom tree it's not looking at fake
+
+539
+00:19:31,840 --> 00:19:34,799
+injected stuff naturally but when you as
+
+540
+00:19:34,799 --> 00:19:36,960
+an application developer or a security
+
+541
+00:19:36,960 --> 00:19:38,400
+researcher
+
+542
+00:19:38,400 --> 00:19:39,360
+um
+
+543
+00:19:39,360 --> 00:19:40,960
+want to figure out whether the sanitizer
+
+544
+00:19:40,960 --> 00:19:42,160
+api
+
+545
+00:19:42,160 --> 00:19:44,000
+protects websites against stone club
+
+546
+00:19:44,000 --> 00:19:47,440
+ring then the answer is yes ish
+
+547
+00:19:47,440 --> 00:19:49,840
+but not by default so someone can say we
+
+548
+00:19:49,840 --> 00:19:51,919
+don't want name attributes we don't want
+
+549
+00:19:51,919 --> 00:19:53,919
+id attributes and then dom club ring
+
+550
+00:19:53,919 --> 00:19:57,200
+will be addressed by the senator
+
+551
+00:19:57,200 --> 00:19:58,000
+um
+
+552
+00:19:58,000 --> 00:19:59,919
+another attack that i believe was first
+
+553
+00:19:59,919 --> 00:20:01,440
+described by the bastian leakes and
+
+554
+00:20:01,440 --> 00:20:04,559
+christophe kodovitz in 2017 was called
+
+555
+00:20:04,559 --> 00:20:07,120
+xss with script gadgets
+
+556
+00:20:07,120 --> 00:20:09,120
+um and the idea of a script gadget
+
+557
+00:20:09,120 --> 00:20:11,360
+attack is that you're not injecting html
+
+558
+00:20:11,360 --> 00:20:14,159
+or xss directly but you're using or
+
+559
+00:20:14,159 --> 00:20:16,640
+relying on a framework or a library or
+
+560
+00:20:16,640 --> 00:20:19,679
+some sort of third-party software
+
+561
+00:20:19,679 --> 00:20:21,520
+to do the cross-site scripting for you
+
+562
+00:20:21,520 --> 00:20:23,440
+so you're injecting some sort of
+
+563
+00:20:23,440 --> 00:20:26,159
+framework or library or template syntax
+
+564
+00:20:26,159 --> 00:20:27,760
+and you're causing access as down the
+
+565
+00:20:27,760 --> 00:20:30,000
+line
+
+566
+00:20:30,559 --> 00:20:32,720
+again the sanitizer cannot prevent all
+
+567
+00:20:32,720 --> 00:20:34,640
+of those attacks because we don't want
+
+568
+00:20:34,640 --> 00:20:36,720
+to or should know how all of the
+
+569
+00:20:36,720 --> 00:20:38,960
+frameworks in the world look like
+
+570
+00:20:38,960 --> 00:20:41,280
+but again if you're in the context of a
+
+571
+00:20:41,280 --> 00:20:43,200
+specific framework you can configure the
+
+572
+00:20:43,200 --> 00:20:44,799
+sanitizer to acknowledge all of those
+
+573
+00:20:44,799 --> 00:20:46,400
+things and remove them
+
+574
+00:20:46,400 --> 00:20:49,200
+and ideally and long term we are hoping
+
+575
+00:20:49,200 --> 00:20:51,360
+that frameworks out there will basically
+
+576
+00:20:51,360 --> 00:20:53,360
+construct the sanitizer for code within
+
+577
+00:20:53,360 --> 00:20:55,919
+that framework that will be configured
+
+578
+00:20:55,919 --> 00:20:58,159
+to be safe in the context of the
+
+579
+00:20:58,159 --> 00:20:59,679
+framework
+
+580
+00:20:59,679 --> 00:21:02,080
+and lastly i briefly want to talk about
+
+581
+00:21:02,080 --> 00:21:04,559
+mxss again which i believe i touched on
+
+582
+00:21:04,559 --> 00:21:06,720
+a bit before it was first discovered by
+
+583
+00:21:06,720 --> 00:21:08,640
+mario hyderabad and others
+
+584
+00:21:08,640 --> 00:21:11,840
+mxss happens basically when the parser
+
+585
+00:21:11,840 --> 00:21:12,960
+is
+
+586
+00:21:12,960 --> 00:21:15,360
+taking an html input string
+
+587
+00:21:15,360 --> 00:21:16,960
+doing something with it and then it's
+
+588
+00:21:16,960 --> 00:21:18,880
+being parsed again and suddenly it's
+
+589
+00:21:18,880 --> 00:21:20,480
+something completely different this
+
+590
+00:21:20,480 --> 00:21:22,480
+example is from internet explorer which
+
+591
+00:21:22,480 --> 00:21:24,480
+i believe is fortunately
+
+592
+00:21:24,480 --> 00:21:27,039
+a thing of history i guess unless you're
+
+593
+00:21:27,039 --> 00:21:29,120
+using office and so on but
+
+594
+00:21:29,120 --> 00:21:31,760
+um and when you have a parser parsing
+
+595
+00:21:31,760 --> 00:21:33,120
+stuff like that you can't really you
+
+596
+00:21:33,120 --> 00:21:36,720
+know can't really sanitize properly
+
+597
+00:21:36,720 --> 00:21:38,640
+so mxss
+
+598
+00:21:38,640 --> 00:21:40,640
+uh is not completely solved with the
+
+599
+00:21:40,640 --> 00:21:42,720
+sanitizer api as long as your powers
+
+600
+00:21:42,720 --> 00:21:43,600
+again
+
+601
+00:21:43,600 --> 00:21:45,200
+on the flip side that means the
+
+602
+00:21:45,200 --> 00:21:48,000
+sanitizer really wants to help protect
+
+603
+00:21:48,000 --> 00:21:49,760
+against m accessors but whenever you
+
+604
+00:21:49,760 --> 00:21:53,679
+parse again you might be in the problem
+
+605
+00:21:53,679 --> 00:21:55,520
+and as i believe i mentioned before
+
+606
+00:21:55,520 --> 00:21:57,120
+nothing good has ever developed with
+
+607
+00:21:57,120 --> 00:21:59,039
+feedback so
+
+608
+00:21:59,039 --> 00:22:01,600
+i'm pretty sure this might work but it
+
+609
+00:22:01,600 --> 00:22:03,760
+won't work if there's not more feedback
+
+610
+00:22:03,760 --> 00:22:05,679
+and
+
+611
+00:22:05,679 --> 00:22:07,520
+yeah bugs to be found by the security
+
+612
+00:22:07,520 --> 00:22:09,440
+community so
+
+613
+00:22:09,440 --> 00:22:11,600
+i'll be presenting three ways and how
+
+614
+00:22:11,600 --> 00:22:13,440
+you might be able to insert yourself
+
+615
+00:22:13,440 --> 00:22:15,039
+into how we currently develop the
+
+616
+00:22:15,039 --> 00:22:17,280
+sanitizer api
+
+617
+00:22:17,280 --> 00:22:18,559
+first of all this is a security
+
+618
+00:22:18,559 --> 00:22:19,919
+conference so i suppose people are
+
+619
+00:22:19,919 --> 00:22:22,159
+looking for bug bounties and
+
+620
+00:22:22,159 --> 00:22:24,960
+there are some relatively easy steps to
+
+621
+00:22:24,960 --> 00:22:27,520
+test the sanitary api and you basically
+
+622
+00:22:27,520 --> 00:22:30,400
+just have to enable the sanitizer in
+
+623
+00:22:30,400 --> 00:22:33,120
+chrome or in firefox using these steps
+
+624
+00:22:33,120 --> 00:22:34,960
+then you go to an empty web page open
+
+625
+00:22:34,960 --> 00:22:37,120
+developer tools and you do document body
+
+626
+00:22:37,120 --> 00:22:38,799
+set html evil
+
+627
+00:22:38,799 --> 00:22:41,120
+and if it accesses well then you profit
+
+628
+00:22:41,120 --> 00:22:42,880
+and you should tell us about it
+
+629
+00:22:42,880 --> 00:22:45,440
+and otherwise you wouldn't
+
+630
+00:22:45,440 --> 00:22:46,480
+um
+
+631
+00:22:46,480 --> 00:22:49,440
+secondly it's still
+
+632
+00:22:49,440 --> 00:22:52,000
+still a so-called draft so it's not yet
+
+633
+00:22:52,000 --> 00:22:54,320
+a specification and we are also
+
+634
+00:22:54,320 --> 00:22:57,039
+basically changing how it's
+
+635
+00:22:57,039 --> 00:22:58,559
+supposed to work
+
+636
+00:22:58,559 --> 00:23:00,720
+and there are some really interesting
+
+637
+00:23:00,720 --> 00:23:03,120
+and sometimes gnarly open questions in
+
+638
+00:23:03,120 --> 00:23:05,760
+the specification
+
+639
+00:23:05,760 --> 00:23:07,679
+um so if you want to take a look at the
+
+640
+00:23:07,679 --> 00:23:09,440
+open questions or maybe even participate
+
+641
+00:23:09,440 --> 00:23:11,919
+we invite you to join us on github and
+
+642
+00:23:11,919 --> 00:23:14,400
+um talking about github there are also
+
+643
+00:23:14,400 --> 00:23:15,679
+some things you can do if you want to
+
+644
+00:23:15,679 --> 00:23:18,480
+code first of um
+
+645
+00:23:18,480 --> 00:23:20,240
+there is a test suite called web
+
+646
+00:23:20,240 --> 00:23:21,679
+platform tests
+
+647
+00:23:21,679 --> 00:23:23,440
+which is a test suite that is shared
+
+648
+00:23:23,440 --> 00:23:25,600
+amongst all browsers and when you submit
+
+649
+00:23:25,600 --> 00:23:27,440
+tests they will be run against all
+
+650
+00:23:27,440 --> 00:23:28,799
+browsers so there's
+
+651
+00:23:28,799 --> 00:23:30,559
+huge value if you would want to write
+
+652
+00:23:30,559 --> 00:23:32,159
+some test case
+
+653
+00:23:32,159 --> 00:23:34,880
+for web platform tests
+
+654
+00:23:34,880 --> 00:23:36,400
+for the senator
+
+655
+00:23:36,400 --> 00:23:38,320
+and secondly if you want to share some
+
+656
+00:23:38,320 --> 00:23:40,000
+of my agony you can also try and
+
+657
+00:23:40,000 --> 00:23:41,840
+participate in the implementation of a
+
+658
+00:23:41,840 --> 00:23:44,320
+polyfill which is currently really early
+
+659
+00:23:44,320 --> 00:23:46,080
+stages doesn't really implement the spec
+
+660
+00:23:46,080 --> 00:23:47,919
+doesn't really match the browser so
+
+661
+00:23:47,919 --> 00:23:50,799
+there's lots of fun to be had
+
+662
+00:23:50,799 --> 00:23:54,480
+so my takeaway for today is to burn all
+
+663
+00:23:54,480 --> 00:23:55,840
+parsers
+
+664
+00:23:55,840 --> 00:23:56,640
+or
+
+665
+00:23:56,640 --> 00:23:58,799
+really if you believe you need a
+
+666
+00:23:58,799 --> 00:24:00,240
+sanitizer
+
+667
+00:24:00,240 --> 00:24:02,080
+then make sure
+
+668
+00:24:02,080 --> 00:24:04,480
+you're using the right html parser
+
+669
+00:24:04,480 --> 00:24:07,440
+before after and in the middle and make
+
+670
+00:24:07,440 --> 00:24:10,320
+sure you use the right one
+
+671
+00:24:10,320 --> 00:24:12,000
+thank you thank you for your attention
+
+672
+00:24:12,000 --> 00:24:15,000
+and
+
+673
+00:24:19,279 --> 00:24:20,640
+and thanks to all the people who already
+
+674
+00:24:20,640 --> 00:24:22,720
+helped out with the sanitizer and i will
+
+675
+00:24:22,720 --> 00:24:24,240
+be available for a question here but
+
+676
+00:24:24,240 --> 00:24:25,919
+also during the coffee break and i'm on
+
+677
+00:24:25,919 --> 00:24:27,200
+twitter and my email address is
+
+678
+00:24:27,200 --> 00:24:30,200
+freddypriver.com
+
+679
+00:24:33,919 --> 00:24:36,159
+so
+
+680
+00:24:37,600 --> 00:24:40,320
+uh thanks for the talk very interesting
+
+681
+00:24:40,320 --> 00:24:42,720
+i have a question i got lost when you
+
+682
+00:24:42,720 --> 00:24:44,720
+told that you were
+
+683
+00:24:44,720 --> 00:24:48,640
+using the document parser and then the
+
+684
+00:24:48,640 --> 00:24:50,880
+how was the fragment puzzle the fragment
+
+685
+00:24:50,880 --> 00:24:53,440
+parser and you got an issue
+
+686
+00:24:53,440 --> 00:24:55,840
+and and you launch a new version of the
+
+687
+00:24:55,840 --> 00:24:57,440
+api or something like that so i just
+
+688
+00:24:57,440 --> 00:24:59,600
+want to understand in which component of
+
+689
+00:24:59,600 --> 00:25:03,360
+the browser these api sits like
+
+690
+00:25:03,360 --> 00:25:05,600
+i i don't got that part
+
+691
+00:25:05,600 --> 00:25:07,840
+um
+
+692
+00:25:07,919 --> 00:25:10,880
+so basically
+
+693
+00:25:12,720 --> 00:25:14,640
+when you when you're visiting a web page
+
+694
+00:25:14,640 --> 00:25:15,919
+right you type in an address and you
+
+695
+00:25:15,919 --> 00:25:18,559
+press enter then the browser is taking a
+
+696
+00:25:18,559 --> 00:25:19,919
+response
+
+697
+00:25:19,919 --> 00:25:21,760
+from the server and it's using the
+
+698
+00:25:21,760 --> 00:25:23,600
+document parser because it's expecting a
+
+699
+00:25:23,600 --> 00:25:25,520
+full document
+
+700
+00:25:25,520 --> 00:25:26,400
+yes
+
+701
+00:25:26,400 --> 00:25:28,360
+okay and when you do something like
+
+702
+00:25:28,360 --> 00:25:30,960
+food.in-html equals it's not taking a
+
+703
+00:25:30,960 --> 00:25:32,960
+full document that's why it's parsing
+
+704
+00:25:32,960 --> 00:25:34,720
+stuff a bit differently it's using the
+
+705
+00:25:34,720 --> 00:25:36,799
+so-called fragment parser
+
+706
+00:25:36,799 --> 00:25:39,039
+and the most important thing for the
+
+707
+00:25:39,039 --> 00:25:41,279
+fragment parser is that it's contextual
+
+708
+00:25:41,279 --> 00:25:42,720
+so if you do
+
+709
+00:25:42,720 --> 00:25:45,200
+body dot in html equals then you can
+
+710
+00:25:45,200 --> 00:25:47,760
+basically assume and accept all sorts of
+
+711
+00:25:47,760 --> 00:25:50,320
+html elements but if you're in a table
+
+712
+00:25:50,320 --> 00:25:52,400
+element then there are special rules for
+
+713
+00:25:52,400 --> 00:25:54,320
+how html tables are supposed to work for
+
+714
+00:25:54,320 --> 00:25:56,400
+example you can't have
+
+715
+00:25:56,400 --> 00:25:58,320
+um
+
+716
+00:25:58,320 --> 00:26:00,159
+i'm lacking good example here but the
+
+717
+00:26:00,159 --> 00:26:01,840
+flip side was really
+
+718
+00:26:01,840 --> 00:26:04,320
+um if you're
+
+719
+00:26:04,320 --> 00:26:06,240
+um not in a table element you can't
+
+720
+00:26:06,240 --> 00:26:08,559
+really accept tables table rows and
+
+721
+00:26:08,559 --> 00:26:11,039
+table cells without the outside table
+
+722
+00:26:11,039 --> 00:26:14,799
+element another really typical example
+
+723
+00:26:14,799 --> 00:26:17,760
+is the html select element which i
+
+724
+00:26:17,760 --> 00:26:19,520
+believe only accepts four different
+
+725
+00:26:19,520 --> 00:26:23,279
+elements mostly really options elements
+
+726
+00:26:23,279 --> 00:26:25,279
+so it's really just a thing of the html
+
+727
+00:26:25,279 --> 00:26:29,520
+grammar that makes parsing a bit tricky
+
+728
+00:26:29,520 --> 00:26:32,799
+okay just in summary you put your api
+
+729
+00:26:32,799 --> 00:26:35,600
+code inside the fragment parser so
+
+730
+00:26:35,600 --> 00:26:37,440
+that's the thing
+
+731
+00:26:37,440 --> 00:26:39,440
+so i i want to understand in which
+
+732
+00:26:39,440 --> 00:26:41,520
+context the parser is running or where
+
+733
+00:26:41,520 --> 00:26:45,600
+in the browser is running yes so
+
+734
+00:26:45,600 --> 00:26:48,799
+in the sanitizer api in this very
+
+735
+00:26:48,799 --> 00:26:52,000
+specific case we can instantiate
+
+736
+00:26:52,000 --> 00:26:54,720
+uh the or call the fragment parser using
+
+737
+00:26:54,720 --> 00:26:55,760
+the constant
+
+738
+00:26:55,760 --> 00:26:58,080
+context element foo
+
+739
+00:26:58,080 --> 00:26:59,760
+and then we're using the right parser
+
+740
+00:26:59,760 --> 00:27:02,000
+with the right context that's the
+
+741
+00:27:02,000 --> 00:27:04,159
+takeaway okay thank you
+
+742
+00:27:04,159 --> 00:27:07,679
+we can talk at the coffee break before
+
+743
+00:27:17,760 --> 00:27:20,720
+great presentation thank you um
+
+744
+00:27:20,720 --> 00:27:23,600
+i was wondering
+
+745
+00:27:24,000 --> 00:27:26,480
+because the sanitizer at least indust
+
+746
+00:27:26,480 --> 00:27:29,520
+in this form right it totally solves for
+
+747
+00:27:29,520 --> 00:27:32,000
+as a replacement for the html function
+
+748
+00:27:32,000 --> 00:27:32,720
+on
+
+749
+00:27:32,720 --> 00:27:34,720
+an element in a way that's
+
+750
+00:27:34,720 --> 00:27:36,720
+roughly safe for for the majority of the
+
+751
+00:27:36,720 --> 00:27:38,960
+web
+
+752
+00:27:39,520 --> 00:27:41,600
+how do you envision tackling the source
+
+753
+00:27:41,600 --> 00:27:43,919
+stock problem like
+
+754
+00:27:43,919 --> 00:27:46,640
+if a web developer wants to
+
+755
+00:27:46,640 --> 00:27:49,520
+i guess instantiate or call into the
+
+756
+00:27:49,520 --> 00:27:51,919
+document passing in for an a-frame
+
+757
+00:27:51,919 --> 00:27:54,880
+iframe show stock attribute like
+
+758
+00:27:54,880 --> 00:27:57,279
+given that the sanitizer is based on the
+
+759
+00:27:57,279 --> 00:28:00,159
+fragment parsing algorithm
+
+760
+00:28:00,159 --> 00:28:02,640
+what should the developer do
+
+761
+00:28:02,640 --> 00:28:05,120
+to have safe iframes i guess
+
+762
+00:28:05,120 --> 00:28:06,799
+it's really one of the open questions we
+
+763
+00:28:06,799 --> 00:28:09,120
+have on github right now so
+
+764
+00:28:09,120 --> 00:28:10,080
+um
+
+765
+00:28:10,080 --> 00:28:12,559
+the idea is that we also think about
+
+766
+00:28:12,559 --> 00:28:14,399
+providing a sanitized function that will
+
+767
+00:28:14,399 --> 00:28:16,559
+accept an existing document or document
+
+768
+00:28:16,559 --> 00:28:19,200
+fragment and sanitize that
+
+769
+00:28:19,200 --> 00:28:20,480
+so you
+
+770
+00:28:20,480 --> 00:28:22,159
+can have something parsed but that's
+
+771
+00:28:22,159 --> 00:28:24,480
+probably not really useful for yeah no
+
+772
+00:28:24,480 --> 00:28:26,640
+not for the iframe to my understanding
+
+773
+00:28:26,640 --> 00:28:28,159
+not for the source stock right but then
+
+774
+00:28:28,159 --> 00:28:29,200
+you need
+
+775
+00:28:29,200 --> 00:28:31,440
+the other parser completely at certain
+
+776
+00:28:31,440 --> 00:28:34,159
+point well right basically in that case
+
+777
+00:28:34,159 --> 00:28:37,200
+you would have to parse yourself yeah
+
+778
+00:28:37,200 --> 00:28:39,679
+correctly and then sanitize
+
+779
+00:28:39,679 --> 00:28:40,799
+uh
+
+780
+00:28:40,799 --> 00:28:43,039
+which admittedly is more brittle than
+
+781
+00:28:43,039 --> 00:28:44,720
+the
+
+782
+00:28:44,720 --> 00:28:47,120
+approach we are presenting here here
+
+783
+00:28:47,120 --> 00:28:49,440
+but there has also been a suggestion for
+
+784
+00:28:49,440 --> 00:28:51,440
+some sort of source dog setter that auto
+
+785
+00:28:51,440 --> 00:28:52,799
+sanitizes
+
+786
+00:28:52,799 --> 00:28:55,279
+but so far i'm not really i'm not super
+
+787
+00:28:55,279 --> 00:28:57,039
+convinced that this is the most exciting
+
+788
+00:28:57,039 --> 00:28:59,679
+escape but it's probably an existing one
+
+789
+00:28:59,679 --> 00:29:02,240
+so we think about this some more
+
+790
+00:29:02,240 --> 00:29:03,440
+yeah thank you
+
+791
+00:29:03,440 --> 00:29:05,679
+thanks
+
+792
+00:29:07,679 --> 00:29:10,159
+hey thank you i really like the idea of
+
+793
+00:29:10,159 --> 00:29:11,600
+a big company
+
+794
+00:29:11,600 --> 00:29:13,679
+like investing lots of
+
+795
+00:29:13,679 --> 00:29:14,880
+um
+
+796
+00:29:14,880 --> 00:29:16,159
+effort into
+
+797
+00:29:16,159 --> 00:29:18,559
+uh html sanitization
+
+798
+00:29:18,559 --> 00:29:22,399
+um but i think it's not obsolete to like
+
+799
+00:29:22,399 --> 00:29:24,399
+do server side sanitization is that
+
+800
+00:29:24,399 --> 00:29:25,919
+correct it's just an extra line of
+
+801
+00:29:25,919 --> 00:29:27,440
+defense because
+
+802
+00:29:27,440 --> 00:29:29,279
+maybe i want to give my client when he
+
+803
+00:29:29,279 --> 00:29:31,120
+enters some text some feedback and say
+
+804
+00:29:31,120 --> 00:29:34,080
+uh sorry nice try but that's forbidden
+
+805
+00:29:34,080 --> 00:29:35,120
+um
+
+806
+00:29:35,120 --> 00:29:37,440
+so i think it's just an extra
+
+807
+00:29:37,440 --> 00:29:38,880
+step taken
+
+808
+00:29:38,880 --> 00:29:40,480
+but i think that server side
+
+809
+00:29:40,480 --> 00:29:44,080
+sanitization is really important and i
+
+810
+00:29:44,080 --> 00:29:45,919
+think it would be cool if you like have
+
+811
+00:29:45,919 --> 00:29:47,440
+a command line tool
+
+812
+00:29:47,440 --> 00:29:48,640
+out of
+
+813
+00:29:48,640 --> 00:29:50,960
+this so we can use it on the server side
+
+814
+00:29:50,960 --> 00:29:51,760
+because
+
+815
+00:29:51,760 --> 00:29:53,760
+maybe we do not even have access to
+
+816
+00:29:53,760 --> 00:29:56,240
+javascript and like build our
+
+817
+00:29:56,240 --> 00:29:59,760
+website a different way well we've got
+
+818
+00:29:59,760 --> 00:30:02,159
+not another engine that doesn't support
+
+819
+00:30:02,159 --> 00:30:04,640
+sanitizer yeah so first of all i want to
+
+820
+00:30:04,640 --> 00:30:06,799
+acknowledge that cross-site scripting in
+
+821
+00:30:06,799 --> 00:30:09,120
+general is a really really really big
+
+822
+00:30:09,120 --> 00:30:11,120
+problem that we solve here and we're
+
+823
+00:30:11,120 --> 00:30:13,360
+starting small so we're explicitly
+
+824
+00:30:13,360 --> 00:30:14,960
+starting with the dom based cross-site
+
+825
+00:30:14,960 --> 00:30:17,679
+scripting because we know everything is
+
+826
+00:30:17,679 --> 00:30:18,960
+more or less in the context of the
+
+827
+00:30:18,960 --> 00:30:21,279
+browser so we can you know deal with it
+
+828
+00:30:21,279 --> 00:30:24,320
+from from sync to source so to say
+
+829
+00:30:24,320 --> 00:30:26,000
+um
+
+830
+00:30:26,000 --> 00:30:28,240
+but admittedly down the road i believe
+
+831
+00:30:28,240 --> 00:30:29,600
+there might be
+
+832
+00:30:29,600 --> 00:30:31,840
+more solutions for more complicated
+
+833
+00:30:31,840 --> 00:30:34,080
+setups which may or may not evolve
+
+834
+00:30:34,080 --> 00:30:37,360
+involve server side things but again an
+
+835
+00:30:37,360 --> 00:30:38,799
+important thing that i wanted to bring
+
+836
+00:30:38,799 --> 00:30:41,039
+home throughout this presentation is if
+
+837
+00:30:41,039 --> 00:30:44,320
+you sanitize someplace else for example
+
+838
+00:30:44,320 --> 00:30:45,600
+in the server
+
+839
+00:30:45,600 --> 00:30:47,760
+then you're parsing in the server and
+
+840
+00:30:47,760 --> 00:30:48,559
+you're
+
+841
+00:30:48,559 --> 00:30:51,679
+more or less guaranteed to mismatch with
+
+842
+00:30:51,679 --> 00:30:53,360
+how the browser is going to interpret
+
+843
+00:30:53,360 --> 00:30:55,760
+this so even if you believe that you're
+
+844
+00:30:55,760 --> 00:30:57,279
+sanitizing really really well in the
+
+845
+00:30:57,279 --> 00:30:59,760
+server i wouldn't completely at least
+
+846
+00:30:59,760 --> 00:31:02,080
+from a very you know purely theoretical
+
+847
+00:31:02,080 --> 00:31:04,480
+perspective i wouldn't really believe
+
+848
+00:31:04,480 --> 00:31:06,480
+that the output is always guaranteed to
+
+849
+00:31:06,480 --> 00:31:07,600
+be safe
+
+850
+00:31:07,600 --> 00:31:09,120
+really depending on how it's going to be
+
+851
+00:31:09,120 --> 00:31:12,799
+used in the document in the end
+
+852
+00:31:15,760 --> 00:31:18,760
+so
+
+853
+00:31:19,600 --> 00:31:21,600
+um
+
+854
+00:31:21,600 --> 00:31:24,399
+that could be possible i guess but then
+
+855
+00:31:24,399 --> 00:31:26,640
+in the world i'm right now already i was
+
+856
+00:31:26,640 --> 00:31:27,760
+gonna say in the worst case but
+
+857
+00:31:27,760 --> 00:31:29,360
+realistically every browser is
+
+858
+00:31:29,360 --> 00:31:31,840
+implementing html a tiny bit different
+
+859
+00:31:31,840 --> 00:31:33,519
+and take for example i don't know the
+
+860
+00:31:33,519 --> 00:31:34,960
+portal element which some browsers
+
+861
+00:31:34,960 --> 00:31:36,960
+support and some don't or
+
+862
+00:31:36,960 --> 00:31:39,600
+some parsing bugs that you may have so
+
+863
+00:31:39,600 --> 00:31:41,519
+if you wanted this to make make it
+
+864
+00:31:41,519 --> 00:31:43,200
+really secure you'd have to you have to
+
+865
+00:31:43,200 --> 00:31:45,600
+have also or all browser engines in the
+
+866
+00:31:45,600 --> 00:31:47,760
+back end always match the client which i
+
+867
+00:31:47,760 --> 00:31:50,320
+believe nobody thinks is a good idea
+
+868
+00:31:50,320 --> 00:31:53,360
+um but i believe that one of the
+
+869
+00:31:53,360 --> 00:31:55,919
+um benefits of the sanitizer api in the
+
+870
+00:31:55,919 --> 00:31:57,919
+long run can also be that once we've
+
+871
+00:31:57,919 --> 00:31:59,440
+defined this
+
+872
+00:31:59,440 --> 00:32:02,080
+safe subset of html in the html
+
+873
+00:32:02,080 --> 00:32:04,559
+specification we can definitely go out
+
+874
+00:32:04,559 --> 00:32:07,120
+to other sanitizers and say what's your
+
+875
+00:32:07,120 --> 00:32:09,200
+use case for having a different one
+
+876
+00:32:09,200 --> 00:32:11,360
+let's converge and then i believe
+
+877
+00:32:11,360 --> 00:32:13,519
+there's also
+
+878
+00:32:13,519 --> 00:32:16,399
+lots of fun to be had and you know
+
+879
+00:32:16,399 --> 00:32:19,199
+mismatching less
+
+880
+00:32:22,480 --> 00:32:24,399
+hello thank you for
+
+881
+00:32:24,399 --> 00:32:27,200
+your presentation so my question is how
+
+882
+00:32:27,200 --> 00:32:28,960
+what is that you are doing different
+
+883
+00:32:28,960 --> 00:32:31,200
+than the other sanitizer let's say
+
+884
+00:32:31,200 --> 00:32:33,360
+google sanitizer and
+
+885
+00:32:33,360 --> 00:32:36,799
+here's 53 sanitizer i think they have
+
+886
+00:32:36,799 --> 00:32:38,559
+so what is it
+
+887
+00:32:38,559 --> 00:32:40,720
+that you are doing different
+
+888
+00:32:40,720 --> 00:32:43,519
+and how you are approaching the problems
+
+889
+00:32:43,519 --> 00:32:45,440
+they have for example uh
+
+890
+00:32:45,440 --> 00:32:48,559
+uh when it comes to the motivation xs
+
+891
+00:32:48,559 --> 00:32:50,880
+xss um
+
+892
+00:32:50,880 --> 00:32:53,840
+so i believe the core benefit is really
+
+893
+00:32:53,840 --> 00:32:54,640
+to
+
+894
+00:32:54,640 --> 00:32:57,120
+again integrate this into the current
+
+895
+00:32:57,120 --> 00:32:58,799
+parser that the browser is
+
+896
+00:32:58,799 --> 00:33:00,559
+defined to use
+
+897
+00:33:00,559 --> 00:33:02,640
+so that there is less risk of
+
+898
+00:33:02,640 --> 00:33:04,960
+matches and maybe maybe i didn't
+
+899
+00:33:04,960 --> 00:33:06,640
+emphasize this strong enough in the
+
+900
+00:33:06,640 --> 00:33:09,840
+presentation but mxss in the context of
+
+901
+00:33:09,840 --> 00:33:11,840
+sanitizers is quite a problem so i
+
+902
+00:33:11,840 --> 00:33:14,880
+believe that or at least i know of no
+
+903
+00:33:14,880 --> 00:33:17,519
+sanitizer out there that hasn't been
+
+904
+00:33:17,519 --> 00:33:21,039
+um rivaled with some mxss box
+
+905
+00:33:21,039 --> 00:33:22,399
+and
+
+906
+00:33:22,399 --> 00:33:24,720
+integrating this directly in the browser
+
+907
+00:33:24,720 --> 00:33:28,960
+sort of mostly protects us from this
+
+908
+00:33:37,679 --> 00:33:39,519
+thanks great talk um
+
+909
+00:33:39,519 --> 00:33:42,799
+it's 2022 why do we have xss
+
+910
+00:33:42,799 --> 00:33:44,799
+yeah it's an embarrassment right what do
+
+911
+00:33:44,799 --> 00:33:47,120
+we what do we need to do to eradicate it
+
+912
+00:33:47,120 --> 00:33:49,039
+um it's gonna take some time but i
+
+913
+00:33:49,039 --> 00:33:52,000
+believe this is a good step
+
+914
+00:33:52,000 --> 00:33:55,120
+but if it's not tell me
+
+915
+00:33:55,760 --> 00:33:57,519
+um
+
+916
+00:33:57,519 --> 00:33:59,279
+yeah i don't have a great answer for
+
+917
+00:33:59,279 --> 00:34:01,200
+that but i'm sure kristoff has an
+
+918
+00:34:01,200 --> 00:34:03,440
+opinion
+
+919
+00:34:03,440 --> 00:34:06,480
+we talk at the coffee break um so yeah i
+
+920
+00:34:06,480 --> 00:34:08,480
+mean that's that was the start of my of
+
+921
+00:34:08,480 --> 00:34:10,639
+my presentation it's i truly believe
+
+922
+00:34:10,639 --> 00:34:12,879
+it's quite an embarrassment of the web
+
+923
+00:34:12,879 --> 00:34:14,719
+platform to still have this simple but
+
+924
+00:34:14,719 --> 00:34:17,280
+not so and we tried right there lots of
+
+925
+00:34:17,280 --> 00:34:20,320
+mitigations and tools and even even
+
+926
+00:34:20,320 --> 00:34:22,879
+browser interventions like uh browser's
+
+927
+00:34:22,879 --> 00:34:24,800
+height uh crosshatch scripting filters
+
+928
+00:34:24,800 --> 00:34:26,159
+that didn't really
+
+929
+00:34:26,159 --> 00:34:28,000
+work that well
+
+930
+00:34:28,000 --> 00:34:29,520
+so yeah
+
+931
+00:34:29,520 --> 00:34:30,879
+i don't know i'm the security engineer
+
+932
+00:34:30,879 --> 00:34:33,119
+i'm not the application developer
+
+933
+00:34:33,119 --> 00:34:36,399
+basically it's never my fault
+
+934
+00:34:37,670 --> 00:34:39,679
+[Music]
+
+935
+00:34:39,679 --> 00:34:40,840
+thanks
+
+936
+00:34:40,840 --> 00:34:44,479
+[Applause]
+

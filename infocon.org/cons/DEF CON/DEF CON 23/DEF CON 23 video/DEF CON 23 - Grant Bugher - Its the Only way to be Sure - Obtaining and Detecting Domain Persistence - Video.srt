@@ -1,0 +1,2764 @@
+﻿00:00:00.467 --> 00:00:03.804
+>> All right. Good afternoon,
+everybody. And this is the only
+
+00:00:03.804 --> 00:00:08.275
+way to be sure obtaining and
+detecting domain persistence. So
+
+00:00:08.275 --> 00:00:12.980
+a bit about me. I'm Grant Brewer
+and I've been hacking and coding
+
+00:00:12.980 --> 00:00:16.116
+and working on security since
+the '90s, which I know is old by
+
+00:00:16.116 --> 00:00:20.053
+DEF CON terms. I've been working
+in Infosec for the last 10 years
+
+00:00:20.053 --> 00:00:24.925
+and I'm very much a security
+generalist. I've been a dev, a
+
+00:00:24.925 --> 00:00:28.395
+tester, a program manager, a
+security engineer, an architect,
+
+00:00:28.395 --> 00:00:32.165
+a consultant, an educator, a
+little bit of everything. And
+
+00:00:32.165 --> 00:00:37.170
+I've worked across dev tools,
+web applications, desktop apps,
+
+00:00:37.170 --> 00:00:39.973
+high security services for
+governments, application
+
+00:00:39.973 --> 00:00:44.845
+security consulting, etc. Um, so
+I'm currently security engineer
+
+00:00:44.845 --> 00:00:48.282
+for a big company. They are not
+sponsoring this talk, though, so
+
+00:00:48.282 --> 00:00:51.552
+I'm just giving this as an
+individual. I also run Perimeter
+
+00:00:51.552 --> 00:00:55.822
+Grid, which is my security blog
+and consulting service. I've
+
+00:00:55.822 --> 00:01:00.661
+spoken before at Blackcat, at
+DEF CON 22, and at DOT Con and I
+
+00:01:00.661 --> 00:01:05.065
+have been coming to DEF CON for
+I guess seven years now. So with
+
+00:01:05.065 --> 00:01:08.235
+that and the usual disclaimer of
+this is my own talk, it does not
+
+00:01:08.235 --> 00:01:10.504
+represent -- necessarily
+represent the opinions of my
+
+00:01:10.504 --> 00:01:17.110
+employer, we get started. So you
+have a domain controller and if
+
+00:01:17.110 --> 00:01:20.580
+you have a domain controller,
+um, you probably have some kind
+
+00:01:20.580 --> 00:01:24.084
+of monitoring on it. Ah, but the
+sad fact is the state of
+
+00:01:24.084 --> 00:01:28.922
+monitoring in real enterprises
+is generally woeful, most
+
+00:01:28.922 --> 00:01:32.693
+companies I've seen, it's really
+bad. There's local event logs
+
+00:01:32.693 --> 00:01:36.363
+with default configuration and
+if there is a seam, it's
+
+00:01:36.363 --> 00:01:39.433
+designed for compliance, not for
+security and forensics. It
+
+00:01:39.433 --> 00:01:43.337
+collects the PCI-mandated events
+and nobody ever tunes it and
+
+00:01:43.337 --> 00:01:46.640
+nobody ever reviews it. That's
+sort of monitoring is not going
+
+00:01:46.640 --> 00:01:50.644
+to be able to find somebody in
+your domain. So for the demos
+
+00:01:50.644 --> 00:01:53.080
+here, we're going to assume that
+you've got basic monitoring.
+
+00:01:53.080 --> 00:01:55.382
+You've got detailed granular
+auditing enabled and group
+
+00:01:55.382 --> 00:01:58.552
+policy. You got event logs that
+are being pushed or pulled to a
+
+00:01:58.552 --> 00:02:03.190
+seam off the services. Ideally
+inaccessible to them. You've got
+
+00:02:03.190 --> 00:02:07.127
+centralized hides or
+anti-malware logs. And you've
+
+00:02:07.127 --> 00:02:10.497
+got process start command line
+logging and power shell auditing
+
+00:02:10.497 --> 00:02:14.301
+enabled in group policy. That
+last one does require at least
+
+00:02:14.301 --> 00:02:17.337
+relatively modern versions of
+Windows and not XP and some
+
+00:02:17.337 --> 00:02:23.810
+such. So I've set up a
+demonstration domain to be able
+
+00:02:23.810 --> 00:02:27.714
+to walk through the, the,
+attacks and defenses. And I set
+
+00:02:27.714 --> 00:02:30.717
+it up as Windows as a virtual
+network. It's has three servers
+
+00:02:30.717 --> 00:02:33.653
+and a workstation, a domain
+controller, a web server, a
+
+00:02:33.653 --> 00:02:38.558
+Splunk Enterprise server, and a
+workstation used by the hapless
+
+00:02:38.558 --> 00:02:41.762
+attachment clicker bobber who is
+going to be running our Trojans.
+
+00:02:41.762 --> 00:02:47.901
+Splunk Enterprise is configured
+to run as a domain user. So it
+
+00:02:47.901 --> 00:02:52.539
+has domain credentials. It pulls
+nondomain controller logs by
+
+00:02:52.539 --> 00:02:55.842
+WMI. And ah the domain
+controllers, however, push their
+
+00:02:55.842 --> 00:02:59.079
+logs via Splunk universal
+forwarder, because others with
+
+00:02:59.079 --> 00:03:01.515
+the monitoring account would
+have to be a domain admin and I
+
+00:03:01.515 --> 00:03:06.219
+don't want to make this too easy
+for myself. Finally, there's
+
+00:03:06.219 --> 00:03:10.257
+semantic endpoint monitoring on
+systems forwarding Splunk by
+
+00:03:10.257 --> 00:03:13.760
+event log. Meanwhile, on the
+other side, so you want a domain
+
+00:03:13.760 --> 00:03:17.664
+controller. Well, there are lots
+of ways to get access to a
+
+00:03:17.664 --> 00:03:21.768
+domain and there, um, pretty
+much limitless. You could
+
+00:03:21.768 --> 00:03:24.371
+exploit unpatched servers, get
+an admin's password with a key
+
+00:03:24.371 --> 00:03:28.241
+logger. Get an admin to click on
+your malware, steal an AD-back
+
+00:03:28.241 --> 00:03:31.745
+up, exploit security software,
+or you know, somebody who is
+
+00:03:31.745 --> 00:03:35.182
+running their seam as domain
+admin, ah, use your elite zero
+
+00:03:35.182 --> 00:03:38.118
+days that I'm sure that you have
+a large pile of. But this isn't
+
+00:03:38.118 --> 00:03:41.321
+what this talk is about. On the
+bright side, it is DEF CON,
+
+00:03:41.321 --> 00:03:44.191
+there are a lot of other talks
+about gaining access. This is
+
+00:03:44.191 --> 00:03:48.628
+about what do you do once you've
+gained access to make sure that
+
+00:03:48.628 --> 00:03:51.164
+you keep it? So we're just going
+to stipulate that you've
+
+00:03:51.164 --> 00:03:54.267
+momentarily compromised the
+domain, you have TCP/IP network
+
+00:03:54.267 --> 00:03:57.337
+access. Maybe you have a pone
+plug or a compromised advice
+
+00:03:57.337 --> 00:04:01.274
+inside, or a beef session to a
+workstation, whatever. And
+
+00:04:01.274 --> 00:04:03.910
+you've obtained domain admin.
+You got an interpreter session
+
+00:04:03.910 --> 00:04:06.646
+with domain admin. Doesn't
+matter where you got it. The
+
+00:04:06.646 --> 00:04:09.182
+administrators at some point are
+going to notice you compromised
+
+00:04:09.182 --> 00:04:12.352
+their domain and try to
+remediate and kick you out. And
+
+00:04:12.352 --> 00:04:16.990
+then try to figure out what you
+did. So it's going to be kind of
+
+00:04:16.990 --> 00:04:20.127
+a red team blue team type of
+demo. Our goals to make it easy
+
+00:04:20.127 --> 00:04:24.131
+to get user access and then
+elevate that access to domain
+
+00:04:24.131 --> 00:04:27.934
+admin again using the only the
+TCP network access that we have.
+
+00:04:27.934 --> 00:04:31.638
+Meanwhile, their goal is to
+figure out what we did and how
+
+00:04:31.638 --> 00:04:34.975
+to kick us out without having to
+wipe everything and start over.
+
+00:04:34.975 --> 00:04:37.844
+So okay. We got this domain
+admin token, what can we do with
+
+00:04:37.844 --> 00:04:41.081
+it to make sure we can always
+get domain admin again. Well, I
+
+00:04:41.081 --> 00:04:44.584
+guess we could create a domain
+admin account. You might also
+
+00:04:44.584 --> 00:04:49.823
+try banging a gong. This is
+about the least subtle thing you
+
+00:04:49.823 --> 00:04:54.327
+could do, but -- let's -- okay.
+I videoed my demos because I
+
+00:04:54.327 --> 00:04:59.733
+know the demo gods are never
+kind at DEF CON. Um -- all
+
+00:04:59.733 --> 00:05:03.570
+right. So I'm going to start up
+Metasploit, set up a handler for
+
+00:05:03.570 --> 00:05:07.507
+my Trojan that I've got my
+domain admin session on. Using
+
+00:05:07.507 --> 00:05:11.378
+the Meterpreter reverse HTTPS
+which is my favorite one because
+
+00:05:11.378 --> 00:05:14.981
+out going HTTPS sessions to 443
+are the least suspicious thing
+
+00:05:14.981 --> 00:05:20.987
+there is. And I will connect to
+my Meterpreter shell. From
+
+00:05:26.893 --> 00:05:30.030
+there, if I've got a domain
+admin token, simple enough, I
+
+00:05:30.030 --> 00:05:37.270
+can drop to my shell and create
+an account for Frederick Nord,
+
+00:05:37.270 --> 00:05:43.710
+Nord, in honor of DEF CON 23.
+And add this domain user. Once
+
+00:05:43.710 --> 00:05:47.247
+I've added him. I can do this
+anywhere I don't have to be on
+
+00:05:47.247 --> 00:05:52.852
+the domain controller, I will
+just at him to domain admins. So
+
+00:05:52.852 --> 00:05:57.624
+what's this look like to our
+Splunk session? We have a lot of
+
+00:05:57.624 --> 00:06:01.294
+events. Ah, we have a 4720,
+which is a user account was
+
+00:06:01.294 --> 00:06:03.864
+created. We see here that the
+admin account created a new
+
+00:06:03.864 --> 00:06:08.301
+account called Nord. 4722, they
+have enabled a user account.
+
+00:06:08.301 --> 00:06:12.138
+This immediate follows creation.
+4724, they have reset an
+
+00:06:12.138 --> 00:06:15.508
+accounts password, also
+immediate follows user creation.
+
+00:06:15.508 --> 00:06:19.679
+And most suspicious of all, we
+got a 4728 event which is a
+
+00:06:19.679 --> 00:06:22.415
+member was added to a security
+enabled global group in this
+
+00:06:22.415 --> 00:06:25.785
+case domain admins. You pretty
+much count on if an enterprise
+
+00:06:25.785 --> 00:06:29.422
+is monitoring anything, this is
+probably one of the events they
+
+00:06:29.422 --> 00:06:32.592
+monitor for. It is almost always
+administrative action. It is
+
+00:06:32.592 --> 00:06:36.529
+very seldom done by an automated
+process. Ah, and adding user to
+
+00:06:36.529 --> 00:06:40.767
+domain admins is about the most
+suspicious thing you can do. So
+
+00:06:40.767 --> 00:06:44.004
+it also creates security enabled
+global group, which is 4737 as
+
+00:06:44.004 --> 00:06:47.674
+well. So we're going to look at
+what for the much more subtle
+
+00:06:47.674 --> 00:06:50.210
+things we can do to make sure we
+can get access again without
+
+00:06:50.210 --> 00:06:52.912
+having to actually at ourselves
+to the domain admin's group.
+
+00:06:52.912 --> 00:06:56.716
+First of all, we are going to
+make sure that we can at least
+
+00:06:56.716 --> 00:07:00.687
+get user access again. And for
+this, we need some kind of
+
+00:07:00.687 --> 00:07:05.158
+autorunning Malware on, on the
+system we've targeted. In this
+
+00:07:05.158 --> 00:07:08.194
+case I'm using this PG
+workstation system that somebody
+
+00:07:08.194 --> 00:07:12.565
+logs into. Now, everybody knows
+about the registry key, current
+
+00:07:12.565 --> 00:07:15.769
+users, Windows current version
+run, that automatically starts
+
+00:07:15.769 --> 00:07:19.139
+things as soon as people long
+in. But what a lot of people
+
+00:07:19.139 --> 00:07:24.811
+don't realize is that is pretty
+far from being the only one. I'm
+
+00:07:24.811 --> 00:07:30.417
+going to pull this up locally
+instead of using the video. Um
+
+00:07:33.186 --> 00:07:39.192
+-- all right. So here we have a
+wonderful little system tunnels
+
+00:07:41.661 --> 00:07:46.166
+to calls autoruns. And the
+autoruns to shows you various
+
+00:07:46.166 --> 00:07:50.770
+things on the computer which are
+set to automatically run at boot
+
+00:07:50.770 --> 00:07:56.543
+up and log-in. So at log on, um,
+we've got, let's see -- ah, it's
+
+00:07:56.543 --> 00:08:00.714
+still running and collecting
+stuff. So log on is going to
+
+00:08:00.714 --> 00:08:04.150
+contain our usual Windows
+current version run. Um, but
+
+00:08:04.150 --> 00:08:08.755
+that's far from the only thing
+it will contain. Um, sorry, I
+
+00:08:08.755 --> 00:08:13.493
+can't see my own screen here.
+Um, so we've got components
+
+00:08:13.493 --> 00:08:18.598
+running from a wide variety of
+locations. Um, any of these apps
+
+00:08:18.598 --> 00:08:22.001
+that you can replace can run
+automatically add log-in. In
+
+00:08:22.001 --> 00:08:26.539
+addition, explorer has shell
+handlers. In it, explorer has
+
+00:08:26.539 --> 00:08:29.709
+browser helper objects that load
+as soon as anybody starts up the
+
+00:08:29.709 --> 00:08:33.847
+browser. We also have scheduled
+tasks. Now in this case these
+
+00:08:33.847 --> 00:08:36.216
+are interesting, any time you
+get a scheduled task listed in
+
+00:08:36.216 --> 00:08:40.053
+red here. I didn't run this at
+admin, which is the reason I
+
+00:08:40.053 --> 00:08:42.589
+don't have nearly as many
+autoruns as I would normally
+
+00:08:42.589 --> 00:08:48.595
+have. I'm going to rerun it. Any
+time we get one of the entries
+
+00:08:55.635 --> 00:08:59.706
+in red, it indicates the autorun
+is running unsigned code. In
+
+00:08:59.706 --> 00:09:04.978
+this case, many times it is VB
+script code. Okay. I'm going to
+
+00:09:04.978 --> 00:09:10.750
+change this so I can see my own
+screen. Um -- that didn't work
+
+00:09:10.750 --> 00:09:16.489
+at all, I still can't see my own
+screen. All right. So -- right
+
+00:09:16.489 --> 00:09:21.161
+here. Um -- so I've got context
+menu handlers. I've got my
+
+00:09:21.161 --> 00:09:26.032
+scheduled tasks. Any of these
+things that are VBS files are
+
+00:09:26.032 --> 00:09:29.068
+particularly good because
+they're unsigned code, I don't
+
+00:09:29.068 --> 00:09:32.305
+have to create a new file on the
+machine, I can just at a line to
+
+00:09:32.305 --> 00:09:36.009
+the VBS that runs whatever my
+Trojan is. They're also servers,
+
+00:09:36.009 --> 00:09:38.778
+drivers, one of the more
+interesting ones, image hijacks.
+
+00:09:38.778 --> 00:09:40.847
+I don't have any running of this
+system right now. We'll get to
+
+00:09:40.847 --> 00:09:45.585
+both image hijacks and LSA
+providers a little bit later,
+
+00:09:45.585 --> 00:09:48.822
+some of the more interesting
+things you can use. The, there
+
+00:09:48.822 --> 00:09:53.626
+we go. Unhide Microsoft entries.
+The, so like here's an example
+
+00:09:53.626 --> 00:09:58.198
+of when IR runs it will actually
+run, it has, a rather, when,
+
+00:09:58.198 --> 00:10:02.735
+when, HTML times run, it will
+hijack that and send it to IE.
+
+00:10:02.735 --> 00:10:07.674
+Part of how IE runs. But I can
+add an image hijack show that
+
+00:10:07.674 --> 00:10:12.579
+when someone runs any EXE of my
+choice, it will also run my own
+
+00:10:12.579 --> 00:10:16.449
+executable. So this is also very
+useful as a forensics tool.
+
+00:10:16.449 --> 00:10:21.020
+Because you can go over here to
+everything and see all of these
+
+00:10:21.020 --> 00:10:24.524
+red entries. They're also yellow
+entries which replaces where my
+
+00:10:24.524 --> 00:10:28.995
+system is set to run a file
+which doesn't exist. So I can
+
+00:10:28.995 --> 00:10:31.998
+add a file to any of those and
+whatever it is, it's going to
+
+00:10:31.998 --> 00:10:34.167
+automatically run. No one's
+going to notice that I've added
+
+00:10:34.167 --> 00:10:36.402
+something that not supposed to
+be there because I didn't tell
+
+00:10:36.402 --> 00:10:41.107
+it to autorun. It was already
+trying to autorun that item. So
+
+00:10:41.107 --> 00:10:46.613
+there are a great number of
+places that you can add these
+
+00:10:46.613 --> 00:10:52.318
+autorunning programs. All right.
+Let me get my slides back up on
+
+00:10:52.318 --> 00:10:58.324
+the screen. All right. So
+another place I can put my
+
+00:11:07.300 --> 00:11:09.702
+backdoors, though, if I don't
+want to drop a file on the
+
+00:11:09.702 --> 00:11:13.339
+machine at all where it could be
+detected by forensic examiners I
+
+00:11:13.339 --> 00:11:17.844
+can drop it directly into the
+registry. So in this case, I'm
+
+00:11:17.844 --> 00:11:21.114
+going to be using, um,
+Veil-Framework, which is a great
+
+00:11:21.114 --> 00:11:26.052
+little about a skater of
+backdoors. To create a
+
+00:11:26.052 --> 00:11:32.058
+PowerShell-based version of my
+remote access Trojan. So I'm
+
+00:11:39.532 --> 00:11:41.768
+starting ow, PowerShell, shell
+inject, download virtually,
+
+00:11:41.768 --> 00:11:45.338
+which is a very small bit of
+PowerShell, which simply pulls
+
+00:11:45.338 --> 00:11:48.541
+down a larger piece, which then
+builds an Meterpreter shell
+
+00:11:48.541 --> 00:11:51.778
+directly in memory and runs it
+without ever actually touching
+
+00:11:51.778 --> 00:11:55.348
+disk. So I'm going to generate
+my shellcode in Veil. Once
+
+00:11:55.348 --> 00:11:59.085
+again, using Meterpreter reverse
+HTTPS, as I usually do. And this
+
+00:11:59.085 --> 00:12:01.321
+is going to create a few pieces
+of PowerShell. It's going to
+
+00:12:01.321 --> 00:12:05.291
+create a very short initial
+downloader and then a longer
+
+00:12:05.291 --> 00:12:10.096
+file which is the actual
+payload, which is placed in a
+
+00:12:10.096 --> 00:12:16.603
+file that I have to place on my
+own web server. So takes a
+
+00:12:16.603 --> 00:12:21.207
+little time for it to genre.
+Call it PSREG. So you can see it
+
+00:12:21.207 --> 00:12:24.911
+generated a payload file, PSREG
+dot text as well as a handler
+
+00:12:24.911 --> 00:12:30.416
+file, and secondary payload
+written out to output, source,
+
+00:12:30.416 --> 00:12:36.055
+this long random string of
+letters. And this needs to be
+
+00:12:36.055 --> 00:12:42.061
+served up on the server that I
+specify. So I'll X out of Veil.
+
+00:12:49.435 --> 00:12:52.672
+And copy my randomly named file.
+If I wanted to, I could, you
+
+00:12:52.672 --> 00:12:55.041
+know, put this on an actually
+publicly accessible server, give
+
+00:12:55.041 --> 00:12:58.211
+it a perfectly innocuous name
+that wouldn't look unusual in
+
+00:12:58.211 --> 00:13:02.382
+web logs. It could be called
+whatever I want. I have this
+
+00:13:02.382 --> 00:13:06.853
+PSREG.text that has this very
+powerful command which will
+
+00:13:06.853 --> 00:13:11.157
+download that payload and
+execute it in memory. Now, it is
+
+00:13:11.157 --> 00:13:14.727
+by default in Veil, it has been
+hex encoded, base 64 encoded,
+
+00:13:14.727 --> 00:13:18.931
+rather. For this I actually had
+to decode it, because it turns
+
+00:13:18.931 --> 00:13:22.869
+out in the image hijacks
+registry, there is a relatively
+
+00:13:22.869 --> 00:13:26.005
+short command line length
+allowed and if you put this
+
+00:13:26.005 --> 00:13:29.575
+entire long encoded thing in
+there it has a hard time
+
+00:13:29.575 --> 00:13:33.646
+actually running it. All right.
+So okay. That's, let's see.
+
+00:13:33.646 --> 00:13:39.652
+Okay. All right. So I'm going to
+connect my user session here.
+
+00:13:54.634 --> 00:13:58.271
+And I'm going to create a
+registry key in this user
+
+00:13:58.271 --> 00:14:02.408
+session. And in this case I'm
+modifying the image file
+
+00:14:02.408 --> 00:14:06.746
+execution options for CALC dot
+EXE. Really I would modify them
+
+00:14:06.746 --> 00:14:10.183
+for something that's in those
+autoruns or something that I
+
+00:14:10.183 --> 00:14:13.052
+would expect my administrator to
+frequently run. Preferably I
+
+00:14:13.052 --> 00:14:16.723
+find something in autoruns that
+I don't actually care about,
+
+00:14:16.723 --> 00:14:19.992
+nobody cares about, people
+always have printer drivers and
+
+00:14:19.992 --> 00:14:23.696
+video drivers that have to have
+some memory resident component.
+
+00:14:23.696 --> 00:14:26.232
+Nobody's sure what they're
+supposed to do anyway. There are
+
+00:14:26.232 --> 00:14:29.268
+a dozen of them, you can easy
+hijack any of those. So I'm
+
+00:14:29.268 --> 00:14:33.072
+adding an image pile execution
+option called debugger, which
+
+00:14:33.072 --> 00:14:36.809
+has my PowerShell in a hidden
+Window bypass execution and it's
+
+00:14:36.809 --> 00:14:42.348
+going to do an inline execute of
+what it downloads from this, ah,
+
+00:14:42.348 --> 00:14:46.886
+URL that I've provided there. So
+when that runs in PowerShell it
+
+00:14:46.886 --> 00:14:49.655
+will download that with, ah,
+basically the PowerShell
+
+00:14:49.655 --> 00:14:52.692
+equivalent that you get into
+memory and execute that
+
+00:14:52.692 --> 00:14:57.263
+PowerShell. And that secondary
+payload is my Meterpreter
+
+00:14:57.263 --> 00:15:03.202
+virtual inject. So now my end
+user goes and runs the
+
+00:15:05.471 --> 00:15:08.007
+compromised app, in this case,
+they're going to run CALC dot
+
+00:15:08.007 --> 00:15:12.245
+EXE and it immediately
+disappears. So this is why you
+
+00:15:12.245 --> 00:15:14.814
+want to use something in the
+startup that no one is going to
+
+00:15:14.814 --> 00:15:17.884
+care about anyway. If you really
+wanted to get fancy with it, you
+
+00:15:17.884 --> 00:15:21.587
+could develop, you could develop
+your own script which would
+
+00:15:21.587 --> 00:15:25.291
+actually run the necessary
+target. Um, the problem is, you
+
+00:15:25.291 --> 00:15:28.995
+can't just invoke the EXE
+directly in the -- normal
+
+00:15:28.995 --> 00:15:31.931
+fashion because if you do, the
+image file execution options
+
+00:15:31.931 --> 00:15:34.967
+will just hijack that one again
+and run your, your PowerShell.
+
+00:15:34.967 --> 00:15:36.969
+So you'll just create an
+infinite loop. So you have to
+
+00:15:36.969 --> 00:15:39.639
+actually script it to take
+itself back out of the registry.
+
+00:15:39.639 --> 00:15:45.344
+And -- and -- as soon as they
+ran, CALC dot EXE from my
+
+00:15:45.344 --> 00:15:52.485
+perspective running the handler,
+I immediately get a-- I'll,
+
+00:15:52.485 --> 00:15:55.555
+well, I got a video of it, but
+it connects to the Meterpreter
+
+00:15:55.555 --> 00:15:58.691
+shell. It does the exact thing
+as any of the other Trojans do.
+
+00:15:58.691 --> 00:16:02.061
+But it does it entirely in
+PowerShell with no need to drop
+
+00:16:02.061 --> 00:16:06.699
+anything on the disk to be later
+found. So at that point I got
+
+00:16:06.699 --> 00:16:10.536
+user access again, but I don't
+have domain access. And I want
+
+00:16:10.536 --> 00:16:14.907
+to have my domain admin session.
+So what can I do on the domain
+
+00:16:14.907 --> 00:16:19.145
+controller to make sure that I'm
+always able to elevate to domain
+
+00:16:19.145 --> 00:16:23.649
+admin? And we've got at least
+four options here that are more
+
+00:16:23.649 --> 00:16:27.053
+subtle then adding yourself to
+the domain admin's group. So the
+
+00:16:27.053 --> 00:16:31.324
+first one I'm going to go over
+is the skeleton key patch. Now,
+
+00:16:31.324 --> 00:16:33.926
+this was actually presented at
+DEF CON a couple of years ago.
+
+00:16:33.926 --> 00:16:39.932
+And it is now a built in feature
+of Mimikatz. Unusual it is not a
+
+00:16:39.932 --> 00:16:44.604
+built in feature of the kiwi
+manual of Meterpreter yet. So we
+
+00:16:44.604 --> 00:16:49.675
+have to use the actual Mimikatz
+EXE in order to run it. The
+
+00:16:49.675 --> 00:16:53.579
+other option would be use to
+something other than Metasploit,
+
+00:16:53.579 --> 00:16:57.450
+I know, like PowerShell Empire
+for instance, does have the
+
+00:16:57.450 --> 00:17:00.152
+skeleton key patch in there so
+you wouldn't have to drop
+
+00:17:00.152 --> 00:17:05.558
+Mimikatz on the disk. In this
+case, I killed the antivirus
+
+00:17:05.558 --> 00:17:11.163
+process so that I can proceed to
+drop Mimikatz on the disk. Once
+
+00:17:11.163 --> 00:17:14.767
+again, that's -- not very
+subtle. It will leave an event.
+
+00:17:14.767 --> 00:17:19.171
+Um, put if you were using a
+different remote access package
+
+00:17:19.171 --> 00:17:23.209
+rather than Meterpreter, you
+could manage to do this without
+
+00:17:23.209 --> 00:17:28.047
+necessarily hitting disk with
+it. So I create my shell, I run
+
+00:17:28.047 --> 00:17:34.353
+Mimikatz. And I grab debug
+privileges. And then I run the
+
+00:17:34.353 --> 00:17:38.491
+NIST skeleton module. And this
+does a quick little patch. If
+
+00:17:38.491 --> 00:17:44.063
+you recall earlier in autoruns
+there was a session for, ah, LSA
+
+00:17:44.063 --> 00:17:46.899
+security providers. Well, what
+we've just done is we've added
+
+00:17:46.899 --> 00:17:50.603
+an LSA security provider and
+we've added the Mimikatz
+
+00:17:50.603 --> 00:17:56.609
+security provider. And what this
+actually does is now next time I
+
+00:17:56.609 --> 00:17:59.879
+connect to my workstation I'm an
+unprivileged user. I'm
+
+00:17:59.879 --> 00:18:03.449
+connecting to a session as
+Bobert again. I don't have any
+
+00:18:03.449 --> 00:18:08.220
+user privileges. So if I get my
+UID, I'm just Bobert. Ask if I
+
+00:18:08.220 --> 00:18:11.390
+go to my shell and I try to
+connect to the domain controller
+
+00:18:11.390 --> 00:18:15.161
+C drive I'm going to get an
+access denied because Bobert
+
+00:18:15.161 --> 00:18:18.030
+does not have access to the
+administrative shares on the
+
+00:18:18.030 --> 00:18:24.136
+domain controller. Drop all my
+connections and now I'm going to
+
+00:18:24.136 --> 00:18:28.975
+net use it only this time I'm
+going to specify I am the domain
+
+00:18:28.975 --> 00:18:33.245
+admin user who is PG DEF CON
+whack admin and my passwords is
+
+00:18:33.245 --> 00:18:37.717
+Mimikatz. The domain admin's
+password is very much not
+
+00:18:37.717 --> 00:18:42.788
+Mimikatz. However the fact that
+I have added that LSA security
+
+00:18:42.788 --> 00:18:46.258
+provider means that Mimikatz is
+a valid password for everyone in
+
+00:18:46.258 --> 00:18:49.562
+the domain. I can log-in as
+anybody, anywhere using that
+
+00:18:49.562 --> 00:18:54.300
+password. Um, and so I am still
+Bobert, if I do a who am I, but
+
+00:18:54.300 --> 00:18:59.372
+I'm able to do anything that the
+domain administrator can do. So
+
+00:18:59.372 --> 00:19:02.508
+assuming you don't disable the
+AV and drop Mimikatz on the
+
+00:19:02.508 --> 00:19:06.078
+disk. The only unusual event
+you're going to get from this is
+
+00:19:06.078 --> 00:19:09.648
+a privileged server was called,
+event 4673, sensitive privilege
+
+00:19:09.648 --> 00:19:14.654
+use. And we see here there was
+an LSA register log on process.
+
+00:19:14.654 --> 00:19:19.258
+And, um, the unfortunate thing
+about these events is they're
+
+00:19:19.258 --> 00:19:22.294
+not super rare. You're going to
+see this any time a DC reboots
+
+00:19:22.294 --> 00:19:27.066
+anyway. So um, you could monitor
+for them at unusual times such
+
+00:19:27.066 --> 00:19:29.402
+as when you don't have a DC
+rebooting. If you have one
+
+00:19:29.402 --> 00:19:31.404
+domain controller that's
+probably not terribly hard. If
+
+00:19:31.404 --> 00:19:38.044
+you have 150 of them that may be
+terribly hard. So or things that
+
+00:19:38.044 --> 00:19:43.149
+we can do -- um, one of these
+is, um, probably the, the --
+
+00:19:43.149 --> 00:19:47.520
+most interesting of the, ah,
+common AD exploits which is
+
+00:19:47.520 --> 00:19:51.323
+creating golden tickets. This is
+another one that was first
+
+00:19:51.323 --> 00:19:55.294
+presented at DEF CON, I believe,
+three years ago. It is, ah,
+
+00:19:55.294 --> 00:19:59.231
+luckily for attackers and
+unfortunately for defenders very
+
+00:19:59.231 --> 00:20:03.135
+difficult to centrally
+remediate. In other words, this
+
+00:20:03.135 --> 00:20:07.873
+isn't a vulnerability somebody
+can patch. And so golden tickets
+
+00:20:07.873 --> 00:20:11.711
+have ( Indiscernible ) tickets
+that the attacker can create
+
+00:20:11.711 --> 00:20:14.880
+themselves rather than relying
+on the domain controller to
+
+00:20:14.880 --> 00:20:19.351
+create them. So in this case I
+got my compromised domain
+
+00:20:19.351 --> 00:20:22.588
+controller and I'm going to once
+again connect to it with my
+
+00:20:22.588 --> 00:20:28.594
+Meterpreter shell. All right.
+Let that start out. Got my
+
+00:20:39.405 --> 00:20:45.411
+session. Now, I'm a domain
+admin. But it turns out that,
+
+00:20:48.914 --> 00:20:51.083
+and first thing I'm going to do,
+I'm going get my SID. Because my
+
+00:20:51.083 --> 00:20:55.621
+SID is my domain SID followed by
+the user SID. So I actually need
+
+00:20:55.621 --> 00:20:57.623
+the domain SID for this, I'm
+going to grab the list of
+
+00:20:57.623 --> 00:21:03.863
+processes and migrate myself
+into CRISS. With golden tickets
+
+00:21:03.863 --> 00:21:07.233
+to get the hash I need I need to
+be able process that has
+
+00:21:07.233 --> 00:21:11.537
+actually started as NT authority
+systems. So I can't just get
+
+00:21:11.537 --> 00:21:13.706
+system privileges. I need to
+migrate into a process that
+
+00:21:13.706 --> 00:21:17.109
+started that way. I'm going to
+load Mimikatz extension again
+
+00:21:17.109 --> 00:21:20.045
+and download passes. Well, as
+long as all of the user hashes
+
+00:21:20.045 --> 00:21:24.216
+here, I have this one that
+belongs to, I grabbed the hash
+
+00:21:24.216 --> 00:21:27.386
+of that, it belongs to an
+account called KRBGT. Isn't a
+
+00:21:27.386 --> 00:21:30.789
+real user, this is the Kerberos
+ticket granting ticket hash.
+
+00:21:30.789 --> 00:21:34.293
+This is what is used by the
+domain controller to sign ticket
+
+00:21:34.293 --> 00:21:38.197
+signing tickets in Kerberos. No,
+Mimikatz has an extension.
+
+00:21:38.197 --> 00:21:40.733
+Golden ticket create, and I'm
+going to run that, and I'm going
+
+00:21:40.733 --> 00:21:44.570
+to specify the domain, PG DEF
+CON, and I'm going to specify
+
+00:21:44.570 --> 00:21:48.007
+that I want a ticket that
+belongs to tickets 501 and 502.
+
+00:21:48.007 --> 00:21:53.479
+So it's a domain admin, and I'm
+going to specify that KRBGT hash
+
+00:21:53.479 --> 00:21:58.684
+that I just copied above. I also
+have to specify the domain SID,
+
+00:21:58.684 --> 00:22:05.758
+which is why I grabbed that a
+little bit earlier. And I'll
+
+00:22:05.758 --> 00:22:09.962
+specify a path for storing this.
+I'll call it PG DEF CON dot
+
+00:22:09.962 --> 00:22:13.799
+golden dot TKT so I can remember
+it and I'm going to specify the
+
+00:22:13.799 --> 00:22:18.370
+user admin. Now, the user I
+specify doesn't actually have to
+
+00:22:18.370 --> 00:22:21.307
+be a member of any of the groups
+I specify. I can create a ticket
+
+00:22:21.307 --> 00:22:23.876
+that says some other user's
+domain admin, doesn't matter.
+
+00:22:23.876 --> 00:22:27.513
+The ticket is going to specify
+what groups it has and the other
+
+00:22:27.513 --> 00:22:32.518
+servers are going to believe me.
+Now that I got that created,
+
+00:22:32.518 --> 00:22:36.055
+what do I do with it? Well,
+later on I'm now connecting back
+
+00:22:36.055 --> 00:22:38.524
+to my workstation as Bobert
+again, so I'm an unprivileged
+
+00:22:38.524 --> 00:22:44.530
+user. So I'm Bobert. I have my
+normal user SID. I load up the
+
+00:22:48.934 --> 00:22:53.839
+kiwi extension again, which was
+Mimikatz 2. And use Kerberos
+
+00:22:53.839 --> 00:22:56.475
+ticket list and see, okay. I
+don't have any Kerberos tickets
+
+00:22:56.475 --> 00:23:00.546
+right now. And so naturally if I
+dropout to a shell and attempt
+
+00:23:00.546 --> 00:23:05.017
+to net use on the domain
+controller I get password is
+
+00:23:05.017 --> 00:23:12.024
+invalid. But -- I can then in
+Meterpreter go ahead and call
+
+00:23:12.024 --> 00:23:17.930
+up, ah, that golden ticket file
+that I saved earlier. So I'm
+
+00:23:17.930 --> 00:23:25.271
+going to do Kerberos ticket use
+PG DEF CON dot golden dot TKT.
+
+00:23:25.271 --> 00:23:28.574
+Using Kerberos ticket stored,
+ticket applied successfully, I'm
+
+00:23:28.574 --> 00:23:33.412
+still Bobert if I do a get UID.
+But now if I shell out and do
+
+00:23:33.412 --> 00:23:37.349
+any kind of network access, that
+Kerberos ticket is presented. So
+
+00:23:37.349 --> 00:23:40.819
+I can net use the domain
+controllers, admin, partition
+
+00:23:40.819 --> 00:23:44.890
+and list things. It doesn't
+matter that I am not actually a
+
+00:23:44.890 --> 00:23:47.893
+domain admin or a member of any
+of those groups because that
+
+00:23:47.893 --> 00:23:51.530
+ticket I created specified it's
+in the domain admin group, um, I
+
+00:23:51.530 --> 00:23:55.067
+can do anything someone in the
+domain admin group can do. The
+
+00:23:55.067 --> 00:23:58.304
+other great thing about Kerberos
+tickets is, ah, first of all,
+
+00:23:58.304 --> 00:24:01.774
+they are less than 20 minutes
+old. It doesn't even check with
+
+00:24:01.774 --> 00:24:05.277
+the domain controller to, to see
+if it should use the group.
+
+00:24:05.277 --> 00:24:09.114
+That's one thing, if the ticket
+is more than 20 minutes old, um,
+
+00:24:09.114 --> 00:24:11.784
+the user you're impersonating
+will actually use their actual
+
+00:24:11.784 --> 00:24:14.987
+current privileges, but if you
+create a new ticket that's very
+
+00:24:14.987 --> 00:24:18.257
+young, um, then it's, it's fine,
+it doesn't matter if the
+
+00:24:18.257 --> 00:24:20.893
+privileges you specified are
+totally unlike what that user
+
+00:24:20.893 --> 00:24:24.430
+actually has, it will still just
+use whatever is in the ticket.
+
+00:24:24.430 --> 00:24:27.966
+So what does this look like at a
+defender? Well, creating a
+
+00:24:27.966 --> 00:24:31.203
+golden ticket doesn't look like
+anything, because all I did was
+
+00:24:31.203 --> 00:24:37.209
+dump hashes straight out of
+memory. Um, I could create the
+
+00:24:44.383 --> 00:24:46.385
+golden ticket on my own
+computer. I don't have to do
+
+00:24:46.385 --> 00:24:48.387
+that on the domain controller.
+Once I've got the hash in the
+
+00:24:48.387 --> 00:24:50.389
+domain SID I can do that locally
+without creating any events
+
+00:24:50.389 --> 00:24:52.391
+anywhere. And I can do it for
+any user I want for any groups
+
+00:24:52.391 --> 00:24:54.393
+that I want. Now, when I go to
+use it, um, it varies what you
+
+00:24:54.393 --> 00:24:56.395
+see. Here we have a couple of
+log-in events. Ah, they're both
+
+00:24:56.395 --> 00:24:58.397
+in accounting successfully
+logged on. One of these was a
+
+00:24:58.397 --> 00:25:00.332
+legit admin log on and the other
+was me using a golden ticket.
+
+00:25:00.332 --> 00:25:02.334
+Um, you'll note they look
+basically identical. In this
+
+00:25:02.334 --> 00:25:06.739
+case the only difference we have
+is that in one of them the
+
+00:25:06.739 --> 00:25:11.710
+account domain is in lowercase
+and in the other one the account
+
+00:25:11.710 --> 00:25:15.514
+domain is in capital letters.
+And that's not necessarily an
+
+00:25:15.514 --> 00:25:17.616
+artifact of using a golden
+ticket, that's an artifact of
+
+00:25:17.616 --> 00:25:20.686
+when I used to create golden
+ticket command I typed the
+
+00:25:20.686 --> 00:25:25.057
+domain name in lowercase. And so
+it took exactly what I put in.
+
+00:25:25.057 --> 00:25:28.427
+All you're going to see is
+potentially anomalous log-in
+
+00:25:28.427 --> 00:25:31.096
+events they will be anomalous in
+different ways, maybe you see an
+
+00:25:31.096 --> 00:25:33.932
+FQDN where you expect a net bio
+us name, maybe you see a net
+
+00:25:33.932 --> 00:25:38.036
+bios name where you expect a
+FQDN. Casing issues, that sort
+
+00:25:38.036 --> 00:25:41.140
+of thing, but there is not a
+consistent indicator that
+
+00:25:41.140 --> 00:25:44.109
+someone is using golden ticket,
+it is actually relatively hard
+
+00:25:44.109 --> 00:25:47.579
+to detect. It is mostly a matter
+if people have access they
+
+00:25:47.579 --> 00:25:51.650
+should not have and, you know,
+are, are gaining access to
+
+00:25:51.650 --> 00:25:54.753
+things without actually being a
+member of groups it's something
+
+00:25:54.753 --> 00:25:58.190
+to suspect. Um, that's probably
+the worst thing about the golden
+
+00:25:58.190 --> 00:26:01.627
+tickets. The other things that's
+terrible about them so you find
+
+00:26:01.627 --> 00:26:04.363
+out an attacker does have a
+golden ticket, what do you do
+
+00:26:04.363 --> 00:26:08.534
+about it? You have to rotate the
+hash of that KRBGT account and
+
+00:26:08.534 --> 00:26:12.738
+you have to do it twice because
+it actually keep as history. So
+
+00:26:12.738 --> 00:26:18.143
+the password that's one password
+old still works. Um, if you were
+
+00:26:18.143 --> 00:26:21.647
+running Windows server 2012
+domains this is actually not
+
+00:26:21.647 --> 00:26:25.884
+terrible. You rotate that
+account twice and now you can go
+
+00:26:25.884 --> 00:26:28.921
+on about your business and hope
+your attacker does not still
+
+00:26:28.921 --> 00:26:32.124
+have current access and can just
+generate a new golden ticket. If
+
+00:26:32.124 --> 00:26:36.428
+you are running a Windows 2008
+release or older domain it is a
+
+00:26:36.428 --> 00:26:40.032
+much bigger pain. Because as
+soon as you rotate those KRBGT
+
+00:26:40.032 --> 00:26:44.103
+passwords nothing in the domain
+will be able to authenticate
+
+00:26:44.103 --> 00:26:47.773
+until it reboots. And that also
+means you can't authenticate to
+
+00:26:47.773 --> 00:26:52.611
+it, to tell it to reboot. So it
+is -- aye, pretty messy
+
+00:26:52.611 --> 00:26:56.281
+challenge of scripting and
+remediation, which is why until
+
+00:26:56.281 --> 00:26:59.017
+pretty recently, now, people are
+starting to run on 2008R2 or
+
+00:26:59.017 --> 00:27:04.523
+2012 domains, um, sometimes the
+response to an attacker having a
+
+00:27:04.523 --> 00:27:08.861
+golden ticket was to just kind
+of put up with them. And. [
+
+00:27:08.861 --> 00:27:11.797
+Laughter ] Not to actually, ah,
+remediate it entirely, or hope
+
+00:27:11.797 --> 00:27:16.635
+they don't have one. So it's a
+reason to be on a domain with a
+
+00:27:16.635 --> 00:27:19.872
+later functional, that's the
+other thing, you don't not only
+
+00:27:19.872 --> 00:27:23.775
+be running 2008R2 or later you
+need to be running a domain
+
+00:27:23.775 --> 00:27:26.678
+functional level of 2008R2. Just
+upgrading the domain controller,
+
+00:27:26.678 --> 00:27:29.615
+doesn't necessarily upgrade the
+domain functional level to a
+
+00:27:29.615 --> 00:27:32.851
+current version. That's -- an
+explicit decision by the domain
+
+00:27:32.851 --> 00:27:37.089
+admin. So that's, that's another
+thing we've got. But we actually
+
+00:27:37.089 --> 00:27:40.993
+have a couple more. So another
+thing we can do is tampering
+
+00:27:40.993 --> 00:27:45.097
+with SID history. So now we're
+getting into some Windows AD
+
+00:27:45.097 --> 00:27:51.303
+features that most SID admins
+probably have never used and are
+
+00:27:51.303 --> 00:27:55.240
+not necessarily very aware of.
+Um, so SID history is a feature
+
+00:27:55.240 --> 00:28:01.179
+of AD, um, that's designed for
+domain migration. It is design,
+
+00:28:16.328 --> 00:28:20.098
+I'm adding a new domain to my
+forest, and that domain would
+
+00:28:20.098 --> 00:28:23.602
+say another company acquisition
+and I need users in my new
+
+00:28:23.602 --> 00:28:27.706
+domain to still be able to do
+stuff on the machines joined to
+
+00:28:27.706 --> 00:28:31.810
+the old domain, but I don't want
+them logging into the domain to
+
+00:28:31.810 --> 00:28:35.280
+make migration easier. What it
+does is allow you to add
+
+00:28:35.280 --> 00:28:39.084
+secondary SID to the user. The
+user has their own SIDs and
+
+00:28:39.084 --> 00:28:42.854
+other SIDs they have. So this is
+another one where I actually
+
+00:28:42.854 --> 00:28:46.024
+need real Mimikatz and since I'm
+using Metasploit that means
+
+00:28:46.024 --> 00:28:49.828
+killing the AD and uploading a
+copy of Mimikatz again. So I'm
+
+00:28:49.828 --> 00:28:53.599
+going to get my user ID. So
+here's my admin session. And
+
+00:28:53.599 --> 00:28:57.402
+move over into a process started
+as system. All right. Drop onto
+
+00:28:57.402 --> 00:29:04.142
+a folder I have Mimikatz in. And
+I'm just going to run -- it's
+
+00:29:04.142 --> 00:29:08.180
+very simple, the command is just
+add SID. So I'm going to do NIST
+
+00:29:08.180 --> 00:29:11.950
+add SID and I'm going to add to
+Bobert the SID enterprise
+
+00:29:11.950 --> 00:29:15.554
+admins. Um, I could choose a
+group SID. I could choose a user
+
+00:29:15.554 --> 00:29:17.623
+SID. It doesn't, I could choose
+a computer account SID if I
+
+00:29:17.623 --> 00:29:21.793
+really wanted to. Whatever I
+want to, that SID is now added
+
+00:29:21.793 --> 00:29:25.297
+and Bobert is equivalent to
+whatever the privileges that SID
+
+00:29:25.297 --> 00:29:29.801
+has. So what this actually looks
+like to Bobert? It actually
+
+00:29:29.801 --> 00:29:34.106
+looks kind of weird because
+there is no overt sign that they
+
+00:29:34.106 --> 00:29:36.608
+have secondary SIDs. In this
+case I'm firing up active
+
+00:29:36.608 --> 00:29:40.679
+directory using computers. Pull
+up Bobert. And I look in, ah,
+
+00:29:40.679 --> 00:29:44.583
+the groups that he's in -- look
+in the groups that he's in and
+
+00:29:44.583 --> 00:29:47.352
+he's not in enterprise admins.
+If I pullup enterprise admins
+
+00:29:47.352 --> 00:29:50.589
+and look at members he's not a
+member of enterprise admins.
+
+00:29:50.589 --> 00:29:53.458
+There's no particular sign that
+he's a member of that group. But
+
+00:29:53.458 --> 00:29:57.295
+-- note that the add and remove
+buttons are not grayed out. Just
+
+00:29:57.295 --> 00:30:00.232
+because I'm not a member of
+enterprise admins doesn't mean I
+
+00:30:00.232 --> 00:30:03.402
+don't still have full privileges
+to edit it. Now, once again I
+
+00:30:03.402 --> 00:30:06.872
+wouldn't want to go adding user
+has the group until you do some
+
+00:30:06.872 --> 00:30:09.808
+sort of exploit because that is
+clearly going to go creating
+
+00:30:09.808 --> 00:30:12.444
+events. This is just a
+demonstration of the fact that
+
+00:30:12.444 --> 00:30:15.747
+he's got the full privileges of
+enterprise admins despite not
+
+00:30:15.747 --> 00:30:21.386
+being a member of that group and
+can do anything that EA can do.
+
+00:30:21.386 --> 00:30:24.589
+So what does this look like?
+Well, actually, this is one of
+
+00:30:24.589 --> 00:30:27.359
+the relative easier way to
+detect if someone is actively
+
+00:30:27.359 --> 00:30:31.763
+looking for it. An event 4765
+SID history was added to an
+
+00:30:31.763 --> 00:30:34.966
+account which we're never going
+to see except for explicit
+
+00:30:34.966 --> 00:30:40.739
+administration action. And it
+says exactly what security ID I
+
+00:30:40.739 --> 00:30:43.675
+added to that account. The
+problem is once again a lot of
+
+00:30:43.675 --> 00:30:46.078
+people are not configuring their
+seam and actually watching
+
+00:30:46.078 --> 00:30:50.382
+actively for events. And we're
+not seeing the super common
+
+00:30:50.382 --> 00:30:54.252
+events like, you know, security
+group membership change. You'd
+
+00:30:54.252 --> 00:30:59.825
+have to be looking for a SID
+history change. All right. So --
+
+00:30:59.825 --> 00:31:04.496
+or things we got is tampering
+with active directory DACLs. Um,
+
+00:31:04.496 --> 00:31:08.800
+now we're getting into some even
+weirder stuff. Active directory
+
+00:31:08.800 --> 00:31:13.505
+objects actually all have access
+control lists on them, just like
+
+00:31:13.505 --> 00:31:18.076
+files do. And, um, those
+objects, I'm going -- unplug my
+
+00:31:18.076 --> 00:31:23.482
+network here. They, those
+objects are not easily visible
+
+00:31:23.482 --> 00:31:28.120
+to the user. They're not really
+exposed in the UI anywhere. And
+
+00:31:28.120 --> 00:31:31.556
+most Windows system admins use
+the UI and that's kind of what
+
+00:31:31.556 --> 00:31:35.327
+Windows is for is providing user
+interfaces to everything. So um,
+
+00:31:35.327 --> 00:31:40.031
+because these are not exposed in
+the, ah, UI anywhere, this I
+
+00:31:40.031 --> 00:31:45.504
+actually have to use a piece of
+VB script to do this. So in this
+
+00:31:45.504 --> 00:31:49.074
+case, um, you could obviously
+use C, C script or any other
+
+00:31:49.074 --> 00:31:52.010
+script you want to use. Um, but
+you need something that will run
+
+00:31:52.010 --> 00:31:56.314
+in Windows, Windows scripting
+host. So in this case, um, I've
+
+00:31:56.314 --> 00:32:01.653
+got a script that is going to
+join Bobert to the, ah, built in
+
+00:32:01.653 --> 00:32:05.357
+group terminal server license
+servers. Um, it could be any
+
+00:32:05.357 --> 00:32:07.793
+built in group, I just want a
+built in group that's there on
+
+00:32:07.793 --> 00:32:10.762
+every machine and that nobody
+really does anything with. Um,
+
+00:32:10.762 --> 00:32:15.634
+so I'm going to be joining that
+account to there. And then I'm
+
+00:32:15.634 --> 00:32:21.506
+going to be modifying the ACLs
+on that, ah, on both that object
+
+00:32:21.506 --> 00:32:25.143
+and another object called admin
+SD holder which is found in
+
+00:32:25.143 --> 00:32:27.245
+active directory. I'm not
+expecting anybody to read the
+
+00:32:27.245 --> 00:32:30.549
+script, I just wanted to have it
+in the, ah, slides so if you
+
+00:32:30.549 --> 00:32:32.918
+download the slides you can
+actually see the exact script
+
+00:32:32.918 --> 00:32:37.222
+being used. Um, so admin SD
+holder is kind of an interesting
+
+00:32:37.222 --> 00:32:41.226
+object. Windows, ah, file
+protection tries to protect
+
+00:32:41.226 --> 00:32:44.429
+active directory objects from
+having their ACLs tampered with.
+
+00:32:44.429 --> 00:32:50.035
+So if you were to just change
+the ACL on domain admin and say
+
+00:32:50.035 --> 00:32:54.439
+Bobert can access it, ah, within
+an hour Windows would discover
+
+00:32:54.439 --> 00:32:58.877
+that ACL had been tampered and
+will immediately stop over it
+
+00:32:58.877 --> 00:33:02.013
+with standard administrative
+object ACL template. Admin SD
+
+00:33:02.013 --> 00:33:05.116
+holder. So instead I'm just
+going to modify admin SD holder
+
+00:33:05.116 --> 00:33:09.888
+and have Windows stomp that onto
+all of the AD objects for me. So
+
+00:33:09.888 --> 00:33:14.993
+when I modify that ACL it has
+some, ah, rather unusual
+
+00:33:14.993 --> 00:33:18.063
+results. It's actually a lot
+like it, it looks a lot like the
+
+00:33:18.063 --> 00:33:23.869
+SID history does. Um, once I've
+got that, um, if I look at my
+
+00:33:23.869 --> 00:33:25.871
+groups, um, domain admins, once
+again, does have Bobert in it,
+
+00:33:25.871 --> 00:33:31.877
+and Bobert doesn't have any
+access to go adding and removing
+
+00:33:37.349 --> 00:33:43.355
+to it. So now I'm going to
+connect to my administrative
+
+00:33:47.826 --> 00:33:53.832
+session. And I'm going to upload
+my VBS file. And once I've got a
+
+00:34:01.573 --> 00:34:06.645
+shell I'm going to go ahead and
+run that VBS file. It takes a
+
+00:34:06.645 --> 00:34:14.586
+few seconds. Makes a bunch of
+LDAP calls. All right. Now, I
+
+00:34:14.586 --> 00:34:19.357
+just delete my script. And
+active directory has a backdoor
+
+00:34:19.357 --> 00:34:25.363
+in it. So coming back here, I'm
+still Bobert. And if I go to
+
+00:34:27.933 --> 00:34:30.969
+domain admins I still don't
+really have access there.
+
+00:34:30.969 --> 00:34:35.040
+However, nobody really monitors
+local built-ins like terminal
+
+00:34:35.040 --> 00:34:37.609
+server license servers. And even
+though I'm not a member of that
+
+00:34:37.609 --> 00:34:40.011
+and I'm not an admin it turns
+out I do have the ability to
+
+00:34:40.011 --> 00:34:47.919
+edit that. And if I do edit it,
+now I can go back to domain
+
+00:34:47.919 --> 00:34:53.792
+admins and I have add and remove
+access. So I've just granted
+
+00:34:53.792 --> 00:34:57.596
+myself the ability to have
+domain administrative privileges
+
+00:34:57.596 --> 00:35:00.565
+without needing to modify
+anything except a local built in
+
+00:35:00.565 --> 00:35:05.003
+that is not normally something
+that's monitored. And now I've
+
+00:35:05.003 --> 00:35:09.274
+got full access to whatever I
+wanted to. So what's this look
+
+00:35:09.274 --> 00:35:13.244
+like in our event log? Ah, well,
+we do have a security enabled
+
+00:35:13.244 --> 00:35:15.914
+local group was changed. If
+you're monitoring security
+
+00:35:15.914 --> 00:35:19.684
+enabled local groups. It's an
+event 4735. It's changed to
+
+00:35:19.684 --> 00:35:23.822
+terminal server license servers.
+It's not the most common event,
+
+00:35:23.822 --> 00:35:28.526
+but neither does it really jump
+out to you as a potential, as --
+
+00:35:28.526 --> 00:35:31.696
+serious security event. And
+normally that would be, oh,
+
+00:35:31.696 --> 00:35:35.900
+somebody added a terminal server
+license server. Um, but we do
+
+00:35:35.900 --> 00:35:39.871
+have a security enabled global
+group was changed. It didn't
+
+00:35:39.871 --> 00:35:42.540
+note, it doesn't say that we
+added or removed members. It
+
+00:35:42.540 --> 00:35:44.609
+doesn't say specifically what we
+did, just that there was a
+
+00:35:44.609 --> 00:35:49.080
+change. And then we get these
+very weird events. Ah, this is a
+
+00:35:49.080 --> 00:35:53.718
+5136 directory service changes.
+Um, once again not necessarily
+
+00:35:53.718 --> 00:35:57.055
+something a lot of people audit.
+A directory service object was
+
+00:35:57.055 --> 00:36:02.761
+modified. And we get one event
+like this, um, and it says the
+
+00:36:02.761 --> 00:36:06.398
+type is value deleted on our
+domain admins and then another
+
+00:36:06.398 --> 00:36:09.668
+event like this, that's value
+added. Ah, I went ahead and
+
+00:36:09.668 --> 00:36:13.304
+highlighted the only difference
+in that massive block of fluids
+
+00:36:13.304 --> 00:36:16.541
+because once again, it's not
+necessarily super obvious what
+
+00:36:16.541 --> 00:36:20.145
+has changed. If somebody's not
+even aware that active directory
+
+00:36:20.145 --> 00:36:24.115
+objects have DACLs, it's not
+going to be obvious what this
+
+00:36:24.115 --> 00:36:28.420
+means. This can easily be the
+sort of event that looks like,
+
+00:36:28.420 --> 00:36:31.322
+well -- it's a little
+suspicious, something happened,
+
+00:36:31.322 --> 00:36:35.694
+um, the other things it's not at
+all obvious what they should do
+
+00:36:35.694 --> 00:36:40.098
+about it. Um, you know, you see
+these events, how do you change
+
+00:36:40.098 --> 00:36:44.269
+the DACL back? It's not exposed
+in the UI. You'd have to script
+
+00:36:44.269 --> 00:36:49.441
+it. Ah, we also have this other
+one which is the admin SD
+
+00:36:49.441 --> 00:36:54.079
+holder. Ah, and actually --
+yeah. The admin SD older object.
+
+00:36:54.079 --> 00:36:57.148
+And once again, it's the same
+ACL change. Um, admin SD holder
+
+00:36:57.148 --> 00:37:00.785
+means if someone does change the
+ACL back on domain admins,
+
+00:37:00.785 --> 00:37:03.455
+Windows will just stop it with
+the compromised ACL again within
+
+00:37:03.455 --> 00:37:09.027
+an hour. Um, so Windows will
+hopefully put your backdoor
+
+00:37:09.027 --> 00:37:13.364
+back. So those are some of the
+ways an attacker can use to
+
+00:37:13.364 --> 00:37:16.868
+create themselves backdoors and
+active directory that are not
+
+00:37:16.868 --> 00:37:20.205
+necessarily obvious to the
+defenders. So what can we do for
+
+00:37:20.205 --> 00:37:23.708
+detection or remediation? Well,
+the good news is, everything
+
+00:37:23.708 --> 00:37:27.378
+that I listed here does leave
+traces in the event log or in
+
+00:37:27.378 --> 00:37:31.182
+the AD change log. None of this
+is 100% invisible. The closest
+
+00:37:31.182 --> 00:37:35.086
+thing to that is actually golden
+tickets, which leave very little
+
+00:37:35.086 --> 00:37:38.223
+trace whatsoever. And their
+counterparts, silver tickets,
+
+00:37:38.223 --> 00:37:41.259
+which I didn't go into, which
+basically are the same thing
+
+00:37:41.259 --> 00:37:44.429
+they only allow you access to a
+specific service, but if that
+
+00:37:44.429 --> 00:37:47.665
+specific service is something
+with administrative privileges
+
+00:37:47.665 --> 00:37:50.368
+you can potentially elevate
+right back up using that
+
+00:37:50.368 --> 00:37:53.838
+service. These are very
+difficult to detect at all. But
+
+00:37:53.838 --> 00:37:58.810
+the rest are easy to detect
+assuming you have the correct
+
+00:37:58.810 --> 00:38:01.346
+policy set. The problem we run
+into is, well, I didn't
+
+00:38:01.346 --> 00:38:04.582
+specifically go through it, an
+attacker can disable event
+
+00:38:04.582 --> 00:38:07.652
+retrieval and forwarding and
+purge the event log. If an
+
+00:38:07.652 --> 00:38:11.156
+attacker really doesn't want to
+leave events showing exactly
+
+00:38:11.156 --> 00:38:14.959
+what they did, they can kill the
+Splunk universal forwarder. They
+
+00:38:14.959 --> 00:38:20.131
+can clear the event log. Um, and
+there's not really anything you
+
+00:38:20.131 --> 00:38:23.701
+can do about that. The, ah, on
+the other hand, it does leave a
+
+00:38:23.701 --> 00:38:26.771
+very obvious event. You know,
+the event log was cleared is an
+
+00:38:26.771 --> 00:38:29.407
+obvious security relevant event.
+It's another one of the things
+
+00:38:29.407 --> 00:38:32.177
+like changing the membership of
+the domain admin group. This
+
+00:38:32.177 --> 00:38:36.147
+sends up a big red flag that
+somebody's doing something bad.
+
+00:38:36.147 --> 00:38:38.149
+The problem is, it doesn't
+really send up much of a flag of
+
+00:38:38.149 --> 00:38:41.719
+what exactly they were doing
+which can make it very difficult
+
+00:38:41.719 --> 00:38:45.323
+to remediate it. Um, and also,
+yeah. It kind of sucks when
+
+00:38:45.323 --> 00:38:48.026
+somebody turns off logging on
+the domain controller, because
+
+00:38:48.026 --> 00:38:51.596
+then you're blind to what's
+going on for a short period of
+
+00:38:51.596 --> 00:38:54.599
+time. Um, of course, you also
+need to change compromised
+
+00:38:54.599 --> 00:38:57.302
+passwords when you know somebody
+has, has compromised something.
+
+00:38:57.302 --> 00:38:59.704
+Um, but if somebody's
+compromised the domain, they
+
+00:38:59.704 --> 00:39:03.842
+probably have a copy of NTDS dot
+diff, so you not only need to
+
+00:39:03.842 --> 00:39:06.544
+passwords they compromised to be
+changed, but really everything
+
+00:39:06.544 --> 00:39:09.247
+password in the domain. Even
+service accounts, which are
+
+00:39:09.247 --> 00:39:11.950
+usually not something people
+want to change their passwords
+
+00:39:11.950 --> 00:39:15.553
+of. And even the Kerberos ticket
+granting ticket. You'd also need
+
+00:39:15.553 --> 00:39:18.890
+to do a full audit of every AD
+change since the compromise for
+
+00:39:18.890 --> 00:39:22.126
+things like group membership and
+SID history changes if logging
+
+00:39:22.126 --> 00:39:26.130
+was disabled because they could
+have, you know, they, they could
+
+00:39:26.130 --> 00:39:29.300
+have put a chain of SID
+histories through any number of,
+
+00:39:29.300 --> 00:39:32.904
+of items. Now, there are AD
+forensics tools that will let
+
+00:39:32.904 --> 00:39:35.873
+you DIF AD against a back up and
+find out everything that's been
+
+00:39:35.873 --> 00:39:38.409
+changed since that time. Once
+again, it's possible for the
+
+00:39:38.409 --> 00:39:41.379
+defender to root that out. It's
+just potentially a great deal of
+
+00:39:41.379 --> 00:39:44.983
+work. A lot more work than the
+attacker had to put into it.
+
+00:39:44.983 --> 00:39:47.986
+Also, you need your audit stuff
+configured correctly. For all of
+
+00:39:47.986 --> 00:39:53.992
+this demo to catch all those
+events I caught, um, in audit
+
+00:40:13.344 --> 00:40:15.346
+policy I had it set to audit
+account log on events, account
+
+00:40:15.346 --> 00:40:17.348
+management, DS events, log on
+events, object access, policy
+
+00:40:17.348 --> 00:40:19.350
+change, privilege use, and
+system events. Object access and
+
+00:40:19.350 --> 00:40:21.352
+log on events are extremely
+large volume. Especially log on
+
+00:40:21.352 --> 00:40:23.354
+events includes all network
+processes executions. So um,
+
+00:40:23.354 --> 00:40:25.356
+every time my, ah, monitoring
+server wants to connect and pull
+
+00:40:25.356 --> 00:40:27.358
+logs, which it does every minute
+or every 10 minutes I got
+
+00:40:27.358 --> 00:40:29.360
+another log on event on every
+server in my domain. So they can
+
+00:40:29.360 --> 00:40:31.362
+create a lot of volume. I also
+went into advanced audit
+
+00:40:31.362 --> 00:40:33.364
+configuration and added computer
+account management, security
+
+00:40:33.364 --> 00:40:35.366
+group management, and user
+account management. In detailed
+
+00:40:35.366 --> 00:40:37.535
+tracking you can also audit RPC
+events and process creation.
+
+00:40:37.535 --> 00:40:41.739
+Audit process creation is
+actually very powerful for
+
+00:40:41.739 --> 00:40:45.176
+finding out what people did
+especially if you also turn on
+
+00:40:45.176 --> 00:40:48.780
+the, ah, the setting to do
+command line logging. Um,
+
+00:40:48.780 --> 00:40:51.949
+because then you get every
+command they typed into a shell.
+
+00:40:51.949 --> 00:40:55.053
+Ah, you also get every command
+they typed into PowerShell. So
+
+00:40:55.053 --> 00:40:57.488
+some of these in-memory
+PowerShell exploits which
+
+00:40:57.488 --> 00:41:00.858
+otherwise leave no trace on the
+disk can be creating a lot of
+
+00:41:00.858 --> 00:41:04.329
+events if you've got that, that
+logging turned on. Um, the
+
+00:41:04.329 --> 00:41:07.598
+problem there, once again, is --
+auditing process creation
+
+00:41:07.598 --> 00:41:12.270
+creates a very large number of
+events, um, especially on a
+
+00:41:12.270 --> 00:41:16.007
+domain controller. Processes
+start and stop all the time. And
+
+00:41:16.007 --> 00:41:19.477
+it's totally innocuous. So it's
+one of those auditing process
+
+00:41:19.477 --> 00:41:22.246
+creation will give you a wealth
+of forensic information, but
+
+00:41:22.246 --> 00:41:25.350
+it's very hard to alert on it
+other than, you know, auditing
+
+00:41:25.350 --> 00:41:28.619
+process creation for Mimikatz
+dot EXE and things along that
+
+00:41:28.619 --> 00:41:32.957
+line, which hopefully in a real
+pen test or real intrusion an
+
+00:41:32.957 --> 00:41:36.094
+attacker would know to rename
+the files at the very least.
+
+00:41:36.094 --> 00:41:39.197
+More likely they're not just
+going to rename the files.
+
+00:41:39.197 --> 00:41:41.199
+They're going to run them
+through something like
+
+00:41:41.199 --> 00:41:44.168
+Veil-Framework or backdoor
+factory and completely scrape
+
+00:41:44.168 --> 00:41:47.238
+them so not only do they have a
+new name, they're not going to
+
+00:41:47.238 --> 00:41:52.543
+show up in the antimalware.
+Something else you can do, if
+
+00:41:52.543 --> 00:41:55.913
+you want to be intensive on the
+logging you can do process start
+
+00:41:55.913 --> 00:41:58.816
+command line logging and
+PowerShell logging. And the
+
+00:41:58.816 --> 00:42:00.952
+system internals monitoring
+service, SISTMON can be
+
+00:42:00.952 --> 00:42:05.957
+installed on systems. It is a
+fun little tool, not only does
+
+00:42:05.957 --> 00:42:09.827
+it do, um, log process creation
+with command line, it logs the
+
+00:42:09.827 --> 00:42:13.264
+parent process. So you can see
+what process spawned all of
+
+00:42:13.264 --> 00:42:16.868
+these. Ah, and it includes a
+process GOOID so you can easily
+
+00:42:16.868 --> 00:42:20.104
+correlate between processes with
+the same name. Includes a
+
+00:42:20.104 --> 00:42:24.042
+session GOOID. Includes all of
+the DLLs that are loaded. And it
+
+00:42:24.042 --> 00:42:27.979
+gives you, ah, hashes for all of
+the DLLs and for the
+
+00:42:27.979 --> 00:42:30.948
+executables. So if someone has
+Trojaned something with backdoor
+
+00:42:30.948 --> 00:42:34.919
+factory, you notice that the,
+ah, the, the -- um, hash is
+
+00:42:34.919 --> 00:42:37.355
+different. Ah, you can even,
+will have it log all of the
+
+00:42:37.355 --> 00:42:40.425
+network connections and do a
+full, like IP tables-type log.
+
+00:42:40.425 --> 00:42:45.663
+Um, the log volume on an active
+server running, ah, SISTMON with
+
+00:42:45.663 --> 00:42:50.067
+everything on is pretty
+extensive. In fact, even without
+
+00:42:50.067 --> 00:42:53.805
+doing file system and registry
+monitoring, the log volume to
+
+00:42:53.805 --> 00:42:58.509
+really detect all of this is
+pretty insane. To capture all
+
+00:42:58.509 --> 00:43:02.113
+the logs in this presentation my
+domain controller alone was
+
+00:43:02.113 --> 00:43:06.851
+producing 500 megs a day of
+logs, without SISTMON, per day,
+
+00:43:06.851 --> 00:43:10.154
+per domain controller why the
+network was idol and had no
+
+00:43:10.154 --> 00:43:14.892
+active users doing anything can.
+So that's the kind of, of log
+
+00:43:14.892 --> 00:43:17.628
+volume we're talking about
+there. The gigabytes per server
+
+00:43:17.628 --> 00:43:23.334
+easily. So every system that has
+an attacker, that, that ever had
+
+00:43:23.334 --> 00:43:25.903
+an attacker on it with
+administrative access or a wiped
+
+00:43:25.903 --> 00:43:28.406
+event log so that we can't
+necessary track down what they
+
+00:43:28.406 --> 00:43:31.476
+do, needs to be entirely
+rebuilt. Um, you're alternative
+
+00:43:31.476 --> 00:43:36.047
+is doing file system forensics
+which could detect these
+
+00:43:36.047 --> 00:43:40.051
+changes. Honestly, that's
+probably even more work than
+
+00:43:40.051 --> 00:43:42.653
+rebuilding the domain
+controllers is. It, you know,
+
+00:43:42.653 --> 00:43:45.957
+under certain circumstances it
+can certainly be worthwhile to
+
+00:43:45.957 --> 00:43:49.994
+do, but it's not viable as a
+standard event, a standard
+
+00:43:49.994 --> 00:43:55.032
+security incident response. So
+if you've had your logs disabled
+
+00:43:55.032 --> 00:43:58.069
+and you don't have a full AD
+change history or the time to
+
+00:43:58.069 --> 00:44:02.406
+develop through all the events,
+um, you pretty much are down to
+
+00:44:02.406 --> 00:44:05.243
+nuke to entire site from morbid,
+it is the only way to be sure.
+
+00:44:05.243 --> 00:44:09.080
+You're down the rebuilding the
+domain. Changing the hashes of
+
+00:44:09.080 --> 00:44:13.284
+everything including the ticket
+granting ticket, um, and still,
+
+00:44:13.284 --> 00:44:16.187
+unless you're going to rebuild
+everything at the site, even the
+
+00:44:16.187 --> 00:44:19.490
+workstations, you probably still
+have someone who can get regular
+
+00:44:19.490 --> 00:44:23.361
+user access or has access to
+silver tickets. Um, there's not
+
+00:44:23.361 --> 00:44:27.632
+much you can do to clean those
+out. Um, so -- the other
+
+00:44:27.632 --> 00:44:31.102
+question is -- well, um, is this
+a problem with Windows domains
+
+00:44:31.102 --> 00:44:34.038
+and -- some kind of, but it's
+really kind of a problem with
+
+00:44:34.038 --> 00:44:37.508
+complexity. You could probably
+find just as many interesting
+
+00:44:37.508 --> 00:44:40.411
+ways to backdoor Linux and other
+operating systems. They'd
+
+00:44:40.411 --> 00:44:44.782
+obviously be entirely different
+ways. Um, but modern operating
+
+00:44:44.782 --> 00:44:48.886
+systems have an awful lot of
+stuff in them and when, when you
+
+00:44:48.886 --> 00:44:52.390
+look through things that start
+hundreds of scripts at boot and
+
+00:44:52.390 --> 00:44:55.026
+do a lot of processes at log-in,
+there's simply too many places
+
+00:44:55.026 --> 00:44:59.931
+for an attacker to hide. Um,
+this said, most of these, you
+
+00:44:59.931 --> 00:45:02.300
+could detect with my decent
+event log monitoring. The
+
+00:45:02.300 --> 00:45:05.670
+biggest problem is most
+enterprises don't have decent
+
+00:45:05.670 --> 00:45:08.940
+event log monitoring. They're
+doing very little because the
+
+00:45:08.940 --> 00:45:12.243
+only way to get it involves
+manual work by security
+
+00:45:12.243 --> 00:45:16.847
+analysts. People actually sit
+down and creating alerts and
+
+00:45:16.847 --> 00:45:21.385
+studying their environment and
+seeing what is actually normal
+
+00:45:21.385 --> 00:45:24.789
+behavior so they can detect
+anomalous behavior. Companies
+
+00:45:24.789 --> 00:45:27.692
+really like to buy security
+products that you just stick in
+
+00:45:27.692 --> 00:45:30.494
+a rack and walk away from. They
+don't like having to hire a
+
+00:45:30.494 --> 00:45:34.899
+bunch of analysts to do a bunch
+of work. And until they do, you
+
+00:45:34.899 --> 00:45:38.169
+end up with domain compromise
+being almost impossible to
+
+00:45:38.169 --> 00:45:43.407
+remediate. So I do have updated
+slides on my website. Ah, the
+
+00:45:43.407 --> 00:45:46.177
+slides that are on the DEF CON
+CD are pretty rudimentary,
+
+00:45:46.177 --> 00:45:48.512
+because of course they don't
+have any of the demo videos, the
+
+00:45:48.512 --> 00:45:50.548
+DEF CON CD -- ah, slides are
+PDFs. So none of the videos are
+
+00:45:50.548 --> 00:45:52.717
+there. So I did post my actually
+slides up on my site. Ah, there
+
+00:45:52.717 --> 00:46:00.458
+is not an actual post on the
+site, you'd have to go directly
+
+00:46:00.458 --> 00:46:03.561
+to the DEF CON 23 dot PBTX.
+Obviously I will update the site
+
+00:46:03.561 --> 00:46:07.064
+in the next few days, but have
+not done so. While I videoed the
+
+00:46:07.064 --> 00:46:11.302
+demos I do have this virtual
+network still up and running and
+
+00:46:11.302 --> 00:46:14.538
+so if anybody has any questions
+or needs anything demonstrated
+
+00:46:14.538 --> 00:46:20.544
+let me know and -- that's it. [
+Applause ]
+

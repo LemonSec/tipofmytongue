@@ -1,0 +1,2059 @@
+﻿00:00:00.234,00:00:06.306
+>>So we’re on our next talk. How
+many people here have uh used
+Apple Pay? Uh. So first time I
+
+00:00:06.306,00:00:11.879
+used Apple Pay was actually on
+an air compressor at a at a gas
+station. Who knew that that was
+
+00:00:11.879,00:00:17.017
+gonna be at the cutting edge of
+technology in mobile payments.
+Huh? Um, then I kept using it in
+
+00:00:17.017,00:00:21.121
+in person, it was like, I was
+like uh that’s pretty cool. Then
+I knew that - I- knew it was on
+
+00:00:21.121,00:00:25.859
+the web and that I we- had the
+opportunity to ge- uh order some
+coffee as you do off the
+
+00:00:25.859,00:00:30.030
+internet. You know cut out the
+middle man, ship direct to me.
+Um and I’m sitting there in bed
+
+00:00:30.030,00:00:35.202
+and I was like Apple Pay uh
+never used this on the web, how
+does this work? Badoop! And it’s
+
+00:00:35.202,00:00:40.707
+like it’s done! Shipping
+information’s preloaded, this is
+magic. Then I started being
+
+00:00:40.707,00:00:46.246
+like, I would rather use Apple
+Pay then then buy from Amazon.
+Um, so much like all things that
+
+00:00:46.246,00:00:52.753
+are magic, we come to DefCon to
+have our hopes and dreams
+dashed. [applause] So. Let’s
+
+00:00:52.753,00:00:58.725
+hear about Apple Pay is a
+severely broken. Probably.
+Hopefully not compromising your
+
+00:00:58.725,00:01:04.531
+credit card information. Let’s
+give our speaker a big round of
+applause. [applause] Good time
+
+00:01:04.531,00:01:09.536
+man. >>Thank you. Alright. So
+I’m going to lay something on
+the table right now. This talk
+
+00:01:11.972,00:01:16.777
+is about software architecture
+and I’m not apologizing for it.
+Now, you may be wondering. How
+
+00:01:16.777,00:01:20.681
+in the world did this guy get in
+here? Software talks are boring.
+And I would kind of agree with
+
+00:01:20.681,00:01:25.419
+you. I’ve been to a lot of them.
+I’ve been a software engineer
+myself. And they can be very
+
+00:01:25.419,00:01:30.724
+boring. Architecture talks can
+be especially boring. But most
+of those are on the positive
+
+00:01:30.724,00:01:36.363
+side. You build something. It
+scales. It makes the client a
+lot of money. So now you’re an
+
+00:01:36.363,00:01:42.569
+expert. But I’m going to go on
+the negative side. This is a ha-
+hacker convention after all.
+
+00:01:42.569,00:01:47.007
+Where does software architecture
+go horribly wrong? Obviously
+when it scales uh where it
+
+00:01:47.007,00:01:52.012
+scatters vulnerabilities across
+the web. So. So first about me.
+A bit about me. Uh I have a math
+
+00:01:56.550,00:02:01.555
+uh background in math. Been a
+web developer for awhile. Uh
+then I get started with bug
+
+00:02:01.555,00:02:06.393
+bounties and that shifted me a
+bit towards security. And now at
+PKC I’ve been doing a lot of
+
+00:02:06.393,00:02:11.098
+security work for clients. We’re
+located in Huntington Beach
+about a 4 hour drive away from
+
+00:02:11.098,00:02:16.103
+here. You can visit us at pkc
+dot io. And now for an overview
+of the talk. First I’ll go over
+
+00:02:21.241,00:02:27.748
+a couple of demos. There are so,
+sorry. First I’ll go over a
+couple of terms. Uh combined for
+
+00:02:27.748,00:02:33.954
+uh which we’ll later combine for
+my criticism of Apple Pay. Then
+I’ll do some demos. The focus is
+
+00:02:33.954,00:02:38.291
+on finding a large number of
+easy to exploit bugs. So the
+demos will be quick and
+
+00:02:38.291,00:02:42.129
+pre-recorded. These demos are
+all against my own
+re-deployments of open source
+
+00:02:42.129,00:02:46.700
+stuff that has already been
+fixed. I won’t be attacking any
+live e-commerce systems. Uh
+
+00:02:46.700,00:02:51.705
+since most of my disclosures to
+those are still private. Uh,
+lastly I’ll have some general
+
+00:02:53.774,00:02:58.912
+principles for designing better
+APIs. I’m going to go pretty
+hard here on an architectural
+
+00:02:58.912,00:03:03.083
+decision made by Apple. In
+discussing the security of
+software architecture people
+
+00:03:03.083,00:03:07.821
+tend to bring up vague
+principles and notions of whose
+responsible for what. But I’m
+
+00:03:07.821,00:03:13.093
+going to go back myself up with
+concrete examples. Better yet,
+these examples should be
+
+00:03:13.093,00:03:17.831
+educational if you want to start
+testing SSRF yourself. The
+payloads are all pretty easy and
+
+00:03:17.831,00:03:22.035
+a lot of them you can find on
+the web. Um, so this should be a
+great expository um place to
+
+00:03:22.035,00:03:27.040
+start. So. On to definitions. So
+there’s this existing concept of
+a class break. It’s the idea
+
+00:03:32.979,00:03:39.086
+that software tends to be
+vulnerable in several places at
+once. Past research has focused
+
+00:03:39.086,00:03:43.824
+on cases where you may have one
+single weak piece of code, say
+Heartbleed or SQL injection on a
+
+00:03:43.824,00:03:48.995
+CMS plugin. And then when that
+vulnerability gets found,
+there’s this huge rush again to
+
+00:03:48.995,00:03:53.133
+ensure its patched. Because it's
+broken in all these different
+places at once. You could frame
+
+00:03:53.133,00:03:57.471
+a lot of the talks at this
+conference as class breaks.
+Currently there’s a lot of
+
+00:03:57.471,00:04:02.409
+tooling to help companies stay
+on top of this. But there’s
+another level that I’ve seen a
+
+00:04:05.979,00:04:10.984
+lot of this year. It’s not new,
+but it’s becoming more common. A
+company will create an API
+
+00:04:10.984,00:04:15.555
+respect of this top level that
+isn’t itself vulnerable but in
+someway induces other people to
+
+00:04:15.555,00:04:20.727
+we- write weak code. Some
+familiar examples of this might
+be the JWT none algorithm or
+
+00:04:20.727,00:04:26.199
+problems in sample
+implementations. If you’re
+looking for sheer volum- volume
+
+00:04:26.199,00:04:32.038
+vulnerabilities, looking at this
+top level can be a great place
+to start. I couldn’t find an
+
+00:04:32.038,00:04:37.611
+existing general term for this
+top level, so I’m going to call
+it inductive weakness. And
+
+00:04:37.611,00:04:42.082
+here’s the definition. It’s a
+design flaw that encourages
+multiple parties to write
+
+00:04:42.082,00:04:47.387
+vulnerable code with a similar
+exploit pattern across differing
+software stacks. For example, we
+
+00:04:47.387,00:04:52.893
+might say that an API induces
+SSRF vulnerabilities or that an
+API has an inductive SSRF
+
+00:04:52.893,00:04:57.964
+weakness. This is wordy and
+might not seem entirely
+justified now, but it should
+
+00:04:57.964,00:05:04.604
+make more sense once we get onto
+the demos. And now for a
+refresher of the other term.
+
+00:05:04.604,00:05:09.643
+It’s been around for awhile and
+stands for server side request
+forgery. A lot of people tend to
+
+00:05:09.643,00:05:14.648
+request this with CSRF or client
+side request forgery. Um, but in
+actuality these the way that you
+
+00:05:16.783,00:05:20.187
+exploit these things are very
+very different, so the naming
+similarity is kind of
+
+00:05:20.187,00:05:24.591
+unfortunate. SSRF is a bit of a
+hot topic right now, because
+it's a lot easier to exploit
+
+00:05:24.591,00:05:28.929
+than it used to be. Um, in the
+past there have been some really
+really interesting talks on
+
+00:05:28.929,00:05:34.501
+SSRF. Um, we’ll get I’ll
+reference those later um but it
+is a really interesting area.
+
+00:05:34.501,00:05:38.405
+But for now we have some really
+easy payloads we’ll see. Towards
+the end of this section.
+
+00:05:38.405,00:05:43.410
+Alright. So. say there’s an
+attacker on the top left, wants
+to get to an internal facing
+
+00:05:50.884,00:05:55.889
+server on the bottom right. But
+the attacker doesn’t have direct
+access, they can only go through
+
+00:05:55.889,00:06:00.827
+this public facing server
+displayed in the middle. So the
+attacker then tries to f- find
+
+00:06:04.531,00:06:09.402
+some weakness in that public
+facing server. In the past
+people have taken the a URL and
+
+00:06:09.402,00:06:13.406
+put it somewhere like a host
+header. Or in the body of some
+XML in order to get this server
+
+00:06:13.406,00:06:19.279
+to hit the desired location. The
+goal is to really uh request the
+server in the middle as if it
+
+00:06:19.279,00:06:24.918
+were a proxy. Even though it’s
+not trying to be. Typically we
+o- we only call it SSRF if the
+
+00:06:24.918,00:06:29.656
+attacker can use the proxy like
+behavior to access or harm
+something internal. Even if it's
+
+00:06:29.656,00:06:33.827
+not true SSRF and you can only
+proxy through, sometimes it does
+make sense to report to
+
+00:06:33.827,00:06:38.832
+companies. Um, although then you
+probably wouldn’t expect a
+bounty. Um. And then, so if you
+
+00:06:41.468,00:06:46.373
+can get back stuff back. It’s
+easier to exploit and call it
+transparent SSRF. Uh otherwise
+
+00:06:46.373,00:06:53.079
+its called blind SSRF. So. What
+can you do with this pattern?
+Turns out it's quite powerful
+
+00:06:53.079,00:06:56.816
+right now because of the
+defaults in popular cloud
+environments. This has been the
+
+00:06:56.816,00:07:02.722
+most fruitful SSRF approach for
+me so far. Google Cloud and AWS
+both expose credentials by
+
+00:07:02.722,00:07:09.396
+default on 169 dot 254 dot 169
+dot 254. Depending on the
+permissions assigned to this
+
+00:07:09.396,00:07:14.401
+instance, this token can often
+access private storage buckets
+or other stuff. This is the
+
+00:07:14.401,00:07:18.972
+easiest sort of approach I’ve
+been talking about. So there’s
+been even some cred- pretty
+
+00:07:18.972,00:07:23.910
+credible speculation that the
+recent that the AWS equivalent
+of this endpoint, was the first
+
+00:07:23.910,00:07:28.581
+step that enabled the recent
+Capital One breach. But I never
+go that far. I just stop here
+
+00:07:28.581,00:07:33.486
+and report it. But you can
+imagine that if you can find a
+lot of cases where you might be
+
+00:07:33.486,00:07:39.225
+able to proxy through a server.
+Some of those are going to to be
+AWS and g- or GCP boxes. And a
+
+00:07:39.225,00:07:43.697
+lot of those are going to have
+the default permissions. The
+other thing to note is that on
+
+00:07:43.697,00:07:49.102
+this, on screen here you see a
+curl command. That in itself
+does not demonstrate an SSRF
+
+00:07:49.102,00:07:53.973
+vulnerability. Because I’m
+already inside the box in this
+case. It’s just demonstrative.
+
+00:07:53.973,00:07:59.145
+It’s when you can externally
+tell the server to hit the URL
+and give you back the token that
+
+00:07:59.145,00:08:03.850
+it becomes SSRF. also, to keep
+the naming straight this slide
+is also not an inductive
+
+00:08:03.850,00:08:09.489
+weakness. AWS and GCP aren’t
+causing people to write weak
+code, they’re just uh widening
+
+00:08:09.489,00:08:15.028
+the consequences if people do.
+What this slide does demonstrate
+is that if you wanted to SSRF on
+
+00:08:15.028,00:08:20.033
+someone using AWS or GPC right
+now, you have a very easy
+payload to start with. So what
+
+00:08:22.168,00:08:26.773
+are some easy things, other easy
+things to try with SSRF. People
+have already been criticising
+
+00:08:26.773,00:08:32.145
+AWS and Google Cloud a lot for
+providing the gooey center you
+saw in the previous slide.
+
+00:08:32.145,00:08:36.916
+There’s even been some
+speculation that er some rumors
+that AWS is in the process of uh
+
+00:08:36.916,00:08:40.453
+hardening this up in response to
+the recent Capital One breach.
+So I’m not going to dwell on
+
+00:08:40.453,00:08:47.360
+this too much. File URL- no-
+oops nope. File URLs are another
+interesting thing to try
+
+00:08:47.360,00:08:51.731
+especially on older secs. You
+may be very familiar with these
+uh from CTFs and stuff like
+
+00:08:51.731,00:08:56.703
+that. The other thing
+interesting thing to try is that
+if you can proxy a few get
+
+00:08:56.703,00:09:02.308
+requests, you can do reflected
+XSS. You just have to point to a
+URL with some mostly html and
+
+00:09:02.308,00:09:06.479
+Javascript. Though then its
+technically not SSRF because the
+attack scenario is different.
+
+00:09:06.479,00:09:09.883
+However, if your goal is to
+collect a bug bounty, this is a
+great thing to keep in mind if
+
+00:09:09.883,00:09:14.687
+you’re hitting a dead end.
+Trying to hit internal servers.
+Because reflected XSS usually is
+
+00:09:14.687,00:09:21.060
+considered within the scope of
+bug bounties. But what if you
+want to dig deeper? This is has
+
+00:09:21.060,00:09:26.166
+been, there’s been a lot of past
+work on cross protocol attacks
+via SSRF. Gopher URLs are
+
+00:09:26.166,00:09:30.270
+interesting because you can
+inject a wide range of
+characters. Uh in that will
+
+00:09:30.270,00:09:34.040
+eventually go in the TCP string.
+So you have a lot of room with
+interacting with other- other
+
+00:09:34.040,00:09:39.312
+protocols like SMTP. There are a
+lot of different ways to get
+there though. Sometimes it might
+
+00:09:39.312,00:09:44.484
+be necessary to setup a server,
+uh that redirects the protocol
+you want. Other times you might
+
+00:09:44.484,00:09:48.922
+just go with an http URL and
+exploit a bug on the URL
+processor. Probably the coolest
+
+00:09:48.922,00:09:53.126
+work on this is the Orange Site
+Talk, A New Era of SSRF.
+However, libraries are getting
+
+00:09:53.126,00:09:57.564
+stricter and there’s a lot of
+easy stuff has been fixed. This
+is a really fun area of research
+
+00:09:57.564,00:10:02.569
+though. AndI expect there will
+be additional chains discovered
+in the future. Alright. And now
+
+00:10:06.039,00:10:11.044
+I’ll combine these two terms.
+Alright. But before diving in,
+it’s important to note that
+
+00:10:17.150,00:10:21.654
+Apple Pay is composed of three
+different technologies under one
+brand. You may be familiar with
+
+00:10:21.654,00:10:26.993
+the Buy With Apple Pay button
+which appears on both in app and
+Apple Pay web. There’s also the
+
+00:10:26.993,00:10:32.632
+upcoming Apple Pay card. But I
+have no idea where that fits in
+fits into all of this. I am only
+
+00:10:32.632,00:10:38.338
+criticizing Apple Pay web, this
+has some problematic
+requirements for merchants. So.
+
+00:10:38.338,00:10:43.710
+Say you have an online story,
+within the nomenclature, we
+would call you a merchant. So
+
+00:10:43.710,00:10:48.248
+what does your website need to
+do to support Apple Pay web.
+When the user first clicks that
+
+00:10:48.248,00:10:52.185
+Apple, Buy With Apple Pay
+button, Safari generates a
+validation URL, which is on 1 of
+
+00:10:52.185,00:10:57.223
+about 30 Apple dot com sub
+domains. It’s really strange. Uh
+then in your client side
+
+00:10:57.223,00:11:04.130
+Javascript, you have to send the
+validation URL to your backen.
+Then your server needs to grab a
+
+00:11:04.130,00:11:09.002
+session, a merchant session from
+that validation URL and return
+to the client. This is all a bit
+
+00:11:09.002,00:11:14.007
+wordy though and it's much
+better as a diagram. Luckily I
+already have one. So this should
+
+00:11:16.042,00:11:20.713
+look familiar. Following the
+typical flow as a merchant, your
+server there in the middle,
+
+00:11:20.713,00:11:25.585
+would take in that URL to know
+which uh which Apple server to
+connect to and grab a merchant
+
+00:11:25.585,00:11:29.923
+section. But depending on your
+infrastructure, if you
+implemented in the way Apple
+
+00:11:29.923,00:11:34.694
+originally documented, this was
+a really dangerous functionality
+to add. The endpoint is ideal
+
+00:11:34.694,00:11:39.599
+for an attacker who wants to do
+SSRF and especially transparent
+SSRF. Because the validation URL
+
+00:11:39.599,00:11:44.971
+is user supplied. They’re
+basically doing load balancing
+in the user’s browser. I’ve
+
+00:11:44.971,00:11:48.107
+asked Apple for some
+justification of this
+requirement and after several
+
+00:11:48.107,00:11:54.714
+months, I still have no idea why
+this is there. In the original
+W- www cd talk, there’s some
+
+00:11:54.714,00:11:59.452
+vague mention of handling the
+case where a merchant is uh
+compromised. Um, but that
+
+00:11:59.452,00:12:02.722
+doesn’t explain why they allow
+the client to choose between
+validation URLs instead of just
+
+00:12:02.722,00:12:07.226
+having one. Um and ultimately
+they’re providing a whole new
+way for hackers to compromise
+
+00:12:07.226,00:12:12.532
+merchants. Google Pay certainly
+doesn’t do this. Some merchants
+are safe for one reason or
+
+00:12:12.532,00:12:17.537
+another, but we’ll get to
+mitigations later. Right now
+it’s time for a demo. Alright.
+
+00:12:20.239,00:12:25.612
+So these demos are not gonna be
+deep attack chains, but besides
+demonstrating breadth of attack
+
+00:12:25.612,00:12:29.282
+surface, it should be
+eliminiating if you’re
+interested in testing SSRF
+
+00:12:29.282,00:12:34.821
+yourself. Just please, if you
+try this at home, only try it at
+sites if- where you have
+
+00:12:34.821,00:12:39.792
+permission. And report what you
+find. Don’t go snooping around
+private storage buckets.
+
+00:12:39.792,00:12:45.632
+Alright. So the first demo is
+against a Google Chrome Labs
+project that was deployed
+
+00:12:45.632,00:12:50.269
+publically via App Engine, but
+not in a production environment.
+I don’t point this out to shame
+
+00:12:50.269,00:12:54.674
+Google or the developer, instead
+I want to demonstrate that even
+talented, qualified people
+
+00:12:54.674,00:12:59.679
+working on modern stacks were
+affected by this design flaw in
+Apple Pay. Alright. Here we go.
+
+00:13:33.112,00:13:38.117
+Ok, we’ll just go with that. Ok.
+So. Here’s my own deployment of
+this project. So we can see what
+
+00:13:43.523,00:13:48.995
+I did against Google’s
+deployment. As you can see it
+has a Buy with Apple Pay button
+
+00:13:48.995,00:13:52.031
+its getting an error because my
+deployment isn’t fully
+configured, but our attack will
+
+00:13:52.031,00:13:58.971
+still work. If we plug it we can
+see re- an a request going out
+to an endpoint called vallidate.
+
+00:13:58.971,00:14:03.910
+It’ll pop up there in red.
+That’s the endpoint I was
+talking about earlier. Normally
+
+00:14:06.045,00:14:09.449
+you might attack this with
+something like burp or MITM
+proxy, but I’m going to go old
+
+00:14:09.449,00:14:14.454
+school with just curl. So. First
+we clean up clean up some
+headers. Then we modify the
+
+00:14:20.226,00:14:25.231
+validation URL so we can refind
+different values. So. First I’m
+gonna try to hit example dot
+
+00:14:28.468,00:14:33.005
+come to see if we can proxy
+through the input I’m hitting.
+It’s gonna take another try. Um.
+
+00:14:36.476,00:14:41.013
+So yeah, just proxying out to
+example dot come, again that’s
+not SSRF but it is a useful
+
+00:14:41.013,00:14:44.717
+first step in testing this
+stuff. Cause now we’re free to
+try different payloads. Cause we
+
+00:14:44.717,00:14:50.223
+know that we have that proxy
+like behavior. So. Let’s try to
+hit the instance by data
+
+00:14:50.223,00:14:55.228
+endpoint. And this is going to
+be yep. Oh. Yeah. So this is
+promising. Well looks like we’re
+
+00:15:00.166,00:15:06.472
+getting through on the Google
+Cloud box. And then by feeding
+in metadata dot google internal
+
+00:15:06.472,00:15:11.811
+we confirm that that’s the case.
+And from here’s it’s just a
+matter of browsing around
+
+00:15:11.811,00:15:16.449
+directories and seeing what
+works. For whatever easy slash
+vbeta1 is less picky about
+
+00:15:16.449,00:15:21.454
+headers than slash v1, I have no
+idea why. But we can keep
+browsing. And now we’re in the
+
+00:15:23.489,00:15:28.494
+directory of the gui center. We
+can see what permissions this
+box has access to. And Even grab
+
+00:15:31.831,00:15:36.836
+a token. This token is long
+expired by now. But don’t worry.
+Er- that for some reason I put a
+
+00:15:39.071,00:15:44.076
+black box on part of it. Um. And
+now onto the next demo. So for
+the next demo we’ll be attacking
+
+00:15:47.079,00:15:54.053
+my own deployment of a page that
+used to be on webkit dot org.
+Because its open source. The
+
+00:15:54.053,00:15:58.758
+issue is fixed, but I deployed
+the vulnerable version from a
+few months ago. On w k dot
+
+00:15:58.758,00:16:03.062
+jmaddox dot com for the purposes
+of this demo. Don’t worry
+though, this demo is offline by
+
+00:16:03.062,00:16:08.868
+now. Importantly, just like the
+previous demo, the code on
+webkit dot org was written by a
+
+00:16:08.868,00:16:13.105
+well qualified developer at a
+large tech company. This may
+even be more convincing because
+
+00:16:13.105,00:16:18.010
+it demonstrates that even
+developers at Apple were not
+immune. In the original eh, du-
+
+00:16:18.010,00:16:23.115
+in the original POC I sent
+Apple, I described an ADBS
+token. However, since I have
+
+00:16:23.115,00:16:26.552
+this deployed on Google Cloud,
+the approach will be a little
+bit different. So we’ll get a
+
+00:16:26.552,00:16:31.557
+chance to see a little bit
+different payload. Alright. Ok.
+So I love this art. But this
+
+00:16:56.249,00:17:01.187
+button here looks promising too.
+Um. Oops. Hit pause. So yeah,
+here you can see my own
+
+00:17:08.661,00:17:13.165
+deployment of the code that used
+to be on webkit dot org. Again I
+like the art, but the button
+
+00:17:13.165,00:17:18.070
+here also looks promising. It
+turns out we can see a merchant
+evaluation request happening
+
+00:17:18.070,00:17:23.542
+here. If we click it again. It’s
+going to go out to this tiny uh
+tiny hex cer- merchant
+
+00:17:23.542,00:17:29.849
+validation dot php. It’s
+different code um, but because
+of the requirements imposed by
+
+00:17:29.849,00:17:36.722
+Apple, we can repeat the same
+attack. Alright so we’re gonna
+go through the same approach.
+
+00:17:36.722,00:17:42.295
+Change up the validation URL. Uh
+then cleanup some headers. Curl
+will automatically append the
+
+00:17:42.295,00:17:48.901
+content length better so we can
+just uh not worry about that. So
+let’s go through the same
+
+00:17:48.901,00:17:53.906
+process. We can try to hit
+instance metadata. But we won’t
+have any luck because the
+
+00:17:55.975,00:18:01.547
+request methods aren’t lining up
+in our favor. Um, but we can see
+like we can we can get tra-
+
+00:18:01.547,00:18:05.418
+taffic out and through example
+dot com so. So from here it’s
+just a matter of trying out
+
+00:18:05.418,00:18:10.423
+different payloads. But this is
+a classic php app. So just the
+classic file URLs will work.
+
+00:18:12.491,00:18:17.496
+Alright. So this is a fairly
+deep seeded arch- deeply seeded
+architectural problem and I
+
+00:18:24.937,00:18:29.842
+reported it to Apple back in
+February. But what has Apple
+done to mitigate this? So far,
+
+00:18:29.842,00:18:34.580
+just documentation changes.
+Importantly the documentation
+used to pretty much walk you
+
+00:18:34.580,00:18:39.285
+through the process of adding a
+vulnerability to your website.
+Now the documentation has this
+
+00:18:39.285,00:18:43.489
+little warning docs. They seem
+really optimistic about how many
+developers ac- actually read
+
+00:18:43.489,00:18:49.095
+those. However, if you do have
+any happen across this warning
+boxes and read them carefully
+
+00:18:49.095,00:18:54.867
+your uh the instructions are now
+valid. But their existing
+clients, I can’t imagine too
+
+00:18:54.867,00:18:59.638
+many developers are constantly
+visiting the documentation to
+check what warning d- warnings
+
+00:18:59.638,00:19:04.577
+were added. And here’s the
+disclosure timeline. There’s not
+much here, the main thing is
+
+00:19:11.584,00:19:15.354
+that I reported this back to
+Apple button in February and
+haven’t seen any meaningful
+
+00:19:15.354,00:19:19.692
+architectural changes. In my
+original proposal, I asked for
+Apple to deprecate the current
+
+00:19:19.692,00:19:24.196
+API and phase in a new one that
+didn’t have these problems. But
+then they tricked me into a
+
+00:19:24.196,00:19:29.535
+discussion on that. They just
+updated documentation and
+removed their bad example code.
+
+00:19:29.535,00:19:35.174
+We’ll get back to this later.
+But for now, how would you
+mitigate this? My favorite
+
+00:19:35.174,00:19:40.179
+mitigation so far has been to
+just remove support for Apple
+Pay entirely. [laughter] This
+
+00:19:42.348,00:19:48.721
+might not work for everyone
+though. For everyone else, it’s
+important to manually parse the
+
+00:19:48.721,00:19:54.193
+validation URL and check it
+against Apple’s list. It’s kind
+of ugly to copy and past 30
+
+00:19:54.193,00:19:59.932
+domains into some config file,
+but that’s pretty much what you
+have to do. A couple of payment
+
+00:19:59.932,00:20:03.536
+providers actually do this out
+of the box though. So far I’m
+just aware of Stripe and
+
+00:20:03.536,00:20:07.573
+Braintree, so if you’re using
+one of those, they’re safe.
+You’re you’re safe and they’ve
+
+00:20:07.573,00:20:11.544
+actually been the main hurdle in
+collecting bug bounties. Uh even
+though I was able to collect
+
+00:20:11.544,00:20:17.550
+some, a lot of modern companies
+use Stripe uh tend to use one of
+these two payment providers and
+
+00:20:17.550,00:20:22.555
+uh given that it's been a fairly
+big hurdle. Um. But what if you
+want to defend more broadly
+
+00:20:24.824,00:20:29.829
+against SSRF? From my
+experience, very few people are
+protecting egress traffic, but
+
+00:20:29.829,00:20:34.767
+when they do it's a pretty big
+speed bump. This may make more
+sense depending on the size of
+
+00:20:34.767,00:20:40.372
+your organization and just how
+your network is laid out and
+just kind of what your risk uh
+
+00:20:40.372,00:20:46.045
+risk charac- what
+characteristics are with SSRF.
+Um. But that mean be an option
+
+00:20:46.045,00:20:51.417
+to consider. Netflix is also
+does some really great work in
+proactively dealing with uh,
+
+00:20:51.417,00:20:57.356
+with the gooey center in AWS. In
+general though, it's good to
+take a look at what a- what
+
+00:20:57.356,00:21:02.061
+ports are open locally on your
+servers and add passwords even
+when the network layers
+
+00:21:02.061,00:21:07.066
+theoretically protecting them.
+So. On the other hand, here’s
+some stuff I’ve seen that does
+
+00:21:13.672,00:21:18.577
+not, that has some holes in it.
+And this is part of uh, part of
+what makes implementing support
+
+00:21:18.577,00:21:22.815
+for Apple Pay so tricky is that
+there are a lot of, there are a
+lot of potential fixes that
+
+00:21:22.815,00:21:27.520
+might work and might protect you
+from maybe the typical attacks
+that I’ve been feeding in, but
+
+00:21:27.520,00:21:32.791
+that you can kind of poke holes
+in. Regexes are tricky and I
+wouldn’t recommend them as a
+
+00:21:32.791,00:21:37.563
+mitigation for this issue at
+all, but besides the points in
+the slide, I would also
+
+00:21:37.563,00:21:43.669
+discourage against relying on a
+check to start at apple dot com.
+Even if you’re not using regex.
+
+00:21:43.669,00:21:48.474
+Because then if there’s no
+redirect anywhere on any apple
+dot com subdomain, an attacker
+
+00:21:48.474,00:21:53.946
+can use the open redirect to
+circumvent your check. Narrowing
+the check to specifically allow
+
+00:21:53.946,00:21:59.985
+the 30 apple pay sub domains is
+better. Unrelated, but if anyone
+knows of an open redirect on any
+
+00:21:59.985,00:22:06.058
+apple dot com subdomain, I would
+be glad to hear about it.
+[laughter] Um, but really
+
+00:22:06.058,00:22:10.796
+there’s no re- way of getting
+around it. If you have to
+support Apple Pay web, you
+
+00:22:10.796,00:22:14.900
+really should go to Ap- through
+Apple’s updated documentation
+and read through the warnings
+
+00:22:14.900,00:22:19.205
+they have added. The
+architecture is so bad, but at
+least the documentation doesn’t
+
+00:22:19.205,00:22:24.210
+walk you through the process of
+adding vulnerability. So that
+wraps up this spec- specifics on
+
+00:22:26.545,00:22:30.849
+Apple Pay web and our first
+inactive weakness. I’ll have
+more to say on Apple towards the
+
+00:22:30.849,00:22:34.887
+end of this talk. But in the
+next section, I’ll move onto
+another pattern that can induce
+
+00:22:34.887,00:22:40.125
+vulnerabilities. But for, let’s
+see. Yeah. I’ll move onto
+another pattern that can induce
+
+00:22:40.125,00:22:45.130
+vulnerabilities. Alright. So.
+Webhooks are becoming a fairly
+common and useful way to tie the
+
+00:22:55.241,00:23:00.579
+web together. We’ll take a a
+little bit of the heat off Apple
+now. Um, there are a lot of
+
+00:23:00.579,00:23:05.851
+webhooks out there right now and
+nobody seems to agree on how
+they should be implemented. Um
+
+00:23:05.851,00:23:11.023
+and there are a lot of different
+approaches people are trying.
+But what’s a webhook? Here’s an
+
+00:23:11.023,00:23:16.662
+example from Trillio. It’s a way
+of telling a service to call
+your URL as soon as eve- an
+
+00:23:16.662,00:23:23.402
+event happens. Uh here you can
+see jmaddux dot com slash sms
+register. So twilio will send me
+
+00:23:23.402,00:23:28.407
+an htt- https request every time
+it uh has a new SMS message for
+me. But how have people been im-
+
+00:23:31.076,00:23:35.447
+exploiting webhooks so far?
+They’ve gone after the sender of
+the webhook. In this case
+
+00:23:35.447,00:23:41.920
+Twilio. It’s pretty similar to
+how I would test Apple Pay. Uh
+instead of entering your own use
+
+00:23:41.920,00:23:47.693
+server as the URL. You put the
+AWS instance metadata IP or try
+to do some cross protocol stuff,
+
+00:23:47.693,00:23:53.265
+this is just a general challenge
+of implementing webhooks. It’s
+not an inductive weakness,
+
+00:23:53.265,00:23:57.169
+because there’s no central party
+inducing this pattern. There’s
+no central party telling Twilio
+
+00:23:57.169,00:24:01.573
+they have to have a webhook. Um
+or that they have to have a
+webhook to enable this feature.
+
+00:24:01.573,00:24:06.578
+It’s just a really useful uh
+feature for Twilio to pro-
+provide to their clients. Um,
+
+00:24:08.714,00:24:13.018
+but luckily lots of people have
+already explored webhooks in
+this way and webhooks do tend to
+
+00:24:13.018,00:24:17.956
+be implemented by larger
+companies with a lot more lo-
+better footing reg- regards to
+
+00:24:17.956,00:24:23.495
+security issues. Um, so you can
+find a lot of bug bounty write
+ups for people to exactly this
+
+00:24:23.495,00:24:29.368
+and even getting payloads for
+some of the Apple Pay issues.
+Like webhook SSRF write ups were
+
+00:24:29.368,00:24:36.008
+really helpful. But what have I
+been doing with webhooks, I
+apply the same inductive
+
+00:24:36.008,00:24:40.946
+weakness model that worked with
+Apple Pay. Instead of going
+after the sender, I looked for
+
+00:24:40.946,00:24:45.851
+an attack surface, the sender
+might be inducing in the
+listeners. It turns out for
+
+00:24:45.851,00:24:50.956
+Twilio, this approach works. How
+did the receivers of the
+webhooks know that the message
+
+00:24:50.956,00:24:56.528
+is coming from Twilio. Twilio
+providers an HMAC. Similarly to
+how most webhooks are done right
+
+00:24:56.528,00:25:01.667
+now. Not to sug- yeah I’m
+singling out Twilio a little bit
+but a lot of webhooks do this
+
+00:25:01.667,00:25:06.605
+right now. They call it a
+signature and that might make
+the cryptographers in the room
+
+00:25:06.605,00:25:10.843
+cringe, but conceptually, it
+does help to think of it as a
+signature. Assuming that
+
+00:25:10.843,00:25:17.149
+receivers actually check it,
+it’s not too bad. But when I
+took a look, most related open
+
+00:25:17.149,00:25:21.120
+source projects failed to check
+the HMAC. So I had these
+unauthenticated endpoints lying
+
+00:25:21.120,00:25:26.125
+around. And once I’ve started
+poking around, it became
+apparent one reason why.
+
+00:25:28.827,00:25:35.801
+Twilio’s examples didn’t check
+the HMAC either. Then setting
+that aside the bad example code,
+
+00:25:35.801,00:25:40.706
+this is, there’s also an
+architectural problem here. I
+argue, since the easiest way to
+
+00:25:40.706,00:25:47.146
+receive an HMAC authenticated
+webhook is to disregard the
+HMAC. That’s a design flaw and I
+
+00:25:47.146,00:25:52.151
+would also call it an inductive
+weakness. So now it’s time for a
+demo. So. This demo is gonna be
+
+00:26:02.494,00:26:07.032
+slightly different. The example
+code wasn’t on a public facing
+server. So I didn’t get any
+
+00:26:07.032,00:26:12.771
+credentials from Twilio
+themselves and so therefore of
+course, not a bounty. Um, but
+
+00:26:12.771,00:26:17.776
+it’s still worth showing.
+Because it was copy and pasted
+elsewhere. Alright. So here’s
+
+00:26:40.065,00:26:45.604
+where I started just looking
+around at uh the Twilio example
+code. On the Read Me, there’s
+
+00:26:45.604,00:26:49.975
+now a warning to uh protect your
+workbooks, but it turns out the
+example code still doesn’t do
+
+00:26:49.975,00:26:55.581
+that. Going even further, this
+example code takes a mediaURL
+parameter which looks quite
+
+00:26:55.581,00:27:00.152
+promising. And this is even
+quite generous in that this
+example code fetches the
+
+00:27:00.152,00:27:04.323
+contents of that mediaURL and
+puts them in a public facing
+directory. So, you might be able
+
+00:27:04.323,00:27:09.761
+to guess where this is going. In
+the next tab, I’ll have this
+deployed on a Google Cloud
+
+00:27:09.761,00:27:14.633
+instance. It tells us to send a
+text message, but we don’t need
+to do that. This callback is
+
+00:27:14.633,00:27:19.238
+unauthenticated so we can use
+this snippet I have on the right
+and pretend we’re Twilio sending
+
+00:27:19.238,00:27:25.744
+over a csv attachment. But
+because of the URL we sent,
+[inaudible] uh google cloud
+
+00:27:25.744,00:27:32.417
+instance metadata, we can see uh
+the token is now stored in that
+public uh directory. And by the
+
+00:27:32.417,00:27:37.422
+way this token is also long
+expired. Alright. So here’s a
+disclosure timeline, fairly
+
+00:27:43.295,00:27:49.568
+similar to the Apple Pay one.
+But you might be wondering, are
+Twilio’s competitors doing any
+
+00:27:49.568,00:27:54.573
+better, or worse? Turns out with
+Nexmo, it’s worse. Not only does
+the architecture similar but you
+
+00:27:57.309,00:28:01.380
+have to contact support to even
+get them to send you an HMAC.
+And if even if you do contact
+
+00:28:01.380,00:28:06.952
+support, the we- some of the
+webhooks don’t even have that
+option. I don’t have much to say
+
+00:28:06.952,00:28:11.957
+about this, it's pretty much
+beyond hope. So let’s move onto
+another webhook. So Gitlab.
+
+00:28:14.560,00:28:19.264
+Gitlab does something similar to
+Twilio, but with a static token
+instead of an HMAC. So the
+
+00:28:19.264,00:28:23.669
+implementation is a bit
+different, but the same level of
+an optimis- is there. They
+
+00:28:23.669,00:28:28.740
+expect that uh users of webhook
+will register that token and
+then check that token when it’s
+
+00:28:28.740,00:28:33.745
+received. Um, But here’s the
+event that is sent by one of
+their webhooks if you enable it.
+
+00:28:37.149,00:28:41.920
+So you can imagine what I did. I
+simply found a receiver, a
+server that was receiving this
+
+00:28:41.920,00:28:47.593
+webhooks. As usual they were not
+validating that it was coming
+from Gitlab. I won’t name names,
+
+00:28:47.593,00:28:52.331
+but it is a webhook. I can’t
+imagine given what we’ve seen
+this so far that what I found
+
+00:28:52.331,00:28:59.237
+was the only unauthenticated
+one. But in any case I decided
+to tweak the sample push event
+
+00:28:59.237,00:29:03.976
+and send it over. Right off the
+bat I was able to modify their
+repository URL and trigger extra
+
+00:29:03.976,00:29:08.113
+builds for arbitrary repos. I
+don’t have any- I didn’t have
+any success deploying arbitrary
+
+00:29:08.113,00:29:14.453
+code, but this did fi- have one
+nasty consequence. It turned out
+I could store x- xss payloads.
+
+00:29:14.453,00:29:18.123
+The script would execute
+whenever some clicked a
+particular button on their build
+
+00:29:18.123,00:29:22.661
+pipeline page. And you don’t
+need to log into anything to do
+this attack. This really
+
+00:29:22.661,00:29:26.898
+epitomizes the point I want to
+make. So far we’ve been asking,
+what vulnerabilities are in the
+
+00:29:26.898,00:29:31.470
+software? But equally ques-
+important question is what
+vulnerabilities in- does this
+
+00:29:31.470,00:29:37.009
+software create? Once you start
+asking this question, you can
+find a lot of easy stuff that
+
+00:29:37.009,00:29:42.014
+you won’t need particular
+difficult payloads to exploit.
+So. These next few slides are
+
+00:29:48.787,00:29:52.057
+going to be a bit text heavy,
+but I’m making a really
+aggressive claim here, that
+
+00:29:52.057,00:29:57.062
+nearly everyone’s doing webhooks
+wrong. So it’s necessary to
+layout some alternatives. I’ll
+
+00:29:57.062,00:30:01.199
+start with the coolest but least
+practical one. You can encrypt
+your outgoing webhooks with an
+
+00:30:01.199,00:30:06.571
+authenticated cypher. The upside
+is that in the act of trying to
+use the information you give-
+
+00:30:06.571,00:30:11.476
+give them, you’re you send
+people. People will in-
+inevitably be authenticating it.
+
+00:30:11.476,00:30:16.448
+But the downside oh, the
+downside is there aren’t a lot
+of good libraries for
+
+00:30:16.448,00:30:21.453
+encapsulating this, so it’s not
+very practical right now. But we
+can dream. So going a little
+
+00:30:24.856,00:30:30.195
+more practical, you can do what
+Plaid and Square do. If you
+limit your webhook payload to
+
+00:30:30.195,00:30:35.200
+just an event ID and expect the
+receiver of the webhook to fetch
+it. Uh you- you’re really not
+
+00:30:35.200,00:30:40.072
+inducing much attack surface.
+The downside is that this does
+require an extra request from
+
+00:30:40.072,00:30:45.310
+the listener to you. You do also
+have to worry about path
+injection, if that er path
+
+00:30:45.310,00:30:50.749
+traversal if that ID is within a
+URL segment. Since a lot of
+developers like probably most
+
+00:30:50.749,00:30:55.954
+developers will forget to
+actually URL encode the value
+that they put into API call. But
+
+00:30:55.954,00:31:00.959
+I mean things to- this is
+probably a good middle ground
+and the websites I’ve seen using
+
+00:31:00.959,00:31:06.131
+this, I haven’t really found any
+practical ways to exploit path
+traversal um even for people who
+
+00:31:06.131,00:31:12.704
+aren’t uh careful about it. But
+the least aggressive approach
+which works well for existing
+
+00:31:12.704,00:31:18.076
+webhooks is just to be more
+proactive about making sure that
+people use the HMAC. Most
+
+00:31:18.076,00:31:22.881
+webhooks already do one testing
+request to ensure that the URL
+is publically available and live
+
+00:31:22.881,00:31:27.219
+just to make sure that they’re
+not sending data somewhere where
+its just gonna be ignored. Um,
+
+00:31:29.354,00:31:34.192
+so it’s not a huge change to do
+two requests instead. It’s then
+a matter of policy to decide
+
+00:31:34.192,00:31:37.896
+what you want to do if those
+requests have different, have
+the same response code
+
+00:31:37.896,00:31:42.901
+indicating that they’re
+unauthenticated. But even if you
+just warn people once you uh
+
+00:31:45.036,00:31:49.808
+once you get a webhook that it
+does appear unauthenticated,
+you’re still miles ahead of what
+
+00:31:49.808,00:31:54.646
+others are currently doing. I’d
+really to see webhooks start
+doing this uh since it’s low
+
+00:31:54.646,00:31:59.651
+risk and backwards compatible in
+a lot of cases. Alright. So. A
+lot of this so far has been
+
+00:32:07.359,00:32:12.697
+negative and intentionally so.
+But there is an upside. B- by
+designing your API to be
+
+00:32:12.697,00:32:16.535
+defensive from the ground up,
+you have a lot of ability to
+prevent vulnerable code from
+
+00:32:16.535,00:32:20.972
+being written. Well let’s just
+take a look at one API that
+didn’t and one that did. This
+
+00:32:20.972,00:32:27.312
+should also be eliminating just
+um, to get an idea of which APIs
+uh if you’re looking at this
+
+00:32:27.312,00:32:32.851
+from the attack side of things,
+uh which APIs might be promising
+in terms of finding induced
+
+00:32:32.851,00:32:37.856
+vulnerabilities. So. Sales force
+and Dynamodb are very different
+products. But they have an
+
+00:32:40.792,00:32:45.397
+interesting are- area where they
+overlap. They both have had to
+access act as a source of truth
+
+00:32:45.397,00:32:49.868
+with some complicated business
+requirements piled on to the
+point they had to each implement
+
+00:32:49.868,00:32:55.807
+a custom SQL like uh dialect.
+But they each they went about
+that in very different ways. If
+
+00:32:55.807,00:33:00.011
+you’ve ever pen tested a web app
+that uses salesforce, hopefully
+th- this has been on your radar.
+
+00:33:00.011,00:33:04.282
+I’ve gotten a m- a lot of
+mileage out of it. Sometimes
+user endpoint progates out to a
+
+00:33:04.282,00:33:09.120
+place where you can inject into
+this API call. Much like you
+would do with SQL. So how
+
+00:33:09.120,00:33:15.493
+salesforce tried to mitigate
+this? More documentation. This
+is becoming a theme. At first,
+
+00:33:15.493,00:33:20.665
+this might seem inevitable given
+what salesforce is trying to do.
+Uh given what salesforce is
+
+00:33:20.665,00:33:25.937
+required to do. But the when
+Amazon tackled this, they did
+something interesting. Dynamodb
+
+00:33:25.937,00:33:30.709
+forces you to parameterize your
+condition expressions. If you
+try to concatenate a raw type in
+
+00:33:30.709,00:33:36.748
+there, uh, it’ll be treated as a
+syntax error. You have to put it
+in to this e- expression
+
+00:33:36.748,00:33:41.086
+attribute values object. There
+are other ways you can go about
+attacking these calls, but
+
+00:33:41.086,00:33:45.090
+they’re a lot more co- limited
+and more complicated than if you
+can just inject into the syntax
+
+00:33:45.090,00:33:51.830
+itself like you could do with
+this with full SQL syntax. This
+is this uh this the way that
+
+00:33:51.830,00:33:55.634
+Amazon does this is kind of
+cumbersome and you can see that
+there are just a lot of fields
+
+00:33:55.634,00:34:00.005
+on screen here. But I think it’s
+it’s a good tradeoff given the
+strength of protection that this
+
+00:34:00.005,00:34:05.010
+provides. So alright. So let’s
+get back to Apple. Since they’re
+probably the worst offender in
+
+00:34:12.984,00:34:17.789
+this talk. After two months of
+silence they came back with this
+as justification for their
+
+00:34:17.789,00:34:22.360
+architecture. Developers are
+responsible for implementing
+whatever security and networking
+
+00:34:22.360,00:34:27.866
+best practices make the most
+sense for their environment.
+This is true. Sort of. I mean
+
+00:34:27.866,00:34:33.371
+and you looking at it, this
+developers do have a lot of
+responsibility of over the apps,
+
+00:34:33.371,00:34:37.976
+but the implication here is that
+Apple has no culpability in
+this. Luckily I’ve got another
+
+00:34:37.976,00:34:43.381
+great quote. If you’ve built a
+chaos factory, you can’t dodge
+responsibility for the chaos.
+
+00:34:43.381,00:34:48.386
+And you may be able [laughter]
+[applause] Thank you. [laughter]
+So but both of these statements
+
+00:34:57.862,00:35:03.001
+are right, um, I’m not just here
+to hi- point out hypocrisy,
+developers are responsible for
+
+00:35:03.001,00:35:08.873
+implementing uh for not
+introducing vulnerabilities into
+their code base. But if you
+
+00:35:08.873,00:35:14.045
+expect people to add an endpoint
+somewhere, you do have a level
+of responsibility for the attack
+
+00:35:14.045,00:35:19.050
+surface that you’re creating. So
+but that’s a purely ethical
+argument. Let’s look at some of
+
+00:35:21.353,00:35:25.023
+the financial aspects of
+inductive weaknesses. Once
+researchers start hunting for
+
+00:35:25.023,00:35:31.629
+this stuff and I encourage you
+to, especially just if you go
+about it with within ethical the
+
+00:35:31.629,00:35:36.634
+ethical way, um, but I expect a
+lot of people to start hang- uh,
+yeah. I imagine that there will
+
+00:35:39.437,00:35:44.442
+be a large financial incentive
+for API to do- start thinking
+about it. Not just from the
+
+00:35:47.779,00:35:51.916
+perspective of having to payout
+bounties, um but for other
+perspectives. I got some nice
+
+00:35:51.916,00:35:55.820
+bounties out of this Apple Pay
+issues. And none of my work
+needed very difficult payloads
+
+00:35:55.820,00:36:01.960
+and none of those bounties were
+from Apple. Uh so I think it’s
+fair to think that you know once
+
+00:36:01.960,00:36:06.031
+this talk is over that some
+people are going to start
+applying my approach. Also,
+
+00:36:06.031,00:36:09.167
+think of where these people are
+going to report this stuff and
+where I’ve been reporting this
+
+00:36:09.167,00:36:13.805
+stuff. You’re seeing the most
+embarrassing consequence here,
+but what if my talk hadn’t been
+
+00:36:13.805,00:36:18.410
+report- accepted to any
+conferences? There was a lot of
+private embarrassment as well.
+
+00:36:18.410,00:36:23.281
+Apple doesn’t think that was as
+much of an issue, but most of
+the websites I reported to did.
+
+00:36:23.281,00:36:28.887
+They’re like yeah we have this
+SSRF thing lying around, like I
+mean in some cases, just, let’s
+
+00:36:28.887,00:36:34.125
+remove it. But and so I wouldn’t
+be surprised if they held that
+e- against Apple. For another
+
+00:36:34.125,00:36:38.296
+angle there’s in software
+development, there’s this
+concept of technical debt, it’s
+
+00:36:38.296,00:36:42.701
+the idea that cutting corners
+early on has costs that
+accumulate as a project grows.
+
+00:36:42.701,00:36:48.006
+With regular tech debt, the
+fixes reside in your own code
+base, so the g- interest rate
+
+00:36:48.006,00:36:52.610
+and the cost fix is tied to the
+growth of your own code base.
+But within inductive weaknesses,
+
+00:36:52.610,00:36:57.115
+the fixes are in your client’s
+code. So the interest rate is
+tied to how much adoption your
+
+00:36:57.115,00:37:02.120
+API sees. At a certain point, if
+you want to pay down the debt.
+You can’t just push out an
+
+00:37:02.120,00:37:07.158
+update to your own code, like
+you would do with uh you know a
+library or something like that.
+
+00:37:07.158,00:37:10.328
+You have to push out a breaking
+change and contact your
+customer’s and tell them that
+
+00:37:10.328,00:37:15.333
+you had, that they have a
+vulnerability because they chose
+you. Alright. So. Here’s really
+
+00:37:22.507,00:37:26.711
+what I’m asking for, from API
+designers and it should be
+pretty cheap if you want, if you
+
+00:37:26.711,00:37:32.250
+start thinking about this stuff
+early. I’d really like to see
+people, oh-. Yeah. I’d really
+
+00:37:32.250,00:37:36.121
+like to see people start
+scrutinizing their example code.
+Because it gets deployed to a
+
+00:37:36.121,00:37:40.525
+lot more often than you think.
+In the process of scrutinizing
+your example code, you may even
+
+00:37:40.525,00:37:45.230
+discover inductive weaknesses.
+If Apple had done so, I
+certainly wouldn’t have much to
+
+00:37:45.230,00:37:51.002
+talk about. And you know, be-
+beyond auditing your own example
+code, if your researcher like
+
+00:37:51.002,00:37:55.740
+auditing other people’s example
+code is a great place to start.
+Because again, it gets deployed
+
+00:37:55.740,00:38:00.678
+a lot and sometimes places where
+it gets deployed are stuff that
+people care about. But also,
+
+00:38:06.417,00:38:10.755
+keep in mind that a lot of
+developers don’t realize quite
+how dangerous it is to an-
+
+00:38:10.755,00:38:15.393
+externally provide a URL. Uh but
+if there’s one thing I want
+people to take away from this
+
+00:38:15.393,00:38:21.199
+talk, it’s that documentation is
+no excuse from bad architecture.
+And here are the
+
+00:38:21.199,00:38:25.170
+acknowledgments. I’d like to
+thank Jonathan at PKC for asking
+some of the initial questions.
+
+00:38:25.170,00:38:30.575
+Arte at PKC for pointing me to
+the Nexmo stuff. Uh Ken at PKC
+for helping with the PKC and
+
+00:38:30.575,00:38:35.580
+Andrew at the EFF for legal
+assistance. Alright. So.
+[applause] So. Any questions.
+
+00:38:46.624,00:38:51.629
+Um. Oh. In the front here.
+>>[inaudible audience question]
+>>Ok. >>[inaudible audience
+
+00:39:13.818,00:39:18.823
+question] >>That is that is an
+interesting approach. I haven’t,
+I haven’t given that any
+
+00:39:30.134,00:39:36.608
+thought. Uh, oh sorry, I’ll
+repeat the question first. So
+the question was, um, on whether
+
+00:39:36.608,00:39:41.946
+or not uh mutually authenticated
+TLS might be uh a better
+approach to authenticating
+
+00:39:41.946,00:39:46.684
+webhooks, um, I’ve actually
+never seen that. >>Yeah, neither
+have I. >>That might be
+
+00:39:46.684,00:39:51.689
+interesting. I’m not sure how
+defensive it could be, but yeah.
+Um. Any more questions? Oh I see
+
+00:39:54.959,00:39:59.964
+one right here. >>[inaudible
+audience question] >>Would I
+consider- sorry. >>[inaudible
+
+00:40:04.135,00:40:09.140
+audience question] >>Um, let’s
+see so where are some a- areas
+where I’ve seen WAFs uh come
+
+00:40:11.776,00:40:17.849
+into play here. Sometimes I
+sometimes I’ve kind of wished
+that WAFs would just like detect
+
+00:40:17.849,00:40:22.153
+whenever I’m doing something
+suspicion with the validations
+URL, but obviously like this
+
+00:40:22.153,00:40:27.926
+stuff wasn’t public until like,
+you know just yesterday. So um,
+I mean obviously in the future
+
+00:40:27.926,00:40:32.930
+that would, that’s be really
+great for the Apple Pay issue
+specifically. Alright anymore?
+
+00:40:40.872,00:40:45.877
+Alright. Well, thank you.
+[applause]
+

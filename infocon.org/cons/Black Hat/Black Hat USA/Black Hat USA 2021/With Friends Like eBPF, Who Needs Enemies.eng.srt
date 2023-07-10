@@ -1,0 +1,4504 @@
+﻿1
+00:00:01,130 --> 00:00:14,690
+[Music]
+
+2
+00:00:14,880 --> 00:00:17,279
+hello and welcome to our talk my name is
+
+3
+00:00:17,279 --> 00:00:18,640
+guillaume fornier i'm a security
+
+4
+00:00:18,640 --> 00:00:21,199
+engineer at datadog and today silvambabu
+
+5
+00:00:21,199 --> 00:00:23,279
+and i are going to talk about a rootkit
+
+6
+00:00:23,279 --> 00:00:25,840
+that we implemented using ebpf
+
+7
+00:00:25,840 --> 00:00:27,519
+if you don't know what ebpf is don't
+
+8
+00:00:27,519 --> 00:00:29,119
+worry we are going to present this
+
+9
+00:00:29,119 --> 00:00:31,039
+technology and tell you everything you
+
+10
+00:00:31,039 --> 00:00:32,479
+need to know in order to understand the
+
+11
+00:00:32,479 --> 00:00:34,800
+talk
+
+12
+00:00:35,120 --> 00:00:37,520
+let's start with a few words about us so
+
+13
+00:00:37,520 --> 00:00:39,600
+we are the cloud workload security team
+
+14
+00:00:39,600 --> 00:00:41,760
+we usually use a bpf for good our goal
+
+15
+00:00:41,760 --> 00:00:43,840
+is to detect threats at runtime and
+
+16
+00:00:43,840 --> 00:00:46,079
+everything we do is integrated into the
+
+17
+00:00:46,079 --> 00:00:48,800
+data kitchen so the data logging is an
+
+18
+00:00:48,800 --> 00:00:50,719
+open source project so if you are
+
+19
+00:00:50,719 --> 00:00:53,600
+interested feel free to check it out
+
+20
+00:00:53,600 --> 00:00:55,039
+that being said for black hats we
+
+21
+00:00:55,039 --> 00:00:56,800
+decided to use everything we knew about
+
+22
+00:00:56,800 --> 00:01:01,358
+ebpf to build the ultimate roadkit
+
+23
+00:01:01,920 --> 00:01:03,920
+so as i said before we are going to
+
+24
+00:01:03,920 --> 00:01:05,600
+start the talk with a brief introduction
+
+25
+00:01:05,600 --> 00:01:08,320
+to ebpf then silva will take it over to
+
+26
+00:01:08,320 --> 00:01:09,840
+talk about how we implemented
+
+27
+00:01:09,840 --> 00:01:11,920
+publiscation and present access in the
+
+28
+00:01:11,920 --> 00:01:14,240
+rootkit after that i will come back to
+
+29
+00:01:14,240 --> 00:01:16,240
+present the command and control feature
+
+30
+00:01:16,240 --> 00:01:18,720
+along with some data excitation examples
+
+31
+00:01:18,720 --> 00:01:21,119
+and a few container breakouts finally
+
+32
+00:01:21,119 --> 00:01:22,960
+silvan will present a few detection and
+
+33
+00:01:22,960 --> 00:01:24,479
+mitigation strategies that you can
+
+34
+00:01:24,479 --> 00:01:27,920
+follow to detect rootkits such as hours
+
+35
+00:01:27,920 --> 00:01:31,840
+okay let's start with ebpf
+
+36
+00:01:31,840 --> 00:01:34,640
+so a bpf stands for extended berkeley
+
+37
+00:01:34,640 --> 00:01:36,320
+bracket filter so it is a set of
+
+38
+00:01:36,320 --> 00:01:38,240
+technologies that can run sandbox
+
+39
+00:01:38,240 --> 00:01:40,320
+programs in the linux kernel without
+
+40
+00:01:40,320 --> 00:01:42,079
+changing the kernel source code or
+
+41
+00:01:42,079 --> 00:01:44,240
+having to load a kernel module
+
+42
+00:01:44,240 --> 00:01:45,920
+it was initially designed for network
+
+43
+00:01:45,920 --> 00:01:48,399
+packet processing but many new use cases
+
+44
+00:01:48,399 --> 00:01:50,720
+were progressively added
+
+45
+00:01:50,720 --> 00:01:52,799
+for example we can now use zbpi to do
+
+46
+00:01:52,799 --> 00:01:55,200
+kernel performance tracing or network
+
+47
+00:01:55,200 --> 00:01:57,360
+security and more generally speaking
+
+48
+00:01:57,360 --> 00:01:58,880
+runtime security
+
+49
+00:01:58,880 --> 00:02:01,200
+so how does it work bpf is simply a
+
+50
+00:02:01,200 --> 00:02:03,600
+two-step process first you have to load
+
+51
+00:02:03,600 --> 00:02:05,759
+your ebpi program in the linux kernel
+
+52
+00:02:05,759 --> 00:02:07,680
+and then you need to tell the kernel how
+
+53
+00:02:07,680 --> 00:02:09,758
+to trigger your programs
+
+54
+00:02:09,758 --> 00:02:11,840
+so let's have a look at the first step a
+
+55
+00:02:11,840 --> 00:02:14,239
+bpf programs are written in c so it's
+
+56
+00:02:14,239 --> 00:02:16,000
+not exactly c it's more like a subset of
+
+57
+00:02:16,000 --> 00:02:18,319
+c because of many restrictions that ebpf
+
+58
+00:02:18,319 --> 00:02:19,840
+has to follow but i'm going to talk
+
+59
+00:02:19,840 --> 00:02:21,360
+about this later
+
+60
+00:02:21,360 --> 00:02:23,520
+so once you have your c program you can
+
+61
+00:02:23,520 --> 00:02:26,480
+use lnvm to generate ebpf bytecode which
+
+62
+00:02:26,480 --> 00:02:28,239
+you can then load into the kernel with
+
+63
+00:02:28,239 --> 00:02:30,080
+the bpfc school
+
+64
+00:02:30,080 --> 00:02:32,239
+the bpf programs are made really of two
+
+65
+00:02:32,239 --> 00:02:34,720
+things the first thing is evpn maps and
+
+66
+00:02:34,720 --> 00:02:37,360
+then you have the actual upi programs
+
+67
+00:02:37,360 --> 00:02:39,680
+there are a lot of different pvpf maps
+
+68
+00:02:39,680 --> 00:02:40,480
+so
+
+69
+00:02:40,480 --> 00:02:42,400
+all you need to know is that they are
+
+70
+00:02:42,400 --> 00:02:45,040
+the only way to persist data generated
+
+71
+00:02:45,040 --> 00:02:47,120
+by your api programs
+
+72
+00:02:47,120 --> 00:02:48,959
+similarly there are many different types
+
+73
+00:02:48,959 --> 00:02:51,280
+of program and each program type has its
+
+74
+00:02:51,280 --> 00:02:53,519
+own use case but regardless of the
+
+75
+00:02:53,519 --> 00:02:55,519
+program type each program has to go
+
+76
+00:02:55,519 --> 00:02:57,599
+through the following two phases
+
+77
+00:02:57,599 --> 00:03:00,000
+first there is the verified step i will
+
+78
+00:03:00,000 --> 00:03:01,920
+talk about this later but for now just
+
+79
+00:03:01,920 --> 00:03:03,680
+know that this is a way to ensure that
+
+80
+00:03:03,680 --> 00:03:05,519
+your program is vetted
+
+81
+00:03:05,519 --> 00:03:08,000
+and second your ebpf bytecode will be
+
+82
+00:03:08,000 --> 00:03:09,840
+converted into machine code by your jit
+
+83
+00:03:09,840 --> 00:03:12,720
+compiler when those two phases succeed
+
+84
+00:03:12,720 --> 00:03:16,159
+your program is ready to be executed
+
+85
+00:03:16,159 --> 00:03:19,280
+step two is attaching vpf programs so
+
+86
+00:03:19,280 --> 00:03:21,440
+this is a way for you to tell the kernel
+
+87
+00:03:21,440 --> 00:03:23,840
+how to trigger your programs
+
+88
+00:03:23,840 --> 00:03:25,360
+um there are many different program
+
+89
+00:03:25,360 --> 00:03:26,879
+types so i can't present them all but
+
+90
+00:03:26,879 --> 00:03:28,239
+i'm just going to talk about four of
+
+91
+00:03:28,239 --> 00:03:30,959
+them for example you can use k probes to
+
+92
+00:03:30,959 --> 00:03:32,799
+trigger an epf program whenever a
+
+93
+00:03:32,799 --> 00:03:35,599
+specific symbol in the kernel is called
+
+94
+00:03:35,599 --> 00:03:37,840
+trace points are similar to k-probes but
+
+95
+00:03:37,840 --> 00:03:39,599
+the hook points on which they can be
+
+96
+00:03:39,599 --> 00:03:41,680
+attached have to be declared manually by
+
+97
+00:03:41,680 --> 00:03:43,519
+kernel developers
+
+98
+00:03:43,519 --> 00:03:45,360
+those two programs require another
+
+99
+00:03:45,360 --> 00:03:47,680
+syscall called perf even open to be
+
+100
+00:03:47,680 --> 00:03:49,120
+attached
+
+101
+00:03:49,120 --> 00:03:50,720
+the other types of programs i wanted to
+
+102
+00:03:50,720 --> 00:03:52,560
+talk about are traffic control
+
+103
+00:03:52,560 --> 00:03:56,000
+classifiers along with xdb programs so
+
+104
+00:03:56,000 --> 00:03:57,840
+those program types can be used to do
+
+105
+00:03:57,840 --> 00:03:59,920
+packet processing whenever some network
+
+106
+00:03:59,920 --> 00:04:01,599
+traffic is detected either at the host
+
+107
+00:04:01,599 --> 00:04:04,080
+level or at a specific network interface
+
+108
+00:04:04,080 --> 00:04:05,680
+level
+
+109
+00:04:05,680 --> 00:04:07,200
+those two require a network command to
+
+110
+00:04:07,200 --> 00:04:08,720
+be attached so the only thing you need
+
+111
+00:04:08,720 --> 00:04:10,400
+to remember is that
+
+112
+00:04:10,400 --> 00:04:12,560
+each program type has its own setup and
+
+113
+00:04:12,560 --> 00:04:14,159
+thus might require different levels of
+
+114
+00:04:14,159 --> 00:04:15,120
+access
+
+115
+00:04:15,120 --> 00:04:17,279
+another very important fact about uvpf
+
+116
+00:04:17,279 --> 00:04:19,600
+is that wpf maps can be shared between
+
+117
+00:04:19,600 --> 00:04:21,759
+different programs regardless of their
+
+118
+00:04:21,759 --> 00:04:24,560
+program types
+
+119
+00:04:25,520 --> 00:04:27,600
+all right so the verifier so the
+
+120
+00:04:27,600 --> 00:04:30,000
+verifier ensures that ebpf programs will
+
+121
+00:04:30,000 --> 00:04:32,320
+finish and won't crash so to do so it's
+
+122
+00:04:32,320 --> 00:04:34,240
+really just a checklist a list of rules
+
+123
+00:04:34,240 --> 00:04:36,800
+that your programs have to comply with
+
+124
+00:04:36,800 --> 00:04:38,639
+so first for example your program has to
+
+125
+00:04:38,639 --> 00:04:41,520
+be directed as a kid graph um no
+
+126
+00:04:41,520 --> 00:04:43,680
+unchecked differences and you can't
+
+127
+00:04:43,680 --> 00:04:45,919
+either have unreachable code
+
+128
+00:04:45,919 --> 00:04:48,479
+there is limits on for example the the
+
+129
+00:04:48,479 --> 00:04:50,400
+size of the stack of your programs along
+
+130
+00:04:50,400 --> 00:04:52,880
+with the overall count of instructions
+
+131
+00:04:52,880 --> 00:04:54,960
+on your program
+
+132
+00:04:54,960 --> 00:04:57,120
+and finally what i think importantly um
+
+133
+00:04:57,120 --> 00:04:59,520
+what the verifier is most famous for is
+
+134
+00:04:59,520 --> 00:05:01,840
+its cryptic output so i'm sure a lot of
+
+135
+00:05:01,840 --> 00:05:03,919
+you guys have already used vbpn before
+
+136
+00:05:03,919 --> 00:05:05,759
+but you will definitely know what i'm
+
+137
+00:05:05,759 --> 00:05:07,759
+talking about um yeah if your program
+
+138
+00:05:07,759 --> 00:05:09,680
+doesn't pass the very first step you are
+
+139
+00:05:09,680 --> 00:05:13,919
+in for a very painful debugging session
+
+140
+00:05:14,400 --> 00:05:16,800
+last but not least ebpf comes with a
+
+141
+00:05:16,800 --> 00:05:19,280
+list of wpbf efforts
+
+142
+00:05:19,280 --> 00:05:21,520
+so those helpers will help you access
+
+143
+00:05:21,520 --> 00:05:23,600
+data or execute versions that you
+
+144
+00:05:23,600 --> 00:05:25,919
+wouldn't be about able to to write
+
+145
+00:05:25,919 --> 00:05:28,160
+natively so in short
+
+146
+00:05:28,160 --> 00:05:31,360
+you have about 160 helpers today and
+
+147
+00:05:31,360 --> 00:05:33,600
+most of the heavy lifting of your vf
+
+148
+00:05:33,600 --> 00:05:36,240
+programs will be based on those helpers
+
+149
+00:05:36,240 --> 00:05:38,080
+so for example you have context helpers
+
+150
+00:05:38,080 --> 00:05:40,080
+that will tell you data i mean things
+
+151
+00:05:40,080 --> 00:05:42,639
+about um the user space program that
+
+152
+00:05:42,639 --> 00:05:45,919
+triggered the bpf program or um other
+
+153
+00:05:45,919 --> 00:05:47,919
+kinds of helpers such as map related
+
+154
+00:05:47,919 --> 00:05:50,000
+helpers or memory related helpers that
+
+155
+00:05:50,000 --> 00:05:54,320
+will let you read or write to memory
+
+156
+00:05:54,320 --> 00:05:55,919
+all right so that concludes this
+
+157
+00:05:55,919 --> 00:05:58,000
+introduction to ebpf and i will hand it
+
+158
+00:05:58,000 --> 00:06:00,240
+over to silva so that he can kick off
+
+159
+00:06:00,240 --> 00:06:02,000
+the presentation of the brackets
+
+160
+00:06:02,000 --> 00:06:03,919
+thank you guillaume before we get into
+
+161
+00:06:03,919 --> 00:06:06,479
+the details first let's see why ebpf is
+
+162
+00:06:06,479 --> 00:06:08,319
+an interesting technology to write the
+
+163
+00:06:08,319 --> 00:06:10,720
+rootkit first the safety grammarity
+
+164
+00:06:10,720 --> 00:06:12,880
+brought by ebpf means that a bug in our
+
+165
+00:06:12,880 --> 00:06:15,280
+rootkit simply cannot crash the host an
+
+166
+00:06:15,280 --> 00:06:16,960
+error in the execution will not cause
+
+167
+00:06:16,960 --> 00:06:19,520
+any log message to be emitted the user
+
+168
+00:06:19,520 --> 00:06:20,720
+therefore has no way to know that
+
+169
+00:06:20,720 --> 00:06:22,160
+something actually went wrong and
+
+170
+00:06:22,160 --> 00:06:24,160
+notices the presence of the rootkit
+
+171
+00:06:24,160 --> 00:06:26,319
+as we saw earlier the ebpf by code is
+
+172
+00:06:26,319 --> 00:06:28,160
+converted into native code and the
+
+173
+00:06:28,160 --> 00:06:30,240
+number of instructions is limited
+
+174
+00:06:30,240 --> 00:06:32,240
+limiting by extensions the performance
+
+175
+00:06:32,240 --> 00:06:34,240
+impact that our kit can have on the
+
+176
+00:06:34,240 --> 00:06:36,240
+machine that could otherwise be detected
+
+177
+00:06:36,240 --> 00:06:37,919
+by the user
+
+178
+00:06:37,919 --> 00:06:40,479
+on a commercial note ebpf is used by an
+
+179
+00:06:40,479 --> 00:06:42,639
+increasing number of vendors for various
+
+180
+00:06:42,639 --> 00:06:45,120
+use cases with ebpf becoming widespread
+
+181
+00:06:45,120 --> 00:06:46,960
+the chance of one product being abused
+
+182
+00:06:46,960 --> 00:06:48,720
+to load malicious programs also
+
+183
+00:06:48,720 --> 00:06:51,039
+increases the safety guarantee we just
+
+184
+00:06:51,039 --> 00:06:52,240
+talked about should not give the
+
+185
+00:06:52,240 --> 00:06:54,319
+security administrators the false
+
+186
+00:06:54,319 --> 00:06:56,880
+feeling of security
+
+187
+00:06:56,880 --> 00:06:59,039
+as the set of features that is available
+
+188
+00:06:59,039 --> 00:07:02,160
+for rebf programs is directly coupled to
+
+189
+00:07:02,160 --> 00:07:04,400
+the kernel version every new release
+
+190
+00:07:04,400 --> 00:07:06,639
+bring new helpers and capabilities we
+
+191
+00:07:06,639 --> 00:07:08,560
+must carefully choose the right balance
+
+192
+00:07:08,560 --> 00:07:10,880
+between the power of new ebpa features
+
+193
+00:07:10,880 --> 00:07:12,880
+and their availability in real world
+
+194
+00:07:12,880 --> 00:07:14,319
+environments
+
+195
+00:07:14,319 --> 00:07:16,720
+using helpers such as bpmd pass or
+
+196
+00:07:16,720 --> 00:07:19,280
+technologies such as key rsi would
+
+197
+00:07:19,280 --> 00:07:21,199
+probably have made our route kit easier
+
+198
+00:07:21,199 --> 00:07:23,680
+to write we decided though to use a set
+
+199
+00:07:23,680 --> 00:07:25,199
+of features that would allow our root
+
+200
+00:07:25,199 --> 00:07:27,759
+kit to run on widely used distribution
+
+201
+00:07:27,759 --> 00:07:31,520
+such as rail or the latest ubuntu lts
+
+202
+00:07:31,520 --> 00:07:33,680
+one of the primary tasks of our rootkit
+
+203
+00:07:33,680 --> 00:07:35,440
+is to hide itself what does it mean in
+
+204
+00:07:35,440 --> 00:07:37,919
+our case ebpf programs are bound to
+
+205
+00:07:37,919 --> 00:07:39,840
+running process if this process gets
+
+206
+00:07:39,840 --> 00:07:42,000
+killed all the attached ebpf program
+
+207
+00:07:42,000 --> 00:07:44,400
+will be unloaded for that reason it is
+
+208
+00:07:44,400 --> 00:07:46,720
+essential that we both hide our program
+
+209
+00:07:46,720 --> 00:07:48,879
+and protect him from being killed
+
+210
+00:07:48,879 --> 00:07:51,280
+the ebpf programs and maps used by our
+
+211
+00:07:51,280 --> 00:07:53,520
+kids should also be hidden and we should
+
+212
+00:07:53,520 --> 00:07:55,520
+forbid other programs to gain access to
+
+213
+00:07:55,520 --> 00:07:57,840
+them through file descriptors so let's
+
+214
+00:07:57,840 --> 00:08:01,198
+see our wiki in action
+
+215
+00:08:03,039 --> 00:08:04,639
+so
+
+216
+00:08:04,639 --> 00:08:06,479
+we start our wikis which is kind enough
+
+217
+00:08:06,479 --> 00:08:09,199
+to deploy displays pid in the standard
+
+218
+00:08:09,199 --> 00:08:10,639
+output
+
+219
+00:08:10,639 --> 00:08:13,120
+and then we look for this pid in the
+
+220
+00:08:13,120 --> 00:08:15,440
+output of the ps utility
+
+221
+00:08:15,440 --> 00:08:17,360
+or in the proc file system of the
+
+222
+00:08:17,360 --> 00:08:18,960
+directory
+
+223
+00:08:18,960 --> 00:08:21,840
+and we cannot find any entry we can also
+
+224
+00:08:21,840 --> 00:08:24,639
+try to guess a file and under this
+
+225
+00:08:24,639 --> 00:08:26,639
+underpinning
+
+226
+00:08:26,639 --> 00:08:29,280
+same result we can also use a relative
+
+227
+00:08:29,280 --> 00:08:30,240
+class
+
+228
+00:08:30,240 --> 00:08:33,198
+with the same results
+
+229
+00:08:33,919 --> 00:08:35,360
+another way to detect the root kit would
+
+230
+00:08:35,360 --> 00:08:37,760
+be to send to send it a signal like a
+
+231
+00:08:37,760 --> 00:08:40,479
+user one signal
+
+232
+00:08:40,479 --> 00:08:42,320
+and we can see here
+
+233
+00:08:42,320 --> 00:08:44,320
+that it triggers an error no such
+
+234
+00:08:44,320 --> 00:08:45,519
+process
+
+235
+00:08:45,519 --> 00:08:46,560
+so
+
+236
+00:08:46,560 --> 00:08:49,359
+how does it work
+
+237
+00:08:49,440 --> 00:08:50,959
+so this
+
+238
+00:08:50,959 --> 00:08:51,680
+the
+
+239
+00:08:51,680 --> 00:08:53,839
+observation capabilities of our kit rely
+
+240
+00:08:53,839 --> 00:08:55,839
+mainly on the use of two bpf helpers
+
+241
+00:08:55,839 --> 00:08:57,839
+first one the bpf program user this
+
+242
+00:08:57,839 --> 00:09:00,480
+helper allows our ebpf program to write
+
+243
+00:09:00,480 --> 00:09:02,240
+into the memory of the process that
+
+244
+00:09:02,240 --> 00:09:04,240
+issues a system call this can be used
+
+245
+00:09:04,240 --> 00:09:06,240
+for instance to alter the data that is
+
+246
+00:09:06,240 --> 00:09:08,320
+returned by your cisco it is also
+
+247
+00:09:08,320 --> 00:09:10,560
+possible to alter the data provided by
+
+248
+00:09:10,560 --> 00:09:13,200
+the process as argument to the cisco one
+
+249
+00:09:13,200 --> 00:09:15,200
+cabinet of this helper though is that
+
+250
+00:09:15,200 --> 00:09:17,680
+the memory to be modified has to be
+
+251
+00:09:17,680 --> 00:09:19,680
+mapped into the kernel address space
+
+252
+00:09:19,680 --> 00:09:21,519
+otherwise the mirror or major page fault
+
+253
+00:09:21,519 --> 00:09:23,519
+will be triggered causing the call to
+
+254
+00:09:23,519 --> 00:09:26,320
+dpf pro right user to silently fail the
+
+255
+00:09:26,320 --> 00:09:28,480
+other bpf helper is a bpf override
+
+256
+00:09:28,480 --> 00:09:30,320
+retail this one makes it possible to
+
+257
+00:09:30,320 --> 00:09:32,399
+change the return value of this score it
+
+258
+00:09:32,399 --> 00:09:34,240
+has an interesting property though if
+
+259
+00:09:34,240 --> 00:09:36,240
+the helper is used at the system return
+
+260
+00:09:36,240 --> 00:09:37,920
+it will simply change the retail value
+
+261
+00:09:37,920 --> 00:09:40,399
+of the executive score now if it's used
+
+262
+00:09:40,399 --> 00:09:42,560
+at the entry of the cisco the execution
+
+263
+00:09:42,560 --> 00:09:45,920
+of the cisco will be completely skipped
+
+264
+00:09:45,920 --> 00:09:46,959
+so let's
+
+265
+00:09:46,959 --> 00:09:48,640
+look at how the authentication of the
+
+266
+00:09:48,640 --> 00:09:50,480
+file actually works
+
+267
+00:09:50,480 --> 00:09:52,720
+at startup the rootkit will populate a
+
+268
+00:09:52,720 --> 00:09:55,680
+map with the passwords pid folder now
+
+269
+00:09:55,680 --> 00:09:57,760
+the user space issues a file related
+
+270
+00:09:57,760 --> 00:10:00,240
+cisco such as stats these syscalls
+
+271
+00:10:00,240 --> 00:10:02,320
+usually come in two forms one that
+
+272
+00:10:02,320 --> 00:10:04,240
+accepts the pass to the stream to the
+
+273
+00:10:04,240 --> 00:10:06,000
+file as a string another one that
+
+274
+00:10:06,000 --> 00:10:08,079
+accepts a file street descriptor for the
+
+275
+00:10:08,079 --> 00:10:10,320
+file that the user space program must
+
+276
+00:10:10,320 --> 00:10:12,480
+have previously retrieved using an open
+
+277
+00:10:12,480 --> 00:10:13,839
+cisco
+
+278
+00:10:13,839 --> 00:10:16,320
+so let's consider the form the pass
+
+279
+00:10:16,320 --> 00:10:18,800
+specified could be a relative pass now
+
+280
+00:10:18,800 --> 00:10:20,880
+to properly identify the targeted file
+
+281
+00:10:20,880 --> 00:10:22,480
+the rootkit needs to do an accurate
+
+282
+00:10:22,480 --> 00:10:24,720
+resolution of the past unfortunately
+
+283
+00:10:24,720 --> 00:10:26,640
+there is simply not enough context to do
+
+284
+00:10:26,640 --> 00:10:28,720
+so at the entry of the syscall so we
+
+285
+00:10:28,720 --> 00:10:31,040
+need to hook deeper into the kernel in
+
+286
+00:10:31,040 --> 00:10:33,600
+the vfs code at this point it's too late
+
+287
+00:10:33,600 --> 00:10:35,440
+to what the cisco therefore at this is
+
+288
+00:10:35,440 --> 00:10:37,760
+called the exit we need to change the
+
+289
+00:10:37,760 --> 00:10:39,839
+return value to make the user space
+
+290
+00:10:39,839 --> 00:10:41,839
+believe the call failed for instance and
+
+291
+00:10:41,839 --> 00:10:44,000
+also and also scrub the content of the
+
+292
+00:10:44,000 --> 00:10:47,440
+structures that were filled by the curve
+
+293
+00:10:47,440 --> 00:10:49,519
+now let's consider the later this
+
+294
+00:10:49,519 --> 00:10:51,680
+version that accepts a file descriptor
+
+295
+00:10:51,680 --> 00:10:53,839
+we do the same pass resolution as before
+
+296
+00:10:53,839 --> 00:10:56,240
+but we pretend to user's method to call
+
+297
+00:10:56,240 --> 00:10:58,640
+failed while storing the file descriptor
+
+298
+00:10:58,640 --> 00:11:00,560
+that was effectively allocated by the
+
+299
+00:11:00,560 --> 00:11:03,360
+kernel into an ebpf map if the same
+
+300
+00:11:03,360 --> 00:11:05,040
+process issues a cisco with the same
+
+301
+00:11:05,040 --> 00:11:06,880
+file descriptor we can add the cisco
+
+302
+00:11:06,880 --> 00:11:08,959
+entry return and narrow and block a
+
+303
+00:11:08,959 --> 00:11:11,279
+cisco
+
+304
+00:11:11,279 --> 00:11:13,200
+blocking the cisco that accepts the pid
+
+305
+00:11:13,200 --> 00:11:15,200
+as argument is trivial using bpf
+
+306
+00:11:15,200 --> 00:11:17,360
+override same for loading kernel
+
+307
+00:11:17,360 --> 00:11:19,120
+module
+
+308
+00:11:19,120 --> 00:11:21,680
+so now let's look at the obfuscation of
+
+309
+00:11:21,680 --> 00:11:25,199
+our ebpf programming maps
+
+310
+00:11:26,640 --> 00:11:29,640
+so
+
+311
+00:11:29,920 --> 00:11:32,640
+we use the bpf tool that is provided
+
+312
+00:11:32,640 --> 00:11:34,640
+in the kernel sources
+
+313
+00:11:34,640 --> 00:11:36,800
+and it allows us to list the program and
+
+314
+00:11:36,800 --> 00:11:39,440
+the maps loading on the systems and
+
+315
+00:11:39,440 --> 00:11:41,440
+at this point our idpf on our rootkit is
+
+316
+00:11:41,440 --> 00:11:43,200
+loaded and we cannot see any map any
+
+317
+00:11:43,200 --> 00:11:45,200
+program associated to it
+
+318
+00:11:45,200 --> 00:11:48,000
+now if we start another program an ebpa
+
+319
+00:11:48,000 --> 00:11:50,639
+program that is making use of maps and
+
+320
+00:11:50,639 --> 00:11:51,920
+keyproofs
+
+321
+00:11:51,920 --> 00:11:53,360
+we can see
+
+322
+00:11:53,360 --> 00:11:55,680
+the new and the new probes or programs
+
+323
+00:11:55,680 --> 00:11:57,760
+created and the new maps but still not
+
+324
+00:11:57,760 --> 00:11:58,639
+the one
+
+325
+00:11:58,639 --> 00:12:00,160
+associated with our
+
+326
+00:12:00,160 --> 00:12:01,680
+without grid kit
+
+327
+00:12:01,680 --> 00:12:02,959
+so
+
+328
+00:12:02,959 --> 00:12:05,600
+the idea here is to hook into the ppf
+
+329
+00:12:05,600 --> 00:12:08,079
+call itself the two things are required
+
+330
+00:12:08,079 --> 00:12:10,160
+here first to avoid the user space to
+
+331
+00:12:10,160 --> 00:12:12,720
+iterate through the ids of our entities
+
+332
+00:12:12,720 --> 00:12:15,040
+programs and maps assigned by the kernel
+
+333
+00:12:15,040 --> 00:12:18,079
+using the bpf pro get next id and pro
+
+334
+00:12:18,079 --> 00:12:20,480
+bpf map get next id
+
+335
+00:12:20,480 --> 00:12:22,399
+we also need to prevent user space from
+
+336
+00:12:22,399 --> 00:12:24,240
+getting a file descriptor to the
+
+337
+00:12:24,240 --> 00:12:26,800
+programmer map from an id that it might
+
+338
+00:12:26,800 --> 00:12:29,839
+it might have guessed using bpf pro
+
+339
+00:12:29,839 --> 00:12:32,480
+get fd by id
+
+340
+00:12:32,480 --> 00:12:34,399
+so once these operations are handled by
+
+341
+00:12:34,399 --> 00:12:36,560
+the rootkit the user space is not able
+
+342
+00:12:36,560 --> 00:12:40,800
+to view or modify our programs and maps
+
+343
+00:12:40,800 --> 00:12:43,040
+bpf program user is a crucial part of
+
+344
+00:12:43,040 --> 00:12:44,800
+our wiki but it comes with a pitfall
+
+345
+00:12:44,800 --> 00:12:46,639
+when an ebpf program that makes use of
+
+346
+00:12:46,639 --> 00:12:48,639
+it is loaded the kernel prints a
+
+347
+00:12:48,639 --> 00:12:50,959
+legitimate though pretty scary message
+
+348
+00:12:50,959 --> 00:12:53,360
+in the canon ring buffer so let's look
+
+349
+00:12:53,360 --> 00:12:57,120
+at how the rootkit handles this case
+
+350
+00:12:58,880 --> 00:13:01,120
+so we can look at the contents of the
+
+351
+00:13:01,120 --> 00:13:03,600
+canadian buffer before the rootkit is
+
+352
+00:13:03,600 --> 00:13:04,959
+loaded
+
+353
+00:13:04,959 --> 00:13:06,880
+and we can start a program in this case
+
+354
+00:13:06,880 --> 00:13:08,079
+it's cat
+
+355
+00:13:08,079 --> 00:13:09,519
+and it's a
+
+356
+00:13:09,519 --> 00:13:11,600
+slash key message and it will block and
+
+357
+00:13:11,600 --> 00:13:13,839
+waiting for new message to arrive into
+
+358
+00:13:13,839 --> 00:13:16,000
+the ring buffer
+
+359
+00:13:16,000 --> 00:13:18,839
+we then start our ebpf
+
+360
+00:13:18,839 --> 00:13:21,839
+request and we can see that the cat
+
+361
+00:13:21,839 --> 00:13:24,160
+program exited because there was a new
+
+362
+00:13:24,160 --> 00:13:25,760
+message inserted in the personal green
+
+363
+00:13:25,760 --> 00:13:27,279
+buffer but that's not the one that the
+
+364
+00:13:27,279 --> 00:13:28,240
+kernel
+
+365
+00:13:28,240 --> 00:13:31,519
+inserted to to warn us about the use of
+
+366
+00:13:31,519 --> 00:13:33,200
+bpa provide user
+
+367
+00:13:33,200 --> 00:13:34,800
+and we can also
+
+368
+00:13:34,800 --> 00:13:36,320
+look at the whole contents of the
+
+369
+00:13:36,320 --> 00:13:39,440
+canadian buffer and still not find the
+
+370
+00:13:39,440 --> 00:13:42,000
+the message
+
+371
+00:13:42,160 --> 00:13:43,360
+so
+
+372
+00:13:43,360 --> 00:13:46,240
+so in this demo the cad slash dev key
+
+373
+00:13:46,240 --> 00:13:49,440
+message john d in our diagram is blocked
+
+374
+00:13:49,440 --> 00:13:52,240
+on read syscalls that will return once a
+
+375
+00:13:52,240 --> 00:13:54,000
+new message arrives
+
+376
+00:13:54,000 --> 00:13:56,720
+so two ebpf programs have to be loaded
+
+377
+00:13:56,720 --> 00:13:59,120
+by the rootkit sequentially the first
+
+378
+00:13:59,120 --> 00:14:00,800
+one which doesn't use
+
+379
+00:14:00,800 --> 00:14:03,440
+vpf for bright user will hook on read
+
+380
+00:14:03,440 --> 00:14:06,240
+syscalls and will make it return zero
+
+381
+00:14:06,240 --> 00:14:08,959
+and write legit looking messages into
+
+382
+00:14:08,959 --> 00:14:10,800
+the the performing buffer
+
+383
+00:14:10,800 --> 00:14:12,880
+after a short delay the second program
+
+384
+00:14:12,880 --> 00:14:15,279
+this time using bpf for great user will
+
+385
+00:14:15,279 --> 00:14:17,519
+be loaded at this point the read
+
+386
+00:14:17,519 --> 00:14:20,560
+syscalls can be unblocked over and we
+
+387
+00:14:20,560 --> 00:14:22,639
+can safely override the contents of the
+
+388
+00:14:22,639 --> 00:14:25,120
+first read messages with other alleged
+
+389
+00:14:25,120 --> 00:14:27,920
+looking messages
+
+390
+00:14:28,800 --> 00:14:30,880
+now another important task for the
+
+391
+00:14:30,880 --> 00:14:33,040
+rootkit is to set a persistent success
+
+392
+00:14:33,040 --> 00:14:35,519
+across reboots for instance
+
+393
+00:14:35,519 --> 00:14:37,440
+for persistent access to the system a
+
+394
+00:14:37,440 --> 00:14:39,279
+generic method close to the ones
+
+395
+00:14:39,279 --> 00:14:41,279
+described in the appreciation part
+
+396
+00:14:41,279 --> 00:14:43,839
+allows replacing the red content of some
+
+397
+00:14:43,839 --> 00:14:46,320
+critical files such as the ssh server
+
+398
+00:14:46,320 --> 00:14:49,519
+authorized keys or scripts executed by
+
+399
+00:14:49,519 --> 00:14:53,440
+root demand such as prodi or systemd
+
+400
+00:14:53,440 --> 00:14:54,880
+persistent access to an application
+
+401
+00:14:54,880 --> 00:14:56,800
+database can also be set up using
+
+402
+00:14:56,800 --> 00:14:59,199
+another type of ebpf program called eu
+
+403
+00:14:59,199 --> 00:15:00,959
+probes
+
+404
+00:15:00,959 --> 00:15:02,959
+so concepts conceptually there really
+
+405
+00:15:02,959 --> 00:15:05,040
+are ebpf programs attached to user space
+
+406
+00:15:05,040 --> 00:15:07,519
+function in addition to being safer and
+
+407
+00:15:07,519 --> 00:15:10,160
+easier to use than b traits they offer a
+
+408
+00:15:10,160 --> 00:15:12,480
+valuable advantage the camo will
+
+409
+00:15:12,480 --> 00:15:14,800
+automatically set up for us the hooks on
+
+410
+00:15:14,800 --> 00:15:17,279
+every new instance on the program of the
+
+411
+00:15:17,279 --> 00:15:19,360
+program so let's see an example
+
+412
+00:15:19,360 --> 00:15:22,720
+targeting postgresql
+
+413
+00:15:23,440 --> 00:15:25,760
+so we have a postgresql server
+
+414
+00:15:25,760 --> 00:15:27,839
+with a web app role with the bonsoir
+
+415
+00:15:27,839 --> 00:15:30,320
+password but we don't know this password
+
+416
+00:15:30,320 --> 00:15:31,759
+and we would like to get access to it
+
+417
+00:15:31,759 --> 00:15:34,720
+using a randomly chosen password in this
+
+418
+00:15:34,720 --> 00:15:38,079
+case hello so we start our ebps with it
+
+419
+00:15:38,079 --> 00:15:40,880
+and it will set up the the year probe
+
+420
+00:15:40,880 --> 00:15:43,759
+and using a value inside an ebpf map
+
+421
+00:15:43,759 --> 00:15:46,800
+it will override the accepted value for
+
+422
+00:15:46,800 --> 00:15:49,279
+the password in this case we managed to
+
+423
+00:15:49,279 --> 00:15:52,480
+log in with the yellow
+
+424
+00:15:52,839 --> 00:15:56,639
+so the idea here is to hook on the md5
+
+425
+00:15:56,639 --> 00:15:58,880
+script verify function of password sql
+
+426
+00:15:58,880 --> 00:16:00,720
+that checks whether the user provided
+
+427
+00:16:00,720 --> 00:16:03,680
+the right md5 for its role password and
+
+428
+00:16:03,680 --> 00:16:05,680
+the challenge sent by the server
+
+429
+00:16:05,680 --> 00:16:08,240
+overwriting the expected hash contained
+
+430
+00:16:08,240 --> 00:16:10,800
+in the variable shadow pass with a known
+
+431
+00:16:10,800 --> 00:16:13,360
+value makes the comparison succeed and
+
+432
+00:16:13,360 --> 00:16:15,600
+gives persistent access to the database
+
+433
+00:16:15,600 --> 00:16:17,440
+to the attacker
+
+434
+00:16:17,440 --> 00:16:19,920
+now i will head over to guillen that
+
+435
+00:16:19,920 --> 00:16:21,519
+will show you the combination control
+
+436
+00:16:21,519 --> 00:16:23,759
+capabilities of the rootkit
+
+437
+00:16:23,759 --> 00:16:25,759
+thank you silva let's talk about the
+
+438
+00:16:25,759 --> 00:16:27,120
+command and control feature of the
+
+439
+00:16:27,120 --> 00:16:29,839
+rootkit so what exactly do we want to do
+
+440
+00:16:29,839 --> 00:16:31,440
+we want to be able to send commands to
+
+441
+00:16:31,440 --> 00:16:33,519
+the rootkit to exfoliate data and to get
+
+442
+00:16:33,519 --> 00:16:35,759
+remote access to the infected hosts
+
+443
+00:16:35,759 --> 00:16:38,480
+unfortunately there are a few ebpf
+
+444
+00:16:38,480 --> 00:16:40,320
+related challenges that we need to face
+
+445
+00:16:40,320 --> 00:16:42,560
+in order to implement those features
+
+446
+00:16:42,560 --> 00:16:44,160
+first you can't initiate a connection
+
+447
+00:16:44,160 --> 00:16:47,279
+with a bpf second you can't open a port
+
+448
+00:16:47,279 --> 00:16:50,240
+however ebpf can be used to hijack an
+
+449
+00:16:50,240 --> 00:16:52,800
+existing connection
+
+450
+00:16:52,800 --> 00:16:54,800
+so in order to solve this feature we
+
+451
+00:16:54,800 --> 00:16:56,880
+have set up a very simple infrastructure
+
+452
+00:16:56,880 --> 00:16:58,639
+on aws
+
+453
+00:16:58,639 --> 00:17:01,440
+a simple web app was installed on an ec2
+
+454
+00:17:01,440 --> 00:17:03,440
+instance and we used a classic load
+
+455
+00:17:03,440 --> 00:17:05,760
+balancer to redirect https traffic to
+
+456
+00:17:05,760 --> 00:17:08,240
+our instance over http
+
+457
+00:17:08,240 --> 00:17:10,079
+the ip address of the load balancer is
+
+458
+00:17:10,079 --> 00:17:12,039
+resolved from the
+
+459
+00:17:12,039 --> 00:17:14,240
+blackhead.demo.dns name and in other
+
+460
+00:17:14,240 --> 00:17:16,240
+words the tls termination is done at the
+
+461
+00:17:16,240 --> 00:17:17,919
+load balancer level which means that
+
+462
+00:17:17,919 --> 00:17:20,240
+http requests are sent to our instance
+
+463
+00:17:20,240 --> 00:17:21,599
+unencrypted
+
+464
+00:17:21,599 --> 00:17:24,000
+so our goal is to implement cnc by
+
+465
+00:17:24,000 --> 00:17:26,559
+hijacking the network traffic to our web
+
+466
+00:17:26,559 --> 00:17:27,760
+app
+
+467
+00:17:27,760 --> 00:17:28,720
+first
+
+468
+00:17:28,720 --> 00:17:30,480
+we need to figure out which vpnf program
+
+469
+00:17:30,480 --> 00:17:32,480
+type we're going to use to in order to
+
+470
+00:17:32,480 --> 00:17:34,640
+implement this feature
+
+471
+00:17:34,640 --> 00:17:36,320
+so although ebps provides a lot of
+
+472
+00:17:36,320 --> 00:17:38,080
+options to choose from we decided to go
+
+473
+00:17:38,080 --> 00:17:40,799
+with two different ebpf program types so
+
+474
+00:17:40,799 --> 00:17:42,320
+those two different program types are
+
+475
+00:17:42,320 --> 00:17:44,240
+xdp programs and traffic control
+
+476
+00:17:44,240 --> 00:17:45,679
+classifiers
+
+477
+00:17:45,679 --> 00:17:47,440
+both of those program types are usually
+
+478
+00:17:47,440 --> 00:17:49,840
+used for deep packet inspection
+
+479
+00:17:49,840 --> 00:17:53,120
+so while xdp works on ingress tc works
+
+480
+00:17:53,120 --> 00:17:55,679
+on both ingress and egress traffic
+
+481
+00:17:55,679 --> 00:17:57,039
+another difference between the two
+
+482
+00:17:57,039 --> 00:17:58,400
+programs are
+
+483
+00:17:58,400 --> 00:18:01,280
+is that xdp programs can be offloaded to
+
+484
+00:18:01,280 --> 00:18:03,200
+network interface controllers which
+
+485
+00:18:03,200 --> 00:18:05,679
+essentially means that your program will
+
+486
+00:18:05,679 --> 00:18:08,000
+be run before the packet enters any
+
+487
+00:18:08,000 --> 00:18:10,400
+subsystem of the network stack
+
+488
+00:18:10,400 --> 00:18:12,880
+on the other hand tc programs have to be
+
+489
+00:18:12,880 --> 00:18:14,400
+attached to
+
+490
+00:18:14,400 --> 00:18:16,559
+a specific network interface which means
+
+491
+00:18:16,559 --> 00:18:18,720
+that they are triggered much later in
+
+492
+00:18:18,720 --> 00:18:20,240
+the network stack
+
+493
+00:18:20,240 --> 00:18:23,120
+with both programs you can drop allow or
+
+494
+00:18:23,120 --> 00:18:26,240
+modify packets and with xzp program you
+
+495
+00:18:26,240 --> 00:18:28,480
+can also retransmit a packet so this
+
+496
+00:18:28,480 --> 00:18:30,799
+option is super interesting because this
+
+497
+00:18:30,799 --> 00:18:33,200
+means that you can essentially hide
+
+498
+00:18:33,200 --> 00:18:34,799
+data from the kernel entirely and you
+
+499
+00:18:34,799 --> 00:18:37,360
+can receive and insert it up back to a
+
+500
+00:18:37,360 --> 00:18:40,320
+packet even before it reaches um any
+
+501
+00:18:40,320 --> 00:18:42,960
+kind of network firewall or a network
+
+502
+00:18:42,960 --> 00:18:45,200
+monitoring tool
+
+503
+00:18:45,200 --> 00:18:46,160
+um
+
+504
+00:18:46,160 --> 00:18:47,679
+skipping the the network stack also
+
+505
+00:18:47,679 --> 00:18:49,679
+explains why xdp programs are mainly
+
+506
+00:18:49,679 --> 00:18:52,240
+used for ddos mitigation because um the
+
+507
+00:18:52,240 --> 00:18:53,520
+the overhead
+
+508
+00:18:53,520 --> 00:18:54,400
+of
+
+509
+00:18:54,400 --> 00:18:56,000
+the network stack is not there and you
+
+510
+00:18:56,000 --> 00:18:58,240
+will be able to drop packets much faster
+
+511
+00:18:58,240 --> 00:19:01,520
+as for tc programs they are often used
+
+512
+00:19:01,520 --> 00:19:04,000
+to monitor and secure network access to
+
+513
+00:19:04,000 --> 00:19:06,960
+containers um or at the container or at
+
+514
+00:19:06,960 --> 00:19:09,600
+the pod level
+
+515
+00:19:09,600 --> 00:19:10,799
+all right so what you need to remember
+
+516
+00:19:10,799 --> 00:19:12,480
+from this slide is network packets can
+
+517
+00:19:12,480 --> 00:19:14,559
+be hidden from the kernel entirely and
+
+518
+00:19:14,559 --> 00:19:16,799
+um data can be explicited with an ebp
+
+519
+00:19:16,799 --> 00:19:18,559
+ftc classifier because you can modify
+
+520
+00:19:18,559 --> 00:19:22,879
+packets as they go out of the host
+
+521
+00:19:23,039 --> 00:19:26,080
+all right so first let's see how we used
+
+522
+00:19:26,080 --> 00:19:28,320
+uh xdp programs to receive comments from
+
+523
+00:19:28,320 --> 00:19:29,600
+the rootkit
+
+524
+00:19:29,600 --> 00:19:32,880
+so we've implemented a client to um
+
+525
+00:19:32,880 --> 00:19:34,880
+for the rootkit and this client uh
+
+526
+00:19:34,880 --> 00:19:37,679
+simply does um you know like it emits
+
+527
+00:19:37,679 --> 00:19:40,559
+https requests to the rootkit with a
+
+528
+00:19:40,559 --> 00:19:43,360
+custom rule and root sorry in a custom
+
+529
+00:19:43,360 --> 00:19:45,440
+and data into the user agent
+
+530
+00:19:45,440 --> 00:19:47,600
+so after going through the load balancer
+
+531
+00:19:47,600 --> 00:19:49,760
+the request eventually reaches the host
+
+532
+00:19:49,760 --> 00:19:52,960
+and triggers our xdp program then our
+
+533
+00:19:52,960 --> 00:19:55,200
+programs parse the requests the http
+
+534
+00:19:55,200 --> 00:19:57,200
+route for example and understand if that
+
+535
+00:19:57,200 --> 00:19:58,960
+request is meant for us and not for the
+
+536
+00:19:58,960 --> 00:20:00,240
+web app
+
+537
+00:20:00,240 --> 00:20:02,960
+after reading the user agent the rootkit
+
+538
+00:20:02,960 --> 00:20:04,720
+executes the requested command and moves
+
+539
+00:20:04,720 --> 00:20:07,200
+on to the final step so the final step
+
+540
+00:20:07,200 --> 00:20:09,200
+is probably the most important one of
+
+541
+00:20:09,200 --> 00:20:11,360
+this entire process
+
+542
+00:20:11,360 --> 00:20:13,679
+so the final step consists in
+
+543
+00:20:13,679 --> 00:20:16,400
+overwriting the entire request with a
+
+544
+00:20:16,400 --> 00:20:18,720
+health check request and we do so for
+
+545
+00:20:18,720 --> 00:20:20,880
+two reasons first we don't want the
+
+546
+00:20:20,880 --> 00:20:22,799
+malicious request to reach the web app
+
+547
+00:20:22,799 --> 00:20:24,960
+or any kind of user space monitoring
+
+548
+00:20:24,960 --> 00:20:27,520
+tools that might detect the unusual
+
+549
+00:20:27,520 --> 00:20:28,640
+traffic
+
+550
+00:20:28,640 --> 00:20:30,640
+second we want the client to receive an
+
+551
+00:20:30,640 --> 00:20:32,480
+answer in order to know if the request
+
+552
+00:20:32,480 --> 00:20:34,400
+was successful or not
+
+553
+00:20:34,400 --> 00:20:36,320
+so as i said before we could also have
+
+554
+00:20:36,320 --> 00:20:38,400
+dropped the package entirely but since
+
+555
+00:20:38,400 --> 00:20:40,480
+we're using tcp the load balancer would
+
+556
+00:20:40,480 --> 00:20:42,400
+have retransmitted the request over and
+
+557
+00:20:42,400 --> 00:20:45,120
+over again until the request times out
+
+558
+00:20:45,120 --> 00:20:46,880
+so this would generate noise and
+
+559
+00:20:46,880 --> 00:20:48,640
+increase our chances of getting
+
+560
+00:20:48,640 --> 00:20:49,760
+discovered
+
+561
+00:20:49,760 --> 00:20:51,360
+that said it would be a valid strategy
+
+562
+00:20:51,360 --> 00:20:53,120
+for udp packets
+
+563
+00:20:53,120 --> 00:20:54,720
+let's have a look at how we can send
+
+564
+00:20:54,720 --> 00:20:59,200
+postgresql credentials using this method
+
+565
+00:21:00,400 --> 00:21:03,120
+so um on the left here what you can see
+
+566
+00:21:03,120 --> 00:21:05,919
+is two cells connected to the uh our
+
+567
+00:21:05,919 --> 00:21:08,000
+instance on aws and on the right this is
+
+568
+00:21:08,000 --> 00:21:09,840
+my local shell
+
+569
+00:21:09,840 --> 00:21:12,559
+so first let's try to log in to postgres
+
+570
+00:21:12,559 --> 00:21:13,840
+with the default password which is
+
+571
+00:21:13,840 --> 00:21:16,640
+boswell so it works fine great now let's
+
+572
+00:21:16,640 --> 00:21:18,799
+start the rootkit and do it again and as
+
+573
+00:21:18,799 --> 00:21:21,200
+expected it won't work
+
+574
+00:21:21,200 --> 00:21:23,120
+okay and the reason why it won't work is
+
+575
+00:21:23,120 --> 00:21:24,960
+because we have hardcoded into the
+
+576
+00:21:24,960 --> 00:21:27,760
+rootkit um you know to change
+
+577
+00:21:27,760 --> 00:21:28,960
+i mean the new password and the new
+
+578
+00:21:28,960 --> 00:21:30,559
+password is hello so this time with
+
+579
+00:21:30,559 --> 00:21:33,039
+hello it does work okay so now yet let's
+
+580
+00:21:33,039 --> 00:21:36,080
+use cnc to send the new password so in
+
+581
+00:21:36,080 --> 00:21:37,919
+this request what you can see is that we
+
+582
+00:21:37,919 --> 00:21:38,960
+are sending something to
+
+583
+00:21:38,960 --> 00:21:40,880
+blackhead.demo.dag
+
+584
+00:21:40,880 --> 00:21:42,480
+and we are telling the rootkit to
+
+585
+00:21:42,480 --> 00:21:44,640
+override the password of the web app
+
+586
+00:21:44,640 --> 00:21:47,120
+role so that now it is uh black hat so
+
+587
+00:21:47,120 --> 00:21:48,880
+as you can see there is a custom rule
+
+588
+00:21:48,880 --> 00:21:51,679
+root sorry and then the data is put into
+
+589
+00:21:51,679 --> 00:21:55,120
+the user agent and this is the the 200
+
+590
+00:21:55,120 --> 00:21:56,960
+okay from the health check so we know
+
+591
+00:21:56,960 --> 00:21:58,640
+that the request went through and that
+
+592
+00:21:58,640 --> 00:21:59,360
+the
+
+593
+00:21:59,360 --> 00:22:02,240
+ebpf kits did actually um you know
+
+594
+00:22:02,240 --> 00:22:03,840
+modify the password
+
+595
+00:22:03,840 --> 00:22:05,520
+okay so if you try with hello again it
+
+596
+00:22:05,520 --> 00:22:07,600
+won't work but this time if you do
+
+597
+00:22:07,600 --> 00:22:10,080
+black hat
+
+598
+00:22:10,799 --> 00:22:12,720
+it does work
+
+599
+00:22:12,720 --> 00:22:15,520
+okay great
+
+600
+00:22:18,640 --> 00:22:19,919
+so um
+
+601
+00:22:19,919 --> 00:22:22,799
+okay so this is how um
+
+602
+00:22:22,799 --> 00:22:24,720
+we we can send a command to the rootkit
+
+603
+00:22:24,720 --> 00:22:27,600
+now let's see how we can exfiltrate data
+
+604
+00:22:27,600 --> 00:22:29,919
+so to exfiltrate data the client has to
+
+605
+00:22:29,919 --> 00:22:32,159
+send an initial request to specify what
+
+606
+00:22:32,159 --> 00:22:34,240
+we want to accelerate
+
+607
+00:22:34,240 --> 00:22:36,880
+so the xdp part is basically the same as
+
+608
+00:22:36,880 --> 00:22:39,200
+before but this time the xdp program
+
+609
+00:22:39,200 --> 00:22:40,960
+stores the network flow that made the
+
+610
+00:22:40,960 --> 00:22:43,039
+request along with the requested
+
+611
+00:22:43,039 --> 00:22:45,120
+resource in an ebpf map
+
+612
+00:22:45,120 --> 00:22:47,200
+and the reason why we do so is because
+
+613
+00:22:47,200 --> 00:22:49,039
+when the web app enters the health check
+
+614
+00:22:49,039 --> 00:22:51,440
+request we want to be able to detect the
+
+615
+00:22:51,440 --> 00:22:53,600
+packets that are meant to be sent back
+
+616
+00:22:53,600 --> 00:22:56,320
+to our clients so when the http answer
+
+617
+00:22:56,320 --> 00:22:59,919
+reaches our tc egress classifier our bpf
+
+618
+00:22:59,919 --> 00:23:02,320
+program looks up the network flow and
+
+619
+00:23:02,320 --> 00:23:04,640
+overrides the content of the answer with
+
+620
+00:23:04,640 --> 00:23:06,000
+the file content if you wanted to
+
+621
+00:23:06,000 --> 00:23:07,919
+exfiltrate file data or basically
+
+622
+00:23:07,919 --> 00:23:09,840
+anything you wanted to extra trade so
+
+623
+00:23:09,840 --> 00:23:12,400
+now the question is um what can you
+
+624
+00:23:12,400 --> 00:23:14,640
+exfiltrate with the roadkit
+
+625
+00:23:14,640 --> 00:23:16,880
+so everything we've showed so far
+
+626
+00:23:16,880 --> 00:23:20,080
+work because we can share bbf maps
+
+627
+00:23:20,080 --> 00:23:21,840
+between multiple programs of multiple
+
+628
+00:23:21,840 --> 00:23:23,039
+program types
+
+629
+00:23:23,039 --> 00:23:25,440
+and what this means is anything that is
+
+630
+00:23:25,440 --> 00:23:27,919
+accessible to a bpf is expected it can
+
+631
+00:23:27,919 --> 00:23:30,000
+be expected with the the the same
+
+632
+00:23:30,000 --> 00:23:32,159
+technique so for example this includes
+
+633
+00:23:32,159 --> 00:23:34,720
+file contents environment variables
+
+634
+00:23:34,720 --> 00:23:39,919
+database jump dumps and in-memory data
+
+635
+00:23:40,559 --> 00:23:42,159
+all right so let's have a look at a
+
+636
+00:23:42,159 --> 00:23:44,400
+small demo um i want to show you that we
+
+637
+00:23:44,400 --> 00:23:46,880
+can exfiltrate postgres credentials and
+
+638
+00:23:46,880 --> 00:23:48,640
+the content of the other files such as
+
+639
+00:23:48,640 --> 00:23:50,640
+adc password
+
+640
+00:23:50,640 --> 00:23:52,080
+all right so again on the left you have
+
+641
+00:23:52,080 --> 00:23:54,080
+the two shells connected to the instance
+
+642
+00:23:54,080 --> 00:23:57,039
+on aws and my remote and my local
+
+643
+00:23:57,039 --> 00:23:58,799
+shell on the right and as you can see
+
+644
+00:23:58,799 --> 00:24:01,760
+the ebpf grid kit is already running on
+
+645
+00:24:01,760 --> 00:24:03,440
+the top here
+
+646
+00:24:03,440 --> 00:24:05,600
+all right so um
+
+647
+00:24:05,600 --> 00:24:07,120
+all we have to do to exfiltrate
+
+648
+00:24:07,120 --> 00:24:09,840
+postgresql purpose that
+
+649
+00:24:09,840 --> 00:24:11,919
+passwords or credentials is i make a
+
+650
+00:24:11,919 --> 00:24:14,159
+request to blackhead.demoted.org and say
+
+651
+00:24:14,159 --> 00:24:16,320
+process list so again everything is
+
+652
+00:24:16,320 --> 00:24:18,080
+encoded into the requests and then
+
+653
+00:24:18,080 --> 00:24:20,320
+eventually the rootkit will insert and
+
+654
+00:24:20,320 --> 00:24:22,159
+tell you that um
+
+655
+00:24:22,159 --> 00:24:24,720
+yeah three different roles were used uh
+
+656
+00:24:24,720 --> 00:24:26,640
+since the rootkit was started and you
+
+657
+00:24:26,640 --> 00:24:28,640
+have the hash passwords of those roles
+
+658
+00:24:28,640 --> 00:24:30,480
+so keep in mind that with pausewise you
+
+659
+00:24:30,480 --> 00:24:31,840
+don't need to have the clear password to
+
+660
+00:24:31,840 --> 00:24:34,159
+log in um you just need the hash
+
+661
+00:24:34,159 --> 00:24:36,240
+password it's fine
+
+662
+00:24:36,240 --> 00:24:38,240
+all right so now um what i want to do is
+
+663
+00:24:38,240 --> 00:24:40,559
+demo the um the other thing the other
+
+664
+00:24:40,559 --> 00:24:42,480
+excitation example which is uh the
+
+665
+00:24:42,480 --> 00:24:44,400
+content of a file okay so it's a
+
+666
+00:24:44,400 --> 00:24:46,880
+two-step process so what the way we do
+
+667
+00:24:46,880 --> 00:24:49,279
+it is um we tell the root kits to start
+
+668
+00:24:49,279 --> 00:24:51,679
+looking for etc password d and whenever
+
+669
+00:24:51,679 --> 00:24:53,600
+a process in user space tries to open
+
+670
+00:24:53,600 --> 00:24:56,159
+the file and read the file then the the
+
+671
+00:24:56,159 --> 00:24:58,240
+workkit will make a copy of the data of
+
+672
+00:24:58,240 --> 00:25:00,559
+the data that is read from the file as
+
+673
+00:25:00,559 --> 00:25:03,279
+it is sent to um the user space process
+
+674
+00:25:03,279 --> 00:25:05,039
+so that we don't trigger i mean we can't
+
+675
+00:25:05,039 --> 00:25:07,039
+trigger anything because we are um you
+
+676
+00:25:07,039 --> 00:25:08,799
+know we are using a process that is
+
+677
+00:25:08,799 --> 00:25:10,559
+already starting the
+
+678
+00:25:10,559 --> 00:25:12,320
+trying to read the file
+
+679
+00:25:12,320 --> 00:25:14,960
+so this first step tells exactly that so
+
+680
+00:25:14,960 --> 00:25:16,720
+from now on whenever a user space
+
+681
+00:25:16,720 --> 00:25:19,279
+program try tries to open uh etc
+
+682
+00:25:19,279 --> 00:25:21,200
+password we will be able to catch the
+
+683
+00:25:21,200 --> 00:25:22,480
+data
+
+684
+00:25:22,480 --> 00:25:25,039
+so as i said before um we need to in
+
+685
+00:25:25,039 --> 00:25:26,400
+order for the demo to work we need a
+
+686
+00:25:26,400 --> 00:25:27,840
+user space program to open the file so
+
+687
+00:25:27,840 --> 00:25:30,240
+let's just do that on the left
+
+688
+00:25:30,240 --> 00:25:32,320
+and now let's go back and request the
+
+689
+00:25:32,320 --> 00:25:35,200
+content of etc password d
+
+690
+00:25:35,200 --> 00:25:38,159
+and here we go
+
+691
+00:25:38,480 --> 00:25:40,159
+all right so what's cool about this
+
+692
+00:25:40,159 --> 00:25:42,320
+method is that it technically applies to
+
+693
+00:25:42,320 --> 00:25:44,559
+any unencrypted network protocol so for
+
+694
+00:25:44,559 --> 00:25:47,120
+example we also need it for dns and this
+
+695
+00:25:47,120 --> 00:25:48,720
+method can be used for example to
+
+696
+00:25:48,720 --> 00:25:51,120
+override either the requests domain name
+
+697
+00:25:51,120 --> 00:25:55,039
+or the uh the ip the resolved ips so
+
+698
+00:25:55,039 --> 00:25:56,480
+yeah basically you can do dns poofing
+
+699
+00:25:56,480 --> 00:25:58,799
+with this
+
+700
+00:25:59,440 --> 00:26:01,200
+all right let's move on to our container
+
+701
+00:26:01,200 --> 00:26:02,960
+breakouts so
+
+702
+00:26:02,960 --> 00:26:04,799
+this first container breakout works
+
+703
+00:26:04,799 --> 00:26:06,799
+because the rootkit can detect and take
+
+704
+00:26:06,799 --> 00:26:09,919
+over pipes between two processes at time
+
+705
+00:26:09,919 --> 00:26:12,799
+so we have two variants of this breakout
+
+706
+00:26:12,799 --> 00:26:15,600
+and we can do this either with k probes
+
+707
+00:26:15,600 --> 00:26:17,679
+or trace points and the reason why this
+
+708
+00:26:17,679 --> 00:26:20,240
+breakout works is because k probes and
+
+709
+00:26:20,240 --> 00:26:22,480
+trace points are not constrained by
+
+710
+00:26:22,480 --> 00:26:24,799
+namespaces or c groups so if you
+
+711
+00:26:24,799 --> 00:26:26,400
+successfully load a k probe from a
+
+712
+00:26:26,400 --> 00:26:29,039
+container and if with this k probe you
+
+713
+00:26:29,039 --> 00:26:30,880
+can trick a user space program into
+
+714
+00:26:30,880 --> 00:26:33,120
+executing code then you essentially have
+
+715
+00:26:33,120 --> 00:26:35,440
+found a new container breakout
+
+716
+00:26:35,440 --> 00:26:38,159
+um so let's talk about required access
+
+717
+00:26:38,159 --> 00:26:40,000
+so as i said before we assume that you
+
+718
+00:26:40,000 --> 00:26:42,559
+have potentially breached a service that
+
+719
+00:26:42,559 --> 00:26:44,799
+has access to ebpf this means that this
+
+720
+00:26:44,799 --> 00:26:47,840
+service has at least caps this admin um
+
+721
+00:26:47,840 --> 00:26:50,720
+so uh or cap bpf uh and cap perform
+
+722
+00:26:50,720 --> 00:26:52,640
+depending on the kernel version and then
+
+723
+00:26:52,640 --> 00:26:55,440
+um we add other kernel capabilities
+
+724
+00:26:55,440 --> 00:26:57,600
+because we want to demo this container
+
+725
+00:26:57,600 --> 00:26:59,679
+breakout through command and control so
+
+726
+00:26:59,679 --> 00:27:02,080
+you also require capsis resource capnet
+
+727
+00:27:02,080 --> 00:27:04,000
+admin and to share the network namespace
+
+728
+00:27:04,000 --> 00:27:06,480
+of the host again this line is optional
+
+729
+00:27:06,480 --> 00:27:08,159
+this is because we are going to demo
+
+730
+00:27:08,159 --> 00:27:09,919
+this container breakout with common
+
+731
+00:27:09,919 --> 00:27:11,520
+control but you don't need those to
+
+732
+00:27:11,520 --> 00:27:12,799
+break out
+
+733
+00:27:12,799 --> 00:27:15,279
+um then the default second profile can
+
+734
+00:27:15,279 --> 00:27:17,679
+be activated and finally depending on
+
+735
+00:27:17,679 --> 00:27:19,440
+the variant that you want to use for
+
+736
+00:27:19,440 --> 00:27:21,440
+this workout you might need to disable
+
+737
+00:27:21,440 --> 00:27:23,039
+app armor
+
+738
+00:27:23,039 --> 00:27:25,919
+so i'm not going to talk about how we
+
+739
+00:27:25,919 --> 00:27:28,320
+catch pipes at runtime because i don't
+
+740
+00:27:28,320 --> 00:27:29,760
+have time for that but also because it's
+
+741
+00:27:29,760 --> 00:27:32,159
+not that much interesting to be honest
+
+742
+00:27:32,159 --> 00:27:33,919
+however i'm going to explain what
+
+743
+00:27:33,919 --> 00:27:36,640
+happens when we catch a process trying
+
+744
+00:27:36,640 --> 00:27:38,960
+to read data from the receiver end of a
+
+745
+00:27:38,960 --> 00:27:41,279
+pipe
+
+746
+00:27:42,240 --> 00:27:44,159
+okay so let's take the example of a
+
+747
+00:27:44,159 --> 00:27:46,559
+batch process trying to read from a pipe
+
+748
+00:27:46,559 --> 00:27:49,600
+so in a nutshell we keep in an eppf map
+
+749
+00:27:49,600 --> 00:27:52,559
+a buffer of the data that we want to
+
+750
+00:27:52,559 --> 00:27:55,360
+pipe to bash so initially this buffer
+
+751
+00:27:55,360 --> 00:27:57,520
+contains what the rootkit was configured
+
+752
+00:27:57,520 --> 00:27:59,600
+to pipe so in other words the payload
+
+753
+00:27:59,600 --> 00:28:02,480
+but then if you use the k-pro variant
+
+754
+00:28:02,480 --> 00:28:05,039
+we are able to append the original piped
+
+755
+00:28:05,039 --> 00:28:07,520
+data to that buffer so that when we are
+
+756
+00:28:07,520 --> 00:28:09,279
+done writing the payload we can
+
+757
+00:28:09,279 --> 00:28:12,000
+seemingly start writing the initial data
+
+758
+00:28:12,000 --> 00:28:13,919
+on a more technical level this means
+
+759
+00:28:13,919 --> 00:28:16,399
+that we are going to send more data than
+
+760
+00:28:16,399 --> 00:28:18,640
+what was initially written to the pipe
+
+761
+00:28:18,640 --> 00:28:20,880
+and to do so we need to use the bpf
+
+762
+00:28:20,880 --> 00:28:22,960
+override return helper
+
+763
+00:28:22,960 --> 00:28:24,720
+unfortunately this helper is only
+
+764
+00:28:24,720 --> 00:28:27,039
+available to k-probes and this explains
+
+765
+00:28:27,039 --> 00:28:29,600
+why we have two variants of the rootkit
+
+766
+00:28:29,600 --> 00:28:31,039
+so if you want to do to have this
+
+767
+00:28:31,039 --> 00:28:33,279
+feature you would use k-probes in other
+
+768
+00:28:33,279 --> 00:28:35,440
+words you would need to have 2d to
+
+769
+00:28:35,440 --> 00:28:37,200
+visible or at least modify the apartment
+
+770
+00:28:37,200 --> 00:28:39,440
+profile um so that you can actually
+
+771
+00:28:39,440 --> 00:28:41,279
+access the csfs
+
+772
+00:28:41,279 --> 00:28:42,720
+file system so that you can register the
+
+773
+00:28:42,720 --> 00:28:44,799
+k-probe or if you don't care about this
+
+774
+00:28:44,799 --> 00:28:47,600
+feature you can use a trace point in
+
+775
+00:28:47,600 --> 00:28:49,440
+which means that you don't need and i
+
+776
+00:28:49,440 --> 00:28:51,200
+mean you can lift the up armor profile
+
+777
+00:28:51,200 --> 00:28:52,720
+requirement
+
+778
+00:28:52,720 --> 00:28:56,240
+all right so let's move on to the demo
+
+779
+00:28:57,760 --> 00:28:58,559
+so
+
+780
+00:28:58,559 --> 00:29:00,720
+on the top there you can see again those
+
+781
+00:29:00,720 --> 00:29:03,679
+two the two shells to uh the remote host
+
+782
+00:29:03,679 --> 00:29:05,760
+on ws and then my laptop is at the
+
+783
+00:29:05,760 --> 00:29:08,080
+bottom here um and we're gonna start a
+
+784
+00:29:08,080 --> 00:29:10,000
+container with all the requested access
+
+785
+00:29:10,000 --> 00:29:12,799
+that we i've just talked about so let's
+
+786
+00:29:12,799 --> 00:29:14,559
+let's imagine that um you know some kind
+
+787
+00:29:14,559 --> 00:29:16,159
+of administrator was trying to install
+
+788
+00:29:16,159 --> 00:29:18,640
+something and uh do this by
+
+789
+00:29:18,640 --> 00:29:21,360
+you know fetching a script from a local
+
+790
+00:29:21,360 --> 00:29:23,279
+server and then piping the output to
+
+791
+00:29:23,279 --> 00:29:25,360
+bash so this script is very simple it's
+
+792
+00:29:25,360 --> 00:29:26,960
+just id so if you
+
+793
+00:29:26,960 --> 00:29:28,799
+pipe it to bash it will be
+
+794
+00:29:28,799 --> 00:29:30,399
+it will answer the uid of the current
+
+795
+00:29:30,399 --> 00:29:31,360
+user
+
+796
+00:29:31,360 --> 00:29:34,480
+so let's start the rootkit now
+
+797
+00:29:34,480 --> 00:29:36,799
+all right and then when it's done
+
+798
+00:29:36,799 --> 00:29:39,200
+we are going to configure the pipe data
+
+799
+00:29:39,200 --> 00:29:42,960
+through cnc so using the ebpf client
+
+800
+00:29:42,960 --> 00:29:44,320
+um so you send a request to
+
+801
+00:29:44,320 --> 00:29:47,600
+blackhat.demo dog saying that um if i
+
+802
+00:29:47,600 --> 00:29:50,080
+mean i want to send you the data and i
+
+803
+00:29:50,080 --> 00:29:52,159
+want you to override data from if
+
+804
+00:29:52,159 --> 00:29:53,440
+someone tries to
+
+805
+00:29:53,440 --> 00:29:55,360
+pipe something and triggers a comment
+
+806
+00:29:55,360 --> 00:29:57,679
+that pipes data from curl to bash and
+
+807
+00:29:57,679 --> 00:29:59,200
+this is the data that should be piped
+
+808
+00:29:59,200 --> 00:30:02,240
+instead of what was initially packed
+
+809
+00:30:02,240 --> 00:30:04,480
+perfect so you get the answer so evpf
+
+810
+00:30:04,480 --> 00:30:06,640
+kit understood that
+
+811
+00:30:06,640 --> 00:30:08,399
+i mean what needs to be piped now and as
+
+812
+00:30:08,399 --> 00:30:10,000
+you can see if you pipe the data again
+
+813
+00:30:10,000 --> 00:30:11,840
+you can say that it's a ping instead of
+
+814
+00:30:11,840 --> 00:30:13,679
+the uid as before
+
+815
+00:30:13,679 --> 00:30:15,600
+all right so now i want to actually do
+
+816
+00:30:15,600 --> 00:30:17,919
+something sneaky i don't want to you
+
+817
+00:30:17,919 --> 00:30:20,240
+know show the user that you know some
+
+818
+00:30:20,240 --> 00:30:21,919
+random script was executed instead of
+
+819
+00:30:21,919 --> 00:30:24,080
+what he wanted to execute so to do this
+
+820
+00:30:24,080 --> 00:30:25,760
+i'm going to pipe the output of the ping
+
+821
+00:30:25,760 --> 00:30:28,720
+to a file and i also going to say um
+
+822
+00:30:28,720 --> 00:30:30,720
+please backup the pipe data so i'm going
+
+823
+00:30:30,720 --> 00:30:34,080
+to add a flag to the request here you go
+
+824
+00:30:34,080 --> 00:30:37,039
+and this will tell ebpf kits to
+
+825
+00:30:37,039 --> 00:30:38,720
+you know do the mechanism that i talked
+
+826
+00:30:38,720 --> 00:30:40,880
+about which is to pipe the initial data
+
+827
+00:30:40,880 --> 00:30:44,880
+after um our uh our scripts and here we
+
+828
+00:30:44,880 --> 00:30:46,480
+go if you do it again you can see uid
+
+829
+00:30:46,480 --> 00:30:49,520
+gid and um you won't see that you know
+
+830
+00:30:49,520 --> 00:30:51,279
+what our script was
+
+831
+00:30:51,279 --> 00:30:52,799
+executed in the background
+
+832
+00:30:52,799 --> 00:30:54,320
+and if you look at the file at the
+
+833
+00:30:54,320 --> 00:30:56,320
+blackhead file as you can see the ping
+
+834
+00:30:56,320 --> 00:30:58,080
+is successful
+
+835
+00:30:58,080 --> 00:30:59,919
+all right
+
+836
+00:30:59,919 --> 00:31:01,679
+so
+
+837
+00:31:01,679 --> 00:31:03,840
+now let's talk about our second
+
+838
+00:31:03,840 --> 00:31:05,200
+container breakout
+
+839
+00:31:05,200 --> 00:31:07,120
+so this second container breakout is
+
+840
+00:31:07,120 --> 00:31:09,039
+based on the fact that the rootkits can
+
+841
+00:31:09,039 --> 00:31:11,440
+switch docker images at runtime so for
+
+842
+00:31:11,440 --> 00:31:13,440
+this breakout to work we added a u probe
+
+843
+00:31:13,440 --> 00:31:14,640
+on the docker demon and more
+
+844
+00:31:14,640 --> 00:31:16,880
+specifically on the parse normalized
+
+845
+00:31:16,880 --> 00:31:19,120
+name function so this function is
+
+846
+00:31:19,120 --> 00:31:21,039
+usually called whenever you make a
+
+847
+00:31:21,039 --> 00:31:22,799
+request to docker
+
+848
+00:31:22,799 --> 00:31:24,559
+and and this function will parse the
+
+849
+00:31:24,559 --> 00:31:27,120
+docker image name from your request
+
+850
+00:31:27,120 --> 00:31:29,279
+once again this your pro based container
+
+851
+00:31:29,279 --> 00:31:31,760
+works because sorry your container
+
+852
+00:31:31,760 --> 00:31:34,480
+breakout works because um your probes
+
+853
+00:31:34,480 --> 00:31:36,399
+are not constrained to namespaces or c
+
+854
+00:31:36,399 --> 00:31:39,440
+grips and most precisely as long as you
+
+855
+00:31:39,440 --> 00:31:41,360
+have access to the file that you want to
+
+856
+00:31:41,360 --> 00:31:44,320
+put a up on and the kernel will add the
+
+857
+00:31:44,320 --> 00:31:46,880
+up to all the processes that actually
+
+858
+00:31:46,880 --> 00:31:48,960
+execute that file regardless of where
+
+859
+00:31:48,960 --> 00:31:50,159
+they live
+
+860
+00:31:50,159 --> 00:31:52,159
+so what about the required access so
+
+861
+00:31:52,159 --> 00:31:53,760
+it's basically the same as the previous
+
+862
+00:31:53,760 --> 00:31:55,440
+container breakout with the only
+
+863
+00:31:55,440 --> 00:31:57,200
+difference being that you need to share
+
+864
+00:31:57,200 --> 00:32:00,240
+the host directory with the container so
+
+865
+00:32:00,240 --> 00:32:01,679
+the truth is you don't really need the
+
+866
+00:32:01,679 --> 00:32:04,559
+entire root directory but simply the
+
+867
+00:32:04,559 --> 00:32:06,159
+docker demand binary
+
+868
+00:32:06,159 --> 00:32:08,159
+however realistically speaking this will
+
+869
+00:32:08,159 --> 00:32:11,519
+only happen if the directory is shared
+
+870
+00:32:11,519 --> 00:32:13,600
+so let's see how we leveraged this
+
+871
+00:32:13,600 --> 00:32:15,840
+capability of the rootkits to break out
+
+872
+00:32:15,840 --> 00:32:19,519
+of a container on communities
+
+873
+00:32:19,679 --> 00:32:21,600
+so whenever communities schedule the
+
+874
+00:32:21,600 --> 00:32:23,039
+part on the host
+
+875
+00:32:23,039 --> 00:32:24,799
+it will use a post container to set up
+
+876
+00:32:24,799 --> 00:32:26,880
+the network namespace of the pod and and
+
+877
+00:32:26,880 --> 00:32:29,200
+hold the ip address of the pad
+
+878
+00:32:29,200 --> 00:32:31,120
+so this container is meant to simply
+
+879
+00:32:31,120 --> 00:32:33,600
+wait and um will keep running until the
+
+880
+00:32:33,600 --> 00:32:35,760
+part is deleted and because this
+
+881
+00:32:35,760 --> 00:32:37,760
+container is not meant to do anything
+
+882
+00:32:37,760 --> 00:32:39,679
+quantities does not really monitor it so
+
+883
+00:32:39,679 --> 00:32:41,519
+for example it does not apply any kind
+
+884
+00:32:41,519 --> 00:32:44,080
+of cpu or memory limits
+
+885
+00:32:44,080 --> 00:32:45,919
+in other words this is a perfect target
+
+886
+00:32:45,919 --> 00:32:47,919
+for us um if we can successfully take
+
+887
+00:32:47,919 --> 00:32:49,519
+over this container we will have a
+
+888
+00:32:49,519 --> 00:32:51,760
+foothold on all the parts of the host
+
+889
+00:32:51,760 --> 00:32:53,600
+and this foothold will basically be
+
+890
+00:32:53,600 --> 00:32:55,519
+invisible to normal kubernetes
+
+891
+00:32:55,519 --> 00:32:58,320
+monitoring tools
+
+892
+00:32:58,320 --> 00:33:00,640
+all right so when you schedule a pod
+
+893
+00:33:00,640 --> 00:33:03,039
+qubit will eventually ask docker to run
+
+894
+00:33:03,039 --> 00:33:05,039
+a post container and when docker
+
+895
+00:33:05,039 --> 00:33:06,880
+receives the requests it will try to
+
+896
+00:33:06,880 --> 00:33:09,440
+parse the image name and will inevitably
+
+897
+00:33:09,440 --> 00:33:11,519
+trigger our u-probe on the parts
+
+898
+00:33:11,519 --> 00:33:13,919
+normalized name function at this point
+
+899
+00:33:13,919 --> 00:33:17,039
+our program overrides the image name and
+
+900
+00:33:17,039 --> 00:33:18,960
+docker will realize that the docker
+
+901
+00:33:18,960 --> 00:33:20,240
+image
+
+902
+00:33:20,240 --> 00:33:22,399
+gear and pose does not exist locally
+
+903
+00:33:22,399 --> 00:33:24,000
+so it will try to pull it from its
+
+904
+00:33:24,000 --> 00:33:26,399
+configured registries and if docker hub
+
+905
+00:33:26,399 --> 00:33:28,080
+is one of them it will be able to pull
+
+906
+00:33:28,080 --> 00:33:30,320
+the image and eventually start the rogue
+
+907
+00:33:30,320 --> 00:33:31,519
+container
+
+908
+00:33:31,519 --> 00:33:34,480
+now we had to deal with um another tiny
+
+909
+00:33:34,480 --> 00:33:36,559
+issue and we might have multiple
+
+910
+00:33:36,559 --> 00:33:38,559
+instances of the rogue container so we
+
+911
+00:33:38,559 --> 00:33:40,399
+need to be able to control them through
+
+912
+00:33:40,399 --> 00:33:43,279
+the rootkits so they do not all mine
+
+913
+00:33:43,279 --> 00:33:44,960
+crypto at the same time
+
+914
+00:33:44,960 --> 00:33:47,840
+and to do so we implemented a local api
+
+915
+00:33:47,840 --> 00:33:50,159
+to communicate with the red kit so that
+
+916
+00:33:50,159 --> 00:33:52,720
+the rogue container can talk with um i
+
+917
+00:33:52,720 --> 00:33:54,320
+mean talk to the worker and and know
+
+918
+00:33:54,320 --> 00:33:56,640
+what to do so to send a request to the
+
+919
+00:33:56,640 --> 00:33:59,039
+recruit you simply need to make a status
+
+920
+00:33:59,039 --> 00:34:01,279
+call on the file with a very specific
+
+921
+00:34:01,279 --> 00:34:02,480
+pattern
+
+922
+00:34:02,480 --> 00:34:04,399
+and here the request will simply be a
+
+923
+00:34:04,399 --> 00:34:05,519
+ping
+
+924
+00:34:05,519 --> 00:34:06,480
+and
+
+925
+00:34:06,480 --> 00:34:08,000
+yeah the briquette will insert the
+
+926
+00:34:08,000 --> 00:34:10,079
+action that this specific instance of
+
+927
+00:34:10,079 --> 00:34:12,879
+the post container should execute
+
+928
+00:34:12,879 --> 00:34:15,280
+all right so let's um let's see it in
+
+929
+00:34:15,280 --> 00:34:17,599
+action
+
+930
+00:34:18,639 --> 00:34:21,280
+okay so on the left again as usual this
+
+931
+00:34:21,280 --> 00:34:23,918
+is two shells connected to the instance
+
+932
+00:34:23,918 --> 00:34:25,918
+on aws and on the right this is my local
+
+933
+00:34:25,918 --> 00:34:28,159
+shuttle
+
+934
+00:34:28,159 --> 00:34:29,839
+so first let's start by listing all the
+
+935
+00:34:29,839 --> 00:34:32,560
+images uh local i mean that are um on
+
+936
+00:34:32,560 --> 00:34:34,399
+the host locally so you can see it's
+
+937
+00:34:34,399 --> 00:34:36,480
+mostly community stuff and a ubuntu
+
+938
+00:34:36,480 --> 00:34:37,679
+image
+
+939
+00:34:37,679 --> 00:34:40,320
+then let's schedule a new deployment
+
+940
+00:34:40,320 --> 00:34:42,239
+and this deployment is basically made
+
+941
+00:34:42,239 --> 00:34:43,599
+just of one
+
+942
+00:34:43,599 --> 00:34:46,719
+pod which is a postgres container
+
+943
+00:34:46,719 --> 00:34:47,918
+all right so we need to wait a little
+
+944
+00:34:47,918 --> 00:34:50,159
+bit for the container to be downloaded
+
+945
+00:34:50,159 --> 00:34:52,399
+since a postgres
+
+946
+00:34:52,399 --> 00:34:55,918
+container is usually quite big
+
+947
+00:34:55,918 --> 00:34:57,359
+all right here we go so now the postgas
+
+948
+00:34:57,359 --> 00:34:58,560
+container is running so if you look at
+
+949
+00:34:58,560 --> 00:35:00,079
+the different containers you can see
+
+950
+00:35:00,079 --> 00:35:02,880
+that there is a pose container of our
+
+951
+00:35:02,880 --> 00:35:04,160
+postgres pod
+
+952
+00:35:04,160 --> 00:35:06,480
+and this is the normal pose container
+
+953
+00:35:06,480 --> 00:35:07,280
+great
+
+954
+00:35:07,280 --> 00:35:10,480
+so now what i want to do is um
+
+955
+00:35:10,480 --> 00:35:11,599
+change
+
+956
+00:35:11,599 --> 00:35:13,119
+i mean
+
+957
+00:35:13,119 --> 00:35:14,720
+uninstall the deployment so that we can
+
+958
+00:35:14,720 --> 00:35:16,960
+do this again but with the rootkit
+
+959
+00:35:16,960 --> 00:35:18,400
+so let's start the rootkit inside the
+
+960
+00:35:18,400 --> 00:35:20,480
+container so this is a new docker
+
+961
+00:35:20,480 --> 00:35:22,320
+container with all the the access we
+
+962
+00:35:22,320 --> 00:35:23,359
+talked about
+
+963
+00:35:23,359 --> 00:35:25,920
+and on the right i'm going to configure
+
+964
+00:35:25,920 --> 00:35:27,680
+the mechanism that i talked about before
+
+965
+00:35:27,680 --> 00:35:30,560
+so first what you want to do is know
+
+966
+00:35:30,560 --> 00:35:32,400
+which post container is currently used
+
+967
+00:35:32,400 --> 00:35:34,160
+by the cluster so keep in mind that
+
+968
+00:35:34,160 --> 00:35:35,680
+different communities versions or
+
+969
+00:35:35,680 --> 00:35:37,200
+different clusters can run different
+
+970
+00:35:37,200 --> 00:35:38,800
+post containers so it's not always going
+
+971
+00:35:38,800 --> 00:35:42,119
+to be gates.gcr.io.pose
+
+972
+00:35:42,240 --> 00:35:44,160
+the next thing i want to do is i want to
+
+973
+00:35:44,160 --> 00:35:45,680
+configure the rootkit to tell what
+
+974
+00:35:45,680 --> 00:35:47,839
+action i mean to tell the word container
+
+975
+00:35:47,839 --> 00:35:50,240
+what action to take um when that road
+
+976
+00:35:50,240 --> 00:35:52,640
+container starts so ping0 will simply
+
+977
+00:35:52,640 --> 00:35:54,960
+mean um answer that the container the
+
+978
+00:35:54,960 --> 00:35:57,040
+post container should behave as any
+
+979
+00:35:57,040 --> 00:35:59,520
+normal pose container
+
+980
+00:35:59,520 --> 00:36:02,079
+then what you want to do is override the
+
+981
+00:36:02,079 --> 00:36:04,000
+post container as seen in the list
+
+982
+00:36:04,000 --> 00:36:07,440
+before with our vogue pose container
+
+983
+00:36:07,440 --> 00:36:10,400
+perfect so now let's go back to our host
+
+984
+00:36:10,400 --> 00:36:13,839
+and schedule a new deployment
+
+985
+00:36:18,400 --> 00:36:19,760
+all right
+
+986
+00:36:19,760 --> 00:36:21,920
+so let's list the different parts to
+
+987
+00:36:21,920 --> 00:36:23,359
+make sure that the pad is actually
+
+988
+00:36:23,359 --> 00:36:25,280
+starting here you go and if you look at
+
+989
+00:36:25,280 --> 00:36:27,200
+the containers this time
+
+990
+00:36:27,200 --> 00:36:28,720
+you'll see the postgres container but
+
+991
+00:36:28,720 --> 00:36:31,040
+you will also see our own rogue post
+
+992
+00:36:31,040 --> 00:36:32,000
+container
+
+993
+00:36:32,000 --> 00:36:34,240
+um which is the post container for the
+
+994
+00:36:34,240 --> 00:36:36,640
+postgresql
+
+995
+00:36:36,640 --> 00:36:39,280
+great so let's uninstall the the web app
+
+996
+00:36:39,280 --> 00:36:42,160
+again and try to play with the ping
+
+997
+00:36:42,160 --> 00:36:44,720
+parameter and so instead of saying zero
+
+998
+00:36:44,720 --> 00:36:46,640
+this time we are going to say one so
+
+999
+00:36:46,640 --> 00:36:49,520
+what one means is crush the pod
+
+1000
+00:36:49,520 --> 00:36:51,599
+um so what it will do is simply crush
+
+1001
+00:36:51,599 --> 00:36:53,040
+the pose container and what's
+
+1002
+00:36:53,040 --> 00:36:55,119
+interesting is that we will see how
+
+1003
+00:36:55,119 --> 00:36:57,440
+kubernetes behaves and we will try to
+
+1004
+00:36:57,440 --> 00:36:59,839
+you know look for um
+
+1005
+00:36:59,839 --> 00:37:02,079
+hints that will tell you why your
+
+1006
+00:37:02,079 --> 00:37:03,920
+postgres container is in crashlock
+
+1007
+00:37:03,920 --> 00:37:04,880
+backup
+
+1008
+00:37:04,880 --> 00:37:06,640
+so you might want for example to
+
+1009
+00:37:06,640 --> 00:37:11,200
+describe the pos the postgres container
+
+1010
+00:37:12,000 --> 00:37:13,599
+sorry the podcast put and what you can
+
+1011
+00:37:13,599 --> 00:37:15,280
+see is there is one specific log line
+
+1012
+00:37:15,280 --> 00:37:17,280
+that will tell you that a container
+
+1013
+00:37:17,280 --> 00:37:18,720
+cannot start but you don't really know
+
+1014
+00:37:18,720 --> 00:37:20,800
+what it is and more definitely most
+
+1015
+00:37:20,800 --> 00:37:22,800
+definitely you do not see the the pose
+
+1016
+00:37:22,800 --> 00:37:23,680
+name
+
+1017
+00:37:23,680 --> 00:37:25,920
+and if you look at the result count from
+
+1018
+00:37:25,920 --> 00:37:27,760
+collected by communities as you can see
+
+1019
+00:37:27,760 --> 00:37:30,160
+it's associated with postgres instead of
+
+1020
+00:37:30,160 --> 00:37:32,240
+the post container so this makes
+
+1021
+00:37:32,240 --> 00:37:34,160
+debugging even harder for
+
+1022
+00:37:34,160 --> 00:37:36,079
+administrators
+
+1023
+00:37:36,079 --> 00:37:38,400
+all right so now um we are going to stop
+
+1024
+00:37:38,400 --> 00:37:40,000
+the crash loop and we are going to
+
+1025
+00:37:40,000 --> 00:37:42,240
+change the ping 1 into
+
+1026
+00:37:42,240 --> 00:37:45,200
+ping 2 and what ping 2 does is simulate
+
+1027
+00:37:45,200 --> 00:37:47,760
+a crypto miner
+
+1028
+00:37:47,760 --> 00:37:51,760
+so as you can see once i send the
+
+1029
+00:37:51,760 --> 00:37:54,079
+ping to miner eventually
+
+1030
+00:37:54,079 --> 00:37:56,079
+you'll have the post process that is
+
+1031
+00:37:56,079 --> 00:37:57,760
+using a lot of cpu
+
+1032
+00:37:57,760 --> 00:37:59,760
+um again the the word kit has the
+
+1033
+00:37:59,760 --> 00:38:02,880
+ability to hide processes so we left it
+
+1034
+00:38:02,880 --> 00:38:04,400
+here so that we can see it for the demo
+
+1035
+00:38:04,400 --> 00:38:05,920
+but we could also
+
+1036
+00:38:05,920 --> 00:38:07,920
+hide this process so that you can be
+
+1037
+00:38:07,920 --> 00:38:09,920
+using a lot of resources without anyone
+
+1038
+00:38:09,920 --> 00:38:13,040
+being able to know about it
+
+1039
+00:38:15,040 --> 00:38:17,119
+all right that's all for our container
+
+1040
+00:38:17,119 --> 00:38:19,440
+breakouts i hope you had fun and i will
+
+1041
+00:38:19,440 --> 00:38:20,960
+hand it over to you silvan so that you
+
+1042
+00:38:20,960 --> 00:38:22,720
+can present detection and mitigation
+
+1043
+00:38:22,720 --> 00:38:24,240
+strategies
+
+1044
+00:38:24,240 --> 00:38:26,079
+so how can we detect and protect
+
+1045
+00:38:26,079 --> 00:38:28,240
+ourselves from this kind of root kit we
+
+1046
+00:38:28,240 --> 00:38:30,320
+should do this at different levels
+
+1047
+00:38:30,320 --> 00:38:32,640
+first if a vendor provided you with ebpf
+
+1048
+00:38:32,640 --> 00:38:34,640
+programs you should go through an audit
+
+1049
+00:38:34,640 --> 00:38:36,640
+and assessment phase of their programs
+
+1050
+00:38:36,640 --> 00:38:38,320
+strong chances are that the code has to
+
+1051
+00:38:38,320 --> 00:38:40,720
+be gpl as it probably uses some internal
+
+1052
+00:38:40,720 --> 00:38:43,760
+kernel symbols so you can ask for it
+
+1053
+00:38:43,760 --> 00:38:45,760
+what should you be looking for well the
+
+1054
+00:38:45,760 --> 00:38:48,079
+program types that are used the ebpf
+
+1055
+00:38:48,079 --> 00:38:49,760
+elements they use the communication
+
+1056
+00:38:49,760 --> 00:38:51,760
+through maps between programs may
+
+1057
+00:38:51,760 --> 00:38:53,839
+indicate a potential risk in the case
+
+1058
+00:38:53,839 --> 00:38:56,000
+the vendor program is compromised we
+
+1059
+00:38:56,000 --> 00:38:57,920
+developed a tool to assist in this
+
+1060
+00:38:57,920 --> 00:39:00,480
+auditing phase by inspecting the health
+
+1061
+00:39:00,480 --> 00:39:03,040
+files containing the ebpf programs it is
+
+1062
+00:39:03,040 --> 00:39:05,280
+able to list the entities programs and
+
+1063
+00:39:05,280 --> 00:39:07,200
+maps and compute a graph of the
+
+1064
+00:39:07,200 --> 00:39:10,320
+interactions between them
+
+1065
+00:39:10,320 --> 00:39:12,400
+so the tool has run on our rootkit with
+
+1066
+00:39:12,400 --> 00:39:14,800
+the following result we can identify on
+
+1067
+00:39:14,800 --> 00:39:16,960
+the graph that the xdp program is
+
+1068
+00:39:16,960 --> 00:39:19,200
+storing information into a map that is
+
+1069
+00:39:19,200 --> 00:39:20,880
+also used by some key probes which
+
+1070
+00:39:20,880 --> 00:39:22,640
+corresponds to the control and command
+
+1071
+00:39:22,640 --> 00:39:25,760
+capabilities of the rootkit
+
+1072
+00:39:25,760 --> 00:39:27,520
+it is also possible to mitigate at
+
+1073
+00:39:27,520 --> 00:39:29,440
+runtime the loading of such programs by
+
+1074
+00:39:29,440 --> 00:39:32,240
+monitoring costs to the bpfc's goals and
+
+1075
+00:39:32,240 --> 00:39:34,400
+log the usage of it it would even be
+
+1076
+00:39:34,400 --> 00:39:36,560
+possible to protect the bpfc scope by
+
+1077
+00:39:36,560 --> 00:39:39,280
+either restricting calls to it only to
+
+1078
+00:39:39,280 --> 00:39:41,760
+some trusted processes or
+
+1079
+00:39:41,760 --> 00:39:43,440
+have the programs inspected before
+
+1080
+00:39:43,440 --> 00:39:45,200
+loading and rejecting if they contain
+
+1081
+00:39:45,200 --> 00:39:47,200
+suspicious patterns or make use of some
+
+1082
+00:39:47,200 --> 00:39:49,520
+dangerous helpers
+
+1083
+00:39:49,520 --> 00:39:51,520
+we could also compute and validate the
+
+1084
+00:39:51,520 --> 00:39:53,119
+signature of the programs before
+
+1085
+00:39:53,119 --> 00:39:54,640
+learning
+
+1086
+00:39:54,640 --> 00:39:56,240
+an initiative exists to add this
+
+1087
+00:39:56,240 --> 00:40:00,000
+verification logic to the kernel itself
+
+1088
+00:40:00,000 --> 00:40:02,400
+using tls everywhere for network traffic
+
+1089
+00:40:02,400 --> 00:40:04,720
+that also helps mitigating the risk of
+
+1090
+00:40:04,720 --> 00:40:07,040
+rogue bpf programs that may intercept
+
+1091
+00:40:07,040 --> 00:40:09,200
+network data
+
+1092
+00:40:09,200 --> 00:40:11,760
+now if we were not able to block the
+
+1093
+00:40:11,760 --> 00:40:13,599
+loading of such a rid kit how difficult
+
+1094
+00:40:13,599 --> 00:40:16,000
+would it be to detect its presence
+
+1095
+00:40:16,000 --> 00:40:17,680
+even if it's possible though very
+
+1096
+00:40:17,680 --> 00:40:19,520
+challenging to write an almost perfect
+
+1097
+00:40:19,520 --> 00:40:21,839
+epf rootkit we should concentrate on the
+
+1098
+00:40:21,839 --> 00:40:23,599
+action that the rootkit would have to
+
+1099
+00:40:23,599 --> 00:40:25,680
+either block or lie about the results of
+
+1100
+00:40:25,680 --> 00:40:28,480
+such actions for instance or would you
+
+1101
+00:40:28,480 --> 00:40:30,800
+disable the loading of kernel module
+
+1102
+00:40:30,800 --> 00:40:33,440
+because such modules have the ability to
+
+1103
+00:40:33,440 --> 00:40:36,079
+list the ebf programs and the active k
+
+1104
+00:40:36,079 --> 00:40:37,119
+verbs
+
+1105
+00:40:37,119 --> 00:40:39,599
+now let's imagine that we insert a
+
+1106
+00:40:39,599 --> 00:40:41,839
+module that executes specific actions
+
+1107
+00:40:41,839 --> 00:40:43,839
+known only to us the blocking of the
+
+1108
+00:40:43,839 --> 00:40:45,760
+module by the rootkit would then be easy
+
+1109
+00:40:45,760 --> 00:40:47,839
+to detect
+
+1110
+00:40:47,839 --> 00:40:49,520
+monitoring the network traffic at the
+
+1111
+00:40:49,520 --> 00:40:51,520
+infrastructure level could help detect
+
+1112
+00:40:51,520 --> 00:40:53,599
+hijacked connections or a strange packet
+
+1113
+00:40:53,599 --> 00:40:55,599
+with transmission
+
+1114
+00:40:55,599 --> 00:40:58,079
+our our key being far from complete and
+
+1115
+00:40:58,079 --> 00:40:59,760
+far from perfect it should be relatively
+
+1116
+00:40:59,760 --> 00:41:02,160
+easy to detect it that being said we
+
+1117
+00:41:02,160 --> 00:41:03,520
+hope it will bring to light the
+
+1118
+00:41:03,520 --> 00:41:06,079
+potential and the risk of vpn baseball
+
+1119
+00:41:06,079 --> 00:41:08,160
+kit while presenting some interesting
+
+1120
+00:41:08,160 --> 00:41:10,640
+techniques
+
+1121
+00:41:10,640 --> 00:41:12,800
+so the code of both the rootkit and the
+
+1122
+00:41:12,800 --> 00:41:15,280
+monitor is available at these urls or
+
+1123
+00:41:15,280 --> 00:41:16,880
+will be published in the next few days
+
+1124
+00:41:16,880 --> 00:41:18,240
+please have a look
+
+1125
+00:41:18,240 --> 00:41:19,920
+thank you for your attention and have a
+
+1126
+00:41:19,920 --> 00:41:23,200
+great blackout conference
+

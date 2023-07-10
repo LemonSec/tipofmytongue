@@ -1,0 +1,5150 @@
+﻿1
+00:00:00,210 --> 00:00:02,550
+- Anyway. Speaking today, Steve.
+
+2
+00:00:02,550 --> 00:00:03,459
+Let's give him big welcome.
+
+3
+00:00:03,459 --> 00:00:05,779
+(presenter applauding)
+(audience applauding)
+
+4
+00:00:05,779 --> 00:00:06,612
+- Fine?
+
+5
+00:00:06,612 --> 00:00:07,445
+(presenter speaks indistinctly)
+
+6
+00:00:07,445 --> 00:00:08,278
+Okay.
+
+7
+00:00:10,530 --> 00:00:13,110
+All right. My name is Steven Eckels.
+
+8
+00:00:13,110 --> 00:00:16,050
+Today I will be presenting on STrace,
+
+9
+00:00:16,050 --> 00:00:18,663
+which is a DTrace on
+Windows reimplementation.
+
+10
+00:00:22,200 --> 00:00:25,800
+My name is Steven Eckels. I'm
+a reverse engineer on FLARE.
+
+11
+00:00:25,800 --> 00:00:28,023
+I also do malware reverse,
+
+12
+00:00:29,070 --> 00:00:32,220
+I do malware research and development.
+
+13
+00:00:32,220 --> 00:00:34,710
+I have experience with
+open source development,
+
+14
+00:00:34,710 --> 00:00:37,410
+specifically a focus on hooking.
+
+15
+00:00:37,410 --> 00:00:39,900
+I'm the author of the open
+source library, Polyhook.
+
+16
+00:00:39,900 --> 00:00:41,430
+I know multiple languages,
+
+17
+00:00:41,430 --> 00:00:43,560
+and I've experienced as a system architect
+
+18
+00:00:43,560 --> 00:00:46,110
+and a embedded device software developer.
+
+19
+00:00:46,110 --> 00:00:48,960
+Outside of computers, I like to slackline,
+
+20
+00:00:48,960 --> 00:00:49,920
+electric mountainboard,
+
+21
+00:00:49,920 --> 00:00:51,873
+and I play a lot of video games.
+
+22
+00:00:54,210 --> 00:00:57,210
+So today we're gonna be covering this talk
+
+23
+00:00:57,210 --> 00:00:58,260
+in three different sections.
+
+24
+00:00:58,260 --> 00:00:59,160
+We're gonna start with,
+
+25
+00:00:59,160 --> 00:01:02,670
+what exactly is Dtrace
+and why is it interesting?
+
+26
+00:01:02,670 --> 00:01:05,580
+We're gonna be covering
+how to use Microsoft's port
+
+27
+00:01:05,580 --> 00:01:08,613
+as well as some of the
+shortcomings of the system.
+
+28
+00:01:08,613 --> 00:01:11,370
+We're then going to be talking about
+
+29
+00:01:11,370 --> 00:01:13,170
+the internals of DTrace,
+
+30
+00:01:13,170 --> 00:01:15,270
+we're gonna cover the architecture,
+
+31
+00:01:15,270 --> 00:01:17,220
+how kernel registration works,
+
+32
+00:01:17,220 --> 00:01:20,100
+documenting some of these
+kernel tracing interfaces,
+
+33
+00:01:20,100 --> 00:01:23,190
+and then how we can insert
+ourselves into the boot process
+
+34
+00:01:23,190 --> 00:01:24,390
+that DTrace follows,
+
+35
+00:01:24,390 --> 00:01:27,300
+and then covering some of the
+neater tricks that DTrace uses
+
+36
+00:01:27,300 --> 00:01:29,850
+when it interacts with the Windows kernel.
+
+37
+00:01:29,850 --> 00:01:32,910
+And then finally, I'm
+going to introduce Strace,
+
+38
+00:01:32,910 --> 00:01:34,290
+my reimplementation.
+
+39
+00:01:34,290 --> 00:01:36,150
+I'm gonna talk about
+some of the differences
+
+40
+00:01:36,150 --> 00:01:38,040
+to Microsoft's port.
+
+41
+00:01:38,040 --> 00:01:39,450
+We're gonna go on a tangent
+
+42
+00:01:39,450 --> 00:01:41,940
+about how we can rate drivers in Rust,
+
+43
+00:01:41,940 --> 00:01:43,770
+and then really follow that rabbit hole
+
+44
+00:01:43,770 --> 00:01:45,690
+by adding a WebAssembly interpreter
+
+45
+00:01:45,690 --> 00:01:46,863
+to the Windows kernel.
+
+46
+00:01:48,420 --> 00:01:52,650
+We're then gonna talk about
+why I ditched Rust for C++
+
+47
+00:01:52,650 --> 00:01:54,030
+when it comes to drivers,
+
+48
+00:01:54,030 --> 00:01:57,390
+and then loading DLLs
+in the Windows kernel,
+
+49
+00:01:57,390 --> 00:01:58,620
+and finally,
+
+50
+00:01:58,620 --> 00:02:01,270
+how we can do our own
+symbolicated call stack traces.
+
+51
+00:02:03,780 --> 00:02:06,720
+So what exactly is Dtrace?
+
+52
+00:02:06,720 --> 00:02:09,600
+DTrace is a dynamic tracing system
+
+53
+00:02:09,600 --> 00:02:12,510
+originally developed by Sun Microsystems
+
+54
+00:02:12,510 --> 00:02:14,670
+and then that was acquired by Oracle,
+
+55
+00:02:14,670 --> 00:02:19,173
+which was then turned into
+the OpenDTrace effort in 2016.
+
+56
+00:02:22,620 --> 00:02:26,310
+DTrace allows users to
+write specific scripts
+
+57
+00:02:26,310 --> 00:02:29,400
+which handle different probe events
+
+58
+00:02:29,400 --> 00:02:31,860
+and within these user scripts,
+
+59
+00:02:31,860 --> 00:02:34,260
+arbitrary actions can be performed
+
+60
+00:02:34,260 --> 00:02:36,990
+and the events can be logged or handled
+
+61
+00:02:36,990 --> 00:02:38,760
+in any way that they want.
+
+62
+00:02:38,760 --> 00:02:41,190
+These user scripts execute inside of a VM
+
+63
+00:02:41,190 --> 00:02:43,380
+within the dtrace.sys driver.
+
+64
+00:02:43,380 --> 00:02:46,890
+So they execute entirely
+within kernel mode.
+
+65
+00:02:46,890 --> 00:02:48,180
+Multiple different types of probes
+
+66
+00:02:48,180 --> 00:02:50,190
+are supported by the system;
+
+67
+00:02:50,190 --> 00:02:51,240
+STP-type probes,
+
+68
+00:02:51,240 --> 00:02:54,930
+which is going to be the
+topic of my talk exclusively.
+
+69
+00:02:54,930 --> 00:02:57,360
+I'm not going to cover any
+of the other probe types.
+
+70
+00:02:57,360 --> 00:02:59,700
+These are essentially system call hooks.
+
+71
+00:02:59,700 --> 00:03:01,500
+There are other probe types supported,
+
+72
+00:03:01,500 --> 00:03:03,840
+FBT, PID, and ETW.
+
+73
+00:03:03,840 --> 00:03:08,070
+FBT and PID rely on the
+Windows kernel hypervisor.
+
+74
+00:03:08,070 --> 00:03:11,550
+And I'll talk about why
+I'm not covering these
+
+75
+00:03:11,550 --> 00:03:12,960
+on a later slide.
+
+76
+00:03:12,960 --> 00:03:17,550
+The ETW probe types,
+they could be extended.
+
+77
+00:03:17,550 --> 00:03:19,770
+My system could be
+extended to support these,
+
+78
+00:03:19,770 --> 00:03:22,590
+but I just did not perform that research.
+
+79
+00:03:22,590 --> 00:03:24,180
+On the right, you can see an example
+
+80
+00:03:24,180 --> 00:03:27,210
+of what a DTrace script
+actually looks like.
+
+81
+00:03:27,210 --> 00:03:29,610
+This example will simply print out
+
+82
+00:03:29,610 --> 00:03:32,910
+which file is being opened
+by this NtCreateFile
+
+83
+00:03:32,910 --> 00:03:36,030
+or NtOpenFile system call.
+
+84
+00:03:36,030 --> 00:03:39,000
+I wanna point out some built-in routines.
+
+85
+00:03:39,000 --> 00:03:43,170
+The copyin routine is
+the way in this system
+
+86
+00:03:43,170 --> 00:03:46,230
+that you access wider system memory.
+
+87
+00:03:46,230 --> 00:03:47,790
+Because this executes within a VM,
+
+88
+00:03:47,790 --> 00:03:49,590
+anytime you do a memory access,
+
+89
+00:03:49,590 --> 00:03:51,540
+you need to call this built-in routine
+
+90
+00:03:51,540 --> 00:03:56,400
+to copy the memory into the VM
+and perform your operations.
+
+91
+00:03:56,400 --> 00:03:59,100
+I also wanna point out
+ustack at the bottom.
+
+92
+00:03:59,100 --> 00:04:01,410
+This is a built-in routine within DTrace,
+
+93
+00:04:01,410 --> 00:04:05,070
+which allows you to do a
+symbolicated call stack trace
+
+94
+00:04:05,070 --> 00:04:07,680
+from the kernel level down through,
+
+95
+00:04:07,680 --> 00:04:09,453
+and including user-mode callers.
+
+96
+00:04:10,410 --> 00:04:12,570
+And then finally, the LKD,
+
+97
+00:04:12,570 --> 00:04:15,420
+built in at the bottom,
+in this return probe,
+
+98
+00:04:15,420 --> 00:04:17,640
+that will perform a live kernel dump.
+
+99
+00:04:17,640 --> 00:04:18,960
+I'm gonna be talking about the internals
+
+100
+00:04:18,960 --> 00:04:21,180
+of all these routines on a later slide
+
+101
+00:04:21,180 --> 00:04:23,490
+and how they work and why
+they're a bit interesting,
+
+102
+00:04:23,490 --> 00:04:24,840
+but I just wanna point out
+
+103
+00:04:24,840 --> 00:04:26,940
+those three interesting built-in routines.
+
+104
+00:04:27,870 --> 00:04:30,270
+We're gonna cover some
+more advanced examples
+
+105
+00:04:30,270 --> 00:04:31,500
+of DTrace scripts here,
+
+106
+00:04:31,500 --> 00:04:33,930
+and this is going to start
+covering some of the pain points
+
+107
+00:04:33,930 --> 00:04:35,790
+and why I did this research.
+
+108
+00:04:35,790 --> 00:04:37,890
+So to start, take a look at the left,
+
+109
+00:04:37,890 --> 00:04:40,230
+the self keyword is a bit interesting.
+
+110
+00:04:40,230 --> 00:04:42,900
+I'm gonna cover this on
+a later slide about why,
+
+111
+00:04:42,900 --> 00:04:47,340
+but essentially this is
+kernel Thread Local Storage,
+
+112
+00:04:47,340 --> 00:04:52,140
+user scripts can save thread local data.
+
+113
+00:04:52,140 --> 00:04:55,770
+In this case, I'm using
+that to get around a issue
+
+114
+00:04:55,770 --> 00:04:57,210
+within the DTrace architecture.
+
+115
+00:04:57,210 --> 00:05:00,390
+Essentially these entry and return probes,
+
+116
+00:05:00,390 --> 00:05:03,450
+they execute before and after
+the system service routine,
+
+117
+00:05:03,450 --> 00:05:05,620
+which means they can execute
+
+118
+00:05:06,660 --> 00:05:09,000
+potentially before the
+system routine has paged in
+
+119
+00:05:09,000 --> 00:05:09,930
+any memory.
+
+120
+00:05:09,930 --> 00:05:11,070
+So within return probes,
+
+121
+00:05:11,070 --> 00:05:13,650
+if you wanna access this backing memory,
+
+122
+00:05:13,650 --> 00:05:16,770
+you actually have to save
+a pointer to the memory
+
+123
+00:05:16,770 --> 00:05:18,000
+in your entry probe,
+
+124
+00:05:18,000 --> 00:05:19,950
+and then you can't access
+it until your return probe
+
+125
+00:05:19,950 --> 00:05:21,690
+in many cases.
+
+126
+00:05:21,690 --> 00:05:22,950
+On the right side,
+
+127
+00:05:22,950 --> 00:05:26,370
+we can see an example of trying
+to print out a enumeration,
+
+128
+00:05:26,370 --> 00:05:27,600
+the enumeration flags.
+
+129
+00:05:27,600 --> 00:05:30,690
+In general, the DTrace
+language is quite limited.
+
+130
+00:05:30,690 --> 00:05:34,740
+So anytime you wanna do
+anything somewhat complex,
+
+131
+00:05:34,740 --> 00:05:37,080
+your code ends up being quite verbose.
+
+132
+00:05:37,080 --> 00:05:39,270
+And I'll talk about some issues
+
+133
+00:05:39,270 --> 00:05:41,763
+with this scripting language in general.
+
+134
+00:05:43,590 --> 00:05:46,410
+So here's an example of
+one of the bigger issues
+
+135
+00:05:46,410 --> 00:05:47,370
+with this language,
+
+136
+00:05:47,370 --> 00:05:49,080
+and that's the fact that it doesn't have
+
+137
+00:05:49,080 --> 00:05:50,640
+user defined functions.
+
+138
+00:05:50,640 --> 00:05:52,770
+So if you want to do complicated things
+
+139
+00:05:52,770 --> 00:05:54,840
+or build utility routines
+or anything like that,
+
+140
+00:05:54,840 --> 00:05:56,550
+it's really quite a struggle.
+
+141
+00:05:56,550 --> 00:05:58,050
+The best way to get around that
+
+142
+00:05:58,050 --> 00:06:00,030
+that I found is essentially,
+
+143
+00:06:00,030 --> 00:06:03,030
+you have to invoke the C preprocessor
+
+144
+00:06:03,030 --> 00:06:06,240
+over top of these D scripts.
+
+145
+00:06:06,240 --> 00:06:08,130
+This ends up working out
+because the D language
+
+146
+00:06:08,130 --> 00:06:12,510
+is similar enough to C that the
+pre-processor can handle it.
+
+147
+00:06:12,510 --> 00:06:14,820
+So here's a utility routine
+that will just copy in
+
+148
+00:06:14,820 --> 00:06:16,800
+the backing memory behind a Unicode string
+
+149
+00:06:16,800 --> 00:06:18,990
+so you can print out that Unicode string.
+
+150
+00:06:18,990 --> 00:06:20,850
+So you can see this is
+quite a simple operation,
+
+151
+00:06:20,850 --> 00:06:23,130
+but we're already using crazy hacks
+
+152
+00:06:23,130 --> 00:06:25,350
+like invoking a C preprocessor
+over these D scripts
+
+153
+00:06:25,350 --> 00:06:28,560
+to build a semblance of
+a working environment
+
+154
+00:06:28,560 --> 00:06:30,633
+that is usable for us.
+
+155
+00:06:32,310 --> 00:06:36,630
+So in summary, some shortcomings
+of the DTrace language:
+
+156
+00:06:36,630 --> 00:06:38,670
+There's no user-defined functions at all.
+
+157
+00:06:38,670 --> 00:06:40,260
+There's no loops.
+
+158
+00:06:40,260 --> 00:06:41,670
+If you want to build any kind of
+
+159
+00:06:41,670 --> 00:06:43,980
+somewhat complicated
+control flow structure,
+
+160
+00:06:43,980 --> 00:06:45,840
+like nested ifs or anything like that,
+
+161
+00:06:45,840 --> 00:06:47,490
+you will absolutely run into cases
+
+162
+00:06:47,490 --> 00:06:51,720
+where it miscompiles into
+invalid instruction sequences
+
+163
+00:06:51,720 --> 00:06:53,670
+and causes faults.
+
+164
+00:06:53,670 --> 00:06:54,903
+It's quite annoying.
+
+165
+00:06:55,800 --> 00:06:56,670
+There's also some,
+
+166
+00:06:56,670 --> 00:06:58,380
+what I consider to be
+system design issues,
+
+167
+00:06:58,380 --> 00:07:00,360
+with this architecture.
+
+168
+00:07:00,360 --> 00:07:02,160
+You have extremely limited side effects
+
+169
+00:07:02,160 --> 00:07:04,710
+within these call back
+routines when probes fire.
+
+170
+00:07:04,710 --> 00:07:06,030
+There's a built-in called System,
+
+171
+00:07:06,030 --> 00:07:09,933
+which lets you execute arbitrary commands,
+
+172
+00:07:12,150 --> 00:07:14,130
+similar to like cmd.exe.
+
+173
+00:07:14,130 --> 00:07:17,310
+Unfortunately it only
+supports static strings.
+
+174
+00:07:17,310 --> 00:07:20,550
+So if you build a dynamic
+string like dump.exe
+
+175
+00:07:20,550 --> 00:07:22,500
+with the process name,
+
+176
+00:07:22,500 --> 00:07:25,890
+you can't pass that to invoke that.
+
+177
+00:07:25,890 --> 00:07:28,620
+So you can't really do a
+whole lot other than logging
+
+178
+00:07:28,620 --> 00:07:30,390
+in many cases.
+
+179
+00:07:30,390 --> 00:07:32,700
+There's issues with memory accessing
+
+180
+00:07:32,700 --> 00:07:34,740
+due to paging like I mentioned earlier,
+
+181
+00:07:34,740 --> 00:07:36,390
+and then the Dtrace,
+
+182
+00:07:36,390 --> 00:07:39,390
+Microsoft port at least,
+doesn't have the pre-processor.
+
+183
+00:07:39,390 --> 00:07:42,180
+The Unix variant of DTrace
+does have a pre-processor,
+
+184
+00:07:42,180 --> 00:07:44,403
+Microsoft's port simply
+does not have that.
+
+185
+00:07:45,720 --> 00:07:47,700
+The biggest issue is wide string support
+
+186
+00:07:47,700 --> 00:07:50,820
+and string support in
+general is extremely lacking.
+
+187
+00:07:50,820 --> 00:07:53,370
+You can't convert like a wide
+string to a narrow string
+
+188
+00:07:53,370 --> 00:07:54,720
+in this language.
+
+189
+00:07:54,720 --> 00:07:56,940
+You can't implement that yourself
+
+190
+00:07:56,940 --> 00:07:58,860
+because there are no user-defined loops
+
+191
+00:07:58,860 --> 00:08:01,800
+and other utility routines
+like looking for sub-strings
+
+192
+00:08:01,800 --> 00:08:06,800
+or any other somewhat complex
+string manipulation routines.
+
+193
+00:08:07,140 --> 00:08:09,510
+A lot of them just don't exist,
+
+194
+00:08:09,510 --> 00:08:12,060
+which is part of a bigger issue,
+
+195
+00:08:12,060 --> 00:08:14,490
+which is that the developer experience,
+
+196
+00:08:14,490 --> 00:08:18,510
+the tooling, the IDEs, all of
+that is completely lacking.
+
+197
+00:08:18,510 --> 00:08:21,690
+You essentially write
+user scripts in Notepad,
+
+198
+00:08:21,690 --> 00:08:23,700
+and then you ship them off to the driver
+
+199
+00:08:23,700 --> 00:08:25,923
+and you check if it works that way.
+
+200
+00:08:27,900 --> 00:08:30,483
+So being frustrated with this process,
+
+201
+00:08:31,650 --> 00:08:33,690
+this is why I started this research into,
+
+202
+00:08:33,690 --> 00:08:35,550
+how can I create my own version?
+
+203
+00:08:35,550 --> 00:08:37,770
+The kernel tracing interfaces
+were extremely powerful
+
+204
+00:08:37,770 --> 00:08:39,450
+and I thought the system was awesome,
+
+205
+00:08:39,450 --> 00:08:42,330
+but I just simply could not
+express the logic that I wanted
+
+206
+00:08:42,330 --> 00:08:44,430
+within the provided language.
+
+207
+00:08:44,430 --> 00:08:45,263
+So in this section,
+
+208
+00:08:45,263 --> 00:08:46,680
+we're gonna be covering
+the high level architecture
+
+209
+00:08:46,680 --> 00:08:48,450
+of the DTrace system,
+
+210
+00:08:48,450 --> 00:08:51,030
+how it boots and how
+it talks to the kernel.
+
+211
+00:08:51,030 --> 00:08:54,180
+I'm gonna talk about some
+really neat tricks that it uses
+
+212
+00:08:54,180 --> 00:08:55,860
+or provides via those built-ins.
+
+213
+00:08:55,860 --> 00:08:57,660
+Then I'm gonna document
+these tracing interfaces
+
+214
+00:08:57,660 --> 00:08:59,860
+so that we can build
+our own implementation.
+
+215
+00:09:01,650 --> 00:09:04,560
+So the architecture of DTrace.
+
+216
+00:09:04,560 --> 00:09:07,020
+It originally started out
+with a kernel extension driver
+
+217
+00:09:07,020 --> 00:09:09,360
+called tracext.sys.
+
+218
+00:09:09,360 --> 00:09:11,640
+This talked directly
+with the Windows kernel
+
+219
+00:09:11,640 --> 00:09:14,220
+to provide support for all
+these different probe types
+
+220
+00:09:14,220 --> 00:09:16,680
+like PID, FBT, et cetera,
+
+221
+00:09:16,680 --> 00:09:18,600
+that then communicated hand-in-hand
+
+222
+00:09:18,600 --> 00:09:19,920
+with the dtrace.sys driver,
+
+223
+00:09:19,920 --> 00:09:22,950
+which contained this D language VM,
+
+224
+00:09:22,950 --> 00:09:24,840
+which executes these user scripts
+
+225
+00:09:24,840 --> 00:09:27,600
+to handle those probe events.
+
+226
+00:09:27,600 --> 00:09:31,470
+Those user scripts could
+then log or generate output,
+
+227
+00:09:31,470 --> 00:09:33,210
+which would be queued up within the driver
+
+228
+00:09:33,210 --> 00:09:36,780
+and then read back out by the
+user mode component dtrace.exe
+
+229
+00:09:36,780 --> 00:09:37,743
+at a later time.
+
+230
+00:09:38,910 --> 00:09:41,220
+The dtrace.exe user mode component
+
+231
+00:09:41,220 --> 00:09:44,190
+also acts like a symbol
+server for the driver.
+
+232
+00:09:44,190 --> 00:09:47,730
+So the driver contains in kernel
+memory like a symbol cache,
+
+233
+00:09:47,730 --> 00:09:49,560
+and that's used or consulted
+
+234
+00:09:49,560 --> 00:09:54,560
+when the DTrace built-in
+ustack is executed.
+
+235
+00:09:54,870 --> 00:09:59,870
+That symbol cache exists
+so that any stack output
+
+236
+00:09:59,910 --> 00:10:00,810
+that needs to symbolicated
+
+237
+00:10:00,810 --> 00:10:02,430
+can immediately be done so in kernel mode
+
+238
+00:10:02,430 --> 00:10:03,507
+before it goes back to user mode,
+
+239
+00:10:03,507 --> 00:10:04,590
+and this is much faster
+
+240
+00:10:04,590 --> 00:10:07,203
+than constantly querying
+a user mode component.
+
+241
+00:10:08,700 --> 00:10:10,620
+In the 20H1 update of Windows,
+
+242
+00:10:10,620 --> 00:10:12,450
+this architecture was changed.
+
+243
+00:10:12,450 --> 00:10:14,580
+The traceext.sys kernel extension driver
+
+244
+00:10:14,580 --> 00:10:15,840
+was completely removed
+
+245
+00:10:15,840 --> 00:10:17,670
+and that functionality was subsumed
+
+246
+00:10:17,670 --> 00:10:20,010
+by the dtrace.sys driver.
+
+247
+00:10:20,010 --> 00:10:21,853
+So in the modern architecture of DTrace,
+
+248
+00:10:21,853 --> 00:10:24,840
+dtrace.sys is itself a kernel extension
+
+249
+00:10:24,840 --> 00:10:27,570
+and it directly
+communicates with NT kernel,
+
+250
+00:10:27,570 --> 00:10:30,090
+but all the components of this
+system are exactly the same
+
+251
+00:10:30,090 --> 00:10:31,590
+as it used to be.
+
+252
+00:10:31,590 --> 00:10:34,560
+And if the wiring diagram on
+MSDN was updated in this way,
+
+253
+00:10:34,560 --> 00:10:36,003
+it would be exactly correct.
+
+254
+00:10:38,310 --> 00:10:40,650
+So we understand the boot process,
+
+255
+00:10:40,650 --> 00:10:43,230
+sorry, we understand the
+architecture of Dtrace,
+
+256
+00:10:43,230 --> 00:10:45,960
+let's cover the boot process.
+
+257
+00:10:45,960 --> 00:10:47,400
+In order to understand this,
+
+258
+00:10:47,400 --> 00:10:49,980
+we have to actually start
+at the Windows boot loader,
+
+259
+00:10:49,980 --> 00:10:51,510
+winload.exe.
+
+260
+00:10:51,510 --> 00:10:53,130
+The first thing that it's going to do
+
+261
+00:10:53,130 --> 00:10:56,040
+is it's going to check
+if the boot flag dtrace
+
+262
+00:10:56,040 --> 00:10:57,030
+is set or not,
+
+263
+00:10:57,030 --> 00:10:59,430
+which can be set by bcdedit.
+
+264
+00:10:59,430 --> 00:11:00,270
+If it is set,
+
+265
+00:11:00,270 --> 00:11:03,870
+then it's going to add the
+API schema set extension,
+
+266
+00:11:03,870 --> 00:11:08,460
+ext-ms-win-ntos-trace to
+the system schema set map,
+
+267
+00:11:08,460 --> 00:11:10,830
+and I'll cover this on the
+next slide a little bit.
+
+268
+00:11:10,830 --> 00:11:14,103
+So if you're not familiar with
+this mechanism, don't fret.
+
+269
+00:11:15,600 --> 00:11:18,420
+After it has added this schema set entry
+
+270
+00:11:18,420 --> 00:11:20,100
+to the system schema set map,
+
+271
+00:11:20,100 --> 00:11:24,510
+windload will then eventually
+begin to load the NT kernel.
+
+272
+00:11:24,510 --> 00:11:28,770
+The NT kernel has an import
+for this API TraceInitSys,
+
+273
+00:11:28,770 --> 00:11:31,590
+from this schema set entry.
+
+274
+00:11:31,590 --> 00:11:33,630
+During the import process,
+
+275
+00:11:33,630 --> 00:11:36,120
+this import will be eventually resolved
+
+276
+00:11:36,120 --> 00:11:40,320
+to be an import of dtrace.sys
+and dtrace.sys will be loaded.
+
+277
+00:11:40,320 --> 00:11:42,510
+And then this import TraceInitSystem
+
+278
+00:11:42,510 --> 00:11:44,280
+will be invoked by the NT kernel
+
+279
+00:11:44,280 --> 00:11:47,490
+during phase 1 kernel initialization.
+
+280
+00:11:47,490 --> 00:11:49,050
+It's a bit interesting when this happens,
+
+281
+00:11:49,050 --> 00:11:52,020
+because it actually happens
+before PatchGuard initializes
+
+282
+00:11:52,020 --> 00:11:52,950
+during system boot.
+
+283
+00:11:52,950 --> 00:11:54,510
+And this is because
+
+284
+00:11:54,510 --> 00:11:56,670
+DTrace fills in some
+kernel callback tables,
+
+285
+00:11:56,670 --> 00:11:58,920
+which are PatchGuard protected.
+
+286
+00:11:58,920 --> 00:12:00,840
+So in order for this to work out,
+
+287
+00:12:00,840 --> 00:12:04,620
+it has to fill those out before
+PatchGuard is initialized.
+
+288
+00:12:04,620 --> 00:12:06,150
+The call chain for that is
+
+289
+00:12:06,150 --> 00:12:09,750
+KeInitSystem invokes
+KiInitDynamicTrace support,
+
+290
+00:12:09,750 --> 00:12:11,583
+which then invokes TraceInitSystem.
+
+291
+00:12:14,760 --> 00:12:17,670
+So I mentioned this API schema set system,
+
+292
+00:12:17,670 --> 00:12:18,843
+what are those?
+
+293
+00:12:20,814 --> 00:12:24,060
+The API set mechanism is
+essentially you have these PEs,
+
+294
+00:12:24,060 --> 00:12:25,560
+these API set PEs,
+
+295
+00:12:25,560 --> 00:12:28,860
+which are essentially just
+aliases for what are called host
+
+296
+00:12:28,860 --> 00:12:29,860
+or implementing PEs.
+
+297
+00:12:31,142 --> 00:12:34,650
+In the case of DTrace, I've
+shown the sections right here.
+
+298
+00:12:34,650 --> 00:12:36,690
+This is actually the Api set DLL
+
+299
+00:12:36,690 --> 00:12:38,550
+that comes with the DTrace installer.
+
+300
+00:12:38,550 --> 00:12:39,383
+Looking at the sections,
+
+301
+00:12:39,383 --> 00:12:41,403
+we see this section called .apiset.
+
+302
+00:12:42,300 --> 00:12:43,650
+This is a binary hash map,
+
+303
+00:12:43,650 --> 00:12:45,900
+which essentially just contains a map
+
+304
+00:12:45,900 --> 00:12:49,320
+that points these virtual
+names to the host names,
+
+305
+00:12:49,320 --> 00:12:51,240
+the implementing names.
+
+306
+00:12:51,240 --> 00:12:52,770
+And we'll see on the next slide,
+
+307
+00:12:52,770 --> 00:12:54,963
+a image of parsing this particular one.
+
+308
+00:12:55,890 --> 00:13:00,120
+For DTrace, it's actually
+a bit more advanced
+
+309
+00:13:00,120 --> 00:13:01,680
+than just like a normal API set DLL.
+
+310
+00:13:01,680 --> 00:13:05,100
+It's a special API
+schema set extension DLL.
+
+311
+00:13:05,100 --> 00:13:09,630
+These can be added by setting
+this particular registry path.
+
+312
+00:13:09,630 --> 00:13:12,210
+The name fields of these
+registry entries can be anything.
+
+313
+00:13:12,210 --> 00:13:15,600
+They just delineate like a new extension,
+
+314
+00:13:15,600 --> 00:13:17,400
+but the file name path of this entry
+
+315
+00:13:17,400 --> 00:13:19,563
+must point to one of these pseudo PEs.
+
+316
+00:13:20,820 --> 00:13:23,040
+And then during the boot process,
+
+317
+00:13:23,040 --> 00:13:24,588
+when one of these is considered,
+
+318
+00:13:24,588 --> 00:13:29,130
+these aliases will be
+resolved to whatever host PE.
+
+319
+00:13:29,130 --> 00:13:30,330
+So in the case of DTrace,
+
+320
+00:13:30,330 --> 00:13:33,360
+ext-ms-win-ntos-trace is
+literally just replaced
+
+321
+00:13:33,360 --> 00:13:36,273
+with dtrace.sys for any kernel imports.
+
+322
+00:13:38,220 --> 00:13:40,470
+So here's a 010 editor template
+
+323
+00:13:40,470 --> 00:13:43,770
+running over this .apiset binary section.
+
+324
+00:13:43,770 --> 00:13:46,080
+There's public research
+on this binary format,
+
+325
+00:13:46,080 --> 00:13:48,230
+so thank you to the people
+who have documented that,
+
+326
+00:13:48,230 --> 00:13:50,340
+it was very helpful in my research.
+
+327
+00:13:50,340 --> 00:13:52,830
+And this script can be found online.
+
+328
+00:13:52,830 --> 00:13:55,650
+Looking at this, we
+can see that dtrace.sys
+
+329
+00:13:55,650 --> 00:13:59,550
+simply points to ext-ms-win-ntos-trace.
+
+330
+00:13:59,550 --> 00:14:02,280
+And because this is a API set extension,
+
+331
+00:14:02,280 --> 00:14:03,810
+this actually ends up being flipped
+
+332
+00:14:03,810 --> 00:14:07,560
+from how you might parse
+other API set DLLs.
+
+333
+00:14:07,560 --> 00:14:10,200
+In a more conventional API set DLL,
+
+334
+00:14:10,200 --> 00:14:11,700
+this would be the other way around;
+
+335
+00:14:11,700 --> 00:14:15,900
+the ext-ms-win-ntos-trace
+would point at dtrace.sys.
+
+336
+00:14:15,900 --> 00:14:17,610
+So you read this like
+
+337
+00:14:17,610 --> 00:14:22,533
+dtrace.sys implements
+ext-ms-win-ntos-trace's interface.
+
+338
+00:14:24,780 --> 00:14:25,620
+So we need to talk about
+
+339
+00:14:25,620 --> 00:14:27,990
+the signing requirements of the system.
+
+340
+00:14:27,990 --> 00:14:29,280
+So dtrace.sys,
+
+341
+00:14:29,280 --> 00:14:32,640
+even though it is a dynamic
+schema set extension,
+
+342
+00:14:32,640 --> 00:14:34,620
+it is considered to be effectively
+
+343
+00:14:34,620 --> 00:14:36,030
+part of the Windows kernel.
+
+344
+00:14:36,030 --> 00:14:37,770
+So it's under the same
+signing requirements
+
+345
+00:14:37,770 --> 00:14:40,290
+as any other Windows kernel component.
+
+346
+00:14:40,290 --> 00:14:41,160
+It must be signed
+
+347
+00:14:41,160 --> 00:14:44,223
+by a root Microsoft code
+signing certificate.
+
+348
+00:14:45,330 --> 00:14:46,860
+The schema set DLL itself
+
+349
+00:14:46,860 --> 00:14:49,770
+is also under those same
+signing requirements.
+
+350
+00:14:49,770 --> 00:14:51,210
+So you might immediately
+have the question of,
+
+351
+00:14:51,210 --> 00:14:52,770
+okay, if we're building
+a reimplementation,
+
+352
+00:14:52,770 --> 00:14:54,180
+how the heck are we going to
+
+353
+00:14:54,180 --> 00:14:55,800
+pass these signing requirements?
+
+354
+00:14:55,800 --> 00:14:57,780
+And it's a two step process.
+
+355
+00:14:57,780 --> 00:15:02,780
+First off, we can reuse the
+Microsoft provided API set DLL.
+
+356
+00:15:03,540 --> 00:15:05,040
+The only requirement from that
+
+357
+00:15:05,040 --> 00:15:09,090
+is that our driver must
+also be named dtrace.sys,
+
+358
+00:15:09,090 --> 00:15:10,830
+but this is fine because it's just a name,
+
+359
+00:15:10,830 --> 00:15:13,020
+the content could be anything.
+
+360
+00:15:13,020 --> 00:15:13,890
+The more unfortunate thing
+
+361
+00:15:13,890 --> 00:15:16,650
+is that we do have to disable
+driver signature enforcement
+
+362
+00:15:16,650 --> 00:15:20,280
+at boot time in order to
+pass this signing requirement
+
+363
+00:15:20,280 --> 00:15:22,890
+when the kernel goes to import dtrace.sys.
+
+364
+00:15:22,890 --> 00:15:24,840
+And this is due to the architecture
+
+365
+00:15:24,840 --> 00:15:28,140
+of this kernel extension
+API schema set system.
+
+366
+00:15:28,140 --> 00:15:31,770
+It is not enough to
+just sign this yourself
+
+367
+00:15:31,770 --> 00:15:33,270
+with a valid code signing certificate
+
+368
+00:15:33,270 --> 00:15:35,610
+or enable kernel test signing,
+
+369
+00:15:35,610 --> 00:15:38,160
+or even more advanced features
+like Custom Kernel Signers,
+
+370
+00:15:38,160 --> 00:15:40,170
+which lets you load drivers
+that are self-signed
+
+371
+00:15:40,170 --> 00:15:42,720
+against the UEFI platform root key.
+
+372
+00:15:42,720 --> 00:15:44,010
+These will not work.
+
+373
+00:15:44,010 --> 00:15:45,660
+It must really be signed
+
+374
+00:15:45,660 --> 00:15:47,640
+with a Microsoft code signing certificate.
+
+375
+00:15:47,640 --> 00:15:50,940
+And to anyone from Microsoft
+who might listen to this talk,
+
+376
+00:15:50,940 --> 00:15:53,580
+please consider changing
+this architecture.
+
+377
+00:15:53,580 --> 00:15:55,830
+It would be very nice if kernel extensions
+
+378
+00:15:55,830 --> 00:15:58,530
+or at least the DTrace kernel extension
+
+379
+00:15:58,530 --> 00:16:03,530
+could be loaded or signed
+by non-Microsoft parties.
+
+380
+00:16:04,830 --> 00:16:07,020
+The kernel interfaces
+for this are fantastic,
+
+381
+00:16:07,020 --> 00:16:09,870
+but this requirement is very limiting.
+
+382
+00:16:09,870 --> 00:16:12,720
+In particular, if the Custom
+Kernel Signers feature
+
+383
+00:16:12,720 --> 00:16:13,920
+could be extended
+
+384
+00:16:13,920 --> 00:16:17,580
+so that kernel extensions self sign
+
+385
+00:16:17,580 --> 00:16:20,280
+against the platform UEFI
+root key could be allowed,
+
+386
+00:16:20,280 --> 00:16:21,750
+this would be great.
+
+387
+00:16:21,750 --> 00:16:24,030
+In the modern time of secure boot
+
+388
+00:16:24,030 --> 00:16:25,500
+and things like this,
+
+389
+00:16:25,500 --> 00:16:27,948
+giving back system ownership to the users
+
+390
+00:16:27,948 --> 00:16:30,150
+would be quite fantastic.
+
+391
+00:16:30,150 --> 00:16:31,860
+And it shouldn't really violate
+
+392
+00:16:31,860 --> 00:16:35,730
+any of the security
+architecture of the system
+
+393
+00:16:35,730 --> 00:16:38,250
+because you can replace
+the platform UEFI root key
+
+394
+00:16:38,250 --> 00:16:41,103
+with your own, which
+verifies system ownership.
+
+395
+00:16:43,680 --> 00:16:46,500
+So the loading process of Dtrace.
+
+396
+00:16:46,500 --> 00:16:47,733
+We understand that now.
+
+397
+00:16:48,600 --> 00:16:51,540
+The system is going to
+call TraceInitSystem.
+
+398
+00:16:51,540 --> 00:16:53,280
+We've passed all the signing checks,
+
+399
+00:16:53,280 --> 00:16:55,080
+what is DTrace going to do
+
+400
+00:16:55,080 --> 00:16:56,610
+and how's it going to actually register
+
+401
+00:16:56,610 --> 00:16:58,350
+and fill out these callback tables?
+
+402
+00:16:58,350 --> 00:17:00,300
+When TraceInitSystem is invoked,
+
+403
+00:17:00,300 --> 00:17:01,500
+the first thing that's going to happen
+
+404
+00:17:01,500 --> 00:17:04,200
+is it's going to fill out the
+table KiDynamicTraceCallouts
+
+405
+00:17:05,340 --> 00:17:07,800
+with pointers to handle each
+one of these different types
+
+406
+00:17:07,800 --> 00:17:09,630
+of probe events.
+
+407
+00:17:09,630 --> 00:17:11,700
+After that, it's going to pass a pointer
+
+408
+00:17:11,700 --> 00:17:13,980
+to this special memory access routine,
+
+409
+00:17:13,980 --> 00:17:17,370
+TraceAccessMemory, to the NT kernel.
+
+410
+00:17:17,370 --> 00:17:19,230
+The NT kernel is then going to record
+
+411
+00:17:19,230 --> 00:17:21,330
+the start and the end
+boundaries of this routine
+
+412
+00:17:21,330 --> 00:17:24,780
+by looking up that functions
+x64 unwind table entry.
+
+413
+00:17:24,780 --> 00:17:27,060
+And I'll talk about why later.
+
+414
+00:17:27,060 --> 00:17:30,100
+After this, the NT kernel then passes
+
+415
+00:17:31,200 --> 00:17:35,430
+a pointer two KiDynamicTracContext
+to dtrace.sys.
+
+416
+00:17:35,430 --> 00:17:36,330
+This is a bit interesting
+
+417
+00:17:36,330 --> 00:17:40,590
+because this structure gives
+offsets into the K thread
+
+418
+00:17:40,590 --> 00:17:44,190
+for different fields for
+different versions of Windows
+
+419
+00:17:44,190 --> 00:17:47,490
+and the dtrace.sys
+driver uses these offsets
+
+420
+00:17:47,490 --> 00:17:49,260
+to access these fields
+
+421
+00:17:49,260 --> 00:17:51,633
+to reform different
+kinds of tracing events.
+
+422
+00:17:52,590 --> 00:17:55,260
+It also provides pointers
+to different APIs
+
+423
+00:17:55,260 --> 00:17:57,110
+to set and remove these trace points.
+
+424
+00:17:57,960 --> 00:18:00,990
+I will cover at least one
+or two of these offsets
+
+425
+00:18:00,990 --> 00:18:03,590
+and how they're used by the
+driver on a later slide.
+
+426
+00:18:04,950 --> 00:18:05,783
+Okay.
+
+427
+00:18:05,783 --> 00:18:07,320
+So we've loaded, we've passed signing,
+
+428
+00:18:07,320 --> 00:18:09,150
+we've registered with the kernel,
+
+429
+00:18:09,150 --> 00:18:11,790
+what can we do with these probes
+
+430
+00:18:11,790 --> 00:18:14,670
+once we are fully
+initialized with the system?
+
+431
+00:18:14,670 --> 00:18:16,140
+So my talks about system call probes.
+
+432
+00:18:16,140 --> 00:18:18,390
+So let's talk about those.
+
+433
+00:18:18,390 --> 00:18:21,360
+When you do a transition from
+user mode to kernel mode,
+
+434
+00:18:21,360 --> 00:18:24,010
+that is handled by the kernel
+routine KiSystemCall64.
+
+435
+00:18:25,650 --> 00:18:28,560
+This is executed for all
+user-mode system calls,
+
+436
+00:18:28,560 --> 00:18:32,490
+and also for Zw style kernel calls,
+
+437
+00:18:32,490 --> 00:18:35,040
+which go through KiSystemCallInternal.
+
+438
+00:18:35,040 --> 00:18:36,600
+Within KiSystemCall64,
+
+439
+00:18:36,600 --> 00:18:41,190
+there is special code to handle
+this dynamic tracing system.
+
+440
+00:18:41,190 --> 00:18:44,400
+It works by first checking if
+dynamic tracing is enabled,
+
+441
+00:18:44,400 --> 00:18:45,233
+and if it is,
+
+442
+00:18:45,233 --> 00:18:49,110
+then it will take a
+snapshot of the registers
+
+443
+00:18:49,110 --> 00:18:52,563
+and the stack slots
+that contain arguments.
+
+444
+00:18:53,790 --> 00:18:56,790
+It will then do a look-up
+into a tracing tree
+
+445
+00:18:56,790 --> 00:18:59,790
+and check if there is a
+entry or an exit probe
+
+446
+00:18:59,790 --> 00:19:03,570
+registered for the current
+executing system service routine.
+
+447
+00:19:03,570 --> 00:19:06,660
+If there is, an entry or
+an exit probe registered,
+
+448
+00:19:06,660 --> 00:19:09,330
+then that will be invoked either before
+
+449
+00:19:09,330 --> 00:19:12,843
+or directly after the system
+service routine is executed.
+
+450
+00:19:13,950 --> 00:19:15,000
+And these are in line,
+
+451
+00:19:15,000 --> 00:19:19,710
+so if you delay execution
+within your entry probe,
+
+452
+00:19:19,710 --> 00:19:22,200
+the system service
+routine will not execute
+
+453
+00:19:22,200 --> 00:19:24,333
+until you return from that.
+
+454
+00:19:25,440 --> 00:19:26,740
+The KiTrackSystemCallEntry
+
+455
+00:19:28,353 --> 00:19:29,790
+and the KiTrackSystemCallEntryExit
+
+456
+00:19:29,790 --> 00:19:31,020
+are the routines that
+are invoked for that,
+
+457
+00:19:31,020 --> 00:19:34,350
+which then dispatch to STP style routines.
+
+458
+00:19:34,350 --> 00:19:36,000
+And these STP style routines
+
+459
+00:19:36,000 --> 00:19:37,020
+are what is contained
+
+460
+00:19:37,020 --> 00:19:39,630
+within the
+KiDynamicTraceCallouts structure,
+
+461
+00:19:39,630 --> 00:19:42,420
+which is why that registration
+process happens at all.
+
+462
+00:19:42,420 --> 00:19:45,390
+These STP routines are in that
+PatchGuard protected table.
+
+463
+00:19:45,390 --> 00:19:46,790
+So if you try to patch these
+
+464
+00:19:47,850 --> 00:19:49,590
+without following that
+registration process,
+
+465
+00:19:49,590 --> 00:19:50,640
+you will blue screen.
+
+466
+00:19:53,130 --> 00:19:54,540
+You might have the question of, okay,
+
+467
+00:19:54,540 --> 00:19:57,510
+if we have a single routine
+handling entry and exit
+
+468
+00:19:57,510 --> 00:19:59,340
+for all of our different
+system service routines,
+
+469
+00:19:59,340 --> 00:20:01,500
+how do we know which
+system service routine
+
+470
+00:20:01,500 --> 00:20:06,000
+is currently being dispatched
+within these tracing probes?
+
+471
+00:20:06,000 --> 00:20:07,260
+And the answer to that is,
+
+472
+00:20:07,260 --> 00:20:09,570
+when you set a trace point
+
+473
+00:20:09,570 --> 00:20:12,510
+with KeSetSystemService callback,
+
+474
+00:20:12,510 --> 00:20:15,300
+you create an association
+between the system service name
+
+475
+00:20:15,300 --> 00:20:17,280
+and a thing called a probe ID.
+
+476
+00:20:17,280 --> 00:20:19,830
+The probe IT is just,
+the probe ID, rather,
+
+477
+00:20:19,830 --> 00:20:21,480
+it's just an arbitrary magic value,
+
+478
+00:20:21,480 --> 00:20:23,100
+which is essentially just like a handle
+
+479
+00:20:23,100 --> 00:20:24,540
+for this tracing system.
+
+480
+00:20:24,540 --> 00:20:28,110
+And you as the one who set a tracing probe
+
+481
+00:20:28,110 --> 00:20:30,180
+have to remember the
+association between that name
+
+482
+00:20:30,180 --> 00:20:31,950
+and that probe type.
+
+483
+00:20:31,950 --> 00:20:35,940
+But this probe ID gets
+passed to your callback
+
+484
+00:20:35,940 --> 00:20:37,620
+in entry and exit,
+
+485
+00:20:37,620 --> 00:20:39,570
+and you can resolve which system service
+
+486
+00:20:39,570 --> 00:20:40,743
+is executing that way.
+
+487
+00:20:42,960 --> 00:20:44,670
+Okay, so we're gonna
+cover some neat tricks
+
+488
+00:20:44,670 --> 00:20:46,530
+that DTrace uses when it
+talks to the Windows kernel
+
+489
+00:20:46,530 --> 00:20:47,580
+at this point.
+
+490
+00:20:47,580 --> 00:20:49,707
+I mentioned that TraceAccessMemory routine
+
+491
+00:20:49,707 --> 00:20:52,950
+that DTrace passes to the kernel.
+
+492
+00:20:52,950 --> 00:20:55,830
+This is a safe way to read
+
+493
+00:20:55,830 --> 00:20:58,800
+potentially arbitrarily
+inaccessible or paged out memory
+
+494
+00:20:58,800 --> 00:21:00,390
+while you're at a very IRQL
+
+495
+00:21:00,390 --> 00:21:02,280
+without blue screening the system.
+
+496
+00:21:02,280 --> 00:21:04,350
+This works with modification
+
+497
+00:21:04,350 --> 00:21:08,103
+that the Microsoft team added
+to the MmAccessFault handler.
+
+498
+00:21:09,660 --> 00:21:10,740
+During the registration process
+
+499
+00:21:10,740 --> 00:21:15,740
+when they pass this pointer
+to this memory access routine,
+
+500
+00:21:15,960 --> 00:21:17,940
+the start and the inbounds are recorded.
+
+501
+00:21:17,940 --> 00:21:21,900
+And then if a memory
+access fault occurs later,
+
+502
+00:21:21,900 --> 00:21:25,080
+the system will try to
+determine the caller.
+
+503
+00:21:25,080 --> 00:21:27,120
+The caller is determined by calling this
+
+504
+00:21:27,120 --> 00:21:29,970
+KiIsTraceAccessMemory function,
+
+505
+00:21:29,970 --> 00:21:32,700
+which will check if
+dynamic tracing is enabled.
+
+506
+00:21:32,700 --> 00:21:33,533
+If it is enabled,
+
+507
+00:21:33,533 --> 00:21:35,640
+then it will check if the faulting address
+
+508
+00:21:35,640 --> 00:21:39,360
+is within the bounds of this
+special memory access function.
+
+509
+00:21:39,360 --> 00:21:41,913
+And also that the IRQL is set to 15.
+
+510
+00:21:42,750 --> 00:21:46,920
+The 15 is because DTrace
+itself, these user scripts,
+
+511
+00:21:46,920 --> 00:21:49,650
+they execute at this IRQL.
+This is part of the VM.
+
+512
+00:21:49,650 --> 00:21:51,420
+When they enter the VM,
+they set it really high
+
+513
+00:21:51,420 --> 00:21:53,250
+and then when they exit, they set it back.
+
+514
+00:21:53,250 --> 00:21:54,780
+I don't know why they do this,
+
+515
+00:21:54,780 --> 00:21:57,210
+it's not a requirement
+of the kernel interface,
+
+516
+00:21:57,210 --> 00:21:58,170
+but it is a requirement
+
+517
+00:21:58,170 --> 00:22:00,903
+of this particular access fault system.
+
+518
+00:22:01,800 --> 00:22:04,380
+If the caller is determined to be DTrace,
+
+519
+00:22:04,380 --> 00:22:06,930
+then MmAccessFault will
+instead just return
+
+520
+00:22:06,930 --> 00:22:08,970
+a status access violation code
+
+521
+00:22:08,970 --> 00:22:11,369
+rather than bug-checking your system.
+
+522
+00:22:11,369 --> 00:22:12,270
+So if you've ever tried to do
+
+523
+00:22:12,270 --> 00:22:14,130
+like system call hooking
+yourself manually,
+
+524
+00:22:14,130 --> 00:22:15,810
+you can appreciate how useful it is
+
+525
+00:22:15,810 --> 00:22:17,850
+to have a built in function
+
+526
+00:22:17,850 --> 00:22:19,850
+that can sort of safely do this for you.
+
+527
+00:22:21,510 --> 00:22:23,600
+I pointed out the self keyword earlier
+
+528
+00:22:23,600 --> 00:22:25,380
+in the DTrace scripts.
+
+529
+00:22:25,380 --> 00:22:28,980
+This is a proper
+implementation of the concept
+
+530
+00:22:28,980 --> 00:22:31,320
+of kernel Thread Local Storage.
+
+531
+00:22:31,320 --> 00:22:32,370
+In order to support this,
+
+532
+00:22:32,370 --> 00:22:36,030
+Microsoft added a field
+called Tracing Private Data
+
+533
+00:22:36,030 --> 00:22:38,220
+to the K thread structure.
+
+534
+00:22:38,220 --> 00:22:39,570
+This is the width of one pointer,
+
+535
+00:22:39,570 --> 00:22:41,340
+it's currently set as an array,
+
+536
+00:22:41,340 --> 00:22:42,610
+but it only has one entry
+
+537
+00:22:43,500 --> 00:22:45,990
+and the KiDynamicTraceContext structure
+
+538
+00:22:45,990 --> 00:22:48,570
+that the kernel passes
+to the DTrace driver
+
+539
+00:22:48,570 --> 00:22:51,180
+actually gives the size of this array,
+
+540
+00:22:51,180 --> 00:22:53,970
+as well as the offset to it
+within the K thread structure.
+
+541
+00:22:53,970 --> 00:22:55,470
+So you can always know where it is
+
+542
+00:22:55,470 --> 00:22:58,080
+on all versions of modern Windows,
+
+543
+00:22:58,080 --> 00:23:00,990
+even though it is like
+technically undocumented.
+
+544
+00:23:00,990 --> 00:23:03,030
+And you can set this to just
+be an archery data value,
+
+545
+00:23:03,030 --> 00:23:05,430
+and it's only used by the DTrace system.
+
+546
+00:23:05,430 --> 00:23:06,870
+So if you don't have DTrace installed,
+
+547
+00:23:06,870 --> 00:23:08,733
+this field should not be filled out.
+
+548
+00:23:11,460 --> 00:23:13,440
+One of the other neat
+tricks that DTrace has
+
+549
+00:23:13,440 --> 00:23:17,820
+is the ability to invoke the same APIs
+
+550
+00:23:17,820 --> 00:23:19,350
+that your kernel debugger
+
+551
+00:23:19,350 --> 00:23:21,510
+will use to generate a system dump.
+
+552
+00:23:21,510 --> 00:23:23,430
+It will use the live kernel
+dump feature of Windows,
+
+553
+00:23:23,430 --> 00:23:28,290
+which uses the undocumented
+API DbgWerCaptureLiveKernelDump
+
+554
+00:23:28,290 --> 00:23:30,183
+with this particular type definition.
+
+555
+00:23:31,320 --> 00:23:33,240
+This generates system dumps
+
+556
+00:23:33,240 --> 00:23:36,180
+without having a system debugger attached,
+
+557
+00:23:36,180 --> 00:23:38,040
+and these are standard .dmp files
+
+558
+00:23:38,040 --> 00:23:39,240
+that can be loaded in winDbg.
+
+559
+00:23:39,240 --> 00:23:42,870
+And the arguments BugCheckCode P1, P2, P3,
+
+560
+00:23:42,870 --> 00:23:45,090
+are what ends up being
+shown within the dump
+
+561
+00:23:45,090 --> 00:23:46,800
+if you load it in winDbg.
+
+562
+00:23:46,800 --> 00:23:47,633
+This generates dumps
+
+563
+00:23:47,633 --> 00:23:50,310
+in the C:\Windows\LiveKernel\Reports
+folder,
+
+564
+00:23:50,310 --> 00:23:53,190
+and the component name
+is the sub folder path
+
+565
+00:23:53,190 --> 00:23:54,140
+within this folder.
+
+566
+00:23:55,800 --> 00:23:58,620
+Microsoft technically documented this
+
+567
+00:23:58,620 --> 00:24:01,620
+with the DTrace system.
+
+568
+00:24:01,620 --> 00:24:04,830
+They documented the LKD built-in routine,
+
+569
+00:24:04,830 --> 00:24:05,700
+but that built-in routine
+
+570
+00:24:05,700 --> 00:24:08,130
+just directly calls this
+undocumented routine.
+
+571
+00:24:08,130 --> 00:24:10,200
+So all of the registry arguments
+
+572
+00:24:10,200 --> 00:24:13,500
+and different settings behind the scenes
+
+573
+00:24:13,500 --> 00:24:15,480
+that control how this API works
+
+574
+00:24:15,480 --> 00:24:17,830
+are now technically
+documented as an extension.
+
+575
+00:24:20,370 --> 00:24:22,590
+My personal favorite
+trick that DTrace does
+
+576
+00:24:22,590 --> 00:24:25,680
+is this ability to generate
+these call stack traces.
+
+577
+00:24:25,680 --> 00:24:28,410
+I find this interesting because
+it works a bit differently
+
+578
+00:24:28,410 --> 00:24:31,830
+than some of your regular
+tools such as like ProcMon,
+
+579
+00:24:31,830 --> 00:24:34,590
+how they generate their call stack traces.
+
+580
+00:24:34,590 --> 00:24:37,547
+This is the built-in
+routine ustack in Dtrace.
+
+581
+00:24:38,580 --> 00:24:40,260
+ProcMon is for example,
+
+582
+00:24:40,260 --> 00:24:43,230
+going to do something like
+call the user-mode API,
+
+583
+00:24:43,230 --> 00:24:46,920
+TraceWalk64, and then use the DIA SDKs
+
+584
+00:24:46,920 --> 00:24:48,240
+to do symbolization.
+
+585
+00:24:48,240 --> 00:24:50,970
+And then with the help
+of like a kernel driver,
+
+586
+00:24:50,970 --> 00:24:55,320
+it will get the function
+frame of the kernel thread.
+
+587
+00:24:55,320 --> 00:24:58,110
+And it will basically
+do this call stack trace
+
+588
+00:24:58,110 --> 00:24:59,940
+from user mode, is the important part.
+
+589
+00:24:59,940 --> 00:25:02,520
+The call stack walk is done
+from a user mode component
+
+590
+00:25:02,520 --> 00:25:03,753
+using user-mode APIs.
+
+591
+00:25:04,680 --> 00:25:07,140
+The DTrace system
+doesn't have that luxury.
+
+592
+00:25:07,140 --> 00:25:09,750
+It is a driver, it's scripts
+execute within kernel mode
+
+593
+00:25:09,750 --> 00:25:12,210
+so it can't call any user-mode APIs.
+
+594
+00:25:12,210 --> 00:25:17,130
+So it's able to somehow
+initialize a call stack walk
+
+595
+00:25:17,130 --> 00:25:20,160
+from kernel mode that goes down through
+
+596
+00:25:20,160 --> 00:25:22,560
+and including user-mode APIs.
+
+597
+00:25:22,560 --> 00:25:24,870
+So I had the question of,
+okay, how's it doing this?
+
+598
+00:25:24,870 --> 00:25:28,350
+There is a kernel routine
+called RtlCaptureStackBackTrace
+
+599
+00:25:28,350 --> 00:25:32,250
+which can do a kernel-level
+stack walk like this,
+
+600
+00:25:32,250 --> 00:25:35,130
+but it doesn't traverse the
+kernel to user road boundary
+
+601
+00:25:35,130 --> 00:25:36,720
+yet DTrace's does.
+
+602
+00:25:36,720 --> 00:25:38,370
+And the way that they actually do this
+
+603
+00:25:38,370 --> 00:25:42,720
+is they completely implement
+unwinding and stack walking
+
+604
+00:25:42,720 --> 00:25:44,160
+within their driver.
+
+605
+00:25:44,160 --> 00:25:45,420
+And this essentially operates
+
+606
+00:25:45,420 --> 00:25:49,350
+by finding the current
+executing function frame,
+
+607
+00:25:49,350 --> 00:25:51,840
+and then they locate the
+module that that's within.
+
+608
+00:25:51,840 --> 00:25:53,220
+And then within that module,
+
+609
+00:25:53,220 --> 00:25:56,370
+they find the image
+directory entry exception
+
+610
+00:25:56,370 --> 00:25:58,020
+data directory.
+
+611
+00:25:58,020 --> 00:26:00,990
+That is a series of
+runtime function entries.
+
+612
+00:26:00,990 --> 00:26:03,660
+There's one per every
+function in the binary,
+
+613
+00:26:03,660 --> 00:26:05,250
+if there's online info for it.
+
+614
+00:26:05,250 --> 00:26:07,080
+And then within that structure,
+
+615
+00:26:07,080 --> 00:26:09,180
+there is a field unwind data,
+
+616
+00:26:09,180 --> 00:26:10,650
+which is effectively specifies,
+
+617
+00:26:10,650 --> 00:26:13,170
+how do I unwind this current function?
+
+618
+00:26:13,170 --> 00:26:16,110
+That unwind data is a
+series of unwind op codes,
+
+619
+00:26:16,110 --> 00:26:21,110
+which describe memory effects
+and different CPU effects
+
+620
+00:26:22,140 --> 00:26:24,270
+that the current function does.
+
+621
+00:26:24,270 --> 00:26:25,470
+And if you unwind these,
+
+622
+00:26:25,470 --> 00:26:28,050
+if you execute them on a virtual stack,
+
+623
+00:26:28,050 --> 00:26:33,050
+you can essentially roll back
+the stack of this function.
+
+624
+00:26:33,990 --> 00:26:37,380
+And then you can eventually
+read the return address
+
+625
+00:26:37,380 --> 00:26:39,000
+off the top of this virtual stack.
+
+626
+00:26:39,000 --> 00:26:40,950
+So an example of that
+is this unwind op code
+
+627
+00:26:40,950 --> 00:26:42,210
+pushed on volatile.
+
+628
+00:26:42,210 --> 00:26:45,990
+This specifies that a register
+was pushed to the stack.
+
+629
+00:26:45,990 --> 00:26:47,850
+And if you're executing
+this on your virtual stack,
+
+630
+00:26:47,850 --> 00:26:51,030
+you can just do RSP plus eight
+to undo this memory effect.
+
+631
+00:26:51,030 --> 00:26:52,907
+So DTrace completely implements this
+
+632
+00:26:52,907 --> 00:26:55,590
+unwind op code execution system
+and everything like that.
+
+633
+00:26:55,590 --> 00:26:56,580
+And I'll cover how we can do
+
+634
+00:26:56,580 --> 00:26:58,260
+a simpler version of this ourselves
+
+635
+00:26:58,260 --> 00:27:00,240
+in our own implementation.
+
+636
+00:27:00,240 --> 00:27:03,000
+DTrace is limited because
+they execute at such a IRQL.
+
+637
+00:27:03,000 --> 00:27:05,950
+So they had to do this entirely
+custom within their driver,
+
+638
+00:27:06,930 --> 00:27:08,080
+but quite a cool thing.
+
+639
+00:27:09,300 --> 00:27:12,030
+Okay. So we understand the load process.
+
+640
+00:27:12,030 --> 00:27:14,250
+We understand how to pass
+these signing requirements.
+
+641
+00:27:14,250 --> 00:27:15,570
+We understand the interfaces,
+
+642
+00:27:15,570 --> 00:27:17,520
+and we understand some
+of the cooler tricks
+
+643
+00:27:17,520 --> 00:27:19,380
+that DTrace is using to talk to the kernel
+
+644
+00:27:19,380 --> 00:27:21,720
+and do some of these built-in things.
+
+645
+00:27:21,720 --> 00:27:24,170
+How can we write our own tracing system?
+
+646
+00:27:24,170 --> 00:27:27,720
+So I'm gonna cover the differences
+between STrace and DTrace
+
+647
+00:27:27,720 --> 00:27:29,370
+and then I'm gonna go on a tangent
+
+648
+00:27:29,370 --> 00:27:30,870
+about Rust and WebAssembly,
+
+649
+00:27:30,870 --> 00:27:32,880
+and then I'm gonna cover
+
+650
+00:27:32,880 --> 00:27:35,910
+why I rewrote this whole thing
+in C++ plus after I did that,
+
+651
+00:27:35,910 --> 00:27:37,200
+and then how we can do our own
+
+652
+00:27:37,200 --> 00:27:38,750
+symbolicated call stack traces.
+
+653
+00:27:40,440 --> 00:27:42,060
+So STrace versus DTrace.
+
+654
+00:27:42,060 --> 00:27:44,943
+The biggest difference
+is that STrace executes,
+
+655
+00:27:45,990 --> 00:27:48,090
+I don't touch the IRQL level.
+
+656
+00:27:48,090 --> 00:27:50,970
+DTrace raises the IRQL to 15 artificially
+
+657
+00:27:50,970 --> 00:27:55,560
+as far as I can tell
+when it enters this VM.
+
+658
+00:27:55,560 --> 00:27:57,930
+This could potentially be
+related to lock ordering,
+
+659
+00:27:57,930 --> 00:27:59,940
+or maybe the fact that some
+of the other probe type
+
+660
+00:27:59,940 --> 00:28:00,990
+use hypervisor features,
+
+661
+00:28:00,990 --> 00:28:02,580
+I'm just simply not sure.
+
+662
+00:28:02,580 --> 00:28:04,983
+If anyone knows, I would love to know why.
+
+663
+00:28:06,030 --> 00:28:07,830
+But my system doesn't touch the IRQL,
+
+664
+00:28:07,830 --> 00:28:11,940
+so whenever your probe callbacks execute,
+
+665
+00:28:11,940 --> 00:28:13,740
+the IRQL is just whatever it is.
+
+666
+00:28:13,740 --> 00:28:15,150
+This is usually low level
+
+667
+00:28:15,150 --> 00:28:18,240
+when you're transitioning
+from user mode to kernel mode.
+
+668
+00:28:18,240 --> 00:28:20,430
+I'm sure there's cases
+where it's something else,
+
+669
+00:28:20,430 --> 00:28:24,300
+especially if you're tracing
+these like CW driver routines.
+
+670
+00:28:24,300 --> 00:28:26,070
+This has some very large benefits,
+
+671
+00:28:26,070 --> 00:28:29,310
+such as accessing memory is a lot simpler.
+
+672
+00:28:29,310 --> 00:28:30,293
+If you're accessing page out memory,
+
+673
+00:28:30,293 --> 00:28:32,370
+you can just page it in.
+
+674
+00:28:32,370 --> 00:28:35,010
+You can also do arbitrary side effects,
+
+675
+00:28:35,010 --> 00:28:36,120
+like calling different kernel APIs
+
+676
+00:28:36,120 --> 00:28:38,343
+because we are at a somewhat regular IRQL.
+
+677
+00:28:39,540 --> 00:28:42,780
+Plugins within my system are
+written in modern C++ 17,
+
+678
+00:28:42,780 --> 00:28:45,123
+rather than this esoteric D language.
+
+679
+00:28:46,560 --> 00:28:47,820
+The symbolication.
+
+680
+00:28:47,820 --> 00:28:48,660
+There's also some differences
+
+681
+00:28:48,660 --> 00:28:49,800
+with how I symbolicalicate things.
+
+682
+00:28:49,800 --> 00:28:53,430
+DTrace has this kernel symbol cache.
+
+683
+00:28:53,430 --> 00:28:54,690
+I don't do anything like that.
+
+684
+00:28:54,690 --> 00:28:56,460
+I just have a separate tool that runs
+
+685
+00:28:56,460 --> 00:28:58,680
+over the log output at the end.
+
+686
+00:28:58,680 --> 00:29:02,310
+And then my system only
+covers system call probes.
+
+687
+00:29:02,310 --> 00:29:05,100
+I don't cover FBT, PID or ETW probes.
+
+688
+00:29:05,100 --> 00:29:06,120
+And the main reason for this
+
+689
+00:29:06,120 --> 00:29:07,830
+is because of these signing requirements
+
+690
+00:29:07,830 --> 00:29:10,110
+of the kernel extension system,
+
+691
+00:29:10,110 --> 00:29:13,290
+because it requires a Microsoft
+code signing certificate.
+
+692
+00:29:13,290 --> 00:29:15,420
+You have to disable driver
+signature enforcement.
+
+693
+00:29:15,420 --> 00:29:16,253
+If you do that,
+
+694
+00:29:16,253 --> 00:29:18,780
+the Windows hypervisor and all
+these secure boot features,
+
+695
+00:29:18,780 --> 00:29:20,190
+they are not compatible
+
+696
+00:29:20,190 --> 00:29:21,990
+turning off to our signature enforcement,
+
+697
+00:29:21,990 --> 00:29:25,650
+which these FBT and PID
+probes, they use the hypervisor
+
+698
+00:29:25,650 --> 00:29:28,110
+so there's no point in
+researching how those work
+
+699
+00:29:28,110 --> 00:29:29,820
+if I can ever implement those.
+
+700
+00:29:29,820 --> 00:29:31,140
+So if Microsoft were to change
+
+701
+00:29:31,140 --> 00:29:32,760
+the signing requirements of the system,
+
+702
+00:29:32,760 --> 00:29:34,440
+implementing these probe type ourselves
+
+703
+00:29:34,440 --> 00:29:36,090
+would become feasible.
+
+704
+00:29:36,090 --> 00:29:38,890
+ETW probes are possible; I
+just didn't do that research.
+
+705
+00:29:41,760 --> 00:29:45,540
+Okay, so when I was designing this system,
+
+706
+00:29:45,540 --> 00:29:49,050
+I came at it from a architectural stance.
+
+707
+00:29:49,050 --> 00:29:52,650
+I essentially wanted to
+replace this scripting system
+
+708
+00:29:52,650 --> 00:29:54,000
+and keep the rest of the architecture
+
+709
+00:29:54,000 --> 00:29:55,740
+as similar to the
+Microsoft one as I could.
+
+710
+00:29:55,740 --> 00:29:58,500
+But I wasn't exactly sure how to do that.
+
+711
+00:29:58,500 --> 00:29:59,790
+I followed an integral process.
+
+712
+00:29:59,790 --> 00:30:03,150
+I essentially rewrote this
+system two or three times.
+
+713
+00:30:03,150 --> 00:30:05,550
+I started with Rust, then I went to C++,
+
+714
+00:30:05,550 --> 00:30:06,870
+and I'm gonna cover this process
+
+715
+00:30:06,870 --> 00:30:09,663
+because I found this quite
+a learning experience.
+
+716
+00:30:11,280 --> 00:30:14,640
+The biggest thing was I
+wanted these user scripts
+
+717
+00:30:14,640 --> 00:30:17,910
+to be user-provided from user mode,
+
+718
+00:30:17,910 --> 00:30:18,810
+ships off to the driver
+
+719
+00:30:18,810 --> 00:30:20,820
+so that someone didn't have
+to constantly rebuild a driver
+
+720
+00:30:20,820 --> 00:30:22,950
+and reboot their system all the time.
+
+721
+00:30:22,950 --> 00:30:25,350
+I wanted these scripts to be very fast,
+
+722
+00:30:25,350 --> 00:30:27,210
+'cause they're executed
+for every system call.
+
+723
+00:30:27,210 --> 00:30:30,090
+And I wanted it to be a
+somewhat familiar language,
+
+724
+00:30:30,090 --> 00:30:33,033
+something not esoteric
+like the D language was.
+
+725
+00:30:34,770 --> 00:30:37,380
+Ideally, I wanted the system to be usable
+
+726
+00:30:37,380 --> 00:30:39,840
+for both very experienced
+kernel developers
+
+727
+00:30:39,840 --> 00:30:42,180
+as well as people with maybe
+not so much kernel experience
+
+728
+00:30:42,180 --> 00:30:45,360
+or maybe not even a ton of
+development experience at all.
+
+729
+00:30:45,360 --> 00:30:47,010
+So during this process,
+
+730
+00:30:47,010 --> 00:30:51,360
+I eventually landed on,
+WebAssembly would be a good start,
+
+731
+00:30:51,360 --> 00:30:53,260
+and I'll cover cover that in a second.
+
+732
+00:30:54,270 --> 00:30:57,903
+So WebAssembly is not just for browsers.
+
+733
+00:30:59,040 --> 00:31:00,240
+You might think it is.
+
+734
+00:31:00,240 --> 00:31:01,830
+You might think it's terrible
+
+735
+00:31:01,830 --> 00:31:03,380
+to put it in the Window kernel.
+
+736
+00:31:04,260 --> 00:31:05,610
+You might be cringing on the inside,
+
+737
+00:31:05,610 --> 00:31:07,020
+but it's just a bad enough idea
+
+738
+00:31:07,020 --> 00:31:08,793
+that it almost makes some sense.
+
+739
+00:31:09,780 --> 00:31:12,690
+The core idea of it is DTrace has this VM
+
+740
+00:31:12,690 --> 00:31:13,790
+in the kernel already.
+
+741
+00:31:14,640 --> 00:31:18,420
+The idea of having an
+isolated runtime environment,
+
+742
+00:31:18,420 --> 00:31:20,790
+it's something that the browser
+technology's already solved.
+
+743
+00:31:20,790 --> 00:31:23,550
+So I could, hopefully the idea was,
+
+744
+00:31:23,550 --> 00:31:26,520
+reuse the WebAssembly language
+
+745
+00:31:26,520 --> 00:31:29,460
+to implement this architecture myself.
+
+746
+00:31:29,460 --> 00:31:31,890
+And we can compile any
+language to WebAssembly
+
+747
+00:31:31,890 --> 00:31:34,200
+so that kind of automatically
+solves the issue
+
+748
+00:31:34,200 --> 00:31:35,760
+of having an esoteric language.
+
+749
+00:31:35,760 --> 00:31:37,620
+If you like JavaScript, if
+you like C, if you like Rust,
+
+750
+00:31:37,620 --> 00:31:38,970
+you could just write it in whatever
+
+751
+00:31:38,970 --> 00:31:40,720
+and then compile it to WebAssembly.
+
+752
+00:31:41,640 --> 00:31:44,700
+There was the issue of, okay,
+this is a browser technology
+
+753
+00:31:44,700 --> 00:31:46,560
+so a lot of these interpreters
+and runtime environments,
+
+754
+00:31:46,560 --> 00:31:48,910
+they expect that you're
+executing in user mode.
+
+755
+00:31:50,760 --> 00:31:54,540
+In this case, I ended up
+finding that the crypto people,
+
+756
+00:31:54,540 --> 00:31:55,773
+thankfully,
+
+757
+00:31:55,773 --> 00:31:57,390
+they did this very nice thing,
+
+758
+00:31:57,390 --> 00:31:59,430
+they implemented this
+interpreter called WASM,
+
+759
+00:31:59,430 --> 00:32:01,170
+which was used by the
+Parity Ethereum group
+
+760
+00:32:01,170 --> 00:32:02,790
+to execute their contracts.
+
+761
+00:32:02,790 --> 00:32:05,850
+And this is a no_std Rust library
+
+762
+00:32:05,850 --> 00:32:08,400
+that I was able to actually
+embed within the kernel
+
+763
+00:32:08,400 --> 00:32:09,990
+within my driver.
+
+764
+00:32:09,990 --> 00:32:13,347
+And we could essentially
+load arbitrary user scripts
+
+765
+00:32:13,347 --> 00:32:15,180
+and execute them within
+the kernel this way.
+
+766
+00:32:15,180 --> 00:32:17,850
+I have a proof of concept
+of this. This does work.
+
+767
+00:32:17,850 --> 00:32:20,280
+All this code will be
+available after the talk
+
+768
+00:32:20,280 --> 00:32:23,310
+and I'll give you a link to that.
+
+769
+00:32:23,310 --> 00:32:24,750
+There were some issues though,
+
+770
+00:32:24,750 --> 00:32:27,150
+that eventually made this
+architecture infeasible
+
+771
+00:32:27,150 --> 00:32:29,130
+and I rewrote it into C++.
+
+772
+00:32:29,130 --> 00:32:32,550
+The biggest was that Rust
+itself with this library,
+
+773
+00:32:32,550 --> 00:32:36,360
+I was getting extremely deep
+kernel stacks, call stacks,
+
+774
+00:32:36,360 --> 00:32:37,590
+so this was not feasible.
+
+775
+00:32:37,590 --> 00:32:39,840
+And then the library in
+general was very slow.
+
+776
+00:32:39,840 --> 00:32:41,820
+It was an interpreter-based system.
+
+777
+00:32:41,820 --> 00:32:42,690
+I'm of the opinion now
+
+778
+00:32:42,690 --> 00:32:45,120
+that you probably need
+like a WebAssembly JIT
+
+779
+00:32:45,120 --> 00:32:47,100
+for this to be feasible.
+
+780
+00:32:47,100 --> 00:32:49,900
+And there are no easily
+embeddable WebAssembly JITs.
+
+781
+00:32:51,000 --> 00:32:53,070
+Very quickly, I'm running low on time
+
+782
+00:32:53,070 --> 00:32:56,130
+so I'm gonna just skim over this one.
+
+783
+00:32:56,130 --> 00:32:59,790
+Writing drivers for the Rust
+NT kernel is very difficult.
+
+784
+00:32:59,790 --> 00:33:02,460
+There are a couple open source
+blogs on how to do this,
+
+785
+00:33:02,460 --> 00:33:03,900
+and I'm very appreciative for them,
+
+786
+00:33:03,900 --> 00:33:06,000
+I've essentially just followed those.
+
+787
+00:33:06,000 --> 00:33:07,950
+But the biggest issue is
+
+788
+00:33:07,950 --> 00:33:10,140
+you have a very esoteric tool chain.
+
+789
+00:33:10,140 --> 00:33:11,970
+You need a very complicated cargo/config,
+
+790
+00:33:11,970 --> 00:33:14,310
+you need a complicated build file.
+
+791
+00:33:14,310 --> 00:33:16,470
+The compiler itself has a lot of issues.
+
+792
+00:33:16,470 --> 00:33:18,960
+So I was passing flags that said,
+
+793
+00:33:18,960 --> 00:33:20,490
+always generate unwind information,
+
+794
+00:33:20,490 --> 00:33:23,970
+which is required for this
+TraceAccessMemory like ABI,
+
+795
+00:33:23,970 --> 00:33:27,540
+but the compiler would
+seemingly just ignore them
+
+796
+00:33:27,540 --> 00:33:29,550
+and sometimes generate
+it and sometimes not,
+
+797
+00:33:29,550 --> 00:33:31,150
+which is obviously a huge issue.
+
+798
+00:33:32,100 --> 00:33:32,933
+Additionally,
+
+799
+00:33:32,933 --> 00:33:34,620
+I turned off things
+like exception handling
+
+800
+00:33:34,620 --> 00:33:38,070
+and all these different
+security features like chkstk
+
+801
+00:33:38,070 --> 00:33:40,980
+because they're not easily
+supported in the kernel mode,
+
+802
+00:33:40,980 --> 00:33:43,440
+but the compiler was still generating
+
+803
+00:33:43,440 --> 00:33:44,550
+these link or artifacts,
+
+804
+00:33:44,550 --> 00:33:45,570
+and my builds were failing
+
+805
+00:33:45,570 --> 00:33:47,220
+'cause they couldn't find
+the implementations for these
+
+806
+00:33:47,220 --> 00:33:48,123
+and yeah.
+
+807
+00:33:48,960 --> 00:33:49,860
+I was able to get around this
+
+808
+00:33:49,860 --> 00:33:52,530
+by just stubbing these out with
+functions that did nothing,
+
+809
+00:33:52,530 --> 00:33:53,790
+but I shouldn't have to do this at all.
+
+810
+00:33:53,790 --> 00:33:55,770
+It should respect my build flags and work.
+
+811
+00:33:55,770 --> 00:33:57,990
+And because this build
+chain was so complicated,
+
+812
+00:33:57,990 --> 00:34:00,330
+I was getting a handful of
+internal compiler errors.
+
+813
+00:34:00,330 --> 00:34:03,300
+And in general, this was
+just a terrible process.
+
+814
+00:34:03,300 --> 00:34:04,800
+Really, the biggest issue, however,
+
+815
+00:34:04,800 --> 00:34:08,130
+was, Microsoft doesn't
+have any Rust projections
+
+816
+00:34:08,130 --> 00:34:09,690
+for any kernel APIs.
+
+817
+00:34:09,690 --> 00:34:12,000
+So if you wanna do this, every single API,
+
+818
+00:34:12,000 --> 00:34:13,950
+every single type,
+every single everything,
+
+819
+00:34:13,950 --> 00:34:17,280
+has to be manually
+converted by hand to Rust,
+
+820
+00:34:17,280 --> 00:34:19,890
+which is an issue because
+the Rust language itself
+
+821
+00:34:19,890 --> 00:34:22,740
+doesn't support a lot of language features
+
+822
+00:34:22,740 --> 00:34:25,830
+that like C++ has for anonymous unions
+
+823
+00:34:25,830 --> 00:34:27,510
+or anonymous structures.
+
+824
+00:34:27,510 --> 00:34:29,130
+So you have to take a lot of care
+
+825
+00:34:29,130 --> 00:34:33,960
+for the alignment of all these fields,
+
+826
+00:34:33,960 --> 00:34:37,440
+and it ends up being tedious
+and you get it wrong a lot.
+
+827
+00:34:37,440 --> 00:34:38,910
+And you also don't get the benefits
+
+828
+00:34:38,910 --> 00:34:39,960
+of the borrow checker a lot,
+
+829
+00:34:39,960 --> 00:34:42,450
+which is like one of the
+core benefits of Rust.
+
+830
+00:34:42,450 --> 00:34:44,850
+You end up having to
+wrap all these API calls
+
+831
+00:34:44,850 --> 00:34:46,710
+in unsafe, everywhere anyway,
+
+832
+00:34:46,710 --> 00:34:49,323
+so this whole process is kind of for not.
+
+833
+00:34:51,300 --> 00:34:52,260
+I'm gonna skip this.
+
+834
+00:34:52,260 --> 00:34:56,820
+Essentially, I tried to
+rewrite this driver in C++,
+
+835
+00:34:56,820 --> 00:35:00,840
+but then embed a WebAssembly
+interpreter in C,
+
+836
+00:35:00,840 --> 00:35:04,380
+but I could not find a good
+C WebAssembly interpreter.
+
+837
+00:35:04,380 --> 00:35:06,123
+So this system was,
+
+838
+00:35:07,020 --> 00:35:08,580
+I essentially deemed this infeasible
+
+839
+00:35:08,580 --> 00:35:10,880
+and I moved on a different
+scripting language.
+
+840
+00:35:11,910 --> 00:35:14,040
+The final scripting
+language that I did choose
+
+841
+00:35:14,040 --> 00:35:16,170
+was essentially just shipping
+
+842
+00:35:16,170 --> 00:35:18,810
+what are effectively normal
+DLLs to the NT kernel
+
+843
+00:35:18,810 --> 00:35:21,030
+and then manually mapping them in.
+
+844
+00:35:21,030 --> 00:35:22,080
+This ends up working great.
+
+845
+00:35:22,080 --> 00:35:25,110
+It's essentially a totally
+normal build chain.
+
+846
+00:35:25,110 --> 00:35:29,790
+Windows supports this concept
+of having dynamic BLOBs.
+
+847
+00:35:29,790 --> 00:35:30,900
+It calls them DLLs
+
+848
+00:35:30,900 --> 00:35:33,960
+and they tell you what code
+needs to be relocated where,
+
+849
+00:35:33,960 --> 00:35:37,770
+and you can reuse the IAT
+and the EAT for kernel APIs.
+
+850
+00:35:38,850 --> 00:35:41,160
+The only real thing here
+
+851
+00:35:41,160 --> 00:35:43,350
+is you have to disable the C run time.
+
+852
+00:35:43,350 --> 00:35:45,660
+You have to disable any
+security check mechanisms
+
+853
+00:35:45,660 --> 00:35:48,030
+that rely on user-mode functionality.
+
+854
+00:35:48,030 --> 00:35:48,863
+But once you do this,
+
+855
+00:35:48,863 --> 00:35:51,240
+you can essentially just
+write a kernel manual mapper
+
+856
+00:35:51,240 --> 00:35:52,980
+that's gonna map these DLLs in
+
+857
+00:35:52,980 --> 00:35:55,283
+the same way you would
+for a user-mode component.
+
+858
+00:35:56,400 --> 00:35:58,770
+The MSVC compiler has one little quirk
+
+859
+00:35:58,770 --> 00:36:00,900
+where when you disabled a CRT like this,
+
+860
+00:36:00,900 --> 00:36:02,160
+if you want to implement your own
+
+861
+00:36:02,160 --> 00:36:04,380
+like memcpy or string routines,
+
+862
+00:36:04,380 --> 00:36:09,210
+it will detect your version
+of my mem set or something
+
+863
+00:36:09,210 --> 00:36:11,460
+and it will replace that with an intrinsic
+
+864
+00:36:11,460 --> 00:36:14,070
+because you've disabled the CRT though,
+
+865
+00:36:14,070 --> 00:36:15,450
+that intrinsic implementation
+
+866
+00:36:15,450 --> 00:36:17,220
+is not gonna be able to be linked in
+
+867
+00:36:17,220 --> 00:36:18,630
+so your build's gonna fail.
+
+868
+00:36:18,630 --> 00:36:19,620
+In order to get around that,
+
+869
+00:36:19,620 --> 00:36:21,570
+you have to actually
+define your own intrinsics.
+
+870
+00:36:21,570 --> 00:36:24,963
+It's not enough to just
+start out your own routines.
+
+871
+00:36:26,310 --> 00:36:30,180
+Here's an example of what
+one of those kernel DLLs
+
+872
+00:36:30,180 --> 00:36:31,140
+ends up looking like.
+
+873
+00:36:31,140 --> 00:36:34,743
+It's just a normal DLL
+but with kernel imports.
+
+874
+00:36:37,500 --> 00:36:40,350
+The way that this works for drivers,
+
+875
+00:36:40,350 --> 00:36:42,900
+when you're building
+these drivers in MSVC,
+
+876
+00:36:42,900 --> 00:36:46,080
+is the DDK has a extension
+for visual studio,
+
+877
+00:36:46,080 --> 00:36:49,560
+which is going to inject ntoskrnl.lib
+
+878
+00:36:49,560 --> 00:36:51,750
+into the MSVC linker path.
+
+879
+00:36:51,750 --> 00:36:54,630
+And then when it comes
+across an import like this,
+
+880
+00:36:54,630 --> 00:36:58,230
+the linker is going to
+consult ntoskrnl.lib
+
+881
+00:36:58,230 --> 00:37:02,490
+and it will add your IT entries
+like a normal build would.
+
+882
+00:37:02,490 --> 00:37:05,490
+However, we're building these
+DLLs, which are a bit weird.
+
+883
+00:37:05,490 --> 00:37:09,810
+So this DDK extension is
+not going to be activated
+
+884
+00:37:09,810 --> 00:37:10,710
+for this project type
+
+885
+00:37:10,710 --> 00:37:12,960
+so it's not going to inject ntoskrnl.lib
+
+886
+00:37:12,960 --> 00:37:14,250
+into our linker path.
+
+887
+00:37:14,250 --> 00:37:16,500
+So all these current APIs
+
+888
+00:37:16,500 --> 00:37:20,220
+are not going to automatically
+have IT stubs generated.
+
+889
+00:37:20,220 --> 00:37:22,140
+We can very simply get
+around this, however,
+
+890
+00:37:22,140 --> 00:37:24,360
+by just manually editing our linker path
+
+891
+00:37:24,360 --> 00:37:26,613
+to include a copy of ntoskrnl.lib.
+
+892
+00:37:27,510 --> 00:37:29,493
+This is not hard to do at all.
+
+893
+00:37:30,660 --> 00:37:32,100
+Once we do do this,
+
+894
+00:37:32,100 --> 00:37:35,280
+we can just specify
+our imports and exports
+
+895
+00:37:35,280 --> 00:37:37,110
+like we normally would in C.
+
+896
+00:37:37,110 --> 00:37:40,980
+And then we can generate these
+DLLs that have kernel imports
+
+897
+00:37:40,980 --> 00:37:44,280
+and also exports for our plugins
+
+898
+00:37:44,280 --> 00:37:46,976
+to handle these different probe types.
+
+899
+00:37:46,976 --> 00:37:48,450
+(clears throat) Excuse me.
+
+900
+00:37:48,450 --> 00:37:50,910
+Our DLL manual mapper will then take care
+
+901
+00:37:50,910 --> 00:37:54,540
+to walk the IAT and resolve these imports
+
+902
+00:37:54,540 --> 00:37:55,870
+by just loading
+
+903
+00:37:57,690 --> 00:38:01,290
+or calling the
+GetSystemRoutineAddress function
+
+904
+00:38:01,290 --> 00:38:02,123
+to resolve these APIs
+
+905
+00:38:02,123 --> 00:38:03,780
+and then filling in the
+IAT like we normally would
+
+906
+00:38:03,780 --> 00:38:05,280
+for any kind of manual mapper.
+
+907
+00:38:07,440 --> 00:38:10,170
+So what does an STrace
+plugin actually look like
+
+908
+00:38:10,170 --> 00:38:12,060
+once we've gone through this whole process
+
+909
+00:38:12,060 --> 00:38:15,090
+of generating these custom DLLs,
+
+910
+00:38:15,090 --> 00:38:16,530
+writing this driver and C++
+
+911
+00:38:16,530 --> 00:38:19,743
+that's going to have this
+DLL-based manual mapper built in?
+
+912
+00:38:20,670 --> 00:38:21,660
+The way that this works is,
+
+913
+00:38:21,660 --> 00:38:23,640
+essentially you create an enumeration.
+
+914
+00:38:23,640 --> 00:38:25,170
+You create the association
+
+915
+00:38:25,170 --> 00:38:28,020
+between your different system calls
+
+916
+00:38:28,020 --> 00:38:30,270
+and you give a numeric value
+
+917
+00:38:30,270 --> 00:38:32,190
+to remember that system called type by.
+
+918
+00:38:32,190 --> 00:38:33,210
+So in this case,
+
+919
+00:38:33,210 --> 00:38:36,840
+I'm gonna call SetInformationFile
+the value zero.
+
+920
+00:38:36,840 --> 00:38:40,020
+You can then set and unset probes.
+
+921
+00:38:40,020 --> 00:38:42,870
+This is done in what I
+call the StpInitialize
+
+922
+00:38:42,870 --> 00:38:45,480
+and StpDeInitialize functions.
+
+923
+00:38:45,480 --> 00:38:46,770
+These are functions that I've created.
+
+924
+00:38:46,770 --> 00:38:48,600
+I'm just following the STP naming scheme
+
+925
+00:38:48,600 --> 00:38:51,780
+that the Windows kernel
+is using for these.
+
+926
+00:38:51,780 --> 00:38:52,830
+Essentially what you do
+
+927
+00:38:52,830 --> 00:38:56,880
+is you just pass the string
+to the system call name
+
+928
+00:38:56,880 --> 00:38:59,130
+without the prefix Zw or NT.
+
+929
+00:38:59,130 --> 00:39:00,900
+So set information file.
+
+930
+00:39:00,900 --> 00:39:02,520
+You get a Boolean value to specify,
+
+931
+00:39:02,520 --> 00:39:05,510
+are you setting a trace
+point for entry or exit?
+
+932
+00:39:05,510 --> 00:39:07,320
+In this case, I'm setting
+it just for entry.
+
+933
+00:39:07,320 --> 00:39:08,550
+So, true.
+
+934
+00:39:08,550 --> 00:39:10,860
+And then I'm passing my numeric value
+
+935
+00:39:10,860 --> 00:39:13,380
+to remember this association by.
+
+936
+00:39:13,380 --> 00:39:16,410
+So I'm saying SetInformationFile
+is the value zero.
+
+937
+00:39:16,410 --> 00:39:17,550
+And then similarly,
+
+938
+00:39:17,550 --> 00:39:22,530
+I have a unset callback
+for the StpDeInitialize.
+
+939
+00:39:22,530 --> 00:39:23,363
+Under the hood,
+
+940
+00:39:23,363 --> 00:39:25,533
+this is calling those KE set system,
+
+941
+00:39:27,450 --> 00:39:29,910
+trace point, I believe it's
+called, might be callback,
+
+942
+00:39:29,910 --> 00:39:31,773
+and similarly KeOnsetSystemCallback.
+
+943
+00:39:33,600 --> 00:39:36,300
+These are the routines from
+the KiDynamicTraceCallouts
+
+944
+00:39:37,311 --> 00:39:39,360
+or KiDynamicTraceContext.
+
+945
+00:39:39,360 --> 00:39:42,270
+These are wrap routines
+that I've just created
+
+946
+00:39:42,270 --> 00:39:43,970
+because it makes it a bit simpler.
+
+947
+00:39:45,210 --> 00:39:46,980
+Once you do that,
+
+948
+00:39:46,980 --> 00:39:51,060
+you will eventually get a
+probe type fired by the kernel
+
+949
+00:39:51,060 --> 00:39:53,790
+when your call routine executes.
+
+950
+00:39:53,790 --> 00:39:57,540
+So in this case, let's
+say SetInformationFile
+
+951
+00:39:57,540 --> 00:39:59,910
+was invoked by user-mode executable.
+
+952
+00:39:59,910 --> 00:40:04,323
+That's gonna go through KiDynamic or K,
+
+953
+00:40:05,250 --> 00:40:08,220
+whatever the system call
+handling function is called.
+
+954
+00:40:08,220 --> 00:40:11,310
+That's going to hit
+this dynamic trace code.
+
+955
+00:40:11,310 --> 00:40:13,860
+And it's going to find that
+you have an entry probe set,
+
+956
+00:40:13,860 --> 00:40:17,820
+which is then going to fire
+the STP callback entry.
+
+957
+00:40:17,820 --> 00:40:19,080
+My driver will then handle that,
+
+958
+00:40:19,080 --> 00:40:22,170
+and it will dispatch this to this export,
+
+959
+00:40:22,170 --> 00:40:24,270
+which will be within this DLL.
+
+960
+00:40:24,270 --> 00:40:25,350
+And within this DLL,
+
+961
+00:40:25,350 --> 00:40:27,360
+you can handle this
+event however you like.
+
+962
+00:40:27,360 --> 00:40:28,890
+You can do logging,
+
+963
+00:40:28,890 --> 00:40:31,200
+you can do arbitrary kernel side effects,
+
+964
+00:40:31,200 --> 00:40:33,300
+but like calling any kind of APIs
+
+965
+00:40:33,300 --> 00:40:35,160
+at whatever IRQL level you're at.
+
+966
+00:40:35,160 --> 00:40:38,760
+And you're past the structure
+called the machine state,
+
+967
+00:40:38,760 --> 00:40:43,140
+which is gonna have all
+those registers and arguments
+
+968
+00:40:43,140 --> 00:40:44,220
+that you can read out.
+
+969
+00:40:44,220 --> 00:40:46,860
+You should be able to
+modify these arguments.
+
+970
+00:40:46,860 --> 00:40:48,360
+I haven't tested this
+
+971
+00:40:48,360 --> 00:40:50,670
+so I'm not 100% sure
+
+972
+00:40:50,670 --> 00:40:53,400
+if you're actually able to
+manipulate the arguments or not.
+
+973
+00:40:53,400 --> 00:40:56,670
+I believe it should work
+based on how I read the code,
+
+974
+00:40:56,670 --> 00:40:58,110
+but that is worth testing.
+
+975
+00:40:58,110 --> 00:40:59,820
+You cannot manipulate the return value
+
+976
+00:40:59,820 --> 00:41:01,740
+and you can't cancel the system routine.
+
+977
+00:41:01,740 --> 00:41:04,710
+So the system routine is
+always going to execute
+
+978
+00:41:04,710 --> 00:41:06,630
+and it will always return
+
+979
+00:41:06,630 --> 00:41:09,840
+whatever the normal return value would be
+
+980
+00:41:09,840 --> 00:41:12,510
+for the execution of that function.
+
+981
+00:41:12,510 --> 00:41:15,030
+So this is an example of me just logging
+
+982
+00:41:15,030 --> 00:41:20,030
+the fact that there's about
+to be a delete of this file.
+
+983
+00:41:20,910 --> 00:41:22,260
+The file disposition information
+
+984
+00:41:22,260 --> 00:41:23,910
+is going to be set to delete file.
+
+985
+00:41:23,910 --> 00:41:25,350
+So I'm going to log the fact that
+
+986
+00:41:25,350 --> 00:41:27,420
+some process is about to delete this file.
+
+987
+00:41:27,420 --> 00:41:30,360
+I'm then going to look up the file path
+
+988
+00:41:30,360 --> 00:41:31,680
+that is about to be deleted
+
+989
+00:41:31,680 --> 00:41:34,503
+and then I'm going to copy
+that file to a backup folder.
+
+990
+00:41:35,670 --> 00:41:37,290
+And then I'm going to, at the end,
+
+991
+00:41:37,290 --> 00:41:40,200
+generate a call stack trace
+using my own implementation
+
+992
+00:41:40,200 --> 00:41:42,210
+of what DTrace was doing
+
+993
+00:41:42,210 --> 00:41:43,470
+with its complicated call stack trace,
+
+994
+00:41:43,470 --> 00:41:48,060
+which I'll cover on the next
+slide of how we're doing that.
+
+995
+00:41:48,060 --> 00:41:50,040
+But this is just a simple way
+
+996
+00:41:50,040 --> 00:41:53,430
+to record all of the
+deleted files system wide
+
+997
+00:41:53,430 --> 00:41:54,480
+for all processes,
+
+998
+00:41:54,480 --> 00:41:57,060
+and then back them up to a backup folder,
+
+999
+00:41:57,060 --> 00:41:58,560
+and then generate a stack trace
+
+1000
+00:41:58,560 --> 00:42:00,710
+to see which processes
+we're deleting them.
+
+1001
+00:42:02,970 --> 00:42:05,370
+So I mentioned if we're
+doing this call stack trace,
+
+1002
+00:42:05,370 --> 00:42:06,600
+this is our own implementation
+
+1003
+00:42:06,600 --> 00:42:09,210
+of something similar to
+what DTrace is doing,
+
+1004
+00:42:09,210 --> 00:42:10,590
+but we have the added benefit of
+
+1005
+00:42:10,590 --> 00:42:12,930
+we are executing at a low IRQL.
+
+1006
+00:42:12,930 --> 00:42:14,580
+We're not at 15 like Dtrace is.
+
+1007
+00:42:14,580 --> 00:42:17,880
+We're at something probably
+that's like low level.
+
+1008
+00:42:17,880 --> 00:42:19,860
+So we have the added benefit
+
+1009
+00:42:19,860 --> 00:42:23,190
+of being able to call some
+built-ins like RtlWalkFrameChain.
+
+1010
+00:42:23,190 --> 00:42:25,620
+With this flag, RTL_WALK-USER_MODE_STACK,
+
+1011
+00:42:25,620 --> 00:42:26,640
+which is going to tell it
+
+1012
+00:42:26,640 --> 00:42:29,100
+to actually traverse that
+kernel to user mode boundary
+
+1013
+00:42:29,100 --> 00:42:32,460
+and continue unwinding the
+modules through user mode.
+
+1014
+00:42:32,460 --> 00:42:35,550
+This is awesome because it
+actually is going to execute
+
+1015
+00:42:35,550 --> 00:42:36,570
+those unwind op codes
+
+1016
+00:42:36,570 --> 00:42:41,570
+the same way that the DTrace
+driver is doing it itself,
+
+1017
+00:42:41,610 --> 00:42:42,900
+but we don't have to implement
+
+1018
+00:42:42,900 --> 00:42:46,590
+any of that unwind op
+code stuff ourselves.
+
+1019
+00:42:46,590 --> 00:42:48,330
+That is documented for the most part,
+
+1020
+00:42:48,330 --> 00:42:49,740
+but that is a complicated process
+
+1021
+00:42:49,740 --> 00:42:51,840
+and I didn't wanna have to do that.
+
+1022
+00:42:51,840 --> 00:42:54,450
+So once we call this API with this flag,
+
+1023
+00:42:54,450 --> 00:42:56,340
+we get a list of return addresses
+
+1024
+00:42:56,340 --> 00:42:58,890
+that include the user
+mode return addresses
+
+1025
+00:42:58,890 --> 00:43:02,313
+for the current process that
+we're in the context of.
+
+1026
+00:43:03,690 --> 00:43:07,200
+We can then turn these
+return addresses back
+
+1027
+00:43:07,200 --> 00:43:09,360
+into module and offset pairs
+
+1028
+00:43:09,360 --> 00:43:12,600
+by reimplementing, looping
+all the kernel modules,
+
+1029
+00:43:12,600 --> 00:43:16,260
+and then also looping all of the DLLs
+
+1030
+00:43:16,260 --> 00:43:18,840
+that are loaded for the
+current process context.
+
+1031
+00:43:18,840 --> 00:43:20,520
+And we can just subtract the base address
+
+1032
+00:43:20,520 --> 00:43:22,980
+of every one of those
+modules to get offset pairs.
+
+1033
+00:43:22,980 --> 00:43:26,730
+I've then created a tool
+in Rust called PDBResym.
+
+1034
+00:43:26,730 --> 00:43:31,730
+This is a asynchronous and
+multi-threaded log symbolocator
+
+1035
+00:43:32,220 --> 00:43:35,940
+that does not use any
+Microsoft symbol APIs at all.
+
+1036
+00:43:35,940 --> 00:43:38,040
+It is only using other Rust libraries
+
+1037
+00:43:38,040 --> 00:43:40,013
+that also don't use Microsoft symbol APIs.
+
+1038
+00:43:40,013 --> 00:43:41,760
+This is a full implementation
+
+1039
+00:43:41,760 --> 00:43:44,100
+of essentially what WinDbg is doing
+
+1040
+00:43:44,100 --> 00:43:47,040
+when it's loading symbols for a module.
+
+1041
+00:43:47,040 --> 00:43:48,300
+This works by,
+
+1042
+00:43:48,300 --> 00:43:49,980
+we can take these module offset pairs
+
+1043
+00:43:49,980 --> 00:43:52,420
+and we can find the PDB file name,
+
+1044
+00:43:52,420 --> 00:43:55,830
+guid, and age from the
+debug directory data entry.
+
+1045
+00:43:55,830 --> 00:44:00,750
+We can fetch the PDB by
+building the symbol download URL
+
+1046
+00:44:00,750 --> 00:44:02,070
+like this.
+
+1047
+00:44:02,070 --> 00:44:03,750
+We can then cache those to disk
+
+1048
+00:44:03,750 --> 00:44:05,490
+in the same manner that WinDbg is doing.
+
+1049
+00:44:05,490 --> 00:44:09,510
+It's essentially just the PDB guid
+
+1050
+00:44:09,510 --> 00:44:12,510
+plus the age concatenated
+together and then upper-cased.
+
+1051
+00:44:12,510 --> 00:44:16,110
+We can then parse this PDB
+using a Rust PDB parser library.
+
+1052
+00:44:16,110 --> 00:44:20,130
+And then we can build a PC to line cache
+
+1053
+00:44:20,130 --> 00:44:21,900
+using the data structure of a range map,
+
+1054
+00:44:21,900 --> 00:44:23,580
+which is just essentially a binary tree,
+
+1055
+00:44:23,580 --> 00:44:26,220
+but for key types, it has
+a minimum virtual address
+
+1056
+00:44:26,220 --> 00:44:27,900
+and a maximum virtual address.
+
+1057
+00:44:27,900 --> 00:44:30,420
+And using this, we can
+build a very efficient,
+
+1058
+00:44:30,420 --> 00:44:32,040
+nearest symbol lookup table
+
+1059
+00:44:32,040 --> 00:44:33,210
+and using that lookup table,
+
+1060
+00:44:33,210 --> 00:44:36,330
+we can then enumerate all
+these module plus offset pairs
+
+1061
+00:44:36,330 --> 00:44:39,600
+to resolve our log
+entries to their symbols.
+
+1062
+00:44:39,600 --> 00:44:41,970
+We gonna demangle those symbols
+
+1063
+00:44:41,970 --> 00:44:43,800
+and we can fully
+symbolicate our log output
+
+1064
+00:44:43,800 --> 00:44:45,060
+from this driver.
+
+1065
+00:44:45,060 --> 00:44:46,830
+And we have fully reimplemented
+
+1066
+00:44:46,830 --> 00:44:48,570
+our own symbolicated call stack traces
+
+1067
+00:44:48,570 --> 00:44:51,930
+without using for the
+most part, Microsoft APIs,
+
+1068
+00:44:51,930 --> 00:44:54,630
+other than this
+RtlWalkFrameChain to do that
+
+1069
+00:44:54,630 --> 00:44:56,067
+on wide op code execution,.
+
+1070
+00:44:58,500 --> 00:45:01,020
+This PDBReSym tool,
+
+1071
+00:45:01,020 --> 00:45:04,590
+I'll be open sourcing this
+plus all of the STrace driver
+
+1072
+00:45:04,590 --> 00:45:05,733
+and DLL code.
+
+1073
+00:45:06,570 --> 00:45:11,570
+This also supports caching
+folders or downloading the PDBs
+
+1074
+00:45:11,700 --> 00:45:14,133
+of an entire folder and
+other things like this.
+
+1075
+00:45:15,030 --> 00:45:17,850
+Because it's asynchronous
+and multi-threaded,
+
+1076
+00:45:17,850 --> 00:45:21,630
+I can cache the
+C:\Windows\System32 directory
+
+1077
+00:45:21,630 --> 00:45:23,940
+in about one minute.
+
+1078
+00:45:23,940 --> 00:45:28,940
+I can get all the PBS and
+do that extremely fast.
+
+1079
+00:45:30,240 --> 00:45:32,100
+And this doesn't use any
+of the Microsoft APIs.
+
+1080
+00:45:32,100 --> 00:45:34,020
+You could port this to work
+on something like Linux
+
+1081
+00:45:34,020 --> 00:45:34,920
+if you wished.
+
+1082
+00:45:34,920 --> 00:45:37,290
+There's just some hard coded
+Windows parsed within the tool,
+
+1083
+00:45:37,290 --> 00:45:39,290
+but that could be changed really easily.
+
+1084
+00:45:40,530 --> 00:45:41,913
+So a quick demo.
+
+1085
+00:45:43,500 --> 00:45:45,723
+Here's an example of me
+loading a plug-in DLL.
+
+1086
+00:45:45,723 --> 00:45:48,600
+This is a log all system calls DLL.
+
+1087
+00:45:48,600 --> 00:45:51,390
+This is going to register
+a entry and exit probe
+
+1088
+00:45:51,390 --> 00:45:54,690
+for every single system
+call type supported.
+
+1089
+00:45:54,690 --> 00:45:56,970
+And then executing a DLL via rundll32
+
+1090
+00:45:56,970 --> 00:45:59,460
+and I'm calling one of its exports.
+
+1091
+00:45:59,460 --> 00:46:02,310
+This has generated the file
+strace.txt on the right;
+
+1092
+00:46:02,310 --> 00:46:04,080
+I've unloaded the plug-in as well.
+
+1093
+00:46:04,080 --> 00:46:06,960
+We can see all the system
+calls that were executed here.
+
+1094
+00:46:06,960 --> 00:46:08,730
+I'm just gonna search for the DLL name
+
+1095
+00:46:08,730 --> 00:46:10,950
+that was loaded by rundll32.
+
+1096
+00:46:10,950 --> 00:46:13,830
+We can see that it does show
+up within the log output
+
+1097
+00:46:13,830 --> 00:46:18,150
+and below all of these system
+calls plus argument lines,
+
+1098
+00:46:18,150 --> 00:46:22,170
+we do see our call stack trace.
+
+1099
+00:46:22,170 --> 00:46:24,240
+However, that call stack
+trace was not symbolicated.
+
+1100
+00:46:24,240 --> 00:46:27,060
+It was just a series of
+module plus offset pairs.
+
+1101
+00:46:27,060 --> 00:46:30,807
+So I'm going to pass this
+log file to PDBReSym,
+
+1102
+00:46:30,807 --> 00:46:31,740
+and I'm going to tell it
+
+1103
+00:46:31,740 --> 00:46:34,503
+to generate the output file, syms.txt.
+
+1104
+00:46:35,857 --> 00:46:39,330
+PDBReSym is going to take
+all those module names.
+
+1105
+00:46:39,330 --> 00:46:41,040
+It's going to locate the PDB for them.
+
+1106
+00:46:41,040 --> 00:46:43,470
+I've already cached them on disc here
+
+1107
+00:46:43,470 --> 00:46:45,390
+so we're not doing any
+downloading at the moment.
+
+1108
+00:46:45,390 --> 00:46:48,000
+This is caching the same way WinDbg does.
+
+1109
+00:46:48,000 --> 00:46:49,050
+It's then going to resolve these
+
+1110
+00:46:49,050 --> 00:46:52,193
+to it's nearest symbolicated symbol,
+
+1111
+00:46:52,193 --> 00:46:54,360
+and I'm demangling those as well.
+
+1112
+00:46:54,360 --> 00:46:55,800
+So in this case, we can see,
+
+1113
+00:46:55,800 --> 00:46:58,260
+we include things like rundll32.
+
+1114
+00:46:58,260 --> 00:47:02,790
+We can see the WinMain is the root caller
+
+1115
+00:47:02,790 --> 00:47:04,170
+of all this eventually,
+
+1116
+00:47:04,170 --> 00:47:06,900
+but we can see our full call stack trace.
+
+1117
+00:47:06,900 --> 00:47:09,120
+This call stack trace are
+performed from the kernel driver.
+
+1118
+00:47:09,120 --> 00:47:11,880
+So there are no user-mode
+call stack tracing things
+
+1119
+00:47:11,880 --> 00:47:12,713
+going on here.
+
+1120
+00:47:12,713 --> 00:47:15,213
+This is a fully symbolicated
+kernel call stack trace.
+
+1121
+00:47:16,530 --> 00:47:17,820
+One more demo.
+
+1122
+00:47:17,820 --> 00:47:19,620
+Here is that FileDeleteRecordPlugin
+
+1123
+00:47:19,620 --> 00:47:21,750
+that I showed earlier in code.
+
+1124
+00:47:21,750 --> 00:47:24,120
+I'm going to load this DLL as well.
+
+1125
+00:47:24,120 --> 00:47:26,610
+This is going be matched into the kernel.
+
+1126
+00:47:26,610 --> 00:47:29,760
+We're going to set that file
+disposition information hook
+
+1127
+00:47:29,760 --> 00:47:31,110
+like we showed earlier.
+
+1128
+00:47:31,110 --> 00:47:32,970
+I'm creating a random file here.
+
+1129
+00:47:32,970 --> 00:47:34,410
+I'm gonna fill it with some content,
+
+1130
+00:47:34,410 --> 00:47:36,360
+and then I'm going to delete this.
+
+1131
+00:47:36,360 --> 00:47:37,530
+If you look in the top right,
+
+1132
+00:47:37,530 --> 00:47:38,760
+that file, as I deleted it,
+
+1133
+00:47:38,760 --> 00:47:41,250
+was just moved to C:\Deleted.
+
+1134
+00:47:41,250 --> 00:47:42,930
+This is not my recycle bin directory,
+
+1135
+00:47:42,930 --> 00:47:45,289
+that delete was captured by this plugin
+
+1136
+00:47:45,289 --> 00:47:46,800
+at the kernel mode level.
+
+1137
+00:47:46,800 --> 00:47:48,940
+A back of that file was created
+
+1138
+00:47:50,070 --> 00:47:54,060
+and the copy was put in that folder.
+
+1139
+00:47:54,060 --> 00:47:55,440
+This entire process,
+
+1140
+00:47:55,440 --> 00:47:59,160
+the STrace log file was still
+generated in the lower right.
+
+1141
+00:47:59,160 --> 00:48:01,440
+So we can see the callers of this delete.
+
+1142
+00:48:01,440 --> 00:48:03,476
+I'm gonna unload this plugin.
+
+1143
+00:48:03,476 --> 00:48:06,810
+I'm gonna take a look at
+this trace of these APIs.
+
+1144
+00:48:06,810 --> 00:48:09,840
+We can see there are two
+file deletes right there,
+
+1145
+00:48:09,840 --> 00:48:12,750
+and then I'm going to
+also symbolicate this.
+
+1146
+00:48:12,750 --> 00:48:14,010
+We can see the call stack traces,
+
+1147
+00:48:14,010 --> 00:48:16,080
+but let's say we're curious
+which Windows component
+
+1148
+00:48:16,080 --> 00:48:17,433
+is doing this file delete.
+
+1149
+00:48:19,230 --> 00:48:20,980
+Let's wait for this to symbolicate.
+
+1150
+00:48:25,230 --> 00:48:26,580
+So open up this symbolicated file.
+
+1151
+00:48:26,580 --> 00:48:29,820
+We can see that this component
+called windows.storage
+
+1152
+00:48:29,820 --> 00:48:31,293
+is what is doing that delete.
+
+1153
+00:48:32,490 --> 00:48:35,220
+And you can record all
+FileDeleteSystemWide this way
+
+1154
+00:48:35,220 --> 00:48:36,053
+for any process.
+
+1155
+00:48:36,053 --> 00:48:40,110
+And this system, you can
+target specific processes too,
+
+1156
+00:48:40,110 --> 00:48:42,780
+by name, by PID, by whatever.
+
+1157
+00:48:42,780 --> 00:48:45,570
+There's a mechanism within
+these plug-in DLLs to do that.
+
+1158
+00:48:45,570 --> 00:48:49,350
+This code, PDBReSym,
+the C++ implementation,
+
+1159
+00:48:49,350 --> 00:48:51,453
+these two example plugin DLLs,
+
+1160
+00:48:52,740 --> 00:48:55,020
+the proof of concept WebAssembly
+interpreter in the kernel,
+
+1161
+00:48:55,020 --> 00:48:58,950
+all this is open source on
+the Mandiant GitHub page,
+
+1162
+00:48:58,950 --> 00:49:02,190
+github.com/mandiant/strace.
+
+1163
+00:49:02,190 --> 00:49:04,710
+You can find everything that
+I've presented here open source
+
+1164
+00:49:04,710 --> 00:49:06,810
+under the MIT license.
+
+1165
+00:49:06,810 --> 00:49:09,360
+If you would like to create plugins,
+
+1166
+00:49:09,360 --> 00:49:11,340
+please open an issue or a PR.
+
+1167
+00:49:11,340 --> 00:49:14,880
+I would be very interested in
+seeing any interesting plugins
+
+1168
+00:49:14,880 --> 00:49:17,100
+that you create using this system.
+
+1169
+00:49:17,100 --> 00:49:17,940
+And Microsoft,
+
+1170
+00:49:17,940 --> 00:49:20,040
+please consider changing
+the signing requirements
+
+1171
+00:49:20,040 --> 00:49:22,140
+of this kernel extension interface
+
+1172
+00:49:22,140 --> 00:49:25,170
+so that we can implement some
+of the cooler probe types.
+
+1173
+00:49:25,170 --> 00:49:26,537
+Thank you.
+
+1174
+00:49:26,537 --> 00:49:29,704
+(audience applauding)
+

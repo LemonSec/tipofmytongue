@@ -1,0 +1,2140 @@
+﻿1
+00:00:05,040 --> 00:00:07,439
+uh we have siddharth and patrick up on
+
+2
+00:00:06,960 --> 00:00:09,599
+stage
+
+3
+00:00:07,440 --> 00:00:11,920
+for talk about how to improve uh seventh
+
+4
+00:00:09,599 --> 00:00:14,960
+house metadata operations
+
+5
+00:00:11,920 --> 00:00:16,480
+uh hey guys i'm siddharth and today i'll
+
+6
+00:00:14,960 --> 00:00:19,600
+be talking about how to
+
+7
+00:00:16,480 --> 00:00:20,720
+uh how distributed file systems manage
+
+8
+00:00:19,600 --> 00:00:23,199
+their metadata
+
+9
+00:00:20,720 --> 00:00:25,840
+and how they distribute their metadata
+
+10
+00:00:23,199 --> 00:00:28,400
+and how cfs handles that problem as well
+
+11
+00:00:25,840 --> 00:00:29,679
+and finally i'll be giving an overview
+
+12
+00:00:28,400 --> 00:00:31,598
+on ephemeral pinning
+
+13
+00:00:29,679 --> 00:00:33,360
+which is a a new feature we've
+
+14
+00:00:31,599 --> 00:00:36,399
+introduced introduced first ffs
+
+15
+00:00:33,360 --> 00:00:36,800
+which we're actually working on so uh
+
+16
+00:00:36,399 --> 00:00:40,320
+let
+
+17
+00:00:36,800 --> 00:00:41,360
+let me start my talk so the the outline
+
+18
+00:00:40,320 --> 00:00:44,239
+of the talk will be
+
+19
+00:00:41,360 --> 00:00:46,399
+as i said before uh how metadata is
+
+20
+00:00:44,239 --> 00:00:48,879
+handled by a lot of file systems
+
+21
+00:00:46,399 --> 00:00:50,879
+and how cfs is going to handle that
+
+22
+00:00:48,879 --> 00:00:54,000
+metadata problem
+
+23
+00:00:50,879 --> 00:00:54,000
+finally ephemeral pinning
+
+24
+00:00:54,559 --> 00:00:59,680
+so jeff and patrick have already given
+
+25
+00:00:57,520 --> 00:01:01,680
+like an introduction to cfs
+
+26
+00:00:59,680 --> 00:01:03,199
+so i'm not going to speak a lot about
+
+27
+00:01:01,680 --> 00:01:04,720
+that but
+
+28
+00:01:03,199 --> 00:01:06,960
+i'll give you a brief introduction on
+
+29
+00:01:04,720 --> 00:01:08,960
+the components of zfs
+
+30
+00:01:06,960 --> 00:01:11,199
+so first off you have the metadata
+
+31
+00:01:08,960 --> 00:01:12,080
+servers who are doing metadata who
+
+32
+00:01:11,200 --> 00:01:15,200
+handle metadata
+
+33
+00:01:12,080 --> 00:01:17,520
+transactions and who give permissions to
+
+34
+00:01:15,200 --> 00:01:19,040
+clients etc then you have the clients
+
+35
+00:01:17,520 --> 00:01:20,960
+who are trying to do file i o
+
+36
+00:01:19,040 --> 00:01:22,479
+and trying to do metadata operations as
+
+37
+00:01:20,960 --> 00:01:25,199
+well and finally
+
+38
+00:01:22,479 --> 00:01:26,400
+you have the backing object storage
+
+39
+00:01:25,200 --> 00:01:28,799
+called rados
+
+40
+00:01:26,400 --> 00:01:31,920
+which has object stored object storage
+
+41
+00:01:28,799 --> 00:01:34,640
+devices osds in it
+
+42
+00:01:31,920 --> 00:01:36,079
+so this is the crux of uh so the crux of
+
+43
+00:01:34,640 --> 00:01:39,200
+zffs would be
+
+44
+00:01:36,079 --> 00:01:42,960
+radars because that is where
+
+45
+00:01:39,200 --> 00:01:42,960
+the storage happens and
+
+46
+00:01:43,680 --> 00:01:46,880
+so one important question that can arise
+
+47
+00:01:46,399 --> 00:01:49,200
+is
+
+48
+00:01:46,880 --> 00:01:51,119
+why do we need metadata servers at all
+
+49
+00:01:49,200 --> 00:01:55,200
+like why can't we let radars handle your
+
+50
+00:01:51,119 --> 00:01:57,759
+metadata workload as well
+
+51
+00:01:55,200 --> 00:02:00,079
+this may seem intuitive at first but
+
+52
+00:01:57,759 --> 00:02:03,360
+that is not exactly the case
+
+53
+00:02:00,079 --> 00:02:05,279
+so metadata operations uh
+
+54
+00:02:03,360 --> 00:02:07,439
+upon analysis you can see the metadata
+
+55
+00:02:05,280 --> 00:02:09,199
+operations would take up like almost 50
+
+56
+00:02:07,439 --> 00:02:13,040
+percent of your total file system
+
+57
+00:02:09,199 --> 00:02:16,959
+operations and another thing
+
+58
+00:02:13,040 --> 00:02:20,160
+is that radars are storage scales in a
+
+59
+00:02:16,959 --> 00:02:21,920
+linear or straightforward fashion but
+
+60
+00:02:20,160 --> 00:02:25,599
+that is not exactly the case with
+
+61
+00:02:21,920 --> 00:02:28,480
+metadata so metadata is fairly complex
+
+62
+00:02:25,599 --> 00:02:30,000
+and it is hierarchical in nature if you
+
+63
+00:02:28,480 --> 00:02:32,640
+can see the file layout
+
+64
+00:02:30,000 --> 00:02:34,319
+so it's not very easy to scale it so it
+
+65
+00:02:32,640 --> 00:02:35,440
+becomes essential to decouple your
+
+66
+00:02:34,319 --> 00:02:39,200
+metadata
+
+67
+00:02:35,440 --> 00:02:39,200
+with your file i o or storage
+
+68
+00:02:39,840 --> 00:02:43,920
+so now since we've established the
+
+69
+00:02:42,000 --> 00:02:46,560
+importance of metadata servers
+
+70
+00:02:43,920 --> 00:02:47,679
+i'll come to how a lot of distributed
+
+71
+00:02:46,560 --> 00:02:50,000
+file systems
+
+72
+00:02:47,680 --> 00:02:51,200
+handle your metadata i mean these are
+
+73
+00:02:50,000 --> 00:02:54,879
+file systems that
+
+74
+00:02:51,200 --> 00:02:57,359
+use metadata servers uh
+
+75
+00:02:54,879 --> 00:02:58,720
+so a very common metadata handling
+
+76
+00:02:57,360 --> 00:03:01,280
+strategy is called
+
+77
+00:02:58,720 --> 00:03:03,040
+a pure hashing strategy so this is
+
+78
+00:03:01,280 --> 00:03:04,480
+employed in file systems like luster and
+
+79
+00:03:03,040 --> 00:03:07,679
+zfs
+
+80
+00:03:04,480 --> 00:03:11,200
+so what happens here is you
+
+81
+00:03:07,680 --> 00:03:12,879
+you you uh the the the client will
+
+82
+00:03:11,200 --> 00:03:14,958
+create a hash of the path name to the
+
+83
+00:03:12,879 --> 00:03:18,480
+file to determine where
+
+84
+00:03:14,959 --> 00:03:20,080
+uh the which mds the file is going to be
+
+85
+00:03:18,480 --> 00:03:23,119
+i mean the i know for that file is going
+
+86
+00:03:20,080 --> 00:03:25,920
+to be so example for that would be
+
+87
+00:03:23,120 --> 00:03:26,640
+if me the client wants to create a file
+
+88
+00:03:25,920 --> 00:03:29,599
+called
+
+89
+00:03:26,640 --> 00:03:31,679
+i don't know some file.txt in that case
+
+90
+00:03:29,599 --> 00:03:34,798
+i'll have to hash the path to that file
+
+91
+00:03:31,680 --> 00:03:37,440
+i'll get a hash now keeping that aside
+
+92
+00:03:34,799 --> 00:03:38,480
+each mdss would have been delegated a
+
+93
+00:03:37,440 --> 00:03:40,720
+hash range
+
+94
+00:03:38,480 --> 00:03:43,440
+so you can see mds1 is delegated that
+
+95
+00:03:40,720 --> 00:03:46,000
+hash range mds2 this one and mds3 that
+
+96
+00:03:43,440 --> 00:03:48,640
+hash range
+
+97
+00:03:46,000 --> 00:03:49,760
+in that example you did see that that
+
+98
+00:03:48,640 --> 00:03:53,119
+was the hash value
+
+99
+00:03:49,760 --> 00:03:55,359
+and that hash value lies uh
+
+100
+00:03:53,120 --> 00:03:56,319
+in these two values which is handled by
+
+101
+00:03:55,360 --> 00:03:57,760
+mds2
+
+102
+00:03:56,319 --> 00:04:01,119
+so now the client knows that it has to
+
+103
+00:03:57,760 --> 00:04:03,920
+talk to mds2
+
+104
+00:04:01,120 --> 00:04:05,040
+yeah so that is how a hashing based
+
+105
+00:04:03,920 --> 00:04:08,319
+strategy works
+
+106
+00:04:05,040 --> 00:04:09,840
+in a brief overview now some
+
+107
+00:04:08,319 --> 00:04:12,079
+advantages you can see with this
+
+108
+00:04:09,840 --> 00:04:13,920
+strategy is that requests are going to
+
+109
+00:04:12,080 --> 00:04:16,079
+be almost evenly distributed across the
+
+110
+00:04:13,920 --> 00:04:18,000
+cluster
+
+111
+00:04:16,079 --> 00:04:20,478
+since it's going to be a pseudorandom
+
+112
+00:04:18,000 --> 00:04:23,520
+distribution of metadata so
+
+113
+00:04:20,478 --> 00:04:26,479
+this is fairly obvious
+
+114
+00:04:23,520 --> 00:04:26,960
+another advantage you can see is that if
+
+115
+00:04:26,479 --> 00:04:29,280
+you
+
+116
+00:04:26,960 --> 00:04:30,880
+if the file name is hashed as well so by
+
+117
+00:04:29,280 --> 00:04:31,919
+that i mean not just the path name the
+
+118
+00:04:30,880 --> 00:04:34,560
+file name as well
+
+119
+00:04:31,919 --> 00:04:36,400
+in that case heavy create activity in a
+
+120
+00:04:34,560 --> 00:04:39,840
+particular directory
+
+121
+00:04:36,400 --> 00:04:41,359
+uh does not create like a a hotspot of
+
+122
+00:04:39,840 --> 00:04:43,440
+load or something like that in a single
+
+123
+00:04:41,360 --> 00:04:45,680
+mds
+
+124
+00:04:43,440 --> 00:04:47,600
+so an example for that would be a simple
+
+125
+00:04:45,680 --> 00:04:49,800
+example is if you have two files
+
+126
+00:04:47,600 --> 00:04:51,199
+under foobar called sid1.txt and
+
+127
+00:04:49,800 --> 00:04:54,320
+siddhu.txt
+
+128
+00:04:51,199 --> 00:04:56,639
+and if you hash them both
+
+129
+00:04:54,320 --> 00:04:57,599
+obviously it may give two different
+
+130
+00:04:56,639 --> 00:04:59,600
+hashes so
+
+131
+00:04:57,600 --> 00:05:01,520
+that those two requests are directed
+
+132
+00:04:59,600 --> 00:05:03,280
+towards two different mdss
+
+133
+00:05:01,520 --> 00:05:05,440
+and you have a better distribution in
+
+134
+00:05:03,280 --> 00:05:08,479
+this case as well
+
+135
+00:05:05,440 --> 00:05:11,759
+now some disadvantages that you can see
+
+136
+00:05:08,479 --> 00:05:13,840
+in this kind of scheme is that you uh
+
+137
+00:05:11,759 --> 00:05:15,520
+according to i mean file system
+
+138
+00:05:13,840 --> 00:05:17,119
+traversal semantics
+
+139
+00:05:15,520 --> 00:05:18,560
+you have to traverse from the root of
+
+140
+00:05:17,120 --> 00:05:21,600
+the directory all the way till
+
+141
+00:05:18,560 --> 00:05:23,759
+the end of the file so
+
+142
+00:05:21,600 --> 00:05:25,600
+if you have this as an example for
+
+143
+00:05:23,759 --> 00:05:26,800
+file.txt then you'll have to go all the
+
+144
+00:05:25,600 --> 00:05:30,320
+way from the root
+
+145
+00:05:26,800 --> 00:05:34,160
+to file.txt so
+
+146
+00:05:30,320 --> 00:05:34,159
+yeah i've just detailed that here
+
+147
+00:05:35,520 --> 00:05:42,159
+and so in this case we've got that mds2
+
+148
+00:05:39,680 --> 00:05:43,600
+is the mds that the client has to uh
+
+149
+00:05:42,160 --> 00:05:45,600
+that that offers the client the
+
+150
+00:05:43,600 --> 00:05:48,240
+permissions to read file.txt
+
+151
+00:05:45,600 --> 00:05:49,280
+and if the client does have the required
+
+152
+00:05:48,240 --> 00:05:51,600
+permissions
+
+153
+00:05:49,280 --> 00:05:53,679
+then mds2 will sync with the client to
+
+154
+00:05:51,600 --> 00:05:55,759
+let it talk to rados directly for file i
+
+155
+00:05:53,680 --> 00:05:55,759
+o
+
+156
+00:05:57,360 --> 00:06:03,600
+so another disadvantage
+
+157
+00:06:00,960 --> 00:06:05,198
+that i mean an obvious result of this is
+
+158
+00:06:03,600 --> 00:06:09,360
+that it brings in a lot of
+
+159
+00:06:05,199 --> 00:06:12,560
+inter mds hops so you get in you get
+
+160
+00:06:09,360 --> 00:06:14,400
+hops between mdss
+
+161
+00:06:12,560 --> 00:06:16,240
+and this in turn results in a high
+
+162
+00:06:14,400 --> 00:06:19,919
+network overhead
+
+163
+00:06:16,240 --> 00:06:21,600
+and another disadvantage is that
+
+164
+00:06:19,919 --> 00:06:23,198
+with hashing based schemes you lose
+
+165
+00:06:21,600 --> 00:06:25,600
+hierarchical locality
+
+166
+00:06:23,199 --> 00:06:27,919
+and by this i mean you lose any metadata
+
+167
+00:06:25,600 --> 00:06:30,080
+locality benefits you get with having
+
+168
+00:06:27,919 --> 00:06:32,400
+like the whole directory tree in the md
+
+169
+00:06:30,080 --> 00:06:32,400
+cache
+
+170
+00:06:32,720 --> 00:06:36,319
+because everything is distributed fairly
+
+171
+00:06:34,560 --> 00:06:39,680
+distributed
+
+172
+00:06:36,319 --> 00:06:41,919
+now uh another disadvantage that is
+
+173
+00:06:39,680 --> 00:06:44,400
+faced by a lot of file systems
+
+174
+00:06:41,919 --> 00:06:45,680
+uh stuff included is that renames are
+
+175
+00:06:44,400 --> 00:06:48,960
+expensive
+
+176
+00:06:45,680 --> 00:06:50,080
+so if you have a case where you have to
+
+177
+00:06:48,960 --> 00:06:52,239
+rename
+
+178
+00:06:50,080 --> 00:06:53,680
+uh rename a directory tree rename a
+
+179
+00:06:52,240 --> 00:06:54,000
+directory in the directory tree which is
+
+180
+00:06:53,680 --> 00:06:57,720
+far
+
+181
+00:06:54,000 --> 00:06:59,280
+up say abcdfile.txt is renamed to
+
+182
+00:06:57,720 --> 00:07:02,960
+fbcdfile.txt
+
+183
+00:06:59,280 --> 00:07:05,198
+and then you will have to recompute
+
+184
+00:07:02,960 --> 00:07:06,239
+all of the hashes all over again so this
+
+185
+00:07:05,199 --> 00:07:07,919
+is gonna cost
+
+186
+00:07:06,240 --> 00:07:10,880
+in terms of penalty in terms of
+
+187
+00:07:07,919 --> 00:07:10,880
+performance penalty
+
+188
+00:07:12,639 --> 00:07:16,080
+another strategy which i'm not gonna go
+
+189
+00:07:15,360 --> 00:07:19,360
+into
+
+190
+00:07:16,080 --> 00:07:22,560
+uh too much detail is lazy hybrid
+
+191
+00:07:19,360 --> 00:07:24,960
+so uh lazy hybrid
+
+192
+00:07:22,560 --> 00:07:26,319
+this strategy is works similar to a
+
+193
+00:07:24,960 --> 00:07:27,039
+hashing based strategy but it's
+
+194
+00:07:26,319 --> 00:07:28,720
+different
+
+195
+00:07:27,039 --> 00:07:30,719
+in such a manner that you don't have to
+
+196
+00:07:28,720 --> 00:07:33,840
+hash each part of the
+
+197
+00:07:30,720 --> 00:07:36,560
+path name you can directly hash the full
+
+198
+00:07:33,840 --> 00:07:39,919
+path and when it reaches and when the
+
+199
+00:07:36,560 --> 00:07:42,479
+request reaches the particular mds
+
+200
+00:07:39,919 --> 00:07:43,680
+there is an access control list in that
+
+201
+00:07:42,479 --> 00:07:45,199
+in that mds
+
+202
+00:07:43,680 --> 00:07:47,120
+for that particular file which stores
+
+203
+00:07:45,199 --> 00:07:49,120
+the effective permissions so you just
+
+204
+00:07:47,120 --> 00:07:51,280
+need to check that
+
+205
+00:07:49,120 --> 00:07:52,720
+so this kind of implicitly solves the
+
+206
+00:07:51,280 --> 00:07:56,559
+costly problem of
+
+207
+00:07:52,720 --> 00:07:56,560
+traversing between mdss
+
+208
+00:07:57,440 --> 00:08:00,719
+disadvantage is that like hashing you
+
+209
+00:08:00,319 --> 00:08:02,560
+lose
+
+210
+00:08:00,720 --> 00:08:05,280
+hierarchical locality there's no
+
+211
+00:08:02,560 --> 00:08:08,800
+locality benefits in this case
+
+212
+00:08:05,280 --> 00:08:10,559
+another disadvantage is that for renames
+
+213
+00:08:08,800 --> 00:08:12,160
+and for permission changes
+
+214
+00:08:10,560 --> 00:08:13,759
+you will have to traverse the whole path
+
+215
+00:08:12,160 --> 00:08:16,160
+all over again and that's going to be
+
+216
+00:08:13,759 --> 00:08:18,800
+expensive even though those operations
+
+217
+00:08:16,160 --> 00:08:21,520
+are pretty infrequent
+
+218
+00:08:18,800 --> 00:08:22,479
+and uh finally this is not exactly posix
+
+219
+00:08:21,520 --> 00:08:25,120
+compliant
+
+220
+00:08:22,479 --> 00:08:26,000
+because you i mean you're going to have
+
+221
+00:08:25,120 --> 00:08:29,280
+problems with
+
+222
+00:08:26,000 --> 00:08:29,280
+distributed locking and such
+
+223
+00:08:30,160 --> 00:08:33,599
+now we're coming to something close to
+
+224
+00:08:32,080 --> 00:08:36,240
+how ceph implements
+
+225
+00:08:33,599 --> 00:08:38,000
+it's it's called subtree partitioning
+
+226
+00:08:36,240 --> 00:08:39,760
+now in subtree partitioning
+
+227
+00:08:38,000 --> 00:08:41,519
+you uh sub trees of the directory
+
+228
+00:08:39,760 --> 00:08:42,319
+hierarchy are assigned to individual
+
+229
+00:08:41,519 --> 00:08:45,440
+mdss
+
+230
+00:08:42,320 --> 00:08:46,080
+so in this case you can see that so just
+
+231
+00:08:45,440 --> 00:08:47,920
+to note
+
+232
+00:08:46,080 --> 00:08:49,680
+the shaded ones are directories and the
+
+233
+00:08:47,920 --> 00:08:52,319
+unshaded ones are files
+
+234
+00:08:49,680 --> 00:08:54,079
+so here the orange subtree you can see
+
+235
+00:08:52,320 --> 00:08:57,200
+that it's assigned to mds2
+
+236
+00:08:54,080 --> 00:08:59,440
+the gray one is assigned to mds0 and so
+
+237
+00:08:57,200 --> 00:08:59,440
+on
+
+238
+00:08:59,519 --> 00:09:05,279
+so uh subtree partitioning with subtree
+
+239
+00:09:03,440 --> 00:09:06,320
+partitioning you can get like a linear
+
+240
+00:09:05,279 --> 00:09:08,080
+growth of
+
+241
+00:09:06,320 --> 00:09:09,760
+your metadata cache along with the
+
+242
+00:09:08,080 --> 00:09:13,120
+number of mdss
+
+243
+00:09:09,760 --> 00:09:14,959
+and and that's pretty beneficial and
+
+244
+00:09:13,120 --> 00:09:16,240
+also your cache utilization will
+
+245
+00:09:14,959 --> 00:09:22,560
+increase due to
+
+246
+00:09:16,240 --> 00:09:25,120
+your spatial locality increases
+
+247
+00:09:22,560 --> 00:09:26,079
+now some fairly obvious advantages you
+
+248
+00:09:25,120 --> 00:09:28,800
+can see is that
+
+249
+00:09:26,080 --> 00:09:29,839
+here you have good hierarchical locality
+
+250
+00:09:28,800 --> 00:09:32,000
+so since you are
+
+251
+00:09:29,839 --> 00:09:32,959
+storing uh not necessarily storing since
+
+252
+00:09:32,000 --> 00:09:35,680
+you're caching
+
+253
+00:09:32,959 --> 00:09:37,920
+entire subtrees in the ram you don't
+
+254
+00:09:35,680 --> 00:09:38,800
+have to traverse from mds to mds in this
+
+255
+00:09:37,920 --> 00:09:41,920
+case
+
+256
+00:09:38,800 --> 00:09:46,319
+so you have that benefit
+
+257
+00:09:41,920 --> 00:09:48,839
+uh next one is it scales horizontally so
+
+258
+00:09:46,320 --> 00:09:50,240
+along with increasing number of mdss you
+
+259
+00:09:48,839 --> 00:09:52,560
+can
+
+260
+00:09:50,240 --> 00:09:54,880
+assign subtrees to it and you can get a
+
+261
+00:09:52,560 --> 00:09:57,439
+fairly horizontal scaling in this case
+
+262
+00:09:54,880 --> 00:09:58,240
+another advantage is renames are not as
+
+263
+00:09:57,440 --> 00:10:00,720
+expensive
+
+264
+00:09:58,240 --> 00:10:01,279
+as hashing based distributions because
+
+265
+00:10:00,720 --> 00:10:04,399
+uh
+
+266
+00:10:01,279 --> 00:10:05,760
+here if you're if you are modifying the
+
+267
+00:10:04,399 --> 00:10:08,240
+directory tree you don't have to hop
+
+268
+00:10:05,760 --> 00:10:09,839
+from mds to mds you can do it locally
+
+269
+00:10:08,240 --> 00:10:11,839
+within the metadata cache of the same
+
+270
+00:10:09,839 --> 00:10:13,440
+mds alone
+
+271
+00:10:11,839 --> 00:10:14,560
+but you're still going to have problems
+
+272
+00:10:13,440 --> 00:10:14,880
+with three names which i'm not going to
+
+273
+00:10:14,560 --> 00:10:18,479
+get
+
+274
+00:10:14,880 --> 00:10:20,720
+get into
+
+275
+00:10:18,480 --> 00:10:22,399
+so all this considered uh your naive
+
+276
+00:10:20,720 --> 00:10:24,160
+subtree partitioning seems like a good
+
+277
+00:10:22,399 --> 00:10:25,519
+choice of a metadata management strategy
+
+278
+00:10:24,160 --> 00:10:28,319
+first ffs
+
+279
+00:10:25,519 --> 00:10:30,959
+but that's not exactly the case you
+
+280
+00:10:28,320 --> 00:10:34,160
+still have a few problems here
+
+281
+00:10:30,959 --> 00:10:35,119
+so uh one problem is that uh this does
+
+282
+00:10:34,160 --> 00:10:37,199
+scale and breadth
+
+283
+00:10:35,120 --> 00:10:38,399
+but not exactly so well when you try to
+
+284
+00:10:37,200 --> 00:10:40,399
+scale it in depth
+
+285
+00:10:38,399 --> 00:10:41,519
+because when the workload grows in depth
+
+286
+00:10:40,399 --> 00:10:44,000
+you're still gonna have
+
+287
+00:10:41,519 --> 00:10:44,640
+a hotspot of activity on that particular
+
+288
+00:10:44,000 --> 00:10:47,279
+mds
+
+289
+00:10:44,640 --> 00:10:48,399
+or if it happens on multiple mdss then
+
+290
+00:10:47,279 --> 00:10:49,200
+obviously you're going to have multiple
+
+291
+00:10:48,399 --> 00:10:52,079
+hotspots
+
+292
+00:10:49,200 --> 00:10:52,480
+which is not exactly good and you may
+
+293
+00:10:52,079 --> 00:10:55,839
+have
+
+294
+00:10:52,480 --> 00:10:58,480
+mds which are non-busy and those
+
+295
+00:10:55,839 --> 00:11:01,839
+compute resources are effectively wasted
+
+296
+00:10:58,480 --> 00:11:01,839
+in this case
+
+297
+00:11:02,399 --> 00:11:08,560
+so so we've come up if so
+
+298
+00:11:05,519 --> 00:11:10,240
+so cfs uses something a dynamic a more
+
+299
+00:11:08,560 --> 00:11:12,079
+dynamic version of sub 3 partitioning
+
+300
+00:11:10,240 --> 00:11:15,600
+called dynamic subtree partitioning
+
+301
+00:11:12,079 --> 00:11:17,120
+so we uh the the problem of
+
+302
+00:11:15,600 --> 00:11:18,880
+the problems i've talked about before
+
+303
+00:11:17,120 --> 00:11:20,800
+can be mitigated with
+
+304
+00:11:18,880 --> 00:11:22,480
+uh using a balancer with using a
+
+305
+00:11:20,800 --> 00:11:25,519
+metadata balancer that can
+
+306
+00:11:22,480 --> 00:11:30,000
+export subtrees from one mds to another
+
+307
+00:11:25,519 --> 00:11:31,680
+based on uh the load factor or how
+
+308
+00:11:30,000 --> 00:11:33,920
+how much activity is going on in that
+
+309
+00:11:31,680 --> 00:11:37,519
+particular subtree
+
+310
+00:11:33,920 --> 00:11:37,519
+or portion of the directory hierarchy
+
+311
+00:11:37,680 --> 00:11:43,120
+so this this can be achieved using
+
+312
+00:11:40,720 --> 00:11:44,640
+a metadata counter so whenever you have
+
+313
+00:11:43,120 --> 00:11:47,120
+activity going on on that particular
+
+314
+00:11:44,640 --> 00:11:47,120
+inode or
+
+315
+00:11:47,680 --> 00:11:51,519
+seeder then your metadata counter
+
+316
+00:11:50,560 --> 00:11:53,359
+increments
+
+317
+00:11:51,519 --> 00:11:54,720
+and based on that counter your balance
+
+318
+00:11:53,360 --> 00:11:56,079
+is going to decide whether you need to
+
+319
+00:11:54,720 --> 00:11:59,760
+export it to a different
+
+320
+00:11:56,079 --> 00:12:02,079
+mds or not so uh since you're not
+
+321
+00:11:59,760 --> 00:12:04,240
+explicitly storing metadata
+
+322
+00:12:02,079 --> 00:12:06,638
+uh you don't it's not it's not really
+
+323
+00:12:04,240 --> 00:12:10,800
+difficult to migrate it between
+
+324
+00:12:06,639 --> 00:12:14,560
+metadata servers so migrating between
+
+325
+00:12:10,800 --> 00:12:14,560
+caches is not that difficult
+
+326
+00:12:16,720 --> 00:12:21,040
+ah even when i said this there are cases
+
+327
+00:12:19,839 --> 00:12:22,959
+where
+
+328
+00:12:21,040 --> 00:12:25,760
+you have a performance penalty rather
+
+329
+00:12:22,959 --> 00:12:28,319
+than a performance boon
+
+330
+00:12:25,760 --> 00:12:29,519
+on some workloads you you have excessive
+
+331
+00:12:28,320 --> 00:12:33,360
+migrations
+
+332
+00:12:29,519 --> 00:12:36,240
+which is definitely not good so
+
+333
+00:12:33,360 --> 00:12:37,680
+cfs does give the option to override the
+
+334
+00:12:36,240 --> 00:12:39,680
+metadata balancer
+
+335
+00:12:37,680 --> 00:12:41,279
+by allowing the class by allowing the
+
+336
+00:12:39,680 --> 00:12:42,560
+cluster admin to manually pin the
+
+337
+00:12:41,279 --> 00:12:45,920
+subtrees
+
+338
+00:12:42,560 --> 00:12:47,839
+so uh so in cases where the metadata
+
+339
+00:12:45,920 --> 00:12:49,439
+balancer is not working well
+
+340
+00:12:47,839 --> 00:12:52,320
+the cluster admin can choose to decide
+
+341
+00:12:49,440 --> 00:12:55,440
+to pin that subtree to a particular mds
+
+342
+00:12:52,320 --> 00:12:58,079
+as he chooses but even
+
+343
+00:12:55,440 --> 00:12:58,720
+even the option of but giving the option
+
+344
+00:12:58,079 --> 00:13:02,079
+of
+
+345
+00:12:58,720 --> 00:13:05,120
+pinning subtrees to the
+
+346
+00:13:02,079 --> 00:13:06,239
+cluster admin is not exactly foolproof
+
+347
+00:13:05,120 --> 00:13:07,680
+because you
+
+348
+00:13:06,240 --> 00:13:09,519
+you can't exactly decide how the
+
+349
+00:13:07,680 --> 00:13:12,160
+workload is going to be and
+
+350
+00:13:09,519 --> 00:13:13,519
+if you can't exactly gauge the knowledge
+
+351
+00:13:12,160 --> 00:13:15,680
+of the
+
+352
+00:13:13,519 --> 00:13:16,959
+uh cluster admin to decide where he's
+
+353
+00:13:15,680 --> 00:13:20,079
+gonna pin the subtrees
+
+354
+00:13:16,959 --> 00:13:20,800
+which which mds is he gonna choose so to
+
+355
+00:13:20,079 --> 00:13:22,638
+mitigate
+
+356
+00:13:20,800 --> 00:13:25,439
+and automate that process we've come up
+
+357
+00:13:22,639 --> 00:13:27,839
+with something called ephemeral pinning
+
+358
+00:13:25,440 --> 00:13:28,959
+so this is a metadata distribution
+
+359
+00:13:27,839 --> 00:13:32,320
+strategy
+
+360
+00:13:28,959 --> 00:13:35,599
+using consistent hashing asset score
+
+361
+00:13:32,320 --> 00:13:36,480
+so consist uh so we've decided to use
+
+362
+00:13:35,600 --> 00:13:38,079
+not uh
+
+363
+00:13:36,480 --> 00:13:40,720
+why consistent hashing actually why
+
+364
+00:13:38,079 --> 00:13:43,599
+hashing in its sense is because
+
+365
+00:13:40,720 --> 00:13:45,760
+uh you can get a a proper distribution
+
+366
+00:13:43,600 --> 00:13:48,720
+of metadata if you use hashing
+
+367
+00:13:45,760 --> 00:13:50,079
+and uh you are you're not hashing
+
+368
+00:13:48,720 --> 00:13:51,600
+independent directories in this case
+
+369
+00:13:50,079 --> 00:13:55,439
+you're hashing subtrees
+
+370
+00:13:51,600 --> 00:13:57,519
+so uh i'll talk about that later uh you
+
+371
+00:13:55,440 --> 00:13:59,120
+uh when i'm explaining this you might
+
+372
+00:13:57,519 --> 00:14:01,360
+find it difficult to understand i have
+
+373
+00:13:59,120 --> 00:14:04,959
+diagrams that explain it properly
+
+374
+00:14:01,360 --> 00:14:05,920
+so just hold on and so to achieve this
+
+375
+00:14:04,959 --> 00:14:09,518
+we've come up with
+
+376
+00:14:05,920 --> 00:14:11,519
+two export pins uh two exactos
+
+377
+00:14:09,519 --> 00:14:12,720
+in distributed file system sense so
+
+378
+00:14:11,519 --> 00:14:14,800
+these are
+
+379
+00:14:12,720 --> 00:14:16,880
+ephemeral export fml distributed and
+
+380
+00:14:14,800 --> 00:14:20,000
+export fml random
+
+381
+00:14:16,880 --> 00:14:22,320
+so the cluster admin can choose to set
+
+382
+00:14:20,000 --> 00:14:23,120
+either one of the exacters on directory
+
+383
+00:14:22,320 --> 00:14:25,040
+inodes
+
+384
+00:14:23,120 --> 00:14:26,639
+based on knowledge of a portion of the
+
+385
+00:14:25,040 --> 00:14:28,719
+workload
+
+386
+00:14:26,639 --> 00:14:30,560
+of how the file layout or the workload
+
+387
+00:14:28,720 --> 00:14:33,600
+is going to be
+
+388
+00:14:30,560 --> 00:14:36,719
+so if you have a fairly distributed
+
+389
+00:14:33,600 --> 00:14:38,560
+workload in the sense that the workload
+
+390
+00:14:36,720 --> 00:14:40,000
+is creating a lot of directories under a
+
+391
+00:14:38,560 --> 00:14:41,760
+single parent directory
+
+392
+00:14:40,000 --> 00:14:45,040
+in that case you can choose to go for
+
+393
+00:14:41,760 --> 00:14:48,399
+expert fml distributed
+
+394
+00:14:45,040 --> 00:14:51,120
+and when you have a fairly uh
+
+395
+00:14:48,399 --> 00:14:52,320
+a workload where it grows in depth then
+
+396
+00:14:51,120 --> 00:14:54,560
+you can choose to go for export
+
+397
+00:14:52,320 --> 00:14:57,519
+ephemeral random
+
+398
+00:14:54,560 --> 00:14:59,199
+and this setting this exacto is going to
+
+399
+00:14:57,519 --> 00:15:02,079
+overwrite the metadata balancer for that
+
+400
+00:14:59,199 --> 00:15:02,079
+particular subtree
+
+401
+00:15:02,720 --> 00:15:06,560
+so this is a i'll give you a brief
+
+402
+00:15:05,519 --> 00:15:09,040
+explanation on this
+
+403
+00:15:06,560 --> 00:15:10,079
+don't worry if you can't understand it i
+
+404
+00:15:09,040 --> 00:15:11,599
+hope the next
+
+405
+00:15:10,079 --> 00:15:13,599
+the diagram should make you understand
+
+406
+00:15:11,600 --> 00:15:15,680
+it so
+
+407
+00:15:13,600 --> 00:15:18,320
+export fml distributed if you set export
+
+408
+00:15:15,680 --> 00:15:21,199
+fm distributed on a
+
+409
+00:15:18,320 --> 00:15:22,800
+directory then all the child directories
+
+410
+00:15:21,199 --> 00:15:24,639
+or the child sub trees are going to get
+
+411
+00:15:22,800 --> 00:15:28,000
+distributed across mdss
+
+412
+00:15:24,639 --> 00:15:30,240
+using a consistent hashing strategy
+
+413
+00:15:28,000 --> 00:15:33,120
+uh you the the hashing is done on the
+
+414
+00:15:30,240 --> 00:15:36,079
+inode number of the child directory
+
+415
+00:15:33,120 --> 00:15:37,279
+uh export ephemeral random is is a bit
+
+416
+00:15:36,079 --> 00:15:39,599
+different from expert ephemeral
+
+417
+00:15:37,279 --> 00:15:41,759
+distributed in the sense that
+
+418
+00:15:39,600 --> 00:15:43,759
+you're you're doing this hierarchically
+
+419
+00:15:41,759 --> 00:15:47,040
+so when you set this on us
+
+420
+00:15:43,759 --> 00:15:47,600
+on a directory uh this the whole subtree
+
+421
+00:15:47,040 --> 00:15:49,120
+or
+
+422
+00:15:47,600 --> 00:15:50,959
+the subtrees that are getting loaded
+
+423
+00:15:49,120 --> 00:15:54,160
+which are nested beneath it
+
+424
+00:15:50,959 --> 00:15:58,560
+will get uh distributed to random
+
+425
+00:15:54,160 --> 00:16:00,800
+random mdss probabilistically and uh
+
+426
+00:15:58,560 --> 00:16:02,160
+you usually set the value of the x-acto
+
+427
+00:16:00,800 --> 00:16:03,758
+it's worthy to note that the value of
+
+428
+00:16:02,160 --> 00:16:07,680
+the exacto is the probability
+
+429
+00:16:03,759 --> 00:16:11,360
+that i just mentioned so and we usually
+
+430
+00:16:07,680 --> 00:16:14,160
+make this probability as low as possible
+
+431
+00:16:11,360 --> 00:16:16,800
+i'll i'll explain this in the slide so
+
+432
+00:16:14,160 --> 00:16:18,160
+this is export fml distributed
+
+433
+00:16:16,800 --> 00:16:20,000
+so that is a parent directory that
+
+434
+00:16:18,160 --> 00:16:22,560
+exists in mds one and
+
+435
+00:16:20,000 --> 00:16:24,639
+you have set the distributed pin on it
+
+436
+00:16:22,560 --> 00:16:27,040
+now when the workload is generating
+
+437
+00:16:24,639 --> 00:16:28,160
+directories under this parent directory
+
+438
+00:16:27,040 --> 00:16:31,040
+uh
+
+439
+00:16:28,160 --> 00:16:32,959
+cons the hashing is done and metadata is
+
+440
+00:16:31,040 --> 00:16:36,319
+distributed almost pseudorandomly across
+
+441
+00:16:32,959 --> 00:16:38,719
+the mdss
+
+442
+00:16:36,320 --> 00:16:41,600
+so as you can see for a fairly
+
+443
+00:16:38,720 --> 00:16:44,160
+distributed breath-wise scaling workload
+
+444
+00:16:41,600 --> 00:16:47,279
+uh i mean knowing this it will help in
+
+445
+00:16:44,160 --> 00:16:51,680
+setting the value of the exacto and
+
+446
+00:16:47,279 --> 00:16:54,720
+scaling metadata optimally in this case
+
+447
+00:16:51,680 --> 00:16:57,599
+so uh this is for uh
+
+448
+00:16:54,720 --> 00:16:58,399
+this is a fairly uh very small workload
+
+449
+00:16:57,600 --> 00:17:00,320
+to kind of
+
+450
+00:16:58,399 --> 00:17:02,320
+gauge how the i know distribution was
+
+451
+00:17:00,320 --> 00:17:05,039
+across three mds
+
+452
+00:17:02,320 --> 00:17:05,600
+so it it is a very small workload didn't
+
+453
+00:17:05,039 --> 00:17:08,079
+even take
+
+454
+00:17:05,599 --> 00:17:09,839
+a minute to run so it probably you can
+
+455
+00:17:08,079 --> 00:17:12,399
+see that how the distribution
+
+456
+00:17:09,839 --> 00:17:14,720
+how the metadata is distributed almost
+
+457
+00:17:12,400 --> 00:17:16,240
+uh perfectly across the three mdss
+
+458
+00:17:14,720 --> 00:17:18,319
+so this is using the export fmr
+
+459
+00:17:16,240 --> 00:17:21,520
+distributed pin
+
+460
+00:17:18,319 --> 00:17:24,319
+now export ephemeral random is
+
+461
+00:17:21,520 --> 00:17:25,839
+as different in the sense that okay you
+
+462
+00:17:24,319 --> 00:17:28,879
+have the parent directory first
+
+463
+00:17:25,839 --> 00:17:32,080
+one thing to note is that
+
+464
+00:17:28,880 --> 00:17:34,640
+whatever is not getting uh pinned
+
+465
+00:17:32,080 --> 00:17:36,480
+and hashed it is assumed that it's going
+
+466
+00:17:34,640 --> 00:17:38,320
+to mds1 so now it's assumed that parent
+
+467
+00:17:36,480 --> 00:17:40,240
+directory is in mds1 and directory one
+
+468
+00:17:38,320 --> 00:17:43,678
+is in mds one
+
+469
+00:17:40,240 --> 00:17:44,640
+and whatever is getting hashed you can
+
+470
+00:17:43,679 --> 00:17:48,400
+see that goes to
+
+471
+00:17:44,640 --> 00:17:49,679
+different directories so directory 2 is
+
+472
+00:17:48,400 --> 00:17:52,960
+not getting hashed
+
+473
+00:17:49,679 --> 00:17:54,640
+this is not happening because the it's
+
+474
+00:17:52,960 --> 00:17:56,080
+i told that it's probably strictly
+
+475
+00:17:54,640 --> 00:17:57,760
+getting pinned right so
+
+476
+00:17:56,080 --> 00:18:01,439
+how you do it probabilistically is you
+
+477
+00:17:57,760 --> 00:18:03,039
+have a random number generator to
+
+478
+00:18:01,440 --> 00:18:04,320
+generate a number and you check whether
+
+479
+00:18:03,039 --> 00:18:05,919
+it's greater than that particular
+
+480
+00:18:04,320 --> 00:18:09,039
+probability that you set
+
+481
+00:18:05,919 --> 00:18:09,679
+so in this case that is not happening so
+
+482
+00:18:09,039 --> 00:18:11,120
+now
+
+483
+00:18:09,679 --> 00:18:13,120
+you can see that directory tree the
+
+484
+00:18:11,120 --> 00:18:16,559
+condition satisfies and it
+
+485
+00:18:13,120 --> 00:18:16,559
+goes to mds2
+
+486
+00:18:16,880 --> 00:18:20,880
+not happening directory sticks so if you
+
+487
+00:18:19,919 --> 00:18:23,360
+have a fairly
+
+488
+00:18:20,880 --> 00:18:26,480
+depth wise workload then this can work
+
+489
+00:18:23,360 --> 00:18:26,479
+really well in that case
+
+490
+00:18:27,360 --> 00:18:32,320
+so uh finally let me talk about why why
+
+491
+00:18:30,240 --> 00:18:35,520
+we're using consistent hashing
+
+492
+00:18:32,320 --> 00:18:37,360
+um and okay to say that let me say what
+
+493
+00:18:35,520 --> 00:18:38,480
+is construction first so consistent
+
+494
+00:18:37,360 --> 00:18:40,840
+hashing is
+
+495
+00:18:38,480 --> 00:18:43,760
+basically a distributed hash table
+
+496
+00:18:40,840 --> 00:18:45,600
+scheme but
+
+497
+00:18:43,760 --> 00:18:47,600
+unlike a naive distributed hash table
+
+498
+00:18:45,600 --> 00:18:48,320
+you don't have to resize the entire hash
+
+499
+00:18:47,600 --> 00:18:50,480
+table
+
+500
+00:18:48,320 --> 00:18:52,000
+when you have a cluster modifications
+
+501
+00:18:50,480 --> 00:18:54,799
+like when you're scaling out or when
+
+502
+00:18:52,000 --> 00:18:54,799
+you're scaling down
+
+503
+00:18:55,600 --> 00:19:00,399
+so cfs has this another added advantage
+
+504
+00:18:59,600 --> 00:19:02,080
+that uh
+
+505
+00:19:00,400 --> 00:19:03,840
+you don't need to store all the data
+
+506
+00:19:02,080 --> 00:19:04,639
+structures of consistent hashing in your
+
+507
+00:19:03,840 --> 00:19:07,678
+memory
+
+508
+00:19:04,640 --> 00:19:08,640
+because uh because your ranks are
+
+509
+00:19:07,679 --> 00:19:12,960
+arranged
+
+510
+00:19:08,640 --> 00:19:16,240
+uh in an ascending order of
+
+511
+00:19:12,960 --> 00:19:19,200
+number so it's you have mds md
+
+512
+00:19:16,240 --> 00:19:20,320
+if you have three mds say mds a mds b
+
+513
+00:19:19,200 --> 00:19:22,240
+and mdsc
+
+514
+00:19:20,320 --> 00:19:23,360
+then you're gonna have an implicit rank
+
+515
+00:19:22,240 --> 00:19:26,160
+for each mds
+
+516
+00:19:23,360 --> 00:19:26,799
+called the mdsa is going to have rank 0
+
+517
+00:19:26,160 --> 00:19:28,480
+mds
+
+518
+00:19:26,799 --> 00:19:30,320
+b is going to have rank 1 and mdc is
+
+519
+00:19:28,480 --> 00:19:33,360
+going to have rank 2. so
+
+520
+00:19:30,320 --> 00:19:35,200
+having that kind of
+
+521
+00:19:33,360 --> 00:19:39,039
+negates the need to store data
+
+522
+00:19:35,200 --> 00:19:42,799
+structures in your memory cache
+
+523
+00:19:39,039 --> 00:19:44,960
+and yeah that's it
+
+524
+00:19:42,799 --> 00:19:46,960
+feminine pinning is a work on progress
+
+525
+00:19:44,960 --> 00:19:50,720
+you guys can check it out in this link
+
+526
+00:19:46,960 --> 00:19:52,559
+i still have a lot of benchmarking to do
+
+527
+00:19:50,720 --> 00:19:53,840
+probably a lot of request distributions
+
+528
+00:19:52,559 --> 00:19:57,200
+and uh
+
+529
+00:19:53,840 --> 00:19:57,918
+check that out probably and yeah that's
+
+530
+00:19:57,200 --> 00:19:59,520
+it
+
+531
+00:19:57,919 --> 00:20:01,039
+uh this is my mail if you have any
+
+532
+00:19:59,520 --> 00:20:07,840
+doubts you can ask
+
+533
+00:20:01,039 --> 00:20:07,840
+that time for questions
+
+534
+00:20:13,280 --> 00:20:17,120
+okay no questions that's good
+
+535
+00:20:17,679 --> 00:20:21,840
+yeah thank you
+

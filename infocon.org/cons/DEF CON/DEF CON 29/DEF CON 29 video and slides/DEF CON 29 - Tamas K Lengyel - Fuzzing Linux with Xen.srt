@@ -1,0 +1,3877 @@
+﻿1
+00:00:12,120 --> 00:00:12,962
+- Hi everyone.
+
+2
+00:00:12,962 --> 00:00:16,980
+Thank you for joining my
+talk, Fuzzing Linux with Xen.
+
+3
+00:00:16,980 --> 00:00:18,500
+My name is Thomas Lengyel
+
+4
+00:00:18,500 --> 00:00:21,170
+and I'm a Senior Security
+Researcher at the Intel.
+
+5
+00:00:21,170 --> 00:00:24,160
+And I also maintain a
+variety of open source tools
+
+6
+00:00:24,160 --> 00:00:27,980
+such as the Zen hypervisor,
+LibVMI, drop roof.
+
+7
+00:00:27,980 --> 00:00:30,690
+And I also participate
+in the Honeynet project,
+
+8
+00:00:30,690 --> 00:00:33,380
+where we usually wrong Google summer code
+
+9
+00:00:33,380 --> 00:00:36,450
+projects during the summer
+developing open source tools
+
+10
+00:00:36,450 --> 00:00:38,023
+to fight against malware.
+
+11
+00:00:39,530 --> 00:00:44,200
+What this talk is about
+is that we had this task
+
+12
+00:00:44,200 --> 00:00:46,580
+of fuzzing the device facing input points
+
+13
+00:00:46,580 --> 00:00:49,740
+of several Linux kernel
+modules, kernel drivers,
+
+14
+00:00:49,740 --> 00:00:52,630
+and we had to build new
+tools to get it done.
+
+15
+00:00:52,630 --> 00:00:56,520
+We open source then, we found
+a bunch of bugs and fix them.
+
+16
+00:00:56,520 --> 00:00:57,930
+I will talk about those,
+
+17
+00:00:57,930 --> 00:00:59,740
+but really the point of this talk
+
+18
+00:00:59,740 --> 00:01:02,210
+is to show you how we did it.
+
+19
+00:01:02,210 --> 00:01:05,253
+So you can go out and do it yourself.
+
+20
+00:01:06,592 --> 00:01:11,165
+To start, let's talk a little
+bit about feedback fuzzers.
+
+21
+00:01:11,165 --> 00:01:15,980
+They are not just about feeding
+random input to your target.
+
+22
+00:01:15,980 --> 00:01:18,930
+They use feedback as a mechanism
+
+23
+00:01:18,930 --> 00:01:22,137
+to better exercise your target code,
+
+24
+00:01:22,137 --> 00:01:26,930
+and they do it by effectively
+collecting the execution log
+
+25
+00:01:26,930 --> 00:01:29,630
+or called the coverage.
+
+26
+00:01:29,630 --> 00:01:33,360
+Then you're running the
+fuzzer and you can use that
+
+27
+00:01:33,360 --> 00:01:36,792
+to compare execution from run to run,
+
+28
+00:01:36,792 --> 00:01:38,624
+to determine if the fuzzer
+
+29
+00:01:38,624 --> 00:01:42,135
+was able to discover some new code
+
+30
+00:01:42,135 --> 00:01:44,310
+that hasn't been seen before.
+
+31
+00:01:44,310 --> 00:01:48,450
+The idea is simply that if
+you've discovered some new code
+
+32
+00:01:48,450 --> 00:01:50,690
+region that hasn't been exercised before,
+
+33
+00:01:50,690 --> 00:01:53,110
+it's worthwhile to focus on that
+
+34
+00:01:53,110 --> 00:01:56,620
+because the chances of finding
+some new bugs is higher
+
+35
+00:01:56,620 --> 00:01:59,333
+on code that hasn't
+been exercised as much.
+
+36
+00:02:00,636 --> 00:02:04,070
+Obviously what feedback
+fuzzers need the most
+
+37
+00:02:04,070 --> 00:02:06,070
+is determinism.
+
+38
+00:02:06,070 --> 00:02:10,170
+If the target code behaves
+radically differently
+
+39
+00:02:10,170 --> 00:02:12,500
+from one run to the other,
+
+40
+00:02:12,500 --> 00:02:15,730
+then the fuzzer might just get stuck
+
+41
+00:02:15,730 --> 00:02:19,306
+and focusing on inputs that
+don't actually lead anywhere,
+
+42
+00:02:19,306 --> 00:02:22,590
+because it will think that
+it's opening up new code bats
+
+43
+00:02:22,590 --> 00:02:24,600
+when it's in fact just noise.
+
+44
+00:02:24,600 --> 00:02:27,803
+So if you have garbage in,
+you will have garbage out.
+
+45
+00:02:29,940 --> 00:02:34,700
+So Xen VM forking is
+supposed to address that.
+
+46
+00:02:34,700 --> 00:02:38,580
+Shortcoming it is effectively
+a way to add determinism
+
+47
+00:02:38,580 --> 00:02:40,300
+to kernel code execution.
+
+48
+00:02:40,300 --> 00:02:44,200
+If you think about the kernel,
+it's pretty on deterministic.
+
+49
+00:02:44,200 --> 00:02:46,200
+You have interrupts firing all the time.
+
+50
+00:02:46,200 --> 00:02:48,738
+You have multiple treads and scheduling
+
+51
+00:02:48,738 --> 00:02:53,738
+it's, you know, as far
+away from deterministic
+
+52
+00:02:54,010 --> 00:02:56,026
+execution as you can get.
+
+53
+00:02:56,026 --> 00:03:01,026
+So VM forking allows you to
+split the run time of a VM
+
+54
+00:03:01,040 --> 00:03:04,220
+into multiple VMs and populate the memory
+
+55
+00:03:04,220 --> 00:03:06,920
+of these fork VMs from the parent one.
+
+56
+00:03:06,920 --> 00:03:09,700
+So to make this as fast as possible,
+
+57
+00:03:09,700 --> 00:03:13,310
+you effectively can just run the fork
+
+58
+00:03:13,310 --> 00:03:15,830
+is executing a memory access
+
+59
+00:03:15,830 --> 00:03:17,681
+where it's a reader an execution.
+
+60
+00:03:17,681 --> 00:03:20,450
+You can just populate
+those page table entries,
+
+61
+00:03:20,450 --> 00:03:22,962
+using the fork with a
+shared page table entry.
+
+62
+00:03:22,962 --> 00:03:26,460
+And you only have to actually
+duplicate the entire page
+
+63
+00:03:26,460 --> 00:03:30,380
+of memory if the fork is
+writing something into memory.
+
+64
+00:03:30,380 --> 00:03:32,060
+To get even better speed,
+
+65
+00:03:32,060 --> 00:03:33,470
+once you have a fork medium set up,
+
+66
+00:03:33,470 --> 00:03:37,310
+you can actually just reset
+to the state of that fork VM
+
+67
+00:03:37,310 --> 00:03:40,810
+just copy the VCPU registers
+from the parent and throw away
+
+68
+00:03:40,810 --> 00:03:43,470
+any of the duplicated copied pages,
+
+69
+00:03:43,470 --> 00:03:45,188
+but keep the shared pages in place
+
+70
+00:03:45,188 --> 00:03:48,153
+that will get you the best performance.
+
+71
+00:03:49,060 --> 00:03:50,642
+If we take a look at numbers,
+
+72
+00:03:50,642 --> 00:03:53,900
+if you run these
+operations in a tight loop,
+
+73
+00:03:53,900 --> 00:03:56,558
+you can create about 1300 VMs per second.
+
+74
+00:03:56,558 --> 00:03:58,460
+If you're doing a reset,
+
+75
+00:03:58,460 --> 00:04:00,770
+that's about 9,000 resets per second.
+
+76
+00:04:00,770 --> 00:04:05,420
+So these numbers are
+fairly okay for fuzzing.
+
+77
+00:04:05,420 --> 00:04:08,572
+Obviously you will not see these numbers
+
+78
+00:04:08,572 --> 00:04:10,640
+because these are the theoretical max.
+
+79
+00:04:10,640 --> 00:04:13,303
+If you're doing nothing
+just resetting the VM,
+
+80
+00:04:13,303 --> 00:04:15,480
+obviously between those resets,
+
+81
+00:04:15,480 --> 00:04:18,163
+you actually want to run your target code.
+
+82
+00:04:19,704 --> 00:04:21,500
+A couple other buildings the blocks
+
+83
+00:04:21,500 --> 00:04:23,641
+dimension here to really understand
+
+84
+00:04:23,641 --> 00:04:28,160
+what we will be doing is most importantly,
+
+85
+00:04:28,160 --> 00:04:29,870
+Xen's introspection subsystems.
+
+86
+00:04:29,870 --> 00:04:33,550
+So this is what I've been
+working on for the last 10 years.
+
+87
+00:04:33,550 --> 00:04:36,730
+If it allows you to really
+pick into the wrong time
+
+88
+00:04:36,730 --> 00:04:39,980
+executions state of a guest,
+
+89
+00:04:39,980 --> 00:04:41,490
+you can read and write the memory
+
+90
+00:04:41,490 --> 00:04:43,500
+translate virtual addresses,
+
+91
+00:04:43,500 --> 00:04:47,100
+but it also allows you to pause the VCPU
+
+92
+00:04:47,100 --> 00:04:49,807
+of the VM at various hardware events
+
+93
+00:04:49,807 --> 00:04:52,507
+and get a notification
+of those hardware events
+
+94
+00:04:52,507 --> 00:04:55,720
+in your regular user
+space application in dom0,
+
+95
+00:04:55,720 --> 00:04:57,670
+which makes development of tools,
+
+96
+00:04:57,670 --> 00:05:00,382
+introspection tools
+really quite convenient.
+
+97
+00:05:00,382 --> 00:05:03,910
+You can get a notification
+for CPU IDs breakpoints
+
+98
+00:05:03,910 --> 00:05:08,183
+from single stepping EPT faults
+and a bunch of other things.
+
+99
+00:05:09,860 --> 00:05:12,630
+The other really cool feature
+that just got upstream
+
+100
+00:05:12,630 --> 00:05:15,730
+into Xen it's called VM trace.
+
+101
+00:05:15,730 --> 00:05:17,110
+We did this in collaboration
+
+102
+00:05:17,110 --> 00:05:19,130
+with the polish CERT.pl
+& Citrix and Citrix,
+
+103
+00:05:19,130 --> 00:05:20,410
+and this is an effective way
+
+104
+00:05:20,410 --> 00:05:22,330
+of turning on into a processor trays
+
+105
+00:05:22,330 --> 00:05:26,298
+to record the execution
+of a full VM from dom0,
+
+106
+00:05:26,298 --> 00:05:29,780
+where the CPU itself will
+store enough information
+
+107
+00:05:29,780 --> 00:05:33,309
+about the execution of that
+VM and with low overhead.
+
+108
+00:05:33,309 --> 00:05:38,071
+So that later on that log can decoded
+
+109
+00:05:38,071 --> 00:05:42,890
+to reconstruct the execution
+of that VM see what happened.
+
+110
+00:05:42,890 --> 00:05:44,900
+And obviously this is
+what we will be using
+
+111
+00:05:44,900 --> 00:05:46,700
+to collect the coverage information.
+
+112
+00:05:47,890 --> 00:05:51,810
+So if you look at the full
+flow of how the fuzzing setup
+
+113
+00:05:51,810 --> 00:05:54,950
+is working on Xen, if it
+start from the parent VM,
+
+114
+00:05:54,950 --> 00:05:56,946
+you boot up your regular VM,
+
+115
+00:05:56,946 --> 00:06:00,285
+and then the target code is reached
+
+116
+00:06:00,285 --> 00:06:03,790
+you compile the target code
+with the magic CPU ID in place
+
+117
+00:06:03,790 --> 00:06:05,113
+so that we will signal to the fuzzer
+
+118
+00:06:05,113 --> 00:06:07,642
+that this is the point
+you want to start fuzzing.
+
+119
+00:06:07,642 --> 00:06:12,500
+The fuzzer will find that
+CPU ID when it's executed
+
+120
+00:06:12,500 --> 00:06:14,260
+we'll create a fork,
+
+121
+00:06:14,260 --> 00:06:17,270
+which we call the sync VM, in that sync VM
+
+122
+00:06:17,270 --> 00:06:18,810
+we'll look up the virtual address
+
+123
+00:06:18,810 --> 00:06:21,090
+of various kernel functions
+
+124
+00:06:21,090 --> 00:06:25,510
+that usually get called on
+something bad is about to happen
+
+125
+00:06:25,510 --> 00:06:27,650
+in the kernels, such
+as a panic is happening
+
+126
+00:06:27,650 --> 00:06:31,560
+kasan or ubsan, a built-in
+error detection systems
+
+127
+00:06:31,560 --> 00:06:33,390
+in the Linux kernel trip.
+
+128
+00:06:33,390 --> 00:06:37,150
+We add a break point to the
+entry of all of those functions
+
+129
+00:06:37,150 --> 00:06:39,150
+and we create another fork.
+
+130
+00:06:39,150 --> 00:06:41,190
+This is what we call the fuzz VM.
+
+131
+00:06:41,190 --> 00:06:44,691
+This is where we will actually
+be performing the fuzzing.
+
+132
+00:06:44,691 --> 00:06:47,480
+This works effectively by taking the input
+
+133
+00:06:47,480 --> 00:06:49,680
+that's generated by the fuzzer.
+
+134
+00:06:49,680 --> 00:06:52,067
+In this case, we are using
+the AFL American fuzzy lop.
+
+135
+00:06:52,067 --> 00:06:54,287
+We take the input that's
+generated by the fuzzer
+
+136
+00:06:54,287 --> 00:06:58,160
+and we write it straight
+into the VMs memory.
+
+137
+00:06:58,160 --> 00:07:02,820
+I'm positive to see what happens
+if we catch a break point,
+
+138
+00:07:02,820 --> 00:07:05,953
+that's going to be at one
+of those entry addresses
+
+139
+00:07:05,953 --> 00:07:08,290
+that we break pointed earlier.
+
+140
+00:07:08,290 --> 00:07:10,740
+Great, we just found a crash
+
+141
+00:07:10,740 --> 00:07:13,110
+that we would report back to AFL.
+
+142
+00:07:13,110 --> 00:07:15,240
+If we catch the magic CPU ID again,
+
+143
+00:07:15,240 --> 00:07:16,640
+that would be the end harness.
+
+144
+00:07:16,640 --> 00:07:19,960
+So you have a start harness
+and then the end harness,
+
+145
+00:07:19,960 --> 00:07:21,340
+if you hit the end harness,
+
+146
+00:07:21,340 --> 00:07:23,150
+then you know, nothing bad happened.
+
+147
+00:07:23,150 --> 00:07:26,170
+If neither, then we report a time-out.
+
+148
+00:07:26,170 --> 00:07:29,540
+Afterwards, we can take a
+look at the Intel processor,
+
+149
+00:07:29,540 --> 00:07:33,660
+trace log, decode it and we
+use that to report the coverage
+
+150
+00:07:33,660 --> 00:07:35,650
+back through AFL so that
+if we don't understand
+
+151
+00:07:35,650 --> 00:07:39,750
+if something new happened
+while fuzzing that VM,
+
+152
+00:07:39,750 --> 00:07:41,190
+and then we just reset the state
+
+153
+00:07:41,190 --> 00:07:43,703
+and go to the next input from AFL.
+
+154
+00:07:45,150 --> 00:07:47,018
+Let's take a look at the demo
+
+155
+00:07:47,018 --> 00:07:50,167
+of how this actually looks in practice.
+
+156
+00:07:50,167 --> 00:07:53,266
+I am creating a new LUBUM 22004 VM
+
+157
+00:07:53,266 --> 00:07:58,266
+and I will be booting, UBUM
+to a Linux five at 10 kernel
+
+158
+00:08:00,030 --> 00:08:04,110
+that has the harness
+already compounding to it
+
+159
+00:08:04,110 --> 00:08:07,520
+and booting that DSLR and PTI disabled,
+
+160
+00:08:07,520 --> 00:08:10,260
+just to make debugging easier later on.
+
+161
+00:08:10,260 --> 00:08:13,543
+And what we will be
+fuzzing is a USB driver
+
+162
+00:08:13,543 --> 00:08:14,893
+and that's Kernel.
+
+163
+00:08:14,893 --> 00:08:18,580
+I effectively have it
+thumb drive USB stick
+
+164
+00:08:18,580 --> 00:08:23,580
+attached to a USB, 3 hub,
+and I fire up the gefX fuzzer
+
+165
+00:08:25,640 --> 00:08:28,710
+to listen to in that magic CPYD
+
+166
+00:08:28,710 --> 00:08:31,510
+which in here is called
+magic Mark is executed
+
+167
+00:08:31,510 --> 00:08:36,084
+so now he's just listening to
+see, even that CPYD happens,
+
+168
+00:08:36,084 --> 00:08:36,970
+the VM finished booting,
+
+169
+00:08:36,970 --> 00:08:40,680
+If you a log in and really
+initiate some interaction
+
+170
+00:08:40,680 --> 00:08:43,200
+with USB thumb drive that will trigger
+
+171
+00:08:43,200 --> 00:08:46,000
+that harness I have pre-compiled in there.
+
+172
+00:08:46,000 --> 00:08:49,065
+So I ran F disc and you see that, F disc
+
+173
+00:08:49,065 --> 00:08:51,144
+never returned, it never finished.
+
+174
+00:08:51,144 --> 00:08:54,136
+And that is because that VM is now paused
+
+175
+00:08:54,136 --> 00:08:57,780
+because KFX caught that CPYD
+
+176
+00:08:57,780 --> 00:09:00,440
+and we have the information
+about where the target buffer
+
+177
+00:09:00,440 --> 00:09:03,240
+in the target sizes that we want to fuzz.
+
+178
+00:09:03,240 --> 00:09:05,960
+We can go to that virtual address
+
+179
+00:09:05,960 --> 00:09:09,287
+read out that memory to be used
+as the seed for the fuzzer.
+
+180
+00:09:10,561 --> 00:09:12,050
+So this is the normal execution
+
+181
+00:09:12,050 --> 00:09:14,510
+would be that the Kernel
+was just about to do
+
+182
+00:09:14,510 --> 00:09:16,440
+while executing the F desk,
+
+183
+00:09:16,440 --> 00:09:19,350
+and we will start new
+dating from that structure
+
+184
+00:09:19,350 --> 00:09:24,020
+to see what can happen if that input
+
+185
+00:09:25,140 --> 00:09:30,140
+is malformed or malicious,
+
+186
+00:09:30,726 --> 00:09:33,647
+we will be using the F++ here,
+
+187
+00:09:33,647 --> 00:09:36,225
+fuzzer is up and running.
+
+188
+00:09:36,225 --> 00:09:40,680
+We are opening up a bunch
+of paths, as you can see,
+
+189
+00:09:40,680 --> 00:09:45,680
+and in less than a minute,
+there is already a crash found.
+
+190
+00:09:46,500 --> 00:09:48,870
+And we'll go into the details
+
+191
+00:09:48,870 --> 00:09:51,000
+of what's the discretion about,
+
+192
+00:09:51,000 --> 00:09:53,100
+but this is actually a real
+bug in the Linux kernel.
+
+193
+00:09:53,100 --> 00:09:58,100
+That was discovered just like that.
+
+194
+00:09:59,940 --> 00:10:02,000
+So at this point, and you're
+probably wondering like, okay,
+
+195
+00:10:02,000 --> 00:10:04,360
+what the hell did we just fuzz?
+
+196
+00:10:04,360 --> 00:10:05,960
+You know what the bug is?
+
+197
+00:10:05,960 --> 00:10:07,360
+And you're right.
+
+198
+00:10:07,360 --> 00:10:10,117
+There is more to fuzzing
+than just running the fuzzer.
+
+199
+00:10:11,230 --> 00:10:13,020
+In this engagement, we discovered that
+
+200
+00:10:13,020 --> 00:10:15,930
+really the biggest pin points
+is not running the fuzzer
+
+201
+00:10:15,930 --> 00:10:17,310
+once the fuzzer is up and running.
+
+202
+00:10:17,310 --> 00:10:21,280
+It's great, you can go and
+take a walk, grab a coffee.
+
+203
+00:10:21,280 --> 00:10:23,100
+It's awesome you don't
+really have much to do.
+
+204
+00:10:23,100 --> 00:10:26,475
+It's all automated the real pin point is
+
+205
+00:10:26,475 --> 00:10:27,980
+performing analysis,
+
+206
+00:10:27,980 --> 00:10:30,036
+figuring out what the
+fuzz in the first place.
+
+207
+00:10:30,036 --> 00:10:33,194
+And then once the fuzzer finds something,
+
+208
+00:10:33,194 --> 00:10:36,000
+getting enough information
+out about the crash
+
+209
+00:10:36,000 --> 00:10:40,240
+so that you can create
+a report or fix the bug.
+
+210
+00:10:40,240 --> 00:10:42,380
+So how do we do all of those steps?
+
+211
+00:10:42,380 --> 00:10:45,253
+So let's start with analysis.
+
+212
+00:10:46,730 --> 00:10:50,370
+Once we're fuzzing, there is DMA, and DMA
+
+213
+00:10:50,370 --> 00:10:52,880
+is memory that the kernel makes accessible
+
+214
+00:10:52,880 --> 00:10:55,040
+to an external device.
+
+215
+00:10:55,040 --> 00:10:58,610
+And this is to facilitate
+fast IO operations,
+
+216
+00:10:58,610 --> 00:11:02,010
+shared memory, you have have better speed.
+
+217
+00:11:02,010 --> 00:11:05,990
+And the way this works is that
+the device has direct access,
+
+218
+00:11:05,990 --> 00:11:09,980
+to that memory so that it doesn't
+have to go through the CPU
+
+219
+00:11:09,980 --> 00:11:14,980
+and the MMU to actually read
+or write through that memory.
+
+220
+00:11:16,230 --> 00:11:19,140
+There is what's called the IOMMU,
+
+221
+00:11:19,140 --> 00:11:23,230
+but usually the IOMMU restricts
+access to other pages,
+
+222
+00:11:23,230 --> 00:11:25,750
+pages that are explicitly
+made accessible by the kernel
+
+223
+00:11:25,750 --> 00:11:29,512
+to the device, will be allowed
+to be accessed by the device
+
+224
+00:11:29,512 --> 00:11:30,980
+through the IOMMU.
+
+225
+00:11:30,980 --> 00:11:34,699
+So the IOMMU is not going
+to protect you against
+
+226
+00:11:34,699 --> 00:11:39,550
+a malicious device that
+is placing random stuff
+
+227
+00:11:39,550 --> 00:11:42,483
+on the DMA page that it's allowed to do.
+
+228
+00:11:44,120 --> 00:11:44,953
+So we figured, okay,
+
+229
+00:11:44,953 --> 00:11:46,710
+let's take a look at
+the Linux source code,
+
+230
+00:11:46,710 --> 00:11:50,080
+see where DMA memory is getting excess.
+
+231
+00:11:50,080 --> 00:11:52,490
+It should not be too bad.
+
+232
+00:11:52,490 --> 00:11:56,149
+Like when you have a system
+called what the Kernel is doing,
+
+233
+00:11:56,149 --> 00:11:58,540
+when it's received some
+buffer from user space,
+
+234
+00:11:58,540 --> 00:12:01,560
+the first thing it does, it
+copies it into kernel memory
+
+235
+00:12:01,560 --> 00:12:03,260
+and does its processing there.
+
+236
+00:12:03,260 --> 00:12:07,820
+So we figured, well, that's
+how DMA works as well.
+
+237
+00:12:07,820 --> 00:12:09,570
+The kernel should copy the DMA memory
+
+238
+00:12:09,570 --> 00:12:13,322
+first on internal buffer
+and go from there.
+
+239
+00:12:13,322 --> 00:12:15,179
+But boy, were we wrong?
+
+240
+00:12:15,179 --> 00:12:19,338
+It turns out that the Kernel
+is accessing DMA memory
+
+241
+00:12:19,338 --> 00:12:20,910
+all over the place.
+
+242
+00:12:20,910 --> 00:12:24,860
+There is no single function
+that copy from the DMA,
+
+243
+00:12:24,860 --> 00:12:27,850
+once DMA memory is established,
+
+244
+00:12:27,850 --> 00:12:30,680
+the Kernel can access
+that and those access it
+
+245
+00:12:30,680 --> 00:12:31,560
+all over the place.
+
+246
+00:12:31,560 --> 00:12:35,140
+So even just figuring out
+where Linux reads from DMA
+
+247
+00:12:35,140 --> 00:12:36,080
+is not trivial.
+
+248
+00:12:36,080 --> 00:12:38,250
+So what we did was we looked
+through the source code,
+
+249
+00:12:38,250 --> 00:12:41,090
+looking for hints of when the Kernel
+
+250
+00:12:41,090 --> 00:12:42,995
+might be doing the DMA read.
+
+251
+00:12:42,995 --> 00:12:45,730
+And it's quite painful because, you know,
+
+252
+00:12:45,730 --> 00:12:47,100
+just by looking at the source code,
+
+253
+00:12:47,100 --> 00:12:49,560
+you don't necessarily
+know whether some pointer
+
+254
+00:12:49,560 --> 00:12:52,698
+is a DMA memory or not.
+
+255
+00:12:52,698 --> 00:12:56,140
+So what we did, we looked
+for the iron man cookie
+
+256
+00:12:56,140 --> 00:12:58,245
+or the best one was actually to look at
+
+257
+00:12:58,245 --> 00:13:01,787
+the DMA conversion
+functions that go, you know,
+
+258
+00:13:01,787 --> 00:13:03,890
+dig in the, a little into to CPU.
+
+259
+00:13:03,890 --> 00:13:06,430
+That is a pretty clear
+indication that, you know,
+
+260
+00:13:06,430 --> 00:13:08,180
+the memory that is being,
+
+261
+00:13:08,180 --> 00:13:10,630
+or the data that is being
+read might not be in the right
+
+262
+00:13:10,630 --> 00:13:12,840
+and the format that the CPU expects.
+
+263
+00:13:12,840 --> 00:13:14,040
+So that usually means
+
+264
+00:13:14,040 --> 00:13:15,850
+that there was some cross-communication
+
+265
+00:13:15,850 --> 00:13:17,070
+with an external device
+
+266
+00:13:18,276 --> 00:13:21,580
+and then take the output from F trace,
+
+267
+00:13:21,580 --> 00:13:23,693
+which is a built-in subsystem in Linux
+
+268
+00:13:23,693 --> 00:13:24,980
+that allows you to trace
+
+269
+00:13:24,980 --> 00:13:27,450
+the execution of the kernel internally.
+
+270
+00:13:27,450 --> 00:13:29,610
+Cross-reference what we found
+
+271
+00:13:29,610 --> 00:13:31,760
+that we think is DMA access and see,
+
+272
+00:13:31,760 --> 00:13:33,070
+but better those functions
+
+273
+00:13:33,070 --> 00:13:35,910
+actually get called during
+execution of the kernel.
+
+274
+00:13:35,910 --> 00:13:38,960
+Cause we found a bunch of these excesses,
+
+275
+00:13:38,960 --> 00:13:40,610
+but they, those were functions
+
+276
+00:13:40,610 --> 00:13:42,720
+that never actually
+executed during run time.
+
+277
+00:13:42,720 --> 00:13:45,803
+And those are not really
+good targets to fuzz
+
+278
+00:13:45,803 --> 00:13:48,140
+because if you can get
+the code to execute,
+
+279
+00:13:48,140 --> 00:13:49,940
+then you can fuzz it.
+
+280
+00:13:49,940 --> 00:13:53,810
+So this was not great.
+
+281
+00:13:53,810 --> 00:13:55,700
+So we also decided to just, you know,
+
+282
+00:13:55,700 --> 00:13:58,519
+be old school and dig through the spec,
+
+283
+00:13:58,519 --> 00:14:00,570
+maybe, you know, we get
+a better understanding
+
+284
+00:14:00,570 --> 00:14:03,730
+of what's going on here
+because the kernel code
+
+285
+00:14:03,730 --> 00:14:05,913
+is not the easiest thing to read.
+
+286
+00:14:07,050 --> 00:14:08,480
+So looking at the spec itself,
+
+287
+00:14:08,480 --> 00:14:10,730
+it kind of find pictures like this
+
+288
+00:14:10,730 --> 00:14:12,490
+that are immensely helpful to, you know,
+
+289
+00:14:12,490 --> 00:14:14,370
+try to understand what
+the hell is going on.
+
+290
+00:14:14,370 --> 00:14:18,380
+Obviously this subsystem, as
+you can see is quite complex,
+
+291
+00:14:18,380 --> 00:14:22,960
+but really the biggest boost
+that we got for our engagement
+
+292
+00:14:22,960 --> 00:14:26,433
+here was to just discover
+what the name of the rings are
+
+293
+00:14:26,433 --> 00:14:28,020
+that this subsystem uses
+
+294
+00:14:28,020 --> 00:14:31,210
+for device to kernel communication,
+
+295
+00:14:31,210 --> 00:14:33,110
+and these are events during transfer rings
+
+296
+00:14:33,110 --> 00:14:34,520
+in the command ring.
+
+297
+00:14:34,520 --> 00:14:35,990
+So just knowing those names,
+
+298
+00:14:35,990 --> 00:14:37,353
+we were able to just, you know, crack the,
+
+299
+00:14:37,353 --> 00:14:39,515
+there is a variable called the event ring
+
+300
+00:14:39,515 --> 00:14:43,610
+and see where that is being accessed.
+
+301
+00:14:43,610 --> 00:14:47,340
+So what we found is this
+location very, yeah,
+
+302
+00:14:47,340 --> 00:14:49,412
+there is, what's called the event ring.
+
+303
+00:14:49,412 --> 00:14:51,590
+And this is a function
+
+304
+00:14:51,590 --> 00:14:54,670
+that gets called from
+the interrupt handler.
+
+305
+00:14:54,670 --> 00:14:57,719
+Obviously what happens is that
+the device or the USB hub,
+
+306
+00:14:57,719 --> 00:15:01,720
+it's placing some data on this
+ring and sends an interrupt.
+
+307
+00:15:01,720 --> 00:15:03,710
+And then the kernel goes
+and processes, whatever,
+
+308
+00:15:03,710 --> 00:15:06,270
+you know, structured the device sent.
+
+309
+00:15:06,270 --> 00:15:08,750
+And it de queued that
+from that derink page,
+
+310
+00:15:08,750 --> 00:15:10,270
+which is DMA accessible.
+
+311
+00:15:10,270 --> 00:15:13,108
+So what we just fuzzed
+about the RNs set up was
+
+312
+00:15:13,108 --> 00:15:16,470
+is just after that, you
+know, structure is dequed
+
+313
+00:15:16,470 --> 00:15:18,610
+from the DMA page.
+
+314
+00:15:18,610 --> 00:15:21,450
+We have the harness start and
+we transferred information
+
+315
+00:15:21,450 --> 00:15:22,560
+about the where the pointer is
+
+316
+00:15:22,560 --> 00:15:24,100
+and what the size of the structure is.
+
+317
+00:15:24,100 --> 00:15:27,240
+And then we have a couple
+points that we want to stop
+
+318
+00:15:27,240 --> 00:15:29,674
+the fuzzer and go through
+the next iteration
+
+319
+00:15:29,674 --> 00:15:32,640
+effectively, whenever this
+function would return,
+
+320
+00:15:32,640 --> 00:15:33,890
+we want to stop the fuzzer.
+
+321
+00:15:33,890 --> 00:15:36,760
+We want to fuzz everything
+that's in this function
+
+322
+00:15:36,760 --> 00:15:38,460
+and whatever this function calls
+
+323
+00:15:39,472 --> 00:15:41,710
+as for about those harness functions
+
+324
+00:15:41,710 --> 00:15:45,275
+actually look like they are
+really just CPU ID instruction,
+
+325
+00:15:45,275 --> 00:15:47,736
+where you stuff the magic information
+
+326
+00:15:47,736 --> 00:15:51,270
+into reducers that the user space tooling
+
+327
+00:15:51,270 --> 00:15:53,013
+dom0 that can receive.
+
+328
+00:15:53,013 --> 00:15:54,550
+So these are effective,
+
+329
+00:15:54,550 --> 00:15:56,450
+you can think of them as hybrid goals.
+
+330
+00:15:57,700 --> 00:16:01,890
+All right, so once we found that bug,
+
+331
+00:16:01,890 --> 00:16:04,293
+you know, what's the next step,
+
+332
+00:16:04,293 --> 00:16:07,210
+with me, on forks are a little special
+
+333
+00:16:07,210 --> 00:16:10,470
+on Xen in that they are
+not fully functional VMs.
+
+334
+00:16:10,470 --> 00:16:12,490
+You can turn them into
+fully functional VMs,
+
+335
+00:16:12,490 --> 00:16:16,159
+but for fuzzing it's
+obviously there's no point,
+
+336
+00:16:16,159 --> 00:16:18,440
+but because of that, there's, you know,
+
+337
+00:16:18,440 --> 00:16:21,600
+a little bit of a pain
+and actually figuring out
+
+338
+00:16:21,600 --> 00:16:25,410
+what happened in them because
+you don't get to just log in
+
+339
+00:16:25,410 --> 00:16:28,090
+and get her to logs
+because there's no network,
+
+340
+00:16:28,090 --> 00:16:31,010
+there's no disc, no console,
+there's no I/O into VM forks.
+
+341
+00:16:31,010 --> 00:16:34,571
+They're literally just
+running with CPU and memory.
+
+342
+00:16:34,571 --> 00:16:36,672
+But fortunately, the D message buffer
+
+343
+00:16:36,672 --> 00:16:39,600
+that the Linux kernel
+uses to store information
+
+344
+00:16:39,600 --> 00:16:41,790
+about run time events and errors,
+
+345
+00:16:41,790 --> 00:16:45,110
+and whatnot is just sitting in Ram.
+
+346
+00:16:45,110 --> 00:16:47,123
+So we can go and carve it out.
+
+347
+00:16:48,110 --> 00:16:51,213
+The way we do that is
+we're gonna use GDB SX.
+
+348
+00:16:51,213 --> 00:16:54,630
+That's been shipping with
+Xen for over a decade
+
+349
+00:16:54,630 --> 00:16:59,030
+at this point and it's really
+just the minimal GDB bridge.
+
+350
+00:16:59,030 --> 00:17:01,630
+If you build the kernel
+with debugging information
+
+351
+00:17:01,630 --> 00:17:06,630
+and frame pointers, you
+can access the information
+
+352
+00:17:07,232 --> 00:17:10,806
+of the kernel state using just GDB.
+
+353
+00:17:10,806 --> 00:17:13,480
+So let's take a look at how this works.
+
+354
+00:17:13,480 --> 00:17:14,770
+So this is where we were.
+
+355
+00:17:14,770 --> 00:17:16,065
+We just found a bug.
+
+356
+00:17:16,065 --> 00:17:18,740
+We want to figure out what happened
+
+357
+00:17:18,740 --> 00:17:20,230
+with what is the bug?
+
+358
+00:17:20,230 --> 00:17:21,480
+So we will take KFX.
+
+359
+00:17:21,480 --> 00:17:22,563
+We will re execute,
+
+360
+00:17:22,563 --> 00:17:25,110
+but instead of taking the input from AFL,
+
+361
+00:17:25,110 --> 00:17:28,718
+we will just use that file
+that was found by AFL.
+
+362
+00:17:28,718 --> 00:17:30,833
+We will inject that into a VM fork
+
+363
+00:17:30,833 --> 00:17:33,230
+and see what happens
+with the debug output.
+
+364
+00:17:33,230 --> 00:17:37,410
+We see that, okay, ubsan prologue tripped.
+
+365
+00:17:37,410 --> 00:17:38,990
+So ubsan prologue is the function
+
+366
+00:17:38,990 --> 00:17:41,460
+that gets called when the
+kernel starts to construct
+
+367
+00:17:41,460 --> 00:17:43,440
+the ubisan report.
+
+368
+00:17:43,440 --> 00:17:45,644
+So we want to stop the VM fork
+
+369
+00:17:45,644 --> 00:17:49,400
+after it actually finished
+printing the ubisan report
+
+370
+00:17:49,400 --> 00:17:50,540
+into the D message buffers.
+
+371
+00:17:50,540 --> 00:17:52,877
+So we go stop ubisan epilogue.
+
+372
+00:17:53,946 --> 00:17:56,910
+And at that point we can
+really just, you know,
+
+373
+00:17:56,910 --> 00:17:58,780
+attach the debugger, do it,
+
+374
+00:17:58,780 --> 00:18:01,250
+then read out the message buffer.
+
+375
+00:18:01,250 --> 00:18:04,162
+So I fire up GDBSX
+attached to that domain,
+
+376
+00:18:04,162 --> 00:18:07,165
+go into the source folder
+where I compiled that kernel
+
+377
+00:18:07,165 --> 00:18:10,079
+load up the symbol file for the kernel
+
+378
+00:18:10,079 --> 00:18:12,850
+attached to the bridge
+
+379
+00:18:12,850 --> 00:18:17,850
+and print the D message
+buffer using LX-D message.
+
+380
+00:18:19,510 --> 00:18:21,900
+And there we go, right at the bottom
+
+381
+00:18:21,900 --> 00:18:24,380
+of the message buffer received the report
+
+382
+00:18:24,380 --> 00:18:26,530
+that ubisan generated for the bug
+
+383
+00:18:26,530 --> 00:18:28,320
+that the fuzzer just found.
+
+384
+00:18:28,320 --> 00:18:32,540
+This is an array index out
+of bounds there in XCTI ring.
+
+385
+00:18:32,540 --> 00:18:36,170
+Awesome, so this is pretty much how you,
+
+386
+00:18:36,170 --> 00:18:40,123
+three-ish the errors that
+you've made using the fuzzer
+
+387
+00:18:41,540 --> 00:18:45,240
+for most of the cases, this
+has been perfectly sufficient.
+
+388
+00:18:45,240 --> 00:18:46,570
+You have the source line,
+
+389
+00:18:46,570 --> 00:18:49,650
+but we have to take a look
+at usually it's pretty
+
+390
+00:18:49,650 --> 00:18:54,650
+straightforward of where the
+bug is coming from, but not,
+
+391
+00:18:54,930 --> 00:18:55,763
+not all the time.
+
+392
+00:18:55,763 --> 00:18:59,910
+Sometimes the bug three girls
+in code that's far away from
+
+393
+00:18:59,910 --> 00:19:01,690
+the driver that we were
+actually fuzzing, right?
+
+394
+00:19:01,690 --> 00:19:04,253
+So there is some call
+chain from the start point
+
+395
+00:19:04,253 --> 00:19:07,140
+that we are fuzzing from
+that reaches some deep layer
+
+396
+00:19:07,140 --> 00:19:10,710
+of the kernel and that's
+where some bug happens.
+
+397
+00:19:10,710 --> 00:19:12,180
+Then figuring out what's going on,
+
+398
+00:19:12,180 --> 00:19:14,040
+there is a little bit more difficult.
+
+399
+00:19:14,040 --> 00:19:17,213
+So let's look triaging beyond the basics.
+
+400
+00:19:17,213 --> 00:19:21,164
+Here's the harness that
+we use to fuzz the IGB
+
+401
+00:19:21,164 --> 00:19:25,100
+network driver, so these
+are network drivers
+
+402
+00:19:25,100 --> 00:19:27,060
+that receive packets and packets.
+
+403
+00:19:27,060 --> 00:19:28,650
+Here we have an interrupt handler
+
+404
+00:19:28,650 --> 00:19:31,363
+or final package is received by the kernel
+
+405
+00:19:31,363 --> 00:19:35,180
+and the kernel goes and reads this RX
+
+406
+00:19:35,180 --> 00:19:38,108
+description, buffer that the
+device, places on the ring
+
+407
+00:19:38,108 --> 00:19:40,220
+that has information about, you know,
+
+408
+00:19:40,220 --> 00:19:43,110
+what size of the packet
+that was just received this.
+
+409
+00:19:43,110 --> 00:19:44,640
+So this is not the packet itself.
+
+410
+00:19:44,640 --> 00:19:46,780
+This is metadata about the packet
+
+411
+00:19:46,780 --> 00:19:48,680
+that the device itself constructs.
+
+412
+00:19:48,680 --> 00:19:50,040
+And we want to force that.
+
+413
+00:19:50,040 --> 00:19:53,160
+So what we do is we jump in
+just after that RX description
+
+414
+00:19:53,160 --> 00:19:55,930
+buffer was received from the ring.
+
+415
+00:19:55,930 --> 00:19:58,500
+We will start fuzzing there,
+and we want to stop fuzzing
+
+416
+00:19:58,500 --> 00:20:00,905
+when loop, loops around.
+
+417
+00:20:00,905 --> 00:20:05,420
+We also have a harness stop
+when that loop breaks out.
+
+418
+00:20:05,420 --> 00:20:06,623
+That's not shown here.
+
+419
+00:20:07,550 --> 00:20:09,777
+So using this harness, we
+found the following bug,
+
+420
+00:20:09,777 --> 00:20:12,291
+we get a kasan loop pointer D reference
+
+421
+00:20:12,291 --> 00:20:14,291
+in a function called gro_pul_from_frag0.
+
+422
+00:20:15,225 --> 00:20:19,103
+All right, for the, you
+also get a helpful stack
+
+423
+00:20:19,103 --> 00:20:22,390
+called trace wherever
+you see that, you know,
+
+424
+00:20:22,390 --> 00:20:23,287
+there's kasan report.
+
+425
+00:20:23,287 --> 00:20:25,390
+And just before that, there's a mem copy.
+
+426
+00:20:25,390 --> 00:20:28,940
+So gro_pull _from _frag0 calls, mem copy.
+
+427
+00:20:28,940 --> 00:20:32,283
+All right, let's take a
+look at their function.
+
+428
+00:20:33,170 --> 00:20:36,230
+It turns out that this
+is not in IGB itself.
+
+429
+00:20:36,230 --> 00:20:40,240
+This is in net/core/dev.c
+
+430
+00:20:40,240 --> 00:20:44,163
+So this is some deep layer of
+the Linux networking stack,
+
+431
+00:20:45,110 --> 00:20:48,440
+very, receives this SKB buff structure,
+
+432
+00:20:48,440 --> 00:20:52,700
+and does a mem copy from
+one place to another.
+
+433
+00:20:52,700 --> 00:20:56,030
+We have no clue what those
+are, but this mem copy,
+
+434
+00:20:56,030 --> 00:20:58,040
+obviously trips on Upointer D reference.
+
+435
+00:20:58,040 --> 00:21:00,790
+So it's either the
+source or the destination
+
+436
+00:21:00,790 --> 00:21:05,760
+is corrupt and it got
+corrupted because, you know,
+
+437
+00:21:05,760 --> 00:21:09,563
+the fuzzer found a way to corrupt it.
+
+438
+00:21:10,740 --> 00:21:12,930
+So at this point, the idea I had
+
+439
+00:21:12,930 --> 00:21:15,730
+was all right let's take a look, you know,
+
+440
+00:21:15,730 --> 00:21:18,956
+which one of these
+pointers is the corporate.
+
+441
+00:21:18,956 --> 00:21:22,452
+We would want to stop the
+execution of a VM fork
+
+442
+00:21:22,452 --> 00:21:23,660
+for just that, at the mem copy.
+
+443
+00:21:23,660 --> 00:21:27,087
+So we would be able to take
+a look at the state of the VM
+
+444
+00:21:27,087 --> 00:21:30,980
+and the registers that
+contain those pointers
+
+445
+00:21:30,980 --> 00:21:32,580
+to see which one is no.
+
+446
+00:21:32,580 --> 00:21:36,853
+So we want to stop the
+execution at that mem copy.
+
+447
+00:21:38,240 --> 00:21:42,233
+The way we do this, it
+has a couple of steps,
+
+448
+00:21:44,570 --> 00:21:47,830
+and we need a couple bits
+of information for it.
+
+449
+00:21:47,830 --> 00:21:49,870
+First of all, we want to figure out,
+
+450
+00:21:49,870 --> 00:21:52,660
+you know, what it is the
+address of kasan report,
+
+451
+00:21:52,660 --> 00:21:56,350
+because that's where we want to execute
+
+452
+00:21:56,350 --> 00:22:00,453
+that VM op tail using single stepping,
+
+453
+00:22:01,920 --> 00:22:04,300
+because just before
+kasan report is reached,
+
+454
+00:22:04,300 --> 00:22:06,250
+obviously we will have the mem copy.
+
+455
+00:22:06,250 --> 00:22:09,460
+So what we do is we just execute
+
+456
+00:22:10,870 --> 00:22:14,790
+the VM with that crashing input.
+
+457
+00:22:14,790 --> 00:22:17,500
+And we see that kasan
+report is indeed tripped
+
+458
+00:22:17,500 --> 00:22:18,886
+and we see the virtual address
+
+459
+00:22:18,886 --> 00:22:22,400
+of that function kasan
+report where that is.
+
+460
+00:22:22,400 --> 00:22:25,430
+So we want to, at this
+point, create a VM fork
+
+461
+00:22:25,430 --> 00:22:28,670
+place that buffer that we know
+
+462
+00:22:28,670 --> 00:22:32,400
+that will trip kasan
+report into that memory.
+
+463
+00:22:32,400 --> 00:22:35,530
+So we will use this tool called RW mem,
+
+464
+00:22:35,530 --> 00:22:37,710
+and we were able to ride
+the contents of that file
+
+465
+00:22:37,710 --> 00:22:39,523
+into the target buffer.
+
+466
+00:22:44,640 --> 00:22:48,343
+And that will allow us to execute this VM,
+
+467
+00:22:49,470 --> 00:22:53,852
+to reach the crashing input
+and record what happened.
+
+468
+00:22:53,852 --> 00:22:57,030
+Obviously we could use
+processor trace as well for it,
+
+469
+00:22:57,030 --> 00:22:59,440
+but I found single stepping
+to be just as effective.
+
+470
+00:22:59,440 --> 00:23:02,920
+And it's a little less convoluted.
+
+471
+00:23:02,920 --> 00:23:06,200
+So now we have that VM fork
+set up with that crushing
+
+472
+00:23:06,200 --> 00:23:07,690
+input the injected into this memory.
+
+473
+00:23:07,690 --> 00:23:09,970
+So now we just use the tool stepper
+
+474
+00:23:09,970 --> 00:23:14,587
+that will who's MTF, single,
+stepping to go all the way
+
+475
+00:23:14,587 --> 00:23:18,600
+and stop at the virtual
+address of kasan report
+
+476
+00:23:18,600 --> 00:23:20,100
+when that's reached.
+
+477
+00:23:20,100 --> 00:23:23,283
+And we will put that
+output of that into a file.
+
+478
+00:23:24,330 --> 00:23:27,270
+And if you take a look at
+what this file contains,
+
+479
+00:23:27,270 --> 00:23:28,820
+so this is effectively just the,
+
+480
+00:23:28,820 --> 00:23:31,568
+this assembly of each
+instruction that executed,
+
+481
+00:23:31,568 --> 00:23:34,850
+and this reaches kasan report at the end.
+
+482
+00:23:34,850 --> 00:23:37,642
+So there's a ton of instructions in there
+
+483
+00:23:37,642 --> 00:23:40,950
+just looking at that
+is not all that helpful
+
+484
+00:23:40,950 --> 00:23:42,690
+for the task that you're trying to do.
+
+485
+00:23:42,690 --> 00:23:44,710
+But what we can take from that is
+
+486
+00:23:44,710 --> 00:23:47,775
+really just dig the instruction
+pointers that were observed
+
+487
+00:23:47,775 --> 00:23:51,300
+and translate it using
+the kernels debug singles,
+
+488
+00:23:51,300 --> 00:23:53,130
+using address De wine,
+
+489
+00:23:53,130 --> 00:23:55,090
+that will actually get as the source lines
+
+490
+00:23:55,090 --> 00:23:59,410
+of what each of those
+instructions actually are.
+
+491
+00:23:59,410 --> 00:24:02,090
+So now, if you take a
+look at this decoded log,
+
+492
+00:24:02,090 --> 00:24:04,180
+what you'll see is that
+each instruction pointer
+
+493
+00:24:04,180 --> 00:24:06,970
+and what you know, source
+line corresponds to.
+
+494
+00:24:06,970 --> 00:24:09,730
+So at the bottom of this
+file, we see immediately,
+
+495
+00:24:09,730 --> 00:24:11,750
+are XO gro_from_pull0 is
+the mem copy from flag zero
+
+496
+00:24:11,750 --> 00:24:13,210
+is, and there is the mem copy that trips,
+
+497
+00:24:13,210 --> 00:24:14,270
+the move pointer D reference.
+
+498
+00:24:14,270 --> 00:24:15,990
+So I just take the last instruction.
+
+499
+00:24:15,990 --> 00:24:18,881
+That's still at the mem copy
+before kasan report trips.
+
+500
+00:24:18,881 --> 00:24:23,881
+And I want to re execute that
+VM to stop at that men copy
+
+501
+00:24:24,487 --> 00:24:26,331
+and the last instruction in that mem copy
+
+502
+00:24:26,331 --> 00:24:30,510
+to be able to see, you know,
+what the register state is.
+
+503
+00:24:30,510 --> 00:24:32,628
+So again, I just got a fork.
+
+504
+00:24:32,628 --> 00:24:36,430
+I use RWN same way I did before
+
+505
+00:24:36,430 --> 00:24:38,674
+and just change the domain ID.
+
+506
+00:24:38,674 --> 00:24:42,710
+And now I want to stop on this address,
+
+507
+00:24:42,710 --> 00:24:44,770
+which is the mem copies address.
+
+508
+00:24:44,770 --> 00:24:46,290
+I don't actually have to save the output
+
+509
+00:24:46,290 --> 00:24:47,796
+because I know where it's going,
+
+510
+00:24:47,796 --> 00:24:52,796
+but now this domain ID 61
+is paused at that mem copy.
+
+511
+00:24:52,840 --> 00:24:55,788
+So I can just go and take a
+look at the register a state,
+
+512
+00:24:55,788 --> 00:24:58,950
+take a look at the source pointer or OSI
+
+513
+00:24:58,950 --> 00:25:03,560
+is the register that
+holds the source pointer,
+
+514
+00:25:03,560 --> 00:25:06,573
+in this case, an RDI
+pulls the destination one.
+
+515
+00:25:08,350 --> 00:25:12,094
+Oh, well, it kind of looks like
+both source and destination
+
+516
+00:25:12,094 --> 00:25:15,150
+in that mem copy is a no pointer.
+
+517
+00:25:15,150 --> 00:25:16,572
+So they're both corrupted.
+
+518
+00:25:16,572 --> 00:25:21,572
+So this approach did not
+really yield us anything
+
+519
+00:25:21,791 --> 00:25:25,370
+that we could use to
+figure out what went wrong
+
+520
+00:25:25,370 --> 00:25:30,370
+since it looks like that entire
+SKB buffer is just bogus.
+
+521
+00:25:30,720 --> 00:25:33,690
+So what else can we do?
+
+522
+00:25:33,690 --> 00:25:37,120
+Well, the idea is that, well,
+
+523
+00:25:37,120 --> 00:25:41,700
+if we can't figure out just
+the mem copy what went wrong
+
+524
+00:25:41,700 --> 00:25:45,310
+at the location where the bulk trips is,
+
+525
+00:25:45,310 --> 00:25:49,662
+we can compare the execution
+that goes to kasan report
+
+526
+00:25:49,662 --> 00:25:53,630
+with the execution that is normal.
+
+527
+00:25:53,630 --> 00:25:58,335
+So we can take the normal input
+that was used as the seed.
+
+528
+00:25:58,335 --> 00:26:01,380
+We know that this is the
+input that the kernel
+
+529
+00:26:01,380 --> 00:26:04,030
+would have executed with normally,
+
+530
+00:26:04,030 --> 00:26:05,943
+and that does not cause a crash.
+
+531
+00:26:06,890 --> 00:26:10,013
+We see that it reaches
+the harness signal finish.
+
+532
+00:26:12,490 --> 00:26:14,780
+So we will just create a fork from that
+
+533
+00:26:14,780 --> 00:26:18,183
+use stepper to go all the
+way to the end harness,
+
+534
+00:26:19,340 --> 00:26:22,443
+just as we did before,
+you'll stop on this address,
+
+535
+00:26:23,660 --> 00:26:26,303
+save the output to a lock file.
+
+536
+00:26:32,160 --> 00:26:34,270
+Now we can take the instruction pointers
+
+537
+00:26:34,270 --> 00:26:35,960
+from this lock file, decode it,
+
+538
+00:26:35,960 --> 00:26:37,410
+using the address to De Wine.
+
+539
+00:26:38,890 --> 00:26:40,990
+Save that as well.
+
+540
+00:26:40,990 --> 00:26:42,660
+And now we have the decoded log
+
+541
+00:26:42,660 --> 00:26:45,837
+for both the execution
+that goes to kasan report.
+
+542
+00:26:45,837 --> 00:26:50,837
+And that goes to the end harness
+and we can just diff them.
+
+543
+00:26:50,850 --> 00:26:52,500
+The very first line in this diff
+
+544
+00:26:52,500 --> 00:26:54,870
+is going to be, or the execution diverge
+
+545
+00:26:54,870 --> 00:26:56,510
+is from the normal one.
+
+546
+00:26:56,510 --> 00:27:01,150
+And we have the source line,
+and just go straight there,
+
+547
+00:27:01,150 --> 00:27:03,760
+look at the code and bam,
+
+548
+00:27:03,760 --> 00:27:07,742
+this is the first line in this
+execution that only happens
+
+549
+00:27:07,742 --> 00:27:12,742
+when the fuzzer with the
+input that the fuzzer found.
+
+550
+00:27:13,710 --> 00:27:16,980
+So it turns out that the SKB buffer
+
+551
+00:27:16,980 --> 00:27:18,790
+is constructed by the driver
+
+552
+00:27:18,790 --> 00:27:21,710
+and it's being passed to, you know,
+
+553
+00:27:21,710 --> 00:27:25,238
+those deeper layer kernel subsystems,
+
+554
+00:27:25,238 --> 00:27:27,980
+but the way it gets constructed here
+
+555
+00:27:27,980 --> 00:27:29,310
+is based on information
+
+556
+00:27:29,310 --> 00:27:33,343
+that came from that RX
+description buffer and it's bogus.
+
+557
+00:27:34,406 --> 00:27:36,270
+So obviously what needs to happen
+
+558
+00:27:36,270 --> 00:27:38,130
+is that even if the
+Aurizon description buffer
+
+559
+00:27:38,130 --> 00:27:41,720
+says that, oh, there is this bit set.
+
+560
+00:27:41,720 --> 00:27:43,920
+There needs to be a little
+bit more sanity the checking
+
+561
+00:27:43,920 --> 00:27:48,920
+in place before that SKB
+structure is manipulated.
+
+562
+00:27:48,970 --> 00:27:50,971
+So if you actually look
+at the latest kernel code,
+
+563
+00:27:50,971 --> 00:27:52,828
+you'll find that this code has been fixed
+
+564
+00:27:52,828 --> 00:27:54,150
+and it's effectively,
+
+565
+00:27:54,150 --> 00:27:56,720
+it was just missing a sanity check on data
+
+566
+00:27:56,720 --> 00:27:58,833
+that was coming from from DMA.
+
+567
+00:28:00,886 --> 00:28:04,131
+All right, let's look at a
+couple more bugs just for fun.
+
+568
+00:28:04,131 --> 00:28:05,863
+Can you spot the bug here?
+
+569
+00:28:15,030 --> 00:28:16,203
+How about this one?
+
+570
+00:28:20,100 --> 00:28:23,610
+If you ever notice yet, but
+kind of the team of these bugs
+
+571
+00:28:23,610 --> 00:28:25,321
+is about the same.
+
+572
+00:28:25,321 --> 00:28:27,090
+You got some DMA source,
+
+573
+00:28:27,090 --> 00:28:31,710
+input that is used
+without input validation,
+
+574
+00:28:31,710 --> 00:28:36,710
+and just is used for
+whatever the kernel decides
+
+575
+00:28:36,960 --> 00:28:38,110
+in this case, for example.
+
+576
+00:28:38,110 --> 00:28:41,080
+This is used as the slot ID
+is derived from DMA memory
+
+577
+00:28:41,080 --> 00:28:43,380
+and is used for the RA index.
+
+578
+00:28:43,380 --> 00:28:45,093
+Well, what can go wrong there?
+
+579
+00:28:46,326 --> 00:28:49,333
+So yeah, we found nine
+null pointer D references,
+
+580
+00:28:49,333 --> 00:28:51,810
+three array index out-of-bounds.
+
+581
+00:28:51,810 --> 00:28:55,877
+We found some infinite loops
+in the interrupt handlers,
+
+582
+00:28:55,877 --> 00:28:57,276
+but also (indistinct)
+
+583
+00:28:57,276 --> 00:29:01,080
+the kernel contributed
+user memory access as well,
+
+584
+00:29:01,080 --> 00:29:02,933
+which is not great.
+
+585
+00:29:03,900 --> 00:29:08,490
+And these are all pretty much
+stem from the same problem
+
+586
+00:29:08,490 --> 00:29:11,740
+and that the kernel does
+not treat DMA memory
+
+587
+00:29:11,740 --> 00:29:13,113
+as a security boundary,
+
+588
+00:29:13,988 --> 00:29:17,630
+DMA memory is kind of treated trusted.
+
+589
+00:29:17,630 --> 00:29:21,420
+And consequently, it means
+that all of these devices
+
+590
+00:29:21,420 --> 00:29:23,060
+are treated trusted.
+
+591
+00:29:23,060 --> 00:29:25,880
+And when you are talking
+about USB devices,
+
+592
+00:29:25,880 --> 00:29:29,860
+well, it's not great that all USB devices
+
+593
+00:29:29,860 --> 00:29:32,293
+are treated like that.
+
+594
+00:29:35,090 --> 00:29:38,339
+Not a problem case that
+we want it to look at
+
+595
+00:29:38,339 --> 00:29:43,339
+is when these kernel codes
+might perform double fetches.
+
+596
+00:29:43,784 --> 00:29:48,240
+Double fetches is
+effectively a race condition
+
+597
+00:29:48,240 --> 00:29:50,700
+where you can read, you can have problems
+
+598
+00:29:50,700 --> 00:29:53,860
+where you have time of
+check, the time of use,
+
+599
+00:29:53,860 --> 00:29:55,220
+where the kernel is performing
+
+600
+00:29:55,220 --> 00:29:57,430
+even if it did perform some sanity checks
+
+601
+00:29:57,430 --> 00:29:58,801
+on memory that's DMA.
+
+602
+00:29:58,801 --> 00:30:03,060
+The problem would be that
+even if you do sanity checks
+
+603
+00:30:03,060 --> 00:30:06,830
+on DMA accessible memory,
+by the time you finish,
+
+604
+00:30:06,830 --> 00:30:11,140
+your sanity checks, the data
+might have changed underneath
+
+605
+00:30:11,140 --> 00:30:14,590
+because the device has
+access to that same memory.
+
+606
+00:30:14,590 --> 00:30:17,204
+So if it wins the race, you
+might finish security checks,
+
+607
+00:30:17,204 --> 00:30:19,999
+but the data is still corrupt.
+
+608
+00:30:19,999 --> 00:30:23,450
+So obviously we would want
+it to detect if that happens.
+
+609
+00:30:23,450 --> 00:30:24,870
+And the idea was to, okay,
+
+610
+00:30:24,870 --> 00:30:28,075
+let's remove EPQ permission from DMA pages
+
+611
+00:30:28,075 --> 00:30:32,480
+and just create a record of run DMA pages
+
+612
+00:30:32,480 --> 00:30:33,380
+are being accessed.
+
+613
+00:30:33,380 --> 00:30:35,412
+And if it's, you know,
+if we get a page fault
+
+614
+00:30:35,412 --> 00:30:38,759
+where the kernel is reading
+some address from DMA,
+
+615
+00:30:38,759 --> 00:30:42,120
+and it's the same page, be the
+same offset twice in a row.
+
+616
+00:30:42,120 --> 00:30:45,386
+That's the strict as the
+definition of a double fetch.
+
+617
+00:30:45,386 --> 00:30:48,170
+We can detect that and report
+that as a crash through AFL.
+
+618
+00:30:48,170 --> 00:30:49,933
+So we can go and take a look
+at the code to see, you know,
+
+619
+00:30:49,933 --> 00:30:53,263
+whether to the double
+fetches, a security concern.
+
+620
+00:30:54,890 --> 00:30:57,130
+We taught it would be rare,
+
+621
+00:30:57,130 --> 00:31:00,453
+but it turns out that it
+happens all over the place.
+
+622
+00:31:01,860 --> 00:31:06,670
+Some kernel drivers, three
+DMA memory, as you know,
+
+623
+00:31:06,670 --> 00:31:07,540
+totally trusted.
+
+624
+00:31:07,540 --> 00:31:09,240
+So they would just keep going back
+
+625
+00:31:09,240 --> 00:31:13,999
+and fetching the same
+memory left and right,
+
+626
+00:31:13,999 --> 00:31:17,460
+but so far we haven't found a strictly
+
+627
+00:31:17,460 --> 00:31:18,660
+speaking security issue
+
+628
+00:31:18,660 --> 00:31:20,470
+because it turns out that, you know,
+
+629
+00:31:20,470 --> 00:31:22,530
+the same byte is being fetched,
+
+630
+00:31:22,530 --> 00:31:25,548
+but different bits are used from that byte
+
+631
+00:31:25,548 --> 00:31:27,860
+so, far it hasn't looked dangerous,
+
+632
+00:31:27,860 --> 00:31:31,890
+but obviously this practice
+of just treating DMA memory
+
+633
+00:31:31,890 --> 00:31:35,450
+is bad and it needs to change,
+
+634
+00:31:35,450 --> 00:31:37,800
+but we've received considerable pushback
+
+635
+00:31:37,800 --> 00:31:41,250
+from kernel maintainers
+for various reasons,
+
+636
+00:31:41,250 --> 00:31:45,423
+performance regressions, you
+know, fewer of regressions,
+
+637
+00:31:46,260 --> 00:31:51,260
+but ultimately to close
+this class of bugs,
+
+638
+00:31:52,680 --> 00:31:55,460
+DMA memories should really
+be treated the same way
+
+639
+00:31:55,460 --> 00:31:56,930
+as user space memory is like,
+
+640
+00:31:56,930 --> 00:31:59,818
+every DMA memory should get
+copied into a local buffer
+
+641
+00:31:59,818 --> 00:32:02,579
+before, you know, being
+used by the kernel.
+
+642
+00:32:02,579 --> 00:32:06,073
+And that's absolutely not the case today.
+
+643
+00:32:08,328 --> 00:32:11,030
+All right, so we found a bunch of bugs.
+
+644
+00:32:11,030 --> 00:32:13,113
+We fixed them mission accomplished.
+
+645
+00:32:14,660 --> 00:32:15,889
+Not so fast.
+
+646
+00:32:15,889 --> 00:32:20,350
+As you recall, the way we
+found the DMA input points
+
+647
+00:32:20,350 --> 00:32:24,100
+was just through reading the source code
+
+648
+00:32:24,100 --> 00:32:25,750
+and doing some experiments
+with afterwards,
+
+649
+00:32:25,750 --> 00:32:28,270
+but there was this
+lingering feeling of like,
+
+650
+00:32:28,270 --> 00:32:31,280
+hey, did they really discover
+all DMA input points?
+
+651
+00:32:31,280 --> 00:32:35,900
+Like, you know, what data do
+we have to back that argument?
+
+652
+00:32:35,900 --> 00:32:39,000
+And I mean, we had a bunch
+of people look at the code,
+
+653
+00:32:39,000 --> 00:32:41,010
+so that gave us some
+confidence, but, you know,
+
+654
+00:32:41,010 --> 00:32:42,783
+we can put a number on it.
+
+655
+00:32:42,783 --> 00:32:44,860
+We also got bogged down by, you know,
+
+656
+00:32:44,860 --> 00:32:47,120
+just documenting all the bugs we found.
+
+657
+00:32:47,120 --> 00:32:50,730
+And at some point it
+just became nonproductive
+
+658
+00:32:50,730 --> 00:32:54,610
+to keep staring at the code
+because it was just annoying.
+
+659
+00:32:54,610 --> 00:32:56,403
+So, let's do better.
+
+660
+00:32:58,430 --> 00:33:00,026
+This tool called DMA monitor.
+
+661
+00:33:00,026 --> 00:33:04,990
+We added to the project
+to be a standalone EPP
+
+662
+00:33:04,990 --> 00:33:06,030
+fault monitoring tool.
+
+663
+00:33:06,030 --> 00:33:07,640
+So this effectively came after,
+
+664
+00:33:07,640 --> 00:33:09,630
+the double fetch deduction code was added.
+
+665
+00:33:09,630 --> 00:33:12,860
+And the idea is that if we
+can already detect when DMA
+
+666
+00:33:12,860 --> 00:33:14,960
+is being accessed for double fetches,
+
+667
+00:33:14,960 --> 00:33:19,840
+well, we can use the same
+approach to detect when DMA
+
+668
+00:33:19,840 --> 00:33:21,010
+is being accessed that all.
+
+669
+00:33:21,010 --> 00:33:25,120
+We can really just trace
+who is accessing DMA
+
+670
+00:33:25,120 --> 00:33:27,760
+and where by using EPP faults.
+
+671
+00:33:27,760 --> 00:33:31,583
+The only thing we need is to
+know where the DMA pages are.
+
+672
+00:33:32,420 --> 00:33:36,010
+Fortunately, the Linux kernel
+has its own internal DMA API
+
+673
+00:33:36,010 --> 00:33:37,690
+that all kernel modules
+
+674
+00:33:37,690 --> 00:33:42,690
+should be using to set up DMA for devices.
+
+675
+00:33:42,920 --> 00:33:45,580
+And then that there is a
+function that is used to allocate
+
+676
+00:33:45,580 --> 00:33:49,169
+memory to be used for
+DNA, DMA LL contributes.
+
+677
+00:33:49,169 --> 00:33:52,170
+We can hook that function
+using a break points
+
+678
+00:33:52,170 --> 00:33:55,580
+through the hypervisor and
+hope the return address
+
+679
+00:33:55,580 --> 00:33:56,840
+when the function finishes,
+
+680
+00:33:56,840 --> 00:34:01,086
+and that will get us the
+virtual address of all pages
+
+681
+00:34:01,086 --> 00:34:03,670
+that the kernel uses for DMA.
+
+682
+00:34:03,670 --> 00:34:05,780
+And then we can just
+remove the APQ permission
+
+683
+00:34:05,780 --> 00:34:07,326
+for all those pages on the fly
+
+684
+00:34:07,326 --> 00:34:10,810
+effectively, giving us a way
+to log all the coats sides
+
+685
+00:34:10,810 --> 00:34:14,760
+that read from DMA as
+the kernel is running.
+
+686
+00:34:14,760 --> 00:34:17,430
+So let's take a look at
+how this works in practice.
+
+687
+00:34:17,430 --> 00:34:20,076
+I'm booting up a, the same VM
+
+688
+00:34:20,076 --> 00:34:22,895
+and on the right I'm
+firing up DMA monitor.
+
+689
+00:34:22,895 --> 00:34:26,693
+I just tell it, you
+know, what is the domain.
+
+690
+00:34:26,693 --> 00:34:30,770
+What is the debug Jason of the kernel
+
+691
+00:34:30,770 --> 00:34:34,420
+is the EMI Alec attributes
+is hooked as the kernel
+
+692
+00:34:34,420 --> 00:34:36,840
+is booting and then we
+pretty much immediately
+
+693
+00:34:36,840 --> 00:34:39,520
+start to see a ton of DMAX as is happening
+
+694
+00:34:40,470 --> 00:34:42,780
+as the currently still booting.
+
+695
+00:34:42,780 --> 00:34:45,140
+As you can see, there
+are quite a few pages
+
+696
+00:34:45,140 --> 00:34:47,150
+allocated for DMA,
+
+697
+00:34:47,150 --> 00:34:49,600
+and we can grab through that log
+
+698
+00:34:49,600 --> 00:34:50,650
+and see when it's, you know,
+
+699
+00:34:50,650 --> 00:34:53,490
+the access is just to read access.
+
+700
+00:34:53,490 --> 00:34:55,890
+We can take the instruction
+pointer for each
+
+701
+00:34:55,890 --> 00:34:59,270
+sort through them and
+just take the unique ones.
+
+702
+00:34:59,270 --> 00:35:01,510
+There's still a ton of
+them, but, you know,
+
+703
+00:35:01,510 --> 00:35:03,540
+we can feed this through addressed line
+
+704
+00:35:03,540 --> 00:35:07,070
+to getting you know, explicit
+list of all the places
+
+705
+00:35:07,070 --> 00:35:10,053
+that the kernel touched DMA from.
+
+706
+00:35:11,070 --> 00:35:15,400
+So, this is quite a few places,
+
+707
+00:35:15,400 --> 00:35:18,810
+but at least now we have an
+explicit list that we need to go
+
+708
+00:35:18,810 --> 00:35:21,930
+through and take a look
+and see, you know, better.
+
+709
+00:35:21,930 --> 00:35:25,010
+The data that is being read
+from DMA at these locations
+
+710
+00:35:25,010 --> 00:35:28,100
+is complex enough to warrant
+fuzzing, which is awesome.
+
+711
+00:35:28,100 --> 00:35:30,580
+They didn't have to
+look at the source code
+
+712
+00:35:30,580 --> 00:35:32,350
+to figure out where to start.
+
+713
+00:35:32,350 --> 00:35:35,140
+So this is, you know, miles better
+
+714
+00:35:35,140 --> 00:35:36,710
+than what we were doing before.
+
+715
+00:35:36,710 --> 00:35:40,990
+Because we have the list that
+we have to take a look at
+
+716
+00:35:40,990 --> 00:35:42,363
+instead of having to keep, you know,
+
+717
+00:35:42,363 --> 00:35:44,440
+parsing everything in the kernel
+
+718
+00:35:44,440 --> 00:35:46,743
+to see if that's DMAX to not.
+
+719
+00:35:49,290 --> 00:35:51,565
+There were some still corner cases,
+
+720
+00:35:51,565 --> 00:35:54,310
+the DMA monitor either
+though it's way better
+
+721
+00:35:54,310 --> 00:35:56,019
+than what we were doing before.
+
+722
+00:35:56,019 --> 00:35:59,740
+And that's because some of
+the times the DMA access
+
+723
+00:35:59,740 --> 00:36:01,960
+that's the kernel is doing is just reading
+
+724
+00:36:01,960 --> 00:36:05,730
+something from DMA and
+stashing it some structure
+
+725
+00:36:05,730 --> 00:36:08,930
+and returning, and then
+the kernel is going away
+
+726
+00:36:08,930 --> 00:36:09,950
+and doing something else.
+
+727
+00:36:09,950 --> 00:36:11,160
+So we were like, okay, well,
+
+728
+00:36:11,160 --> 00:36:15,380
+where is that data going to
+get used after the DMA access,
+
+729
+00:36:15,380 --> 00:36:17,320
+nothing warranted fuzzing,
+
+730
+00:36:17,320 --> 00:36:20,840
+but that data is still
+sitting now in the kernel
+
+731
+00:36:20,840 --> 00:36:22,610
+in private kernel memory,
+
+732
+00:36:22,610 --> 00:36:25,760
+but it's still can be
+potentially malicious.
+
+733
+00:36:25,760 --> 00:36:27,930
+So, you know, where is it
+getting used and is it safe?
+
+734
+00:36:27,930 --> 00:36:30,503
+And we were like, well, you have no idea.
+
+735
+00:36:32,483 --> 00:36:34,100
+We didn't want to go back
+and reading the source code.
+
+736
+00:36:34,100 --> 00:36:38,680
+Cause it's very hard to follow
+that type of data, you know,
+
+737
+00:36:38,680 --> 00:36:40,050
+life cycle in the kernel.
+
+738
+00:36:40,050 --> 00:36:43,958
+And it's very hopeful and
+it's very manual and annoying.
+
+739
+00:36:43,958 --> 00:36:48,060
+So that's where this
+next tool idea came from
+
+740
+00:36:48,060 --> 00:36:51,300
+that we call full-VM taint analysis.
+
+741
+00:36:51,300 --> 00:36:55,090
+The goal is to really just
+track the tainted data
+
+742
+00:36:55,090 --> 00:36:56,190
+propagation into the kernel.
+
+743
+00:36:56,190 --> 00:36:57,353
+We know where the data is coming from.
+
+744
+00:36:57,353 --> 00:36:59,922
+We have the source, that's the DMA access.
+
+745
+00:36:59,922 --> 00:37:03,050
+So we want to obtain that
+address and track, you know,
+
+746
+00:37:03,050 --> 00:37:04,560
+what the currently is doing with that data
+
+747
+00:37:04,560 --> 00:37:05,920
+and where that data lands
+
+748
+00:37:05,920 --> 00:37:07,490
+and when you know how it affects
+
+749
+00:37:07,490 --> 00:37:09,200
+the execution of the kernel.
+
+750
+00:37:09,200 --> 00:37:14,190
+We old views of young trace
+inter processor trace record
+
+751
+00:37:14,190 --> 00:37:17,482
+the execution of the kernel
+with very low overhead.
+
+752
+00:37:17,482 --> 00:37:19,719
+And after some time,
+
+753
+00:37:19,719 --> 00:37:22,190
+replay that record of
+the instruction stream
+
+754
+00:37:22,190 --> 00:37:24,630
+through the Triton DBIS state engine.
+
+755
+00:37:24,630 --> 00:37:26,310
+So that's a separate open source project.
+
+756
+00:37:26,310 --> 00:37:28,890
+That's really awesome
+to be integrated with.
+
+757
+00:37:28,890 --> 00:37:30,454
+And that will tell us, you know,
+
+758
+00:37:30,454 --> 00:37:33,650
+what the instruction pointer
+is get tainted by the data
+
+759
+00:37:33,650 --> 00:37:36,000
+that we just read from DMA.
+
+760
+00:37:36,000 --> 00:37:38,270
+And that will tell us, you
+know, all the locations
+
+761
+00:37:38,270 --> 00:37:40,130
+where the control flow of the kernel
+
+762
+00:37:40,130 --> 00:37:42,263
+depends on tainted data.
+
+763
+00:37:44,100 --> 00:37:46,513
+So let's take a look at this as well.
+
+764
+00:37:47,490 --> 00:37:50,990
+Here's a VM fork that I know
+will perform with the VM
+
+765
+00:37:50,990 --> 00:37:53,270
+access at this page.
+
+766
+00:37:53,270 --> 00:37:57,023
+So I have you'll fire
+up DMA monitor on it.
+
+767
+00:37:57,023 --> 00:37:59,330
+I don't pause it then just be seen
+
+768
+00:37:59,330 --> 00:38:01,812
+you know, there's a single
+DMA access to that page
+
+769
+00:38:01,812 --> 00:38:04,620
+where something was read out from the DMA
+
+770
+00:38:04,620 --> 00:38:06,720
+and stored somewhere in the kernel.
+
+771
+00:38:06,720 --> 00:38:08,750
+So if you don't know, you know,
+
+772
+00:38:08,750 --> 00:38:12,070
+at this point like where else
+that data is getting used.
+
+773
+00:38:12,070 --> 00:38:16,140
+So now the idea is to use
+VM taint to figure it out.
+
+774
+00:38:16,140 --> 00:38:18,780
+Maybe he'll use VM taint
+to save the state first.
+
+775
+00:38:18,780 --> 00:38:20,560
+So this saves the stack and the resistors
+
+776
+00:38:20,560 --> 00:38:22,683
+of the starting point into a file
+
+777
+00:38:22,683 --> 00:38:24,770
+that we will need for the taint engine
+
+778
+00:38:24,770 --> 00:38:26,283
+to create another fork.
+
+779
+00:38:27,220 --> 00:38:32,130
+We start the collection of
+the processor trays buffer.
+
+780
+00:38:32,130 --> 00:38:33,590
+If I get into a file
+
+781
+00:38:37,550 --> 00:38:40,180
+and on pause the VM fork,
+
+782
+00:38:40,180 --> 00:38:43,570
+now it's running and it's
+recording the execution
+
+783
+00:38:43,570 --> 00:38:45,810
+into that buffer.
+
+784
+00:38:45,810 --> 00:38:48,550
+Now, we'd let it run for a second or two,
+
+785
+00:38:48,550 --> 00:38:53,270
+we pause it and we can start
+decoding that processor trace
+
+786
+00:38:53,270 --> 00:38:54,490
+and feed it through the taint engine
+
+787
+00:38:54,490 --> 00:38:58,310
+type into taint to,
+the taint that log file
+
+788
+00:38:58,310 --> 00:39:01,040
+and take a look while that is processing
+
+789
+00:39:01,040 --> 00:39:02,410
+what it found so far?
+
+790
+00:39:02,410 --> 00:39:04,540
+So right off the bat, we see, you know,
+
+791
+00:39:04,540 --> 00:39:07,420
+where that move copy of the data,
+
+792
+00:39:07,420 --> 00:39:09,860
+what register got tainted and from there,
+
+793
+00:39:09,860 --> 00:39:12,170
+you know, where else,
+what else got tainted
+
+794
+00:39:12,170 --> 00:39:13,651
+during the execution of the kernel.
+
+795
+00:39:13,651 --> 00:39:17,990
+And there we go, right of the
+bat, we can see, you know,
+
+796
+00:39:17,990 --> 00:39:19,691
+all the different instruction pointers
+
+797
+00:39:19,691 --> 00:39:23,960
+that got tainted from just
+that single DMA access.
+
+798
+00:39:23,960 --> 00:39:25,100
+And if you do this, you know,
+
+799
+00:39:25,100 --> 00:39:26,754
+for the boot of the kernel,
+
+800
+00:39:26,754 --> 00:39:31,754
+you can really check the full
+life cycle of DMA source data
+
+801
+00:39:33,380 --> 00:39:34,699
+through the execution of the kernel.
+
+802
+00:39:34,699 --> 00:39:38,290
+Without even having to open up
+the source code of the kernel
+
+803
+00:39:38,290 --> 00:39:41,360
+and just giving you right
+away, all the locations
+
+804
+00:39:41,360 --> 00:39:44,492
+that the control flow might
+depend on tainted data.
+
+805
+00:39:44,492 --> 00:39:46,090
+You go take a look.
+
+806
+00:39:46,090 --> 00:39:48,120
+If it's, you know, it
+looks complex enough,
+
+807
+00:39:48,120 --> 00:39:52,581
+you put the harness around it
+and you can start the fuzzer.
+
+808
+00:39:52,581 --> 00:39:56,500
+So this code is released
+as well as everything else.
+
+809
+00:39:56,500 --> 00:39:58,305
+Most of the code is upstream in Xen,
+
+810
+00:39:58,305 --> 00:40:00,777
+but this code you can grab from GitHub.
+
+811
+00:40:03,270 --> 00:40:06,445
+There're also a couple of
+goodies that I wanted to mention.
+
+812
+00:40:06,445 --> 00:40:10,659
+This is pretty new some of the targets
+
+813
+00:40:10,659 --> 00:40:13,320
+that we wanted to fuzz kind of difficult
+
+814
+00:40:13,320 --> 00:40:14,963
+to get working in a Xen VM.
+
+815
+00:40:15,960 --> 00:40:19,480
+So we came up with this way
+of being able to transplant
+
+816
+00:40:19,480 --> 00:40:24,460
+and the state of the system
+from one hypervisor to another.
+
+817
+00:40:24,460 --> 00:40:26,890
+So in this case, we can take the,
+
+818
+00:40:26,890 --> 00:40:29,190
+take a snapshot on QEMU/KVM or Simics,
+
+819
+00:40:29,190 --> 00:40:31,920
+and load it up on Xen because VM forks
+
+820
+00:40:31,920 --> 00:40:33,410
+really only need the CPU state
+
+821
+00:40:33,410 --> 00:40:38,410
+and the memory of your
+targets to be fuzzable.
+
+822
+00:40:38,586 --> 00:40:42,570
+So you can use all of
+those different hypervisors
+
+823
+00:40:42,570 --> 00:40:47,313
+to take a snapshot and loaded
+up on Xen and falls away.
+
+824
+00:40:49,404 --> 00:40:52,030
+A couple of things we want to work on next
+
+825
+00:40:52,030 --> 00:40:53,589
+or already are working on
+
+826
+00:40:53,589 --> 00:40:58,134
+top of the list is automation
+putting an end to end,
+
+827
+00:40:58,134 --> 00:41:00,340
+automated fuzzing system together
+
+828
+00:41:00,340 --> 00:41:01,950
+is what everyone is asking about.
+
+829
+00:41:01,950 --> 00:41:04,480
+So that's absolutely
+something we are looking at
+
+830
+00:41:05,430 --> 00:41:07,770
+would be also pretty
+awesome to capture systems
+
+831
+00:41:07,770 --> 00:41:11,460
+that using Intel DCI, which
+is a USB three bays debug
+
+832
+00:41:11,460 --> 00:41:14,220
+connection that you can attach
+through a bare metal system
+
+833
+00:41:14,220 --> 00:41:16,010
+and capture the full system state.
+
+834
+00:41:16,010 --> 00:41:19,160
+This would allow us to, you
+know, really fuzz any code
+
+835
+00:41:19,160 --> 00:41:22,500
+that runs on any system,
+including bios and SMM code.
+
+836
+00:41:22,500 --> 00:41:24,600
+So this would be pretty cool.
+
+837
+00:41:24,600 --> 00:41:27,620
+Well, other idea we have
+is creating the sense
+
+838
+00:41:27,620 --> 00:41:31,110
+if the ring zero mode tool
+adding nested virtualization
+
+839
+00:41:31,110 --> 00:41:33,530
+support, so we can force hypervisors,
+
+840
+00:41:33,530 --> 00:41:35,190
+obviously with Intel DCI.
+
+841
+00:41:35,190 --> 00:41:38,110
+We would be able to capture
+hypervisors state as well.
+
+842
+00:41:38,110 --> 00:41:41,510
+So that might not
+necessarily be a requirement,
+
+843
+00:41:41,510 --> 00:41:44,132
+but, you know, still
+would be cool to have.
+
+844
+00:41:44,132 --> 00:41:47,560
+And a couple of things I
+didn't cover in this talk
+
+845
+00:41:47,560 --> 00:41:51,840
+that are already possible using
+VM forking and all the tools
+
+846
+00:41:51,840 --> 00:41:53,410
+that are available open source,
+
+847
+00:41:53,410 --> 00:41:56,333
+like fuzzing, other operating
+systems, fuzzing Xen,
+
+848
+00:41:57,310 --> 00:41:59,649
+user space binary's are
+absolutely something you can,
+
+849
+00:41:59,649 --> 00:42:02,464
+you know, fuzz with this
+system, black box binary's
+
+850
+00:42:02,464 --> 00:42:03,830
+you know, even malware.
+
+851
+00:42:03,830 --> 00:42:05,380
+So if you're looking for ideas,
+
+852
+00:42:05,380 --> 00:42:08,013
+here's a couple of things
+that are already possible.
+
+853
+00:42:10,140 --> 00:42:12,563
+So thank you, that was my talk.
+
+854
+00:42:12,563 --> 00:42:16,790
+If you have any questions or
+comments, please reach out
+
+855
+00:42:16,790 --> 00:42:20,190
+and thanks goes through
+a whole bunch of people
+
+856
+00:42:20,190 --> 00:42:21,680
+who made this work possible.
+
+857
+00:42:21,680 --> 00:42:26,680
+So this was not a single person's job.
+
+858
+00:42:26,860 --> 00:42:29,290
+This was large teams working on this.
+
+859
+00:42:29,290 --> 00:42:31,240
+So thanks everyone for your involvement
+
+860
+00:42:31,240 --> 00:42:33,210
+and absolutely for the
+open source community
+
+861
+00:42:33,210 --> 00:42:36,570
+for releasing all the
+tools that make, you know,
+
+862
+00:42:36,570 --> 00:42:39,180
+rapid security development
+like this possible.
+
+863
+00:42:39,180 --> 00:42:42,757
+So, thanks, I hope you
+found some cool information
+
+864
+00:42:42,757 --> 00:42:45,240
+in this talk and you know,
+
+865
+00:42:45,240 --> 00:42:47,910
+the goal here is to get you to go out
+
+866
+00:42:47,910 --> 00:42:51,060
+and go fuzz the kernel,
+because we found some bugs,
+
+867
+00:42:51,060 --> 00:42:54,580
+but you come back there
+are more to be found.
+
+868
+00:42:54,580 --> 00:42:56,217
+So thank you.
+
+869
+00:42:56,217 --> 00:42:58,307
+Looking forward to your questions.
+

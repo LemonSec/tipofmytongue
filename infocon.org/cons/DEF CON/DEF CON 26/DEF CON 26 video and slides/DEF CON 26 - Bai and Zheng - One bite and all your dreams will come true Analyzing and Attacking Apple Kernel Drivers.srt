@@ -1,0 +1,893 @@
+﻿00:00:00.000-->00:00:05.005
+Our next speakers, 1 of them is
+returning, 1 of them is brand
+new. We have a little tradition
+
+00:00:07.007-->00:00:12.012
+for brand new speakers. So
+before we get started, we’re
+gonna do a shot. [audience
+
+00:00:20.020-->00:00:25.025
+applauds] Cheers >>Hello Hello.
+So good afternoon everyone.
+Today, today we will present a
+
+00:00:36.403-->00:00:41.408
+topic about ah, kernel security.
+1 bite and all your dreams will
+come true. Analyzing and
+
+00:00:43.844-->00:00:48.849
+attacking Apple kernel drivers.
+So ah, this is Bai Xiaolong. Um
+my name is Zheng Min. You can
+
+00:00:52.052-->00:00:57.057
+call me Spark. Ah we are Ph.D.’s
+and ah work for Alibaba. So here
+is the agenda. First we briefly
+
+00:01:02.829-->00:01:08.402
+introduce what is kernel driver?
+Then we talk about new
+vulnerabilities in Apple
+
+00:01:08.402-->00:01:15.242
+drivers. Ah, after that we will
+talk about obstacles in
+analyzing Apple drivers. And
+
+00:01:15.242-->00:01:20.247
+then introduce a new tool called
+Ryuk. For analyzing and fuzzing
+kernel drivers. So let’s start.
+
+00:01:27.587-->00:01:32.592
+First thing you should know is
+every driver in ah in kernel is
+in XNU is a kernel extension.
+
+00:01:34.661-->00:01:39.666
+They share a same space with the
+kernel. On MacOS, ah the drivers
+locate in the ah system
+
+00:01:43.170-->00:01:48.175
+libraries extensions. In IOS,
+drivers integrated with kernel
+in kernalcache. Uh, kernel
+
+00:01:53.981-->00:01:58.986
+drivers provide you the client
+which are kernel objects for
+drivers to provide service to
+
+00:02:01.088-->00:02:06.093
+programs in userspace. Also you
+userclient is interface between
+user-space applications and
+
+00:02:09.296-->00:02:14.301
+devices. In order to provide
+services, kern- ah userclients
+need to implement several
+
+00:02:19.172-->00:02:24.177
+callback methods like
+externalMethod,
+clientMemoryForType,
+
+00:02:24.177-->00:02:29.182
+registerNotificationPort, ah
+clientClose and so on. Ah the
+most important method, callback
+
+00:02:33.587-->00:02:38.592
+method, is ah ah externalMethod
+which provides the methods to
+userspace program. The selector
+
+00:02:41.662-->00:02:46.666
+is used to-to select method in
+userclient. Arguments are passed
+to the selected method. Ah,
+
+00:02:49.803-->00:02:54.808
+dispatch is ah struct-struct
+representing the method to be
+called. The target is a target
+
+00:02:57.911-->00:03:03.016
+userclient for the method to be
+called on. Reference is the
+result which is to be sent to
+
+00:03:03.016-->00:03:08.021
+the userspace. Ah, despite the
+strict ah, sandbox restriction,
+some userclients are still be
+
+00:03:12.592-->00:03:17.597
+accessible to sandboxed apps on
+IOS. For example, ah
+IOHIDLibUserClient and ah
+
+00:03:24.104-->00:03:29.543
+IOSurfaceRootUserClient. So now
+we will share some ah
+vulnerabilities we found in
+
+00:03:29.543-->00:03:34.548
+Apple drivers. Ah the first
+thing you should know is the
+driver is ah, the driver are
+
+00:03:37.184-->00:03:42.556
+good targets for exploiting the
+kernel because they share the
+same space with the kernel and
+
+00:03:42.556-->00:03:47.561
+they have the same kernel
+privileges. So ah some drivers
+are programmed by third-party
+
+00:03:49.996-->00:03:55.001
+vendors, not the kernel
+developers so ah the code
+quality is not guaranteed. So a
+
+00:03:59.139-->00:04:04.077
+lot of drivers are frequently
+exploited ah in attacks against
+the kernel including the
+
+00:04:06.079-->00:04:11.084
+jailbreak. Ah, a lot of
+vulnerabilities are used in
+jailbreak. For example, IOS11
+
+00:04:13.553-->00:04:18.558
+used IOSurfaceRoot. Ah, pangu 9
+used ah ah first in there, in
+their first version the used
+
+00:04:21.728-->00:04:26.733
+IOHIDFamily and in the second
+version they used IOBufferFrame,
+IOMobileBufferFrameBuffer. Ah
+
+00:04:33.773-->00:04:38.778
+the first ah this is the first
+vulner- vulner-vulnerability. Ah
+it is a info-information link in
+
+00:04:42.916-->00:04:47.921
+IOFirewireFamily. It is caused
+by an uninitialized kernel ah
+stack var-variable which is
+
+00:04:50.857-->00:04:55.862
+outChannelHandle ah in the
+IsoChannelAllocate. As you can
+see in the isochChannel_Create
+
+00:05:02.235-->00:05:07.240
+the out ah ChannelHandle is
+passed into the ah add object
+function. In this function, you
+
+00:05:14.181-->00:05:19.186
+can see the outhandle should it
+be set with the index of new
+added object. But when the new
+
+00:05:22.222-->00:05:27.227
+ah Capacity reaches FFFE, new
+object will not be added and
+outHandle will not be set.
+
+00:05:32.999-->00:05:38.004
+Recall the allocation case in
+externalMethod, outHandle is
+ah-a-in-a-uninitialized variable
+
+00:05:43.109-->00:05:48.114
+and a returned into userspace so
+that is a that is a information
+leak. Ah you can use this
+
+00:05:50.317-->00:05:55.322
+information to help you to get
+the kernel slide and then defeat
+kaslr. Ah the second part is you
+
+00:06:04.197-->00:06:09.202
+use-after-free vulnerability in
+the IOAcceleratorFamily2. It has
+a method called
+
+00:06:12.639-->00:06:17.644
+s_transaction_end. In this
+method, the userclient will call
+s_transaction_end in IO, ah
+
+00:06:20.280-->00:06:25.285
+Accel ah DisplayPipe2. Note that
+all your other clients share a
+same pipe 2 instance. Pipe2 can
+
+00:06:31.124-->00:06:36.129
+ah contains a linked list for
+transactions and pipe2 will
+traverse the linked list to find
+
+00:06:42.469-->00:06:47.474
+transaction and then call the
+set transaction arguments for
+the found transaction. However,
+
+00:06:51.177-->00:06:57.817
+in the transaction argument, set
+c-c-tran-transaction arguments
+function, ah you the clientpipe,
+
+00:06:57.817-->00:07:03.156
+you the client2, is a member of
+transaction2. And the function
+we will call the return method
+
+00:07:03.156-->00:07:08.161
+ah of the UserClient. But as a
+pipe, UserClient can be released
+by calling IOServiceClose for
+
+00:07:12.065-->00:07:17.070
+the, from user space we call the
+use-after-free. So here is the
+steps for ah exploit this bug.
+
+00:07:22.809-->00:07:29.082
+Firstly we create 2
+pipeuserclient then we add a
+transaction for the first
+
+00:07:29.082-->00:07:35.889
+userclient. And then we release
+userclient. After that, we end
+the transaction from the second
+
+00:07:35.889-->00:07:40.894
+userclient. It will trigger the
+user-after-free. Ah but this bug
+is fixed because a-a-now the
+
+00:07:43.863-->00:07:48.868
+pipe’s userclients don’t share
+the same pipe. Ah so how to
+exploit a use-after-free bug in
+
+00:07:54.474-->00:08:00.814
+the kernel? Here is the basic
+flaw. Firstly we construct the
+ROP chains and then trigger the
+
+00:08:00.814-->00:08:05.819
+release. After that, we use a
+fake object with fake vtable to
+occupy the the empty slot. Last
+
+00:08:09.255-->00:08:14.260
+but not least, we trigger the
+use-after-free by invoking the
+method of both object. The heap
+
+00:08:17.397-->00:08:22.402
+spray technique used in this
+vulnerability is OS
+uncentralized XML. Ah you can
+
+00:08:25.872-->00:08:30.877
+invoke it by setting
+prop-properties of a device.
+Note that the spray data can be
+
+00:08:34.080-->00:08:39.085
+read and the head of spray data
+is controllable. So this is ah,
+ROP chain for the privilege
+
+00:08:43.056-->00:08:49.496
+escalation. Firstly, we use a
+stack pivot to control the
+stack. And then gets the pointer
+
+00:08:49.496-->00:08:54.501
+to struct proc of current
+process. Then we get the ucred
+from proc and set cr_uid,
+
+00:08:56.803-->00:09:01.741
+cr_ruid and cr_svuid to 0. After
+that we will use thread
+exception to exist the the
+
+00:09:04.644-->00:09:09.649
+kernel mode and the return to
+user mode. Then we can execute
+system bash to get ah ah to get
+
+00:09:12.018-->00:09:17.023
+a shared with root privilege. Ah
+the stack pivot we used in ah
+blockchain is ah the following
+
+00:09:24.097-->00:09:29.102
+in gadgets ah used in the stack
+pivot. As the beginning, we use
+IX to control a- RCX. Then we
+
+00:09:32.405-->00:09:37.410
+use rcx to control isp which is
+a stack pointer. So here is the
+layout of gadgets in a ROP
+
+00:09:42.182-->00:09:47.187
+chain. Notice that RAX is-is
+controlled by us. Uh, by using
+these vulnerabilities, we got a
+
+00:09:51.224-->00:09:56.229
+privilege escalation on macOS uh
+10 point uh 13, 10 point 13
+point 2 10 point 13 point 3. So
+
+00:10:04.237-->00:10:09.242
+ah here is a demo um, 10 point
+13 point 3. As you can see, we
+got a route shell in this in
+
+00:10:18.818-->00:10:23.823
+this macOS. So ah, Xiaolong will
+talk a little more about ah
+drivers analyzing and fuzzing.
+
+00:10:28.728-->00:10:33.733
+>> Ah thanks Spark. Ah, next ah
+ah, w-what we are going to show
+how we found those
+
+00:10:38.271-->00:10:43.276
+vulnerabilities. And ah, Apple
+drivers are mostly closed
+sourced. Ah, in order to find
+
+00:10:45.578-->00:10:50.917
+vulnerabilities, we ne-need to
+do some reverse engineering. But
+it is not that easy. Ah, let’s
+
+00:10:50.917-->00:10:55.922
+first have a look at ah there
+decompiled code of driver
+binaries in IDA pro. In the
+
+00:10:57.957-->00:11:02.896
+depel- in the decompiled code of
+a macOS driver, you can see that
+ah function names are kept and
+
+00:11:05.365-->00:11:11.905
+ah but there are many problems,
+ah such as wrong parameter
+inference, ah lost of variable
+
+00:11:11.905-->00:11:16.910
+types and ah no virtual function
+calls. A-as far as a-a kernel
+drivers, ah they say the
+
+00:11:20.914-->00:11:25.919
+situation is even worse. Ah we
+have no idea of ah of what this
+decompiled code represents. It’s
+
+00:11:28.321-->00:11:33.326
+a mess. In fact, ah in order to
+find some vulnerabilities, or do
+some [audio cuts out] we want
+
+00:11:36.095-->00:11:41.100
+the decompiled code to be just
+like the source code. Ah just
+like the figures ah suggest. Ah
+
+00:11:43.736-->00:11:50.643
+so we propose a new tool to
+analysis ah drivers in macOS and
+OS. Ah, this tool is called a
+
+00:11:50.643-->00:11:57.050
+Ryuk ah, which is a new static
+analysis tool for making ah
+Apple drivers decompiled code
+
+00:11:57.050-->00:12:01.988
+more like source code. Ah it is
+implemented as an IDA pro python
+script. Ah the name Ryuk ah
+
+00:12:03.990-->00:12:08.995
+stands for a character in the
+comic series Death Note, ah who
+loves eating apples. So Ryuk has
+
+00:12:13.566-->00:12:18.571
+several features as below. Ah it
+can identify name, size, and
+vtables for classes. Ah it can
+
+00:12:21.174-->00:12:26.179
+recover function names, resolve
+va-variable types, extend cross
+reference, extend UI support and
+
+00:12:28.281-->00:12:33.286
+construct all ah, call graphs.
+So firstly, ah Ryuk identifies
+name and size for classes. Ah we
+
+00:12:38.758-->00:12:44.163
+identify this information from
+some specific initialization
+function. Ah as the figure
+
+00:12:44.163-->00:12:49.168
+shows, a sample initialization
+function looks like this. Ah ah
+you can see ah this code
+
+00:12:51.604-->00:12:56.609
+indicates some ah some
+information of the class for
+example its name and its size.
+
+00:13:01.080-->00:13:06.919
+Ah with these identified class
+name and size, ah we can create
+structures in IDA pro to
+
+00:13:06.919-->00:13:11.924
+represent these classes. Ah
+besides ah Ryuk can also
+identify with vtables for
+
+00:13:13.993-->00:13:18.998
+classes. Ah you should know that
+in C plus plus, if a class ah
+has ah any virtual function, ah
+
+00:13:21.601-->00:13:26.606
+it always has a structure called
+a vtable to organize a virtual
+function. Just like the figure
+
+00:13:29.242-->00:13:34.247
+suggests. We identify classes
+vtables with a hint, and that is
+ahead of a class ah, vtable,
+
+00:13:36.783-->00:13:40.720
+there is always a pointer
+pointing to the class’s ah
+metaclass object. This is ah ah
+
+00:13:40.720-->00:13:42.722
+special o-object. And then
+recall that in the specific in
+special ah init-initialization
+
+00:13:42.722-->00:13:44.724
+function ah ah this function
+also a-also shows where the
+metaclass object is, so with
+
+00:13:44.724-->00:13:51.197
+above hint, we can use the
+metaclass object address to find
+the class vtable. And after
+
+00:13:51.197-->00:13:56.202
+that, ah we can ah create
+structures in IDA pro to
+represent these vtables. And
+
+00:14:13.252-->00:14:18.257
+then send the first member o-of
+class structures to pointer ah
+ah to their vtables. The next
+
+00:14:23.563-->00:14:29.769
+feature of Ryuk is ah ah
+recovering function names. As we
+can see, ah iOS drivers are lots
+
+00:14:29.769-->00:14:36.342
+of symbols. Ah functions in iOS
+drivers do not how, do not have
+meaningful names at all. They
+
+00:14:36.342-->00:14:41.347
+are all ah meaningless names ah
+ah prefixed with sub. Ah we
+recover function names by
+
+00:14:43.483-->00:14:48.488
+leveraging several effects. The
+first effect is that most
+classes in driver, inherit from
+
+00:14:50.823-->00:14:57.230
+classes in the kernel. And these
+kernel classes have symbols. The
+second effect is that in c plus
+
+00:14:57.230-->00:15:03.402
+plus, when a cl- when a child
+class inherits ah parent class
+and ah overrides a virtual
+
+00:15:03.402-->00:15:09.342
+function, the parent’s function
+and child’s function ah should
+have the same name and the same
+
+00:15:09.342-->00:15:14.347
+offset as shown in this figure.
+So with both effects, we can
+recover the nam- the names of
+
+00:15:18.484-->00:15:23.489
+virtual functions that all the
+over functions in ah kernel
+classes. Actually this is not ah
+
+00:15:25.691-->00:15:30.696
+ah complete solution. Ah but it
+can recover plenty of critical
+functions. Another critical
+
+00:15:34.066-->00:15:38.337
+feature of Ryuk is that it can
+ah restore types of local a
+local glob-global and member
+
+00:15:38.337-->00:15:40.339
+variables in the decompiled
+code. Its method is to first
+identify local variable types
+
+00:15:40.339-->00:15:42.341
+and then perform type propa-
+type propagation along control
+flows. Ah there are mainly only
+
+00:15:42.341-->00:15:44.510
+2 kinds of local variables, ah
+ah which are called parameter
+variable and stack variable. For
+
+00:15:44.510-->00:15:49.515
+parameter variable, we identify
+there types by leveraging effect
+that is in a binary C plus plus
+
+00:16:08.968-->00:16:13.973
+function names are encoded with
+the ah the functions class name
+and parameter types. So by
+
+00:16:16.142-->00:16:21.147
+encoding these names, we can
+know the functions parameter
+types, just as the ah figure ah
+
+00:16:23.416-->00:16:28.421
+shows. Ah first stack variables,
+we identify the creation and
+initialization by finding some
+
+00:16:31.724-->00:16:36.729
+typical ah functions as listed
+here. So after the variable
+types are identified, ah we can
+
+00:16:39.932-->00:16:46.806
+propagate its type along
+function’s control flow graph.
+Ah variable type propagation we
+
+00:16:46.806-->00:16:53.179
+figure out what variables are
+sign ah are assigned with the
+variable who’s type a is
+
+00:16:53.179-->00:16:58.184
+defined. Mmmmm. And then send a
+text for the, according to the
+identifying types just ah just
+
+00:17:02.588-->00:17:07.593
+like this this this this figure
+shows. Next we extend cross
+reference for member variable
+
+00:17:11.864-->00:17:17.770
+and a virtual functions. We
+examine every sentence in the
+decompiled code and a of all
+
+00:17:17.770-->00:17:23.809
+functions and check whether any
+member variable or virtual
+function is used. And then we
+
+00:17:23.809-->00:17:28.814
+add ah cross reference from this
+usage of, ah from this usage,
+from this usage to ah member
+
+00:17:32.685-->00:17:37.690
+variable virtual functions
+location in their class or
+vtable structures. And ah now
+
+00:17:41.527-->00:17:47.300
+you can see that the decompiled
+code now looks more like the
+source code right? Ah further,
+
+00:17:47.300-->00:17:52.305
+ah in order to ah in order for
+better reverse engineering
+experience, we extend UI
+
+00:17:57.610-->00:18:02.548
+operations ah in IDA pro. For
+example ah, a-a-as a demo, we
+will show ah Ryuk allows jumping
+
+00:18:05.151-->00:18:10.056
+into virtual functions
+implementation. Just double
+click on ah virtual functions
+
+00:18:10.056-->00:18:15.061
+call. The other thing ah, you
+can see that one ah double click
+will can direct you functions
+
+00:18:19.532-->00:18:24.537
+implementation. And ah we can
+also jump to the child’s im- im-
+im implementation. Um press ah
+
+00:18:27.073-->00:18:32.078
+ah hot key. Okay. Finally after
+variable types are identified
+virtual function calls are
+
+00:18:40.953-->00:18:46.692
+resolved. Ah ah and now we can
+generate call graphs for all
+drivers. And this call driver is
+
+00:18:46.692-->00:18:51.697
+very important for ah further
+inter-procedural ah st- control
+flow and data flow analysis. And
+
+00:18:55.468-->00:19:01.941
+now everything is ready. And we
+can do manual analysis or other
+kinds of static analysis as we
+
+00:19:01.941-->00:19:06.946
+want. Ah below we will show ah
+use case of Ryuk, which is
+called Ryuk-Fuzz. The idea of
+
+00:19:11.684-->00:19:18.357
+Ryuk-fuzz, is to ah guide a
+driver fuzzing with static
+analysis re-results. We
+
+00:19:18.357-->00:19:24.764
+implement it by integrating Ryuk
+with the state-of-art driver
+fuzzer, ah
+
+00:19:24.764-->00:19:29.769
+PassiveFuzzFrameworkOSX. Ah
+Ryuk-Fuzz ah takes 2 steps. In
+the first step, perform data
+
+00:19:32.338-->00:19:37.343
+flow analysis to infer drivers
+required user ah input formats.
+Ah the second step uses the
+
+00:19:39.512-->00:19:45.651
+inferred input formats to ah to
+gather inputs ah to guide input
+generation in the fuzzing
+
+00:19:45.651-->00:19:50.656
+process and ah improve fuzzing
+efficiency. So in the first
+step, ah we perform static data
+
+00:19:55.061-->00:20:02.001
+flow analysis in the decompiled
+code to ah identify whether ah
+user input is checked in
+
+00:20:02.001-->00:20:07.006
+conditions and what parts are ah
+checked and what is the
+condition. Just like ah ah this
+
+00:20:09.508-->00:20:14.513
+figure shows that we can
+identify that ah ah the offsets
+24 and size 1 should be ah
+
+00:20:18.050-->00:20:23.055
+should not be equal to 6 or 1 in
+order to ahhhh a wide this ah
+this this field plus. Ah then we
+
+00:20:31.797-->00:20:36.802
+can know drivers requirements on
+user inputs ah for different ah
+execution paths and use such
+
+00:20:38.804-->00:20:43.809
+knowledge to get fuzz ah but
+PassiveFuzzFrameworkOSX ah only
+works on macOS 10 point 11 now.
+
+00:20:47.279-->00:20:53.619
+Ah for later versions, ah there
+a man- ah still still a
+ther-there are several errors
+
+00:20:53.619-->00:21:00.392
+that need to be resolved. The
+first error is that ah it uses
+wrong buffer size to read kernel
+
+00:21:00.392-->00:21:05.397
+header. Ah
+PassiveFuzzFrameworkOSX ah
+suppose that the size of the
+
+00:21:08.367-->00:21:13.372
+kernel header is less then 1
+page. Ah actually, after macOS
+10 point 12 ah the kernel header
+
+00:21:17.910-->00:21:24.517
+is larger than 1 page. In order
+to solve this problem, ah we
+changed the buffer size to 2
+
+00:21:24.517-->00:21:29.522
+pages. The second problem is
+that ah PassiveFuzz ah
+FrameworkOSX uses a wrong way to
+
+00:21:34.260-->00:21:41.033
+infer kernel text base. Ah in
+its original implementation, it
+defines the address of interrupt
+
+00:21:41.033-->00:21:46.038
+header ah which ah which was in
+the kernel text section. And
+they use this address to find
+
+00:21:49.074-->00:21:54.079
+the kernel text base. But for
+now ah, in the current macOS the
+interrupt handler is not longer
+
+00:21:58.017-->00:22:04.690
+in-in is no longer in the kernel
+text. Ah as a result, ah we can
+not longer find the kernel text
+
+00:22:04.690-->00:22:09.695
+base with the handler address.
+This change is caused by Apple’s
+mitigation on a the famous
+
+00:22:14.200-->00:22:20.606
+Meltdown vulnerability. Ah in
+order to defend against the
+Meltdown, a Apple decides to
+
+00:22:20.606-->00:22:25.611
+move the interrupt handler and
+other some other code related to
+user space from the kernel text
+
+00:22:28.013-->00:22:33.018
+to another special location just
+like the ah ah the figure on the
+right suggests. So now the ah ah
+
+00:22:39.258-->00:22:44.263
+interrupt handler is not in the
+ah kernel text base. As a
+solution ah we look for the
+
+00:22:47.266-->00:22:53.339
+kernel text base with an with
+another method that is ah, we
+find th-the address of some
+
+00:22:53.339-->00:22:58.344
+other um kernel functions for
+example, ah the address of
+_lck_mtx_lock. Ah and the ah ah
+
+00:23:00.879-->00:23:05.885
+traverse back to find the kernel
+text base. And this is more
+stable then ah then the then the
+
+00:23:08.821-->00:23:13.826
+previous method. Ah so in in
+conclusions, ah in this talk we
+have shown several
+
+00:23:23.102-->00:23:28.107
+vulnerabilities that a can be
+exploited for privilege-
+privilege escalation macOS. And
+
+00:23:31.043-->00:23:35.814
+we have introduced a-a the
+technique of exploiting
+use-after-free vulnerabilities
+
+00:23:35.814-->00:23:40.819
+ah in the kernel. And ah we also
+explained ah new static analysis
+tool called Ryuk. And also
+
+00:23:43.622-->00:23:48.627
+showed ah use case called
+Kyuk-Fuzz. Ah mostly
+importantly, ah part of Ryuk has
+
+00:23:51.664-->00:23:56.669
+been open sourced. Ah you can ah
+ah fo-fork of Ryuk in GitHub.
+And ah also ah you are welcome
+
+00:24:02.608-->00:24:07.613
+to follow us on twitter and
+Weibo. My twitter account name
+is bxl1989 and ah Spark’s is a
+
+00:24:10.149-->00:24:15.154
+twitter account name is a
+SparkZheng. Ah, that’s all. Ah
+thank you for your patience.
+
+00:24:21.493-->00:24:23.062
+[audience applauds]
+

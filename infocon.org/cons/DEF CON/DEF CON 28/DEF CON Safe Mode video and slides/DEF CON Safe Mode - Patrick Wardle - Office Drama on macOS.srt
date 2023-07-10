@@ -1,0 +1,2813 @@
+﻿1
+00:00:00,670 --> 00:00:02,690
+- Aloha, and welcome to my talk,
+
+2
+00:00:02,690 --> 00:00:04,523
+Office Drama on macOS.
+
+3
+00:00:06,000 --> 00:00:07,390
+My name is Patrick Wardle.
+
+4
+00:00:07,390 --> 00:00:11,020
+I am a principal security
+researcher at Jamf,
+
+5
+00:00:11,020 --> 00:00:14,210
+and also the creator of
+the Mac Security website
+
+6
+00:00:14,210 --> 00:00:16,333
+and tool suite, Objective-See.
+
+7
+00:00:18,200 --> 00:00:20,690
+So, today we're gonna be talking about
+
+8
+00:00:20,690 --> 00:00:23,303
+malicious office documents on macOS.
+
+9
+00:00:24,720 --> 00:00:27,150
+First, we're going to
+detail recent attacks,
+
+10
+00:00:27,150 --> 00:00:29,160
+targeting Mac users,
+
+11
+00:00:29,160 --> 00:00:33,200
+attacks that leveraged
+macro laced documents.
+
+12
+00:00:33,200 --> 00:00:36,610
+Then we'll discuss methods
+of analyzing these attacks,
+
+13
+00:00:36,610 --> 00:00:40,370
+for example, how to extract
+the embedded macros,
+
+14
+00:00:40,370 --> 00:00:43,823
+and also how to analyze
+the document payloads.
+
+15
+00:00:44,890 --> 00:00:47,870
+As the current attacks are kind of lame,
+
+16
+00:00:47,870 --> 00:00:51,150
+somewhat constrained, for
+example, by the sandbox,
+
+17
+00:00:51,150 --> 00:00:53,600
+I wanted to dig into this a little more,
+
+18
+00:00:53,600 --> 00:00:57,510
+and we'll talk today
+about a new exploit chain
+
+19
+00:00:57,510 --> 00:01:01,240
+that combines what was at the time,
+
+20
+00:01:01,240 --> 00:01:04,910
+a handful of zero-days
+to bypass the sandbox
+
+21
+00:01:04,910 --> 00:01:07,890
+and Apple's latest security mechanisms.
+
+22
+00:01:07,890 --> 00:01:10,120
+We'll end by discussing generic methods
+
+23
+00:01:10,120 --> 00:01:12,903
+to detect and thwart
+some of these attacks.
+
+24
+00:01:14,420 --> 00:01:16,350
+All right, so let's dive in.
+
+25
+00:01:16,350 --> 00:01:17,500
+We're gonna start by looking
+
+26
+00:01:17,500 --> 00:01:21,783
+at recent macro-based
+attacks targeting Mac users.
+
+27
+00:01:23,090 --> 00:01:26,690
+Now, first, you might be
+wondering what is a macro.
+
+28
+00:01:26,690 --> 00:01:30,080
+Well, I've added the official
+Microsoft documentation
+
+29
+00:01:30,080 --> 00:01:32,360
+on the slide, but in short,
+
+30
+00:01:32,360 --> 00:01:35,450
+a macro is embedded executable code
+
+31
+00:01:35,450 --> 00:01:38,220
+in Microsoft office documents.
+
+32
+00:01:38,220 --> 00:01:40,180
+In other words, it allows one,
+
+33
+00:01:40,180 --> 00:01:42,840
+as I mentioned, to add executable code
+
+34
+00:01:42,840 --> 00:01:45,950
+into a file, into a document.
+
+35
+00:01:45,950 --> 00:01:47,750
+So as we can see on the slide,
+
+36
+00:01:47,750 --> 00:01:52,750
+what I've done is I've inserted
+a macro into a word document
+
+37
+00:01:52,900 --> 00:01:56,640
+that will display a popup
+that says, "Hello World!"
+
+38
+00:01:56,640 --> 00:02:00,990
+Now, we'll talk about this
+more later in the talk,
+
+39
+00:02:00,990 --> 00:02:02,740
+but since I've placed this code
+
+40
+00:02:02,740 --> 00:02:05,650
+within the auto open sub-routine,
+
+41
+00:02:05,650 --> 00:02:08,240
+if the user has enabled macro,
+
+42
+00:02:08,240 --> 00:02:10,560
+this code will be automatically executed
+
+43
+00:02:10,560 --> 00:02:12,563
+any time they open the document.
+
+44
+00:02:14,260 --> 00:02:17,500
+Now, from a security point of
+view, you might be thinking,
+
+45
+00:02:17,500 --> 00:02:21,203
+this sounds like a horrible
+idea, and you're right.
+
+46
+00:02:22,210 --> 00:02:25,260
+Placing executable code within documents
+
+47
+00:02:25,260 --> 00:02:27,600
+really just a terrible idea,
+
+48
+00:02:27,600 --> 00:02:30,710
+which the attackers have abused for years.
+
+49
+00:02:30,710 --> 00:02:33,540
+In fact, the infamous Melissa virus,
+
+50
+00:02:33,540 --> 00:02:37,250
+which was around all the way back in 1999,
+
+51
+00:02:37,250 --> 00:02:40,060
+you guessed it, was a macro virus.
+
+52
+00:02:40,060 --> 00:02:44,370
+Now, to be fair, Microsoft
+has added some mitigations,
+
+53
+00:02:44,370 --> 00:02:47,850
+for example, alerts in sandboxing,
+
+54
+00:02:47,850 --> 00:02:51,693
+but as we'll see, this has not
+fully mitigated the threat.
+
+55
+00:02:55,100 --> 00:02:57,100
+So traditionally these macro-based attacks
+
+56
+00:02:57,100 --> 00:03:00,580
+have targeted Microsoft Windows systems
+
+57
+00:03:00,580 --> 00:03:02,980
+due to two main reasons.
+
+58
+00:03:02,980 --> 00:03:05,600
+First, macros are in Microsoft Creation
+
+59
+00:03:05,600 --> 00:03:08,772
+and only work in Microsoft products.
+
+60
+00:03:08,772 --> 00:03:11,240
+That is that they're not gonna
+work in Apple's office apps,
+
+61
+00:03:11,240 --> 00:03:14,170
+such as, you know, Pages or Numbers.
+
+62
+00:03:14,170 --> 00:03:16,730
+And then Windows computers,
+
+63
+00:03:16,730 --> 00:03:19,870
+especially in the past,
+were far more prevalent,
+
+64
+00:03:19,870 --> 00:03:22,690
+especially in the enterprise.
+
+65
+00:03:22,690 --> 00:03:24,470
+Now, this is definitely changing.
+
+66
+00:03:24,470 --> 00:03:25,660
+We're seeing a lot more Macs,
+
+67
+00:03:25,660 --> 00:03:27,900
+especially in the startup scene
+
+68
+00:03:27,900 --> 00:03:30,800
+and also in the enterprise as well.
+
+69
+00:03:30,800 --> 00:03:33,290
+And so, in short, there are more Macs
+
+70
+00:03:33,290 --> 00:03:34,330
+and a lot of them are running
+
+71
+00:03:34,330 --> 00:03:37,000
+these Microsoft office products,
+
+72
+00:03:37,000 --> 00:03:40,003
+which means there's just
+more targets for hackers.
+
+73
+00:03:42,290 --> 00:03:45,160
+So now let's take a look
+at some recent attacks
+
+74
+00:03:45,160 --> 00:03:46,970
+targeting Mac users,
+
+75
+00:03:46,970 --> 00:03:51,420
+attacks that leveraged
+macro laced documents.
+
+76
+00:03:51,420 --> 00:03:52,810
+So first in this section,
+
+77
+00:03:52,810 --> 00:03:56,170
+we're kinda gonna look
+at these at a high level.
+
+78
+00:03:56,170 --> 00:03:57,190
+In the next section, though,
+
+79
+00:03:57,190 --> 00:04:01,330
+we're gonna dive into discussing
+exactly how to extract
+
+80
+00:04:01,330 --> 00:04:06,190
+and analyze the payload of
+these malicious documents.
+
+81
+00:04:06,190 --> 00:04:08,910
+So we're gonna start in 2017.
+
+82
+00:04:08,910 --> 00:04:11,470
+Here we have a document that appears
+
+83
+00:04:11,470 --> 00:04:15,223
+to be about Trump's
+unfortunate election victory.
+
+84
+00:04:16,082 --> 00:04:18,910
+If the user, though, went
+to open this document
+
+85
+00:04:18,910 --> 00:04:23,040
+and clicked allow on
+the enabled macro alert,
+
+86
+00:04:23,040 --> 00:04:25,000
+the system would become infected,
+
+87
+00:04:25,000 --> 00:04:27,530
+because in reality, this
+was a malicious document
+
+88
+00:04:27,530 --> 00:04:29,173
+containing malicious macros.
+
+89
+00:04:31,433 --> 00:04:34,110
+Moving on to 2018, we have a document
+
+90
+00:04:34,110 --> 00:04:36,490
+that appears to be about Bitcoin,
+
+91
+00:04:36,490 --> 00:04:40,210
+which was a very hot
+trendy topic at the time.
+
+92
+00:04:40,210 --> 00:04:42,680
+Again, if the user opens the document
+
+93
+00:04:42,680 --> 00:04:45,050
+and allows macros to run,
+
+94
+00:04:45,050 --> 00:04:47,130
+the system is owned.
+
+95
+00:04:47,130 --> 00:04:49,070
+Now, this document is interesting
+
+96
+00:04:49,070 --> 00:04:51,670
+and we'll dig into this more shortly,
+
+97
+00:04:51,670 --> 00:04:54,640
+but most interesting aspect of this attack
+
+98
+00:04:54,640 --> 00:04:58,880
+was that the embedded
+exploit code contained
+
+99
+00:04:58,880 --> 00:05:03,203
+the ability to actually bypass
+Microsoft Office's sandbox.
+
+100
+00:05:04,940 --> 00:05:07,010
+Moving on to 2019,
+
+101
+00:05:07,010 --> 00:05:11,300
+we have a document from the
+prolific Lazarus APT Group,
+
+102
+00:05:11,300 --> 00:05:14,730
+which is normally
+associated with North Korea.
+
+103
+00:05:14,730 --> 00:05:17,537
+This is interesting because
+we're actually now seeing
+
+104
+00:05:17,537 --> 00:05:20,277
+APT Groups jump on the,
+
+105
+00:05:20,277 --> 00:05:24,200
+"Hey let's target macOS
+via macros bandwagon."
+
+106
+00:05:24,200 --> 00:05:26,120
+Again, if the user opens the document
+
+107
+00:05:26,120 --> 00:05:29,113
+and clicks allow, the
+system will be owned.
+
+108
+00:05:31,417 --> 00:05:33,370
+All right, so now let's talk about methods
+
+109
+00:05:33,370 --> 00:05:36,210
+of analyzing these malicious documents,
+
+110
+00:05:36,210 --> 00:05:40,330
+showing exactly how to
+extract embedded macros
+
+111
+00:05:40,330 --> 00:05:43,750
+and how to analyze both the macro code
+
+112
+00:05:43,750 --> 00:05:46,233
+and any embedded payloads.
+
+113
+00:05:48,310 --> 00:05:51,250
+First, we need to be able to extract
+
+114
+00:05:51,250 --> 00:05:53,300
+the embedded macro code.
+
+115
+00:05:53,300 --> 00:05:56,520
+Now, the details of the file format
+
+116
+00:05:56,520 --> 00:05:58,520
+of Microsoft office documents
+
+117
+00:05:58,520 --> 00:06:01,350
+is kind of beyond the scope of this talk,
+
+118
+00:06:01,350 --> 00:06:03,350
+but the good news is
+you really don't have to
+
+119
+00:06:03,350 --> 00:06:04,570
+even worry about that.
+
+120
+00:06:04,570 --> 00:06:06,720
+Turns out there are
+some really great tools
+
+121
+00:06:06,720 --> 00:06:10,850
+that are able to, if given a
+office document with macros,
+
+122
+00:06:10,850 --> 00:06:12,900
+contributorily extract those macros.
+
+123
+00:06:12,900 --> 00:06:15,960
+And that's really,
+basically all we care about.
+
+124
+00:06:15,960 --> 00:06:20,680
+My favorite is the tool suite
+called oletools from GitHub.
+
+125
+00:06:20,680 --> 00:06:22,020
+So we can see on the slide,
+
+126
+00:06:22,020 --> 00:06:25,180
+we downloaded the
+package and installed it.
+
+127
+00:06:25,180 --> 00:06:28,730
+And then we execute the olevba command
+
+128
+00:06:28,730 --> 00:06:32,600
+with a dash C parameter
+passing in the document,
+
+129
+00:06:32,600 --> 00:06:35,160
+which we suspect has embedded macros
+
+130
+00:06:35,160 --> 00:06:36,860
+that we want to analyze.
+
+131
+00:06:36,860 --> 00:06:41,180
+And the olevba tool
+will then parse document
+
+132
+00:06:41,180 --> 00:06:45,460
+and dump any embedded
+macros to standard out.
+
+133
+00:06:45,460 --> 00:06:47,270
+There's also various online sites
+
+134
+00:06:47,270 --> 00:06:49,850
+where you can upload a document.
+
+135
+00:06:49,850 --> 00:06:51,340
+The website will then do the analysis
+
+136
+00:06:51,340 --> 00:06:53,603
+and extract any macro code.
+
+137
+00:06:56,350 --> 00:06:59,270
+Now, we wanna understand exactly
+
+138
+00:06:59,270 --> 00:07:02,680
+what these malicious macros are doing.
+
+139
+00:07:02,680 --> 00:07:06,750
+So, let's briefly return to
+the documents that we discussed
+
+140
+00:07:06,750 --> 00:07:08,930
+in the first part of the talk
+
+141
+00:07:08,930 --> 00:07:11,980
+and for each of these, look at exactly
+
+142
+00:07:11,980 --> 00:07:15,970
+what the malicious macro code is doing.
+
+143
+00:07:15,970 --> 00:07:18,670
+So again, starting at the one from 2018,
+
+144
+00:07:18,670 --> 00:07:22,660
+we can use the olevba tool
+to extract the macros.
+
+145
+00:07:22,660 --> 00:07:24,570
+And I've cleaned up
+the macros a little bit
+
+146
+00:07:24,570 --> 00:07:27,360
+and placed them on the screen.
+
+147
+00:07:27,360 --> 00:07:28,750
+So we can see on the slide,
+
+148
+00:07:28,750 --> 00:07:32,970
+there is a sub-routine called Fisher
+
+149
+00:07:32,970 --> 00:07:36,120
+that is invoked via the auto open method.
+
+150
+00:07:36,120 --> 00:07:39,730
+The auto open method is a Microsoft API
+
+151
+00:07:39,730 --> 00:07:44,730
+and as its name implies, any
+code placed within this API
+
+152
+00:07:45,740 --> 00:07:48,620
+will be automatically executed if,
+
+153
+00:07:48,620 --> 00:07:51,150
+and only if, the user has enabled macros
+
+154
+00:07:51,150 --> 00:07:53,150
+when opening the document.
+
+155
+00:07:53,150 --> 00:07:55,680
+So, if we assume the
+user has clicked allow
+
+156
+00:07:55,680 --> 00:07:57,530
+to the embedded macros,
+
+157
+00:07:57,530 --> 00:08:00,240
+let's look at what the
+Fisher sub-routine does.
+
+158
+00:08:00,240 --> 00:08:02,570
+Again, as it will be
+automatically executed
+
+159
+00:08:02,570 --> 00:08:05,283
+each time the document is opened.
+
+160
+00:08:06,310 --> 00:08:07,390
+So the first thing it does
+
+161
+00:08:07,390 --> 00:08:10,800
+is it builds a base 64 encoded string,
+
+162
+00:08:10,800 --> 00:08:14,343
+and then it decodes and
+executes that via Python.
+
+163
+00:08:16,150 --> 00:08:18,820
+If we manually decode this string,
+
+164
+00:08:18,820 --> 00:08:20,440
+we can see its Python code,
+
+165
+00:08:20,440 --> 00:08:23,610
+which is unsurprising as
+it's passing it to Python
+
+166
+00:08:23,610 --> 00:08:24,670
+to execute.
+
+167
+00:08:24,670 --> 00:08:27,290
+So what is this Python code does?
+
+168
+00:08:27,290 --> 00:08:28,740
+Well, first thing it does
+
+169
+00:08:28,740 --> 00:08:32,010
+is it checks to see if
+popular security products,
+
+170
+00:08:32,010 --> 00:08:34,120
+for example, LittleSnitch, is running,
+
+171
+00:08:34,120 --> 00:08:37,180
+and then it download
+a second stage payload
+
+172
+00:08:37,180 --> 00:08:40,500
+from securitychecking.org.
+
+173
+00:08:40,500 --> 00:08:42,060
+It then decrypts this payload
+
+174
+00:08:42,060 --> 00:08:45,610
+using RC4 and executes this.
+
+175
+00:08:45,610 --> 00:08:48,320
+Now, this code might look familiar,
+
+176
+00:08:48,320 --> 00:08:50,980
+if you spend a lot of time
+kinda looking at these attacks,
+
+177
+00:08:50,980 --> 00:08:54,520
+and that's because this
+payload is actually Empire,
+
+178
+00:08:54,520 --> 00:08:58,470
+which is a known
+opensource Python backdoor.
+
+179
+00:08:58,470 --> 00:09:00,180
+Now, you might be wondering, okay,
+
+180
+00:09:00,180 --> 00:09:02,280
+what is it downloading and executing
+
+181
+00:09:02,280 --> 00:09:04,890
+as its second stage payload?
+
+182
+00:09:04,890 --> 00:09:08,100
+Well, unfortunately, the
+command and control server
+
+183
+00:09:08,100 --> 00:09:10,940
+was offline at the time
+I did this analysis,
+
+184
+00:09:10,940 --> 00:09:12,900
+but it's likely that it's simply
+
+185
+00:09:12,900 --> 00:09:15,410
+Empire's second stage payload,
+
+186
+00:09:15,410 --> 00:09:18,523
+which gives attackers full
+access over the infected system.
+
+187
+00:09:21,300 --> 00:09:22,980
+Moving on to the Bitcoin document.
+
+188
+00:09:22,980 --> 00:09:27,810
+Again, this one was from
+2018 using the olevba tool.
+
+189
+00:09:27,810 --> 00:09:30,560
+We can again, extract the embedded macros.
+
+190
+00:09:30,560 --> 00:09:34,010
+Interestingly, this also
+contains encoded Python
+
+191
+00:09:34,010 --> 00:09:37,747
+and what appears to be an
+embedded property list.
+
+192
+00:09:37,747 --> 00:09:40,060
+That's interesting.
+
+193
+00:09:40,060 --> 00:09:42,053
+So, let's take a closer look.
+
+194
+00:09:43,110 --> 00:09:45,360
+First thing we do is we decode the Python
+
+195
+00:09:45,360 --> 00:09:48,090
+since it's base64 encoded.
+
+196
+00:09:48,090 --> 00:09:49,640
+It's very trivial to do.
+
+197
+00:09:49,640 --> 00:09:52,140
+You can either do that via an online site
+
+198
+00:09:52,140 --> 00:09:54,540
+that provides base64 decoding,
+
+199
+00:09:54,540 --> 00:09:57,813
+or I just do it via the command
+line via a Python shell.
+
+200
+00:09:58,700 --> 00:10:00,930
+Once the code is decoded,
+
+201
+00:10:00,930 --> 00:10:03,070
+again, we can see that on the slide,
+
+202
+00:10:03,070 --> 00:10:05,610
+it connects to an IP address,
+
+203
+00:10:05,610 --> 00:10:09,150
+executes and downloads
+a second stage payload.
+
+204
+00:10:09,150 --> 00:10:11,750
+It turns out this command
+and control server
+
+205
+00:10:11,750 --> 00:10:15,390
+was still online during
+the time of my analysis,
+
+206
+00:10:15,390 --> 00:10:17,750
+so I was actually able to get a copy
+
+207
+00:10:17,750 --> 00:10:20,250
+of this second stage payload,
+
+208
+00:10:20,250 --> 00:10:23,370
+which turned out to be
+Metasploit's Meterpreter.
+
+209
+00:10:23,370 --> 00:10:24,870
+Again, interesting to see attackers
+
+210
+00:10:24,870 --> 00:10:29,680
+leveraging opensource agents
+in second stage payload.
+
+211
+00:10:29,680 --> 00:10:33,333
+Meterpreter affords remote
+access of an infected system.
+
+212
+00:10:35,550 --> 00:10:38,230
+Now, if you recall, the
+beginning of the talk,
+
+213
+00:10:38,230 --> 00:10:40,350
+we kind of said that the
+most interesting thing
+
+214
+00:10:40,350 --> 00:10:42,660
+about this particular document
+
+215
+00:10:42,660 --> 00:10:47,660
+was its ability to escape out
+of Microsoft Office's sandbox.
+
+216
+00:10:47,840 --> 00:10:51,910
+So, recent versions of
+Office run in a sandbox,
+
+217
+00:10:51,910 --> 00:10:52,743
+which is good,
+
+218
+00:10:52,743 --> 00:10:55,480
+and it means that if code is executed
+
+219
+00:10:55,480 --> 00:10:58,070
+within the context of the process,
+
+220
+00:10:58,070 --> 00:11:01,990
+for example, macro code
+executing within a word document,
+
+221
+00:11:01,990 --> 00:11:03,970
+it is highly contained.
+
+222
+00:11:03,970 --> 00:11:05,470
+It's limited by what it can do.
+
+223
+00:11:05,470 --> 00:11:07,730
+It's still in the sandbox.
+
+224
+00:11:07,730 --> 00:11:10,520
+So it can't do things
+like persist the backdoor
+
+225
+00:11:10,520 --> 00:11:12,740
+or even access to the user's files.
+
+226
+00:11:12,740 --> 00:11:13,890
+From a security point of view,
+
+227
+00:11:13,890 --> 00:11:15,373
+this is very good.
+
+228
+00:11:16,280 --> 00:11:19,620
+However, Mac Security
+researcher, Adam Chester,
+
+229
+00:11:19,620 --> 00:11:22,670
+found a very neat way
+to escape the sandbox
+
+230
+00:11:22,670 --> 00:11:25,060
+and posted a guest blog about this
+
+231
+00:11:25,060 --> 00:11:28,120
+on my Mac Security website, Objective-See.
+
+232
+00:11:28,120 --> 00:11:31,210
+In short, he found that Microsoft Office
+
+233
+00:11:31,210 --> 00:11:34,260
+had a sandbox exception
+
+234
+00:11:34,260 --> 00:11:36,790
+that was based on a faulty regex
+
+235
+00:11:36,790 --> 00:11:39,030
+that would allow sandbox code
+
+236
+00:11:39,030 --> 00:11:42,330
+to create a file anywhere on the system.
+
+237
+00:11:42,330 --> 00:11:44,490
+So what Adam was able to do was,
+
+238
+00:11:44,490 --> 00:11:48,370
+via macro code running in
+the context of the sandbox,
+
+239
+00:11:48,370 --> 00:11:52,960
+create a launch item
+that, on the next login,
+
+240
+00:11:52,960 --> 00:11:55,820
+would be executed outside
+the context of the sandbox.
+
+241
+00:11:55,820 --> 00:11:59,733
+And he used a property
+list in order to do that.
+
+242
+00:12:00,810 --> 00:12:02,040
+So I was analyzing this document,
+
+243
+00:12:02,040 --> 00:12:04,120
+I said, okay, this code
+looks very familiar
+
+244
+00:12:04,120 --> 00:12:07,760
+and I read Adam's blog
+and posted it on my site,
+
+245
+00:12:07,760 --> 00:12:09,500
+and it turns out that the attackers
+
+246
+00:12:09,500 --> 00:12:12,040
+had likely also read this blog
+
+247
+00:12:12,040 --> 00:12:15,860
+and took Adam's code for verbatim,
+
+248
+00:12:15,860 --> 00:12:17,120
+a hundred percent copy and paste,
+
+249
+00:12:17,120 --> 00:12:20,360
+and embedded it into
+their office document.
+
+250
+00:12:20,360 --> 00:12:23,210
+So this would mean that
+on unpatched systems,
+
+251
+00:12:23,210 --> 00:12:25,600
+they would be able to
+break out of the sandbox
+
+252
+00:12:25,600 --> 00:12:27,983
+and cause more havoc, more mayhem.
+
+253
+00:12:30,440 --> 00:12:33,400
+Finally, if we extract
+the embedded macro code
+
+254
+00:12:33,400 --> 00:12:35,770
+from the Lazarus Group document,
+
+255
+00:12:35,770 --> 00:12:37,720
+we can see it's pretty basic.
+
+256
+00:12:37,720 --> 00:12:39,660
+This case it's not even included.
+
+257
+00:12:39,660 --> 00:12:41,130
+So, what does it do?
+
+258
+00:12:41,130 --> 00:12:42,610
+Well, it's simply downloads
+
+259
+00:12:42,610 --> 00:12:46,100
+and executes a second
+stage persistent implant.
+
+260
+00:12:46,100 --> 00:12:48,730
+That implant is named mt.dat
+
+261
+00:12:48,730 --> 00:12:51,390
+and would give attackers
+persistent remote access
+
+262
+00:12:51,390 --> 00:12:52,650
+to the system.
+
+263
+00:12:52,650 --> 00:12:56,740
+However, this document did not
+have any sandbox escape code,
+
+264
+00:12:56,740 --> 00:13:00,130
+which means if it was opened
+on a recent version of macOS,
+
+265
+00:13:00,130 --> 00:13:02,470
+this part of the attack would fail,
+
+266
+00:13:02,470 --> 00:13:04,920
+because you can't obviously persist code
+
+267
+00:13:04,920 --> 00:13:07,593
+from within the context of a sandbox.
+
+268
+00:13:09,530 --> 00:13:12,340
+So that's an overview of
+recent macro-based attacks
+
+269
+00:13:12,340 --> 00:13:14,610
+against macOS, which gave us, I think,
+
+270
+00:13:14,610 --> 00:13:19,610
+a pretty thorough understanding
+of the status quo.
+
+271
+00:13:19,760 --> 00:13:22,210
+Now let's talk about a new zero-click
+
+272
+00:13:22,210 --> 00:13:24,573
+macro-based exploit chain.
+
+273
+00:13:26,240 --> 00:13:28,908
+And you might be wondering
+why should we do this?
+
+274
+00:13:28,908 --> 00:13:31,650
+Well, all current macro-based attacks,
+
+275
+00:13:31,650 --> 00:13:33,703
+in my opinion, are super lame.
+
+276
+00:13:34,610 --> 00:13:36,580
+Let's list the ways.
+
+277
+00:13:36,580 --> 00:13:38,870
+First, for any of these attacks,
+
+278
+00:13:38,870 --> 00:13:40,910
+when the user goes to open the document,
+
+279
+00:13:40,910 --> 00:13:43,510
+there's a huge alert warning them
+
+280
+00:13:43,510 --> 00:13:45,760
+that this document contains macros
+
+281
+00:13:45,760 --> 00:13:48,463
+and they probably should not allow them.
+
+282
+00:13:49,310 --> 00:13:51,770
+The user basically has to click enable.
+
+283
+00:13:51,770 --> 00:13:52,603
+Most of them.
+
+284
+00:13:52,603 --> 00:13:55,070
+Which means these attacks
+will fail immediately
+
+285
+00:13:55,070 --> 00:13:55,903
+out of the box.
+
+286
+00:13:55,903 --> 00:13:58,103
+Macro code will never even be run.
+
+287
+00:13:59,170 --> 00:14:01,020
+Also, as Microsoft has now
+
+288
+00:14:01,020 --> 00:14:04,230
+patched Adam's sandbox escape bug,
+
+289
+00:14:04,230 --> 00:14:06,280
+all the attacks remains sandbox.
+
+290
+00:14:06,280 --> 00:14:10,150
+Again, means even if the user
+does enable the macro code,
+
+291
+00:14:10,150 --> 00:14:12,490
+they're incredibly limited
+about what they can do.
+
+292
+00:14:12,490 --> 00:14:16,230
+They can't persist code
+or access user files.
+
+293
+00:14:16,230 --> 00:14:18,830
+And then, finally on macOS Catalina,
+
+294
+00:14:18,830 --> 00:14:21,210
+the most recent version of macOS,
+
+295
+00:14:21,210 --> 00:14:23,180
+Apple has really upped the bar
+
+296
+00:14:23,180 --> 00:14:25,450
+and introduced some
+new security mechanisms
+
+297
+00:14:25,450 --> 00:14:27,480
+such as notarization,
+
+298
+00:14:27,480 --> 00:14:29,930
+which means the second stage payloads
+
+299
+00:14:29,930 --> 00:14:33,950
+may not necessarily be
+even allowed to execute
+
+300
+00:14:33,950 --> 00:14:35,300
+by the system.
+
+301
+00:14:35,300 --> 00:14:37,490
+So again, the current attacks,
+
+302
+00:14:37,490 --> 00:14:39,963
+my opinion, basically useless.
+
+303
+00:14:42,010 --> 00:14:45,710
+Now, whenever companies
+such as Microsoft or Apple
+
+304
+00:14:45,710 --> 00:14:48,700
+patch stuff or implement
+new security mechanisms,
+
+305
+00:14:48,700 --> 00:14:50,820
+I like to poke on that,
+
+306
+00:14:50,820 --> 00:14:55,820
+because often they do so
+incorrectly, insufficiently.
+
+307
+00:14:56,240 --> 00:14:58,290
+So, let's walk through now
+
+308
+00:14:58,290 --> 00:15:01,460
+this kind of zero-click exploit chain.
+
+309
+00:15:01,460 --> 00:15:03,300
+So the exploit starts
+with a really neat bug
+
+310
+00:15:03,300 --> 00:15:06,950
+that was found a while ago
+by two security researchers
+
+311
+00:15:06,950 --> 00:15:10,860
+and then kind of improved upon
+by other researchers at CERT.
+
+312
+00:15:10,860 --> 00:15:12,943
+So this first bug is not mine.
+
+313
+00:15:14,140 --> 00:15:15,830
+What these researchers found
+
+314
+00:15:15,830 --> 00:15:19,320
+was that even if macros are turned off,
+
+315
+00:15:19,320 --> 00:15:22,440
+they could create a document
+that contained macros
+
+316
+00:15:22,440 --> 00:15:24,610
+that would be automatically executed
+
+317
+00:15:24,610 --> 00:15:27,053
+with no alerts, no prompts.
+
+318
+00:15:28,980 --> 00:15:29,813
+That's hot.
+
+319
+00:15:30,740 --> 00:15:31,870
+How do they do this?
+
+320
+00:15:31,870 --> 00:15:36,080
+By abusing a incredibly
+old Microsoft file format
+
+321
+00:15:36,080 --> 00:15:38,140
+called SYLK files.
+
+322
+00:15:38,140 --> 00:15:38,973
+How old?
+
+323
+00:15:38,973 --> 00:15:43,360
+Like, from the 1980s,
+before I was even born.
+
+324
+00:15:43,360 --> 00:15:47,160
+And they also used a macro
+language, not written in VBA,
+
+325
+00:15:47,160 --> 00:15:49,660
+but something called XLM,
+
+326
+00:15:49,660 --> 00:15:52,273
+Not XML, XLM.
+
+327
+00:15:53,110 --> 00:15:56,300
+Now, Microsoft loves to
+support old file formats
+
+328
+00:15:56,300 --> 00:15:58,200
+for compatibility reasons.
+
+329
+00:15:58,200 --> 00:16:02,190
+So yeah, these old file formats still work
+
+330
+00:16:02,190 --> 00:16:05,783
+even in recent versions,
+specifically in Excel.
+
+331
+00:16:06,950 --> 00:16:08,980
+So as I mentioned, the researchers found
+
+332
+00:16:08,980 --> 00:16:13,650
+that they could create these XLM macros
+
+333
+00:16:13,650 --> 00:16:16,690
+in these SYLK file formats
+
+334
+00:16:16,690 --> 00:16:18,890
+that would be automatically executed.
+
+335
+00:16:18,890 --> 00:16:23,720
+Ironically, if the user had
+set, never run macros to true.
+
+336
+00:16:23,720 --> 00:16:26,640
+So, the researchers
+published some great details
+
+337
+00:16:26,640 --> 00:16:29,040
+about these older formats
+and some of their findings.
+
+338
+00:16:29,040 --> 00:16:32,350
+So if you're interested, I
+posted a link on the slide too.
+
+339
+00:16:32,350 --> 00:16:34,703
+They're very thorough technical writeups.
+
+340
+00:16:36,500 --> 00:16:39,170
+So what I did was I created
+a simple proof of concept
+
+341
+00:16:39,170 --> 00:16:40,970
+based on their code.
+
+342
+00:16:40,970 --> 00:16:42,630
+We'll see a malicious document
+
+343
+00:16:42,630 --> 00:16:44,570
+is downloaded from the internet,
+
+344
+00:16:44,570 --> 00:16:45,630
+and when it is opened,
+
+345
+00:16:45,630 --> 00:16:47,813
+calc is automatically executed.
+
+346
+00:16:48,950 --> 00:16:50,520
+Now, the main takeaway from here
+
+347
+00:16:50,520 --> 00:16:53,420
+is that there are no macro alerts, right?
+
+348
+00:16:53,420 --> 00:16:54,890
+No prompts, nothing.
+
+349
+00:16:54,890 --> 00:16:57,800
+Just as soon as the document is opened,
+
+350
+00:16:57,800 --> 00:16:59,603
+calculator pops.
+
+351
+00:17:02,350 --> 00:17:04,050
+Now, that's well and good,
+
+352
+00:17:04,050 --> 00:17:08,530
+but as we noted on recent
+versions of Microsoft Office,
+
+353
+00:17:08,530 --> 00:17:10,333
+the applications are sandboxed.
+
+354
+00:17:11,320 --> 00:17:13,690
+Meaning, sure we can pop calculator,
+
+355
+00:17:13,690 --> 00:17:15,780
+and that's neat for a demo,
+
+356
+00:17:15,780 --> 00:17:18,440
+but, you know, we can't
+persist the backdoor,
+
+357
+00:17:18,440 --> 00:17:21,060
+we can't access the user's files.
+
+358
+00:17:21,060 --> 00:17:23,050
+This is the point of a sandbox.
+
+359
+00:17:23,050 --> 00:17:24,870
+It contains malicious code,
+
+360
+00:17:24,870 --> 00:17:27,530
+even if such code finds a way to execute.
+
+361
+00:17:27,530 --> 00:17:30,730
+So, in short, we need a new sandbox escape
+
+362
+00:17:30,730 --> 00:17:34,360
+in order to do any real damage.
+
+363
+00:17:34,360 --> 00:17:39,150
+So I started by looking at
+Microsoft's patch for Adam's bug,
+
+364
+00:17:39,150 --> 00:17:41,900
+and I noticed that they
+actually didn't fix
+
+365
+00:17:41,900 --> 00:17:43,960
+the faulty regex.
+
+366
+00:17:43,960 --> 00:17:47,930
+Instead, they just simply
+blocked certain locations,
+
+367
+00:17:47,930 --> 00:17:50,420
+such as the launch agent directory,
+
+368
+00:17:50,420 --> 00:17:52,440
+which is where Adam's proof of concept
+
+369
+00:17:52,440 --> 00:17:54,400
+created a launch agent,
+
+370
+00:17:54,400 --> 00:17:56,260
+which on the next
+log-in, would be executed
+
+371
+00:17:56,260 --> 00:18:00,110
+outside the context of the sandbox.
+
+372
+00:18:00,110 --> 00:18:02,760
+So, this means we can
+create arbitrary files
+
+373
+00:18:02,760 --> 00:18:05,460
+as long as they start
+with tilde dollar sign,
+
+374
+00:18:05,460 --> 00:18:09,480
+meaning they conform to this
+faulty regex almost anywhere.
+
+375
+00:18:09,480 --> 00:18:12,150
+Again, almost anywhere
+because Microsoft added
+
+376
+00:18:12,150 --> 00:18:15,083
+some specific locations that they blocked.
+
+377
+00:18:17,350 --> 00:18:18,560
+Now, our goal of course,
+
+378
+00:18:18,560 --> 00:18:21,150
+is to execute something
+outside the sandbox,
+
+379
+00:18:21,150 --> 00:18:24,550
+so we can persist and do evil things.
+
+380
+00:18:24,550 --> 00:18:26,880
+We just noted, we can
+write specially named files
+
+381
+00:18:26,880 --> 00:18:30,410
+to arbitrary locations from macro code
+
+382
+00:18:30,410 --> 00:18:33,180
+that's running within the
+context of the sandbox,
+
+383
+00:18:33,180 --> 00:18:36,260
+as Microsoft didn't fully patch that.
+
+384
+00:18:36,260 --> 00:18:38,720
+Also, it turns out in the sandbox,
+
+385
+00:18:38,720 --> 00:18:41,320
+we can both download and execute scripts,
+
+386
+00:18:41,320 --> 00:18:44,640
+as we can see in the process
+monitor on the slide.
+
+387
+00:18:44,640 --> 00:18:48,400
+Now, these scripts themselves
+will be sandboxed, right?
+
+388
+00:18:48,400 --> 00:18:50,490
+They're children have a sandbox process,
+
+389
+00:18:50,490 --> 00:18:53,800
+which means themselves are also sandboxed,
+
+390
+00:18:53,800 --> 00:18:55,840
+but that's still a start, right?
+
+391
+00:18:55,840 --> 00:18:58,630
+We can execute, for
+example, Python scripts,
+
+392
+00:18:58,630 --> 00:19:01,410
+which gives us a very
+extensible programming language
+
+393
+00:19:01,410 --> 00:19:03,410
+to perhaps do some sorts of evil things.
+
+394
+00:19:05,180 --> 00:19:08,550
+So, via a Python script, which we, again,
+
+395
+00:19:08,550 --> 00:19:11,840
+download and execute within the sandbox,
+
+396
+00:19:11,840 --> 00:19:16,050
+we can create something
+called a login item.
+
+397
+00:19:16,050 --> 00:19:19,210
+Now, login items are
+automatically executed
+
+398
+00:19:19,210 --> 00:19:21,580
+the next time the user logs in,
+
+399
+00:19:21,580 --> 00:19:23,373
+and since it started by macOS,
+
+400
+00:19:25,180 --> 00:19:27,320
+instead of us via the sandbox,
+
+401
+00:19:27,320 --> 00:19:29,420
+it's not gonna be sandboxed.
+
+402
+00:19:29,420 --> 00:19:31,430
+So when the user's logging in,
+
+403
+00:19:31,430 --> 00:19:34,570
+macOS goes and looks at
+the register login items
+
+404
+00:19:34,570 --> 00:19:37,150
+and just executes and starts all of them.
+
+405
+00:19:37,150 --> 00:19:38,460
+Again, there's no tie back
+
+406
+00:19:38,460 --> 00:19:43,340
+to the Microsoft Office,
+macro code, sandbox, nothing.
+
+407
+00:19:43,340 --> 00:19:45,100
+So, that means this will be executed
+
+408
+00:19:45,100 --> 00:19:48,380
+outside the context of the sandbox.
+
+409
+00:19:48,380 --> 00:19:51,590
+To confirm, we can persist terminal.app
+
+410
+00:19:51,590 --> 00:19:55,997
+sure enough, when we relaunch
+in, terminal is executed.
+
+411
+00:19:55,997 --> 00:19:59,350
+And if we look at it in Activity Monitor,
+
+412
+00:19:59,350 --> 00:20:01,843
+we can see that it runs
+outside the sandbox.
+
+413
+00:20:03,670 --> 00:20:05,320
+So, this is good, right?
+
+414
+00:20:05,320 --> 00:20:07,710
+We now have a way to bypass the sandbox,
+
+415
+00:20:07,710 --> 00:20:10,110
+but unfortunately we run smack
+
+416
+00:20:10,110 --> 00:20:13,770
+into Catalina's new security mechanisms,
+
+417
+00:20:13,770 --> 00:20:15,680
+which are file quarantines
+
+418
+00:20:15,680 --> 00:20:18,640
+and new notarization requirements.
+
+419
+00:20:18,640 --> 00:20:21,240
+In a nutshell, notarization
+basically says,
+
+420
+00:20:21,240 --> 00:20:24,900
+hey, Apple has to bless
+the file before it's run.
+
+421
+00:20:24,900 --> 00:20:28,180
+Obviously Apple's not
+gonna bless our backdoor.
+
+422
+00:20:28,180 --> 00:20:32,490
+So, even if we go and persist
+the backdoor as a login item,
+
+423
+00:20:32,490 --> 00:20:34,920
+macOS will simply refuse to execute it,
+
+424
+00:20:34,920 --> 00:20:37,270
+because unfortunately, it is not blessed,
+
+425
+00:20:37,270 --> 00:20:38,353
+it is not notarized.
+
+426
+00:20:40,110 --> 00:20:42,100
+Ugh, this is a bummer.
+
+427
+00:20:42,100 --> 00:20:43,770
+And, so what do we do? Right?
+
+428
+00:20:43,770 --> 00:20:46,030
+We gotta figure out a way to bypass now,
+
+429
+00:20:46,030 --> 00:20:48,730
+quarantine and notarization.
+
+430
+00:20:48,730 --> 00:20:52,450
+Now, hope is not lost, right?
+
+431
+00:20:52,450 --> 00:20:54,100
+This is 2020, things look bleak,
+
+432
+00:20:54,100 --> 00:20:55,710
+but we gotta stay optimistic,
+
+433
+00:20:55,710 --> 00:20:59,340
+especially when we are looking
+and developing exploits.
+
+434
+00:20:59,340 --> 00:21:01,500
+Because if, and this is a big if,
+
+435
+00:21:01,500 --> 00:21:04,370
+if we can create a launch agent,
+
+436
+00:21:04,370 --> 00:21:07,030
+we can specify arguments,
+
+437
+00:21:07,030 --> 00:21:10,120
+and persist a persistent interactive,
+
+438
+00:21:10,120 --> 00:21:14,060
+non-sandbox, reverse shell, via bash.
+
+439
+00:21:14,060 --> 00:21:15,590
+Now, this is the big if,
+
+440
+00:21:15,590 --> 00:21:17,620
+but again, there's a few
+kinda takeaways here.
+
+441
+00:21:17,620 --> 00:21:20,810
+First, being able to
+specify arguments is huge.
+
+442
+00:21:20,810 --> 00:21:24,810
+And then also if we
+can specify or persist,
+
+443
+00:21:24,810 --> 00:21:26,830
+rather an interactive shell,
+
+444
+00:21:26,830 --> 00:21:29,350
+it's gonna be running outside the sandbox,
+
+445
+00:21:29,350 --> 00:21:31,650
+which is gonna do things like allow us
+
+446
+00:21:31,650 --> 00:21:33,760
+to remove quarantine attributes,
+
+447
+00:21:33,760 --> 00:21:35,500
+which means that notarization checks
+
+448
+00:21:35,500 --> 00:21:38,240
+will not even be performed.
+
+449
+00:21:38,240 --> 00:21:39,750
+This would be great.
+
+450
+00:21:39,750 --> 00:21:44,160
+But recall that Microsoft's
+patch for Adam's bug
+
+451
+00:21:44,160 --> 00:21:48,740
+explicitly blocks the
+creation of launch agents.
+
+452
+00:21:48,740 --> 00:21:50,390
+Bummer.
+
+453
+00:21:50,390 --> 00:21:52,600
+So we kinda have like all these pieces,
+
+454
+00:21:52,600 --> 00:21:55,440
+but we just can't quite put 'em together.
+
+455
+00:21:55,440 --> 00:21:56,760
+Frustrating.
+
+456
+00:21:56,760 --> 00:22:00,630
+So, we can escape the
+sandbox via a login item,
+
+457
+00:22:00,630 --> 00:22:03,310
+but login items can't take arguments.
+
+458
+00:22:03,310 --> 00:22:05,700
+And they also can't be a random binary,
+
+459
+00:22:05,700 --> 00:22:08,040
+because notarization will block it.
+
+460
+00:22:08,040 --> 00:22:09,280
+So in other words,
+
+461
+00:22:09,280 --> 00:22:12,760
+all we can do is persist an Apple binary,
+
+462
+00:22:12,760 --> 00:22:15,170
+again, with no arguments.
+
+463
+00:22:15,170 --> 00:22:17,620
+And sure we can bypass notarization
+
+464
+00:22:17,620 --> 00:22:20,080
+by the creation of a launch agent,
+
+465
+00:22:20,080 --> 00:22:22,800
+but we can't create one from the sandbox
+
+466
+00:22:22,800 --> 00:22:25,250
+due to Microsoft's partial patch.
+
+467
+00:22:25,250 --> 00:22:26,810
+So, in other words,
+
+468
+00:22:26,810 --> 00:22:29,270
+what we need is a way for the system
+
+469
+00:22:29,270 --> 00:22:32,770
+or for an Apple binary with no arguments
+
+470
+00:22:32,770 --> 00:22:35,993
+is to create a launch agent for us.
+
+471
+00:22:37,900 --> 00:22:40,040
+This is where things get beautiful.
+
+472
+00:22:40,040 --> 00:22:42,290
+So, I had a random idea.
+
+473
+00:22:42,290 --> 00:22:44,820
+What happens if you create a login item
+
+474
+00:22:44,820 --> 00:22:47,300
+that is not a binary or an application?
+
+475
+00:22:47,300 --> 00:22:50,630
+Like, what happens if
+you persist a zip file?
+
+476
+00:22:50,630 --> 00:22:52,570
+How does the system handle that?
+
+477
+00:22:52,570 --> 00:22:54,640
+Again, recall we can
+create these login items
+
+478
+00:22:54,640 --> 00:22:55,473
+from the sandbox.
+
+479
+00:22:55,473 --> 00:22:58,270
+They can't take arguments and
+they can't be random binaries,
+
+480
+00:22:58,270 --> 00:22:59,790
+but, you know, what happens
+
+481
+00:22:59,790 --> 00:23:03,830
+if we create a persist, a zip file, right?
+
+482
+00:23:03,830 --> 00:23:05,803
+Well, it turns out on login,
+
+483
+00:23:06,690 --> 00:23:09,820
+the file's default
+handler will be invoked,
+
+484
+00:23:09,820 --> 00:23:13,960
+which for a zip file, macOS
+will automatically execute
+
+485
+00:23:13,960 --> 00:23:18,140
+the Apple's archive
+utility to unzip the file.
+
+486
+00:23:18,140 --> 00:23:21,080
+Basically says, okay,
+this is not an executable,
+
+487
+00:23:21,080 --> 00:23:23,550
+so I'm gonna invoke the handler.
+
+488
+00:23:23,550 --> 00:23:25,510
+And in this case, it's
+the archive utility,
+
+489
+00:23:25,510 --> 00:23:27,370
+because we persisted a zip file,
+
+490
+00:23:27,370 --> 00:23:29,280
+which will extract that.
+
+491
+00:23:29,280 --> 00:23:32,900
+Now, remember we wanna
+create a launch agent,
+
+492
+00:23:32,900 --> 00:23:36,740
+but due to Apple's, sorry,
+Microsoft's recent patch,
+
+493
+00:23:36,740 --> 00:23:38,280
+we cannot directly write
+
+494
+00:23:38,280 --> 00:23:41,240
+to the user's launch agent directory.
+
+495
+00:23:41,240 --> 00:23:42,250
+But if it doesn't exist,
+
+496
+00:23:42,250 --> 00:23:44,890
+which on a default version
+of macOS, it does not,
+
+497
+00:23:44,890 --> 00:23:48,600
+we can drop the zip file one directory up
+
+498
+00:23:48,600 --> 00:23:50,320
+in the user's library directory.
+
+499
+00:23:50,320 --> 00:23:53,043
+This is allowed from the sandbox.
+
+500
+00:23:53,950 --> 00:23:57,770
+So now we can place the zip
+file in the library directory,
+
+501
+00:23:57,770 --> 00:24:02,270
+and we can persist this as a login area.
+
+502
+00:24:02,270 --> 00:24:03,870
+So we're making progress.
+
+503
+00:24:03,870 --> 00:24:05,580
+So what do we put in the zip file?
+
+504
+00:24:05,580 --> 00:24:08,430
+A directory named Launch Agents,
+
+505
+00:24:08,430 --> 00:24:12,170
+and in that, a launch agent property list.
+
+506
+00:24:12,170 --> 00:24:15,650
+So now when we persist this
+zip file as a login item,
+
+507
+00:24:15,650 --> 00:24:18,560
+on next login, the archive utility
+
+508
+00:24:18,560 --> 00:24:20,430
+will automatically be invoked.
+
+509
+00:24:20,430 --> 00:24:23,550
+This is allowed because it's
+an Apple sign-in process
+
+510
+00:24:23,550 --> 00:24:26,990
+and it will run outside
+the context of the sandbox,
+
+511
+00:24:26,990 --> 00:24:31,430
+which means it can do
+things like unzip our file
+
+512
+00:24:31,430 --> 00:24:33,370
+and create the launch agent directory
+
+513
+00:24:33,370 --> 00:24:36,023
+and our launch agent property list for us.
+
+514
+00:24:38,010 --> 00:24:39,170
+That is awesome.
+
+515
+00:24:39,170 --> 00:24:41,920
+So this completes the full exploit chain.
+
+516
+00:24:41,920 --> 00:24:44,830
+The user starts by opening this SLK file
+
+517
+00:24:44,830 --> 00:24:47,190
+containing the XLM macro,
+
+518
+00:24:47,190 --> 00:24:49,290
+which will execute automatically,
+
+519
+00:24:49,290 --> 00:24:52,650
+again, no alert, they
+just opened the document,
+
+520
+00:24:52,650 --> 00:24:57,160
+this downloads and persists
+the specially crafted zip file
+
+521
+00:24:57,160 --> 00:24:58,660
+as a login item.
+
+522
+00:24:58,660 --> 00:25:00,460
+On next login, the archive utility
+
+523
+00:25:00,460 --> 00:25:01,790
+will be automatically invoked
+
+524
+00:25:01,790 --> 00:25:05,210
+and in the background,
+will extract this zip file,
+
+525
+00:25:05,210 --> 00:25:08,390
+thereby creating a launch agent for us.
+
+526
+00:25:08,390 --> 00:25:11,630
+And on next login, the login agent
+
+527
+00:25:11,630 --> 00:25:15,010
+will be automatically
+executed with our arguments,
+
+528
+00:25:15,010 --> 00:25:17,430
+which we can put in the property list
+
+529
+00:25:17,430 --> 00:25:20,913
+and will execute our bash
+based interactive backdoor.
+
+530
+00:25:22,920 --> 00:25:26,670
+So this bash backdoor
+runs outside the sandbox,
+
+531
+00:25:26,670 --> 00:25:30,480
+meaning it can download
+an unquarantined files.
+
+532
+00:25:30,480 --> 00:25:32,910
+Unquarantined files are not constrained
+
+533
+00:25:32,910 --> 00:25:35,690
+by Apple's notarization requirements.
+
+534
+00:25:35,690 --> 00:25:40,260
+So, we have this interactive
+shell outside of the sandbox.
+
+535
+00:25:40,260 --> 00:25:41,670
+What do we do?
+
+536
+00:25:41,670 --> 00:25:44,400
+Well, we decided to persist something,
+
+537
+00:25:44,400 --> 00:25:47,810
+and I thought it'd be extra
+funny to persist a repurposed,
+
+538
+00:25:47,810 --> 00:25:51,080
+clearly not notarized version of WindTail.
+
+539
+00:25:51,080 --> 00:25:52,480
+And you can see on the slide,
+
+540
+00:25:52,480 --> 00:25:54,290
+when I finally got this all working
+
+541
+00:25:54,290 --> 00:25:56,310
+in the Slack channel at work,
+
+542
+00:25:56,310 --> 00:25:58,143
+I was clearly pretty stoked.
+
+543
+00:26:00,280 --> 00:26:01,650
+All right, so let's now talk,
+
+544
+00:26:01,650 --> 00:26:04,160
+kinda shift gears and talk about
+
+545
+00:26:04,160 --> 00:26:06,100
+defending against these attacks
+
+546
+00:26:06,100 --> 00:26:09,033
+and some generic methods of detection.
+
+547
+00:26:10,760 --> 00:26:14,060
+First thing, as a responsible
+security researcher,
+
+548
+00:26:14,060 --> 00:26:18,380
+I reported all these vulnerabilities
+to Microsoft and Apple.
+
+549
+00:26:18,380 --> 00:26:20,710
+Microsoft responded and said
+
+550
+00:26:20,710 --> 00:26:22,860
+this is a known issue on the Apple side.
+
+551
+00:26:22,860 --> 00:26:24,390
+And I was like, well, yeah,
+
+552
+00:26:24,390 --> 00:26:26,710
+because I told Apple as well.
+
+553
+00:26:26,710 --> 00:26:29,440
+So, I have no idea what Microsoft did,
+
+554
+00:26:29,440 --> 00:26:31,610
+no CVE, no bug bounty.
+
+555
+00:26:31,610 --> 00:26:32,720
+Bummer.
+
+556
+00:26:32,720 --> 00:26:35,780
+Apple said, thank you for your reports.
+
+557
+00:26:35,780 --> 00:26:38,130
+And then nothing.
+
+558
+00:26:38,130 --> 00:26:41,060
+I waited a long time and
+checked back in with Apple,
+
+559
+00:26:41,060 --> 00:26:43,880
+and they said, oh yeah,
+we patched that back in,
+
+560
+00:26:43,880 --> 00:26:46,340
+you know, 10.15.3.
+
+561
+00:26:46,340 --> 00:26:51,223
+Again, no CVE, no bug
+bounty, classic Cupertino.
+
+562
+00:26:54,070 --> 00:26:57,420
+Let's talk briefly though
+about how to detect this,
+
+563
+00:26:57,420 --> 00:27:01,430
+these attacks and perhaps
+other Mac malware as well.
+
+564
+00:27:01,430 --> 00:27:04,560
+So the first thing let's talk
+about is process monitoring,
+
+565
+00:27:04,560 --> 00:27:08,440
+leveraging Apple's new
+endpoint security framework.
+
+566
+00:27:08,440 --> 00:27:11,330
+It turns out it's pretty easy
+to create a process monitor
+
+567
+00:27:11,330 --> 00:27:15,270
+to detect something I
+call suspicious children,
+
+568
+00:27:15,270 --> 00:27:17,660
+suspicious children processes.
+
+569
+00:27:17,660 --> 00:27:18,930
+As we can see on the slide,
+
+570
+00:27:18,930 --> 00:27:22,290
+we can now detect when
+an office application,
+
+571
+00:27:22,290 --> 00:27:26,120
+for example, Excel, spawns a child process
+
+572
+00:27:26,120 --> 00:27:28,510
+that is, well, suspicious.
+
+573
+00:27:28,510 --> 00:27:32,300
+So, regardless of the
+reason of the exploit,
+
+574
+00:27:32,300 --> 00:27:34,190
+if it was a macro, buffer overflow,
+
+575
+00:27:34,190 --> 00:27:38,810
+if you see Excel spawning
+Curl and then Python,
+
+576
+00:27:38,810 --> 00:27:40,690
+you know, that's bad news,
+
+577
+00:27:40,690 --> 00:27:42,493
+something is a mess.
+
+578
+00:27:44,610 --> 00:27:47,080
+We can also detect a
+wide range of attacks,
+
+579
+00:27:47,080 --> 00:27:48,590
+including the exploit chain,
+
+580
+00:27:48,590 --> 00:27:50,070
+we just talked about this,
+
+581
+00:27:50,070 --> 00:27:53,830
+by monitoring the file
+system for persistence.
+
+582
+00:27:53,830 --> 00:27:55,940
+Persistence is just the way that malware,
+
+583
+00:27:55,940 --> 00:27:57,840
+or perhaps an exploit chain,
+
+584
+00:27:57,840 --> 00:27:59,320
+escapes out of the sandbox
+
+585
+00:27:59,320 --> 00:28:01,690
+or ensures that it's
+automatically re-executed
+
+586
+00:28:01,690 --> 00:28:05,770
+when the system is rebooted
+or the user re-logs in.
+
+587
+00:28:05,770 --> 00:28:06,603
+So again, we can use
+
+588
+00:28:06,603 --> 00:28:08,820
+Apple's new endpoint security framework,
+
+589
+00:28:08,820 --> 00:28:10,360
+and we can monitor for files,
+
+590
+00:28:10,360 --> 00:28:13,810
+specifically related for
+one's to persistence.
+
+591
+00:28:13,810 --> 00:28:15,470
+So here, for example, on the slide,
+
+592
+00:28:15,470 --> 00:28:19,870
+we can detect now that
+a login item was created
+
+593
+00:28:19,870 --> 00:28:23,150
+that does not point to an
+application or a binary,
+
+594
+00:28:23,150 --> 00:28:26,230
+which is normally the case
+when a login item is created,
+
+595
+00:28:26,230 --> 00:28:28,020
+but instead to a zip file.
+
+596
+00:28:28,020 --> 00:28:31,080
+This is a huge red flag and kind of shows
+
+597
+00:28:31,080 --> 00:28:34,253
+that our exploit is executed.
+
+598
+00:28:36,820 --> 00:28:40,120
+So at Jamf, we implement
+such monitoring logic
+
+599
+00:28:40,120 --> 00:28:42,500
+in a framework we call it MonitorKit.
+
+600
+00:28:42,500 --> 00:28:45,320
+We then feed that monitoring data,
+
+601
+00:28:45,320 --> 00:28:47,930
+as well as our analytics and rules,
+
+602
+00:28:47,930 --> 00:28:52,020
+into Apple's game logic
+engine for evaluation.
+
+603
+00:28:52,020 --> 00:28:56,200
+This gives us a powerful
+endpoint detection capability,
+
+604
+00:28:56,200 --> 00:28:59,160
+uniquely tailored for macOS.
+
+605
+00:28:59,160 --> 00:29:00,500
+And kinda neat, not to really brag,
+
+606
+00:29:00,500 --> 00:29:02,640
+but based on our current rules,
+
+607
+00:29:02,640 --> 00:29:05,600
+we were actually able to
+detect this exploit chain
+
+608
+00:29:05,600 --> 00:29:07,920
+with no a priori knowledge.
+
+609
+00:29:07,920 --> 00:29:08,753
+Pretty neat.
+
+610
+00:29:09,813 --> 00:29:13,170
+All right, so let's wrap everything up.
+
+611
+00:29:13,170 --> 00:29:15,370
+So, today we kinda talked about
+
+612
+00:29:15,370 --> 00:29:17,160
+the current state of affairs
+
+613
+00:29:17,160 --> 00:29:18,937
+in the land of macro-based attacks,
+
+614
+00:29:18,937 --> 00:29:22,680
+and we showed that they are
+becoming more and more popular
+
+615
+00:29:22,680 --> 00:29:26,480
+in the sense of targeting
+specifically macOS users,
+
+616
+00:29:26,480 --> 00:29:30,110
+but luckily, current
+attacks are rather lame.
+
+617
+00:29:30,110 --> 00:29:31,850
+However, we should not be lulled
+
+618
+00:29:31,850 --> 00:29:33,610
+into a sense of complacency,
+
+619
+00:29:33,610 --> 00:29:35,990
+because, you know, it
+showed us pretty easy
+
+620
+00:29:35,990 --> 00:29:40,010
+to actually create a
+zero-click exploit chain
+
+621
+00:29:40,010 --> 00:29:42,880
+that, if the user would open a document,
+
+622
+00:29:42,880 --> 00:29:45,460
+would both escape the sandbox
+
+623
+00:29:45,460 --> 00:29:49,920
+and bypass all of Apple's
+recent security mechanisms.
+
+624
+00:29:49,920 --> 00:29:54,370
+Again, at the time on a
+fully patched macOS system.
+
+625
+00:29:54,370 --> 00:29:55,530
+However, we ended by showing
+
+626
+00:29:55,530 --> 00:29:58,960
+that by leveraging Apple's new
+endpoint security framework,
+
+627
+00:29:58,960 --> 00:30:02,603
+we can generically detect
+these and other attacks.
+
+628
+00:30:04,130 --> 00:30:07,040
+I personally wanna thank
+a variety of people,
+
+629
+00:30:07,040 --> 00:30:10,610
+first and foremost, you all for
+virtually attending my talk.
+
+630
+00:30:10,610 --> 00:30:12,620
+Hope you're all staying safe and healthy,
+
+631
+00:30:12,620 --> 00:30:16,660
+also to Jamf for putting up
+with my many shenanigans,
+
+632
+00:30:16,660 --> 00:30:18,560
+and also all the amazing companies
+
+633
+00:30:18,560 --> 00:30:20,563
+that support Objective-See.
+
+634
+00:30:22,250 --> 00:30:23,760
+Oh, and one more thing,
+
+635
+00:30:23,760 --> 00:30:26,197
+today I am announcing my new book,
+
+636
+00:30:26,197 --> 00:30:29,420
+"The Art of Mac Malware Analysis."
+
+637
+00:30:29,420 --> 00:30:31,743
+My dog is very excited about it as well.
+
+638
+00:30:32,580 --> 00:30:37,580
+I published the first
+part online at taomm.org,
+
+639
+00:30:37,890 --> 00:30:38,850
+and the rest of the chapters
+
+640
+00:30:38,850 --> 00:30:41,520
+will be published shortly as well,
+
+641
+00:30:41,520 --> 00:30:42,970
+all a hundred percent free.
+
+642
+00:30:42,970 --> 00:30:44,260
+Sharing is caring.
+
+643
+00:30:44,260 --> 00:30:46,430
+So, if you're interested in learning more
+
+644
+00:30:46,430 --> 00:30:50,810
+about Mac malware, exploits,
+persistence, debuggers,
+
+645
+00:30:50,810 --> 00:30:53,243
+disassembling, check out the site.
+
+646
+00:30:54,800 --> 00:30:55,900
+So again, that is a wrap.
+
+647
+00:30:55,900 --> 00:30:58,153
+Thank you so much for attending my talk.
+

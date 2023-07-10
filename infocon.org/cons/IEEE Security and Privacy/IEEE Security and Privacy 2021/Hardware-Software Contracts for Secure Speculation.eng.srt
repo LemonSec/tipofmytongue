@@ -1,0 +1,842 @@
+﻿1
+00:00:00,080 --> 00:00:05,419
+This is a presentation of our work on hardware/software
+contracts for secure speculation. This is
+
+2
+00:00:05,419 --> 00:00:10,230
+joint work with Boris Kopf from Microsoft
+Research, Jan Reineke from Saarland University,
+
+3
+00:00:10,230 --> 00:00:13,180
+and Pepe Vila from IMDEA Software.
+
+4
+00:00:13,180 --> 00:00:17,670
+Speculative execution attacks, such as Spectre,
+exploit speculative execution, an optimization
+
+5
+00:00:17,670 --> 00:00:21,660
+implemented in modern CPUs, to leak sensitive
+information.
+
+6
+00:00:21,660 --> 00:00:26,109
+Since the discovery of Spectre, researchers
+have been working on countermeasures to mitigate
+
+7
+00:00:26,109 --> 00:00:31,060
+these attacks. As an example, this is a collection
+of a few recent mechanisms for secure speculation.
+
+8
+00:00:31,060 --> 00:00:34,750
+Let’s look at how they work on a few examples!
+
+9
+00:00:34,750 --> 00:00:41,420
+This is the standard Spectre v1 Example! When
+executing the branch instruction, the processor
+
+10
+00:00:41,420 --> 00:00:46,000
+might speculate on the branch outcome and
+continue the execution based on this speculation.
+
+11
+00:00:46,000 --> 00:00:51,460
+For instance, if x is out-of-bound, the processor
+might anyway speculatively execute the memory
+
+12
+00:00:51,460 --> 00:00:56,060
+accesses, which results in leaking an arbitrary
+memory location (pointed by A[x] here) through
+
+13
+00:00:56,060 --> 00:01:03,830
+the data cache! Hardware countermeasures implement
+different ways of blocking such a leak! For
+
+14
+00:01:03,830 --> 00:01:08,441
+instance, load delays countermeasures (such
+as those proposed by Sakalis and others) prevent
+
+15
+00:01:08,441 --> 00:01:14,120
+the leak by delaying the first LOAD until
+the branch instruction is resolved. In contrast,
+
+16
+00:01:14,120 --> 00:01:18,550
+hardware taint-tracking countermeasures taint the
+result of the first memory access and delay
+
+17
+00:01:18,550 --> 00:01:25,320
+the second one, thereby preventing the transmission
+(namely, the encoding into the cache) of the information!
+
+18
+00:01:25,320 --> 00:01:30,300
+Consider now this slightly different example!
+Here, the first load happens non-speculatively.
+
+19
+00:01:30,300 --> 00:01:35,500
+Now, the first two countermeasures still prevent
+the leak since they delay the execution of
+
+20
+00:01:35,500 --> 00:01:42,160
+the second load! However, taint-tracking based
+mechanisms like NDA and STT do not prevent
+
+21
+00:01:42,160 --> 00:01:47,330
+the leak because the first memory access is
+not tainted (since it is not transient) and,
+
+22
+00:01:47,330 --> 00:01:53,890
+therefore, the second access is not delayed.
+As a result, this leads to speculatively leaking A[x].
+
+23
+00:01:53,890 --> 00:02:00,170
+So, as our simple examples have shown, these
+defenses block different classes of speculative
+
+24
+00:02:00,170 --> 00:02:05,661
+leaks and provide different security guarantees.
+However, we currently lack a uniform way
+
+25
+00:02:05,661 --> 00:02:11,020
+of precisely characterizing these security
+guarantees. As a result, we also lack a precise
+
+26
+00:02:11,020 --> 00:02:15,830
+understanding of how programmers can leverage
+these defenses to build secure systems.
+
+27
+00:02:15,830 --> 00:02:20,890
+In this paper, we present a framework for
+formalizing hardware-software contracts that
+
+28
+00:02:20,890 --> 00:02:26,420
+support principled co-design for secure speculation.
+As we will see in this talk, our contracts
+
+29
+00:02:26,420 --> 00:02:30,950
+(1) can precisely characterize the security
+guarantees provided by recent hardware proposals
+
+30
+00:02:30,950 --> 00:02:36,609
+for secure speculation, and (2) provide program-level
+properties formalizing how to leverage these
+
+31
+00:02:36,610 --> 00:02:39,730
+hardware guarantees to achieve global, end-to-end
+security.
+
+32
+00:02:39,730 --> 00:02:43,000
+Let’s look at our framework for specifying
+contracts.
+
+33
+00:02:43,000 --> 00:02:47,420
+In our framework a contract specifies which
+program executions a side-channel adversary
+
+34
+00:02:47,420 --> 00:02:50,769
+can distinguish by observing the micro architectural
+state.
+
+35
+00:02:50,770 --> 00:02:53,790
+In particular, contracts capture security guarantees of HW
+
+36
+00:02:53,790 --> 00:02:58,329
+in a simple, mechanism-independent manner.
+That is, they abstract away from intricate
+
+37
+00:02:58,330 --> 00:03:02,130
+microarchitectural details.
+In this way, they also act as a basis for
+
+38
+00:03:02,130 --> 00:03:07,859
+principled secure programming since they enable
+understanding how to securely program different
+
+39
+00:03:07,860 --> 00:03:08,860
+hardware platforms.
+
+40
+00:03:08,860 --> 00:03:13,590
+A contract is formalized as a labelled ISA
+semantics where steps in the semantics are
+
+41
+00:03:13,590 --> 00:03:19,959
+associated with observations \tau that expose
+security-relevant microarchitectural events. Given a program
+
+42
+00:03:19,959 --> 00:03:25,230
+p and an arch state \sigma, we have “contract
+traces”, that is, the sequence of observations
+
+43
+00:03:25,230 --> 00:03:30,988
+associated with executing p on \sigma according
+to the contract. In our paper, we formalize
+
+44
+00:03:30,989 --> 00:03:36,590
+processors using (1) Hardware states that
+consist of architectural states \sigma and
+
+45
+00:03:36,590 --> 00:03:40,970
+microarchitectural states \mu that describe
+the state of microarchitectural components (like caches
+
+46
+00:03:40,970 --> 00:03:46,140
+and branch predictors), and (2) a hardware
+semantics that describes how states are modified
+
+47
+00:03:46,140 --> 00:03:52,250
+during the computation. Finally, we consider
+attackers that observe part of the microarchitectural
+
+48
+00:03:52,250 --> 00:03:58,959
+state during computation. This is captured
+by what we call hardware traces.  We can now formalize
+
+49
+00:03:58,959 --> 00:04:03,930
+“contract satisfaction”: We say that a
+hardware satisfies a contract if for all programs
+
+50
+00:04:03,930 --> 00:04:09,280
+p and states \sigma, \sigma’, whenever the
+contract produces the same traces, then the
+
+51
+00:04:09,280 --> 00:04:14,510
+corresponding hardware traces must be the
+same. That is, whenever a hardware satisfies
+
+52
+00:04:14,510 --> 00:04:19,430
+a contract, contracts traces capture which
+executions are guaranteed to be indistinguishable
+
+53
+00:04:19,430 --> 00:04:20,789
+to an attacker.
+
+54
+00:04:20,789 --> 00:04:25,589
+Our contracts for secure speculation are defined
+in terms of an execution mode, which describes
+
+55
+00:04:25,589 --> 00:04:30,620
+*how* programs are executed, and an observer
+mode, which describes what kind of information
+
+56
+00:04:30,620 --> 00:04:33,539
+a contract exposes during an execution.
+
+57
+00:04:33,539 --> 00:04:38,128
+As execution mode, we consider a *seq* mode
+where programs are executed sequentially (that
+
+58
+00:04:38,129 --> 00:04:42,259
+is, in the standard way) and a *spec* mode
+where program execution also explores mispredicted
+
+59
+00:04:42,259 --> 00:04:46,639
+paths (therefore exposing the effects of transient
+instructions).
+
+60
+00:04:46,639 --> 00:04:51,960
+As observer mode, which describes what information
+is disclosed during the execution, we consider
+
+61
+00:04:51,960 --> 00:04:58,039
+three variants. The pc mode discloses changes
+to the program counter during execution
+
+62
+00:04:58,039 --> 00:05:03,219
+The Ct mode additionally discloses the address
+of memory operations and it captures the standard
+
+63
+00:05:03,219 --> 00:05:07,349
+“constant-time” observer often used when
+reasoning about the absence of side-channels
+
+64
+00:05:07,349 --> 00:05:11,960
+in cryptographic code.
+Finally, the Arch mode additionally discloses
+
+65
+00:05:11,960 --> 00:05:17,330
+the values loaded from memory. As a result,
+this mode effectively discloses the values
+
+66
+00:05:17,330 --> 00:05:19,808
+of all registers during the execution.
+
+67
+00:05:19,809 --> 00:05:25,389
+By combining all these modes, we obtain several
+different contracts, depicted here. In our
+
+68
+00:05:25,389 --> 00:05:30,240
+framework, contracts can be compared in terms
+of the security guarantees they offer, where
+
+69
+00:05:30,240 --> 00:05:35,830
+a contract C is stronger than another
+contract C’ if C leak less information than
+
+70
+00:05:35,830 --> 00:05:41,099
+C’, represented here with an arrow from
+C’ to C. So, this picture illustrates the
+
+71
+00:05:41,099 --> 00:05:46,188
+relations between secure speculation contracts!
+For instance, the “bottom” contract leaks
+
+72
+00:05:46,189 --> 00:05:51,150
+everything and provides no security guarantees.
+In contrast, the “top” contract leaks
+
+73
+00:05:51,150 --> 00:05:55,859
+nothing and is associated with an ideal processor
+that does not leak information through side
+
+74
+00:05:55,860 --> 00:06:01,240
+channels. The seq-ct contract corresponds
+to the usual “constant-time” model, and
+
+75
+00:06:01,240 --> 00:06:07,750
+it only leaks the address of non-speculative
+loads, stores, and instruction fetches. The seq-arch contract,
+
+76
+00:06:07,750 --> 00:06:12,849
+which additionally leaks the loaded values,
+provides weaker guarantees (as represented
+
+77
+00:06:12,849 --> 00:06:18,210
+by the arrow here). The spec-ct contract,
+which additionally leaks the addresses of
+
+78
+00:06:18,210 --> 00:06:23,630
+speculative loads, stores, and instruction fetches,
+also provides weaker guarantees. However,
+
+79
+00:06:23,630 --> 00:06:28,649
+seq-arch and spec-ct are incomparable in terms
+of leaks.
+
+80
+00:06:28,649 --> 00:06:33,029
+As I’ll show next, we can use these secure
+speculation contracts to compare guarantees
+
+81
+00:06:33,029 --> 00:06:35,999
+provided by different hardware defenses!
+
+82
+00:06:35,999 --> 00:06:40,720
+As a basis for our analysis, we developed
+a formal model of a simple processor. The
+
+83
+00:06:40,720 --> 00:06:46,550
+processor supports both speculative and out-of-order
+execution. It has a 3-stage pipeline with
+
+84
+00:06:46,550 --> 00:06:51,300
+fetch, execute, and retire stages. And, it
+is parametric in the branch prediction strategy
+
+85
+00:06:51,300 --> 00:06:56,770
+as well as in the memory hierarchy. On top
+of this model, we implemented several hardware-level
+
+86
+00:06:56,770 --> 00:06:59,849
+countermeasures and we studied their security using contracts!
+
+87
+00:06:59,849 --> 00:07:05,128
+Let’s first consider the vanilla processor
+without countermeasures. This processor is
+
+88
+00:07:05,129 --> 00:07:10,289
+vulnerable to Spectre-style attacks. When
+executing this branch instruction, the processor
+
+89
+00:07:10,289 --> 00:07:15,210
+might mispredict the outcome of the branch
+and speculatively execute the memory accesses
+
+90
+00:07:15,210 --> 00:07:21,789
+even when x is out of bounds, thereby speculatively
+leaking A[x]! So, without countermeasures
+
+91
+00:07:21,789 --> 00:07:27,810
+our processor leaks the address of all speculative
+and non-speculative loads, stores, and instruction
+
+92
+00:07:27,810 --> 00:07:33,830
+fetches. As a result, it satisfies only the
+weak spec-ct contract!
+
+93
+00:07:33,830 --> 00:07:39,318
+The first countermeasure we analyze is completely
+disabling speculative and out-of-order execution.
+
+94
+00:07:39,319 --> 00:07:45,759
+In this case, the processor executes instructions
+sequentially, where each instruction is fetched-executed-retired
+
+95
+00:07:45,759 --> 00:07:50,639
+before moving to the next one. Obviously,
+this countermeasure prevents all speculative
+
+96
+00:07:50,639 --> 00:07:56,599
+leaks. As a result, it satisfies the strong
+seq-ct contract which only discloses the address
+
+97
+00:07:56,599 --> 00:08:02,319
+of loads, stores, and instruction fetches over
+non-speculative executions.
+
+98
+00:08:02,319 --> 00:08:07,110
+The second countermeasure that we analyze
+is the eager delay of speculative loads proposed
+
+99
+00:08:07,110 --> 00:08:13,800
+by Sakalis et al. This countermeasure delays
+loads until all sources of speculation are
+
+100
+00:08:13,800 --> 00:08:19,349
+resolved. We formalize this by modifying our
+processor to execute load operations only
+
+101
+00:08:19,349 --> 00:08:25,340
+when all prior branch instructions in the
+reorder buffer are have been resolved. So,
+
+102
+00:08:25,340 --> 00:08:28,628
+So, what are the guarantees offered by eager load
+delay?
+
+103
+00:08:28,629 --> 00:08:33,390
+In the standard Spectre example, the memory
+accesses are delayed until the branch instruction
+
+104
+00:08:33,390 --> 00:08:38,409
+is resolved. Therefore, there is no speculative
+leak. However,
+
+105
+00:08:38,409 --> 00:08:43,549
+consider a variant where we first access A[x]
+and then we use the retrieved value as part
+
+106
+00:08:43,549 --> 00:08:50,130
+of a control-flow statement. This can potentially
+leak the value of A[x] through control-flow.
+
+107
+00:08:50,130 --> 00:08:54,530
+The execution of the second branch instruction
+is not delayed since the eager delay countermeasure
+
+108
+00:08:54,530 --> 00:08:59,819
+applies only to data-loads. Therefore, we
+can still speculatively leak the value of
+
+109
+00:08:59,820 --> 00:09:06,900
+A[x] (for instance, skip is loaded into the
+instruction cache only if A[x] == 0).
+
+110
+00:09:06,900 --> 00:09:12,209
+In general, the countermeasure successfully
+blocks speculative leaks involving load operations
+
+111
+00:09:12,210 --> 00:09:16,450
+but it does not block speculative leak through
+control-flow operations.
+
+112
+00:09:16,450 --> 00:09:22,750
+As a result, eager load delay satisfies the
+seq-arch and seq/spec-ct/pc contracts. The
+
+113
+00:09:22,750 --> 00:09:28,500
+former captures that it can only leak data
+retrieved non-speculatively, whereas the latter
+
+114
+00:09:28,500 --> 00:09:33,090
+captures that it does not block speculative
+leaks through control-flow operations.
+
+115
+00:09:33,090 --> 00:09:40,630
+Finally, we analyzed hardware taint-tracking
+mechanisms like STT and NDA. These mechanisms
+
+116
+00:09:40,630 --> 00:09:46,550
+taint all speculatively loaded data as unsafe.
+They propagate taint through the computation
+
+117
+00:09:46,550 --> 00:09:52,770
+and whenever operations are no longer transient,
+the taint is removed. Finally, these mechanisms
+
+118
+00:09:52,770 --> 00:09:58,060
+selectively delay tainted operations to avoid
+leaks. So, what are the guarantees offered
+
+119
+00:09:58,060 --> 00:10:01,000
+by these mechanisms?
+
+120
+00:10:01,000 --> 00:10:07,630
+For the standard Spectre snippet, the mechanism
+tags Z (the result of the first memory access)
+
+121
+00:10:07,630 --> 00:10:14,210
+as unsafe. Therefore, the second memory access
+is delayed (since Z is unsafe) until the taint
+
+122
+00:10:14,210 --> 00:10:20,780
+is downgraded to safe (i.e., when the branch
+instruction gets resolved). Therefore, there
+
+123
+00:10:20,780 --> 00:10:24,240
+are no speculative leaks for both STT and
+NDA.
+
+124
+00:10:24,240 --> 00:10:29,940
+Consider, however, a variant of the Spectre
+snippet where the first memory access happens
+
+125
+00:10:29,940 --> 00:10:36,360
+before the branch instruction. Here, Z is
+tagged as safe since the load is not transient.
+
+126
+00:10:36,360 --> 00:10:47,290
+Therefore, neither NDA nor STT delay the second
+memory access. So A[x] is leaked speculatively.
+
+127
+00:10:47,290 --> 00:10:52,290
+So, the summary is that while both countermeasures are effective at preventing speculative leaks of speculatively
+
+128
+00:10:52,290 --> 00:10:58,730
+accessed data, they fail in preventing speculative
+leaks of non-transiently accessed information.
+
+129
+00:10:58,730 --> 00:11:02,530
+As a result, they satisfy the seq-arch and
+spec-ct contracts.
+
+130
+00:11:02,530 --> 00:11:08,170
+So, this is the high-level overview of our
+results. Without countermeasures, processors
+
+131
+00:11:08,170 --> 00:11:13,800
+satisfy only the weak spec-ct contract. The
+“Seq” countermeasure, which disables speculative
+
+132
+00:11:13,800 --> 00:11:19,689
+and out-of-order execution, satisfies the
+strong seq-ct contract. The loadDelay countermeasure,
+
+133
+00:11:19,690 --> 00:11:26,450
+which delays loads until all sources of speculation
+are resolved, satisfies the weaker seq-arch
+
+134
+00:11:26,450 --> 00:11:33,440
+and seq-spec/ct-pc contracts. Finally, taint-tracking
+mechanisms satisfy the seq-arch and spec-ct
+
+135
+00:11:33,440 --> 00:11:39,850
+contracts! So, our contracts allow us to
+give precise security guarantees for existing
+
+136
+00:11:39,850 --> 00:11:46,080
+countermeasures and to order these guarantees:
+disabling spec exec provides stronger guarantees
+
+137
+00:11:46,080 --> 00:11:52,090
+than eager load delay, which, in turn, provides
+stronger guarantees than hardware-based taint-tracking
+
+138
+00:11:52,090 --> 00:11:57,380
+solutions. In the paper, we provide models
+and proofs for all these results!
+
+139
+00:11:57,380 --> 00:12:01,140
+Contracts provide a basis for secure programming
+and for leveraging the security guarantees
+
+140
+00:12:01,140 --> 00:12:04,680
+offered by different classes of hardware countermeasures!
+
+141
+00:12:04,680 --> 00:12:09,439
+We consider two flavors of secure programming:
+First we consider a constant-time scenario,
+
+142
+00:12:09,440 --> 00:12:15,110
+where the goal is ensuring that a benign program
+does not leak confidential data to a side-channel
+
+143
+00:12:15,110 --> 00:12:17,440
+adversary!
+Second We consider a sandboxing scenario,
+
+144
+00:12:17,440 --> 00:12:21,800
+where the goal is preventing a potentially
+malicious program from accessing confidential
+
+145
+00:12:21,800 --> 00:12:23,920
+data outside of its sandbox.
+
+146
+00:12:23,920 --> 00:12:30,589
+In the paper, we generalize traditional constant-time
+and sandboxing notions to work for arbitrary
+
+147
+00:12:30,590 --> 00:12:35,200
+contracts, since traditional notions are not
+enough in a post-Spectre world where processors
+
+148
+00:12:35,200 --> 00:12:40,640
+might leak through speculatively executed
+instructions! This table summarizes whether
+
+149
+00:12:40,640 --> 00:12:45,439
+programs that satisfy traditional notions
+can be run securely on a processor that satisfies
+
+150
+00:12:45,440 --> 00:12:50,870
+a given contract. In particular, a checkmark
+denotes that programs that satisfy the traditional
+
+151
+00:12:50,870 --> 00:12:56,120
+notions can be run securely, while a crossmark
+denotes that programs need to satisfy additional
+
+152
+00:12:56,120 --> 00:13:02,170
+security checks beyond traditional constant-time
+and sandboxing. So, for the seq-ct contract,
+
+153
+00:13:02,170 --> 00:13:06,500
+all programs that satisfy traditional constant-time
+and sandboxing (which can be checked using
+
+154
+00:13:06,500 --> 00:13:12,190
+existing tools) can be run securely. For the
+seq-arch contract, additional security checks
+
+155
+00:13:12,190 --> 00:13:18,390
+are needed only for constant-time, but not
+for sandboxing. Finally, for the spec-ct contract,
+
+156
+00:13:18,390 --> 00:13:23,030
+additional security checks are needed for
+both flavors of secure programming. In particular,
+
+157
+00:13:23,030 --> 00:13:29,209
+one needs to check that programs satisfy a
+class of properties called speculative non-interference.
+
+158
+00:13:29,210 --> 00:13:34,200
+In the paper, we present full security definitions,
+we describe in detail the additional security
+
+159
+00:13:34,200 --> 00:13:39,190
+checks needed to run programs securely, and
+we discuss how existing tools can be repurposed
+
+160
+00:13:39,190 --> 00:13:44,710
+to reason about general constant-time and
+sandboxing.  So, what are the practical
+
+161
+00:13:44,710 --> 00:13:48,700
+implications of this? Consider a processor
+implementing hardware taint-tracking. This
+
+162
+00:13:48,700 --> 00:13:54,930
+processor satisfies the seq-arch and spec-ct
+contracts. This processor is well-suited for
+
+163
+00:13:54,930 --> 00:13:59,849
+sandboxing, since any traditionally sandboxed
+program can be securely executed without further
+
+164
+00:13:59,850 --> 00:14:05,020
+restrictions. However, it is not enough for
+constant-time. Indeed, traditional constant-time
+
+165
+00:14:05,020 --> 00:14:10,000
+programs would have to satisfy further constraints
+to be run securely!
+
+166
+00:14:10,000 --> 00:14:15,610
+To conclude, I presented a framework for expressing
+hardware-software contracts. I illustrated
+
+167
+00:14:15,610 --> 00:14:20,220
+how the framework can be instantiated to talk
+about secure speculation. I then showed how
+
+168
+00:14:20,220 --> 00:14:24,820
+to use the framework to characterize and compare
+the guarantees provided by a class of hardware-level
+
+169
+00:14:24,820 --> 00:14:29,740
+countermeasures. Finally, I discussed how
+the framework enables hardware/software co-design
+
+170
+00:14:29,740 --> 00:14:34,880
+and I’ve show how it can be to used automatically
+reason about different flavors of secure programming
+
+171
+00:14:34,880 --> 00:14:38,000
+by leveraging existing tools. Thanks for your
+attention!
+

@@ -1,0 +1,684 @@
+﻿1
+00:00:00,000 --> 00:00:03,469
+hi my name
+
+2
+00:00:04,510 --> 00:00:07,779
+nicolai I work at AMD on our open-source
+
+3
+00:00:07,779 --> 00:00:10,690
+OpenGL driver where we are using LLVM as
+
+4
+00:00:10,690 --> 00:00:12,760
+the back-end for a shader compilation
+
+5
+00:00:12,760 --> 00:00:15,250
+and I want to just very briefly go over
+
+6
+00:00:15,250 --> 00:00:17,980
+some unusual semantics that we need to
+
+7
+00:00:17,980 --> 00:00:20,560
+model in LLVM ir due to the way
+
+8
+00:00:20,560 --> 00:00:24,369
+parallelism works in GPUs so just kind
+
+9
+00:00:24,369 --> 00:00:27,249
+of as a reminder how does it work on the
+
+10
+00:00:27,249 --> 00:00:29,619
+GPU you have many of what we are calling
+
+11
+00:00:29,619 --> 00:00:32,348
+compute units you can think of those as
+
+12
+00:00:32,348 --> 00:00:34,740
+kind of like cores on a traditional CPU
+
+13
+00:00:34,740 --> 00:00:37,090
+except that each of them can have many
+
+14
+00:00:37,090 --> 00:00:40,030
+waves in flight at the same time waves
+
+15
+00:00:40,030 --> 00:00:42,670
+are kind of like threads on a usual CPU
+
+16
+00:00:42,670 --> 00:00:44,289
+in the sense that they have one program
+
+17
+00:00:44,289 --> 00:00:47,410
+counter but they are computing up to 64
+
+18
+00:00:47,410 --> 00:00:49,690
+items or what you would think of as
+
+19
+00:00:49,690 --> 00:00:51,370
+threads when you're actually writing the
+
+20
+00:00:51,370 --> 00:00:53,500
+source code for your shader or compute
+
+21
+00:00:53,500 --> 00:00:54,039
+kernel
+
+22
+00:00:54,039 --> 00:00:56,019
+so in hardware you actually have scalar
+
+23
+00:00:56,019 --> 00:00:58,960
+registers with one item per wave one
+
+24
+00:00:58,960 --> 00:01:01,480
+value per wave and vector registers with
+
+25
+00:01:01,480 --> 00:01:05,590
+one value per item in OpenCL OpenGL if
+
+26
+00:01:05,590 --> 00:01:07,840
+you know it work roofs are assigned to
+
+27
+00:01:07,840 --> 00:01:09,910
+compute units but might be split up into
+
+28
+00:01:09,910 --> 00:01:12,430
+many waves so what are some of the
+
+29
+00:01:12,430 --> 00:01:13,960
+examples that I want to mention there
+
+30
+00:01:13,960 --> 00:01:15,910
+are barrier instructions or calls
+
+31
+00:01:15,910 --> 00:01:18,730
+there are screen space derivatives and
+
+32
+00:01:18,730 --> 00:01:21,730
+pixel shaders and the fact that texture
+
+33
+00:01:21,730 --> 00:01:24,370
+lookups use descriptors that are stored
+
+34
+00:01:24,370 --> 00:01:27,850
+in scaler registers the barrier
+
+35
+00:01:27,850 --> 00:01:29,560
+instruction is a very simple instruction
+
+36
+00:01:29,560 --> 00:01:31,270
+that says please wait for all other
+
+37
+00:01:31,270 --> 00:01:33,280
+waves in the same work group to reach
+
+38
+00:01:33,280 --> 00:01:36,280
+the same barrier instruction in the
+
+39
+00:01:36,280 --> 00:01:38,320
+program so if you go from the left code
+
+40
+00:01:38,320 --> 00:01:39,850
+snippet to the right one it looks like
+
+41
+00:01:39,850 --> 00:01:41,740
+it would usually be an okay transform
+
+42
+00:01:41,740 --> 00:01:43,780
+but it isn't because one wave might go
+
+43
+00:01:43,780 --> 00:01:45,250
+down the true path while another goes
+
+44
+00:01:45,250 --> 00:01:47,290
+down the false path and then they're
+
+45
+00:01:47,290 --> 00:01:48,910
+indefinitely stuck waiting for each
+
+46
+00:01:48,910 --> 00:01:52,480
+other so we need to tell LLVM not to do
+
+47
+00:01:52,480 --> 00:01:54,760
+this or similar types of transforms and
+
+48
+00:01:54,760 --> 00:01:56,320
+we can do that by saying that the
+
+49
+00:01:56,320 --> 00:01:59,230
+barrier intrinsic is a convergent
+
+50
+00:01:59,230 --> 00:02:01,330
+function the conversion function
+
+51
+00:02:01,330 --> 00:02:03,310
+attribute has a formal definition the
+
+52
+00:02:03,310 --> 00:02:05,560
+key part is cited here you can meditate
+
+53
+00:02:05,560 --> 00:02:07,750
+on it but basically it does exactly what
+
+54
+00:02:07,750 --> 00:02:12,519
+we need the second example of screen
+
+55
+00:02:12,519 --> 00:02:14,379
+space derivatives so the typical use
+
+56
+00:02:14,379 --> 00:02:15,879
+case for those would be when you're
+
+57
+00:02:15,879 --> 00:02:18,010
+sampling a texture in a pixel shader
+
+58
+00:02:18,010 --> 00:02:19,930
+you want to take the derivative of your
+
+59
+00:02:19,930 --> 00:02:22,239
+texture coordinates to be able to select
+
+60
+00:02:22,239 --> 00:02:24,640
+the level of detail at which you're
+
+61
+00:02:24,640 --> 00:02:29,829
+sampling the texture now again here when
+
+62
+00:02:29,829 --> 00:02:31,450
+you go from left to right it looks like
+
+63
+00:02:31,450 --> 00:02:35,319
+a perfectly valid sinking transform but
+
+64
+00:02:35,319 --> 00:02:36,970
+it's actually not because the way that
+
+65
+00:02:36,970 --> 00:02:39,489
+derivatives are approximated in practice
+
+66
+00:02:39,489 --> 00:02:41,650
+is that you look at the corresponding
+
+67
+00:02:41,650 --> 00:02:43,810
+value of the thread that computes a
+
+68
+00:02:43,810 --> 00:02:44,859
+neighboring pixel
+
+69
+00:02:44,859 --> 00:02:47,079
+now if the neighboring pixel happens to
+
+70
+00:02:47,079 --> 00:02:49,480
+not go down the true path it doesn't
+
+71
+00:02:49,480 --> 00:02:51,400
+compute the coordinate in the right
+
+72
+00:02:51,400 --> 00:02:53,890
+fragment and you're getting an undefined
+
+73
+00:02:53,890 --> 00:02:56,319
+value so we need to teach LLVM not to do
+
+74
+00:02:56,319 --> 00:02:58,329
+this kind of transform and we can
+
+75
+00:02:58,329 --> 00:03:00,099
+actually also do this by marking the
+
+76
+00:03:00,099 --> 00:03:02,620
+texture intrinsic as a convergent
+
+77
+00:03:02,620 --> 00:03:04,930
+function so these two examples there
+
+78
+00:03:04,930 --> 00:03:07,060
+covered in LLVM today the last example
+
+79
+00:03:07,060 --> 00:03:08,709
+that I want you to want to mention is
+
+80
+00:03:08,709 --> 00:03:14,170
+one we're still having a gap again look
+
+81
+00:03:14,170 --> 00:03:16,840
+at the top two code examples left and
+
+82
+00:03:16,840 --> 00:03:19,150
+right they look like they should be kind
+
+83
+00:03:19,150 --> 00:03:20,650
+of equivalent you know assuming that
+
+84
+00:03:20,650 --> 00:03:22,239
+there is no nasty side effects in the
+
+85
+00:03:22,239 --> 00:03:24,519
+texture intrinsic the problem though is
+
+86
+00:03:24,519 --> 00:03:26,829
+that the sampler variable which tells
+
+87
+00:03:26,829 --> 00:03:28,780
+you which texture to sample from is
+
+88
+00:03:28,780 --> 00:03:31,060
+physically in the hardware stored in one
+
+89
+00:03:31,060 --> 00:03:33,160
+of these scaler registers which means
+
+90
+00:03:33,160 --> 00:03:34,780
+that all the threads within a single
+
+91
+00:03:34,780 --> 00:03:36,699
+wave must be sampling from the same
+
+92
+00:03:36,699 --> 00:03:38,949
+texture and the code fragment on the
+
+93
+00:03:38,949 --> 00:03:40,870
+right is therefore bad if the condition
+
+94
+00:03:40,870 --> 00:03:43,269
+is not the same for all these threads so
+
+95
+00:03:43,269 --> 00:03:45,069
+again the transform from left to right
+
+96
+00:03:45,069 --> 00:03:46,750
+is one that we must forbid and actually
+
+97
+00:03:46,750 --> 00:03:49,569
+one that LLVM does today at least with
+
+98
+00:03:49,569 --> 00:03:52,660
+tail sinking in simplify CFG it gets
+
+99
+00:03:52,660 --> 00:03:54,609
+worse if you look at the bottom example
+
+100
+00:03:54,609 --> 00:03:56,169
+from left to right which looks like it
+
+101
+00:03:56,169 --> 00:03:57,730
+should be trivially equivalent but it's
+
+102
+00:03:57,730 --> 00:03:59,889
+not because maybe if condition is true
+
+103
+00:03:59,889 --> 00:04:02,169
+then sampler is simply zero and if
+
+104
+00:04:02,169 --> 00:04:03,879
+condition is false then sampler sampler
+
+105
+00:04:03,879 --> 00:04:05,379
+one and then the code fragment on the
+
+106
+00:04:05,379 --> 00:04:08,169
+left works with the hardware but the one
+
+107
+00:04:08,169 --> 00:04:10,389
+on the right has the same problem where
+
+108
+00:04:10,389 --> 00:04:12,099
+suddenly the sampler is not the same
+
+109
+00:04:12,099 --> 00:04:14,440
+across all threads of a wave and you get
+
+110
+00:04:14,440 --> 00:04:17,790
+some kind of undefined results
+
+111
+00:04:18,690 --> 00:04:22,170
+okay so as I said this is something
+
+112
+00:04:22,170 --> 00:04:23,910
+where we still need to figure out how to
+
+113
+00:04:23,910 --> 00:04:28,380
+solve it how are we going to do this
+
+114
+00:04:28,380 --> 00:04:30,720
+well since in the texturing example the
+
+115
+00:04:30,720 --> 00:04:33,120
+sampler parameter is affected but of
+
+116
+00:04:33,120 --> 00:04:34,770
+course the texture coordinate parameter
+
+117
+00:04:34,770 --> 00:04:36,720
+is not affected this is really something
+
+118
+00:04:36,720 --> 00:04:38,970
+that wants to be modeled as a function
+
+119
+00:04:38,970 --> 00:04:42,540
+parameter attribute it's difficult to
+
+120
+00:04:42,540 --> 00:04:44,610
+model as such because it's a constraint
+
+121
+00:04:44,610 --> 00:04:46,680
+that does not map very well on to you
+
+122
+00:04:46,680 --> 00:04:49,620
+the usual SSA semantics but I think we
+
+123
+00:04:49,620 --> 00:04:51,410
+have some language that is pretty good
+
+124
+00:04:51,410 --> 00:04:54,000
+the problem is that once you start
+
+125
+00:04:54,000 --> 00:04:56,070
+thinking about okay like in the bottom
+
+126
+00:04:56,070 --> 00:04:59,400
+example you have two code snippets that
+
+127
+00:04:59,400 --> 00:05:02,100
+are equal except that in one case you're
+
+128
+00:05:02,100 --> 00:05:05,100
+calling F with parameter J and one in
+
+129
+00:05:05,100 --> 00:05:08,370
+the other one with parameter K and just
+
+130
+00:05:08,370 --> 00:05:10,920
+intuitively speaking you can imagine
+
+131
+00:05:10,920 --> 00:05:12,930
+okay calling F which expects a
+
+132
+00:05:12,930 --> 00:05:15,750
+convergent labelled parameter with J
+
+133
+00:05:15,750 --> 00:05:17,580
+which is itself labeled convergent
+
+134
+00:05:17,580 --> 00:05:19,350
+should be fine whereas calling it with K
+
+135
+00:05:19,350 --> 00:05:21,270
+which is itself not labeled convergent
+
+136
+00:05:21,270 --> 00:05:24,690
+might become a problem if some transform
+
+137
+00:05:24,690 --> 00:05:26,250
+is applied to a function that is then
+
+138
+00:05:26,250 --> 00:05:29,970
+calling G so this kind of talk I think
+
+139
+00:05:29,970 --> 00:05:31,890
+is not the right place to go into the
+
+140
+00:05:31,890 --> 00:05:33,840
+details of those there is a link at the
+
+141
+00:05:33,840 --> 00:05:37,260
+bottom to to an open fabricator thing
+
+142
+00:05:37,260 --> 00:05:39,090
+where there was the discussion on this
+
+143
+00:05:39,090 --> 00:05:41,940
+and I hope to continue in the next
+
+144
+00:05:41,940 --> 00:05:43,440
+couple of weeks to hopefully get this
+
+145
+00:05:43,440 --> 00:05:53,280
+report resolved okay thanks and I guess
+
+146
+00:05:53,280 --> 00:05:56,390
+we have some time for questions
+
+147
+00:06:09,240 --> 00:06:11,520
+you've driven it so many things and this
+
+148
+00:06:11,520 --> 00:06:14,850
+should be pretty straightforward for the
+
+149
+00:06:14,850 --> 00:06:21,090
+OpenCL people so so the question is this
+
+150
+00:06:21,090 --> 00:06:23,610
+should be pretty a common thing in in
+
+151
+00:06:23,610 --> 00:06:28,289
+OpenCL so how does the review go I don't
+
+152
+00:06:28,289 --> 00:06:31,349
+find resistance on that end so one thing
+
+153
+00:06:31,349 --> 00:06:33,150
+to mention is that texturing and OpenCL
+
+154
+00:06:33,150 --> 00:06:36,180
+is maybe not that common and even in
+
+155
+00:06:36,180 --> 00:06:38,580
+OpenGL it took us a long time until we
+
+156
+00:06:38,580 --> 00:06:40,440
+ran into a case where this was a problem
+
+157
+00:06:40,440 --> 00:06:42,720
+yeah because because usually you don't
+
+158
+00:06:42,720 --> 00:06:44,190
+have to have code where the optimizer
+
+159
+00:06:44,190 --> 00:06:47,340
+then then breaks things the issue is
+
+160
+00:06:47,340 --> 00:06:48,960
+really more with it's a constraint that
+
+161
+00:06:48,960 --> 00:06:51,539
+does not map at all well onto SSA
+
+162
+00:06:51,539 --> 00:06:53,970
+because you have this intermixture of
+
+163
+00:06:53,970 --> 00:06:56,580
+control and data flow and and we're
+
+164
+00:06:56,580 --> 00:06:58,139
+trying to get it right and I had to put
+
+165
+00:06:58,139 --> 00:07:02,159
+it exactly we don't want to force you
+
+166
+00:07:02,159 --> 00:07:03,960
+know global value numbering for example
+
+167
+00:07:03,960 --> 00:07:06,509
+to have to deal with this and and that
+
+168
+00:07:06,509 --> 00:07:08,699
+that makes it challenging and and then I
+
+169
+00:07:08,699 --> 00:07:10,139
+had to put it on the back burner for
+
+170
+00:07:10,139 --> 00:07:13,340
+some time but yeah
+
+171
+00:07:22,200 --> 00:07:24,260
+you
+

@@ -1,0 +1,3227 @@
+﻿1
+00:00:06,690 --> 00:00:08,870
+- Hi, it's good to be back.
+
+2
+00:00:08,870 --> 00:00:10,833
+Thank you all for being here.
+
+3
+00:00:12,000 --> 00:00:14,540
+Without doubt, Microsoft Exchange Server
+
+4
+00:00:14,540 --> 00:00:17,980
+is the most widely deployed mail solution
+
+5
+00:00:17,980 --> 00:00:21,220
+within governments and enterprises.
+
+6
+00:00:21,220 --> 00:00:23,120
+It is an integration of their
+
+7
+00:00:23,120 --> 00:00:25,703
+daily operations and security.
+
+8
+00:00:27,180 --> 00:00:29,660
+This January, we found a series
+
+9
+00:00:29,660 --> 00:00:34,280
+of vulnerabilities on
+Exchange Server to Microsoft,
+
+10
+00:00:34,280 --> 00:00:36,820
+and that gave us ProxyLogon.
+
+11
+00:00:38,250 --> 00:00:41,660
+If you are paying attention
+to the industry news,
+
+12
+00:00:41,660 --> 00:00:43,653
+you must have heard this then.
+
+13
+00:00:45,058 --> 00:00:47,680
+ProxyLogon may be the most severe
+
+14
+00:00:47,680 --> 00:00:51,540
+vulnerability in Exchange history ever.
+
+15
+00:00:51,540 --> 00:00:56,070
+However, as we went into
+a deep dive on ProxyLogon,
+
+16
+00:00:56,070 --> 00:01:00,120
+it came to us that it is
+not just a single bug,
+
+17
+00:01:00,120 --> 00:01:04,350
+but a whole new attack
+surface to help researchers
+
+18
+00:01:04,350 --> 00:01:07,063
+to uncover more vulnerabilities.
+
+19
+00:01:08,380 --> 00:01:11,580
+To unveil the beauty
+of this attack surface,
+
+20
+00:01:11,580 --> 00:01:15,030
+we will start from
+explaining the architecture,
+
+21
+00:01:15,030 --> 00:01:17,130
+analyzing the root cause,
+
+22
+00:01:17,130 --> 00:01:20,773
+and ending up with eight
+vulnerabilities we find.
+
+23
+00:01:22,280 --> 00:01:23,950
+By understanding the passives
+
+24
+00:01:23,950 --> 00:01:26,200
+of this new attack surface,
+
+25
+00:01:26,200 --> 00:01:28,020
+you won't be surprised
+
+26
+00:01:28,020 --> 00:01:31,183
+why we can pop out zero-days easily.
+
+27
+00:01:33,810 --> 00:01:37,480
+Let me introduce myself first, I'm Orange,
+
+28
+00:01:37,480 --> 00:01:40,943
+and now, the Principal
+Security Researcher at DEVCORE,
+
+29
+00:01:42,657 --> 00:01:44,040
+and a zero-day researcher,
+
+30
+00:01:44,040 --> 00:01:47,820
+and focusing on web and
+application security.
+
+31
+00:01:47,820 --> 00:01:51,760
+My job is to find out the
+most severe vulnerabilities
+
+32
+00:01:51,760 --> 00:01:55,980
+that can impact the work
+ahead of the bad guys,
+
+33
+00:01:55,980 --> 00:01:58,603
+and report them to the vendors directly.
+
+34
+00:02:00,100 --> 00:02:04,050
+Apart from that, I'm also
+a speaker, CTF player,
+
+35
+00:02:04,050 --> 00:02:06,130
+and bug bounty hunter.
+
+36
+00:02:06,130 --> 00:02:09,650
+I got several awards from my researches,
+
+37
+00:02:09,650 --> 00:02:11,860
+such as the Pwnie Awards,
+
+38
+00:02:11,860 --> 00:02:13,673
+and the Champion of Pwn2Own.
+
+39
+00:02:15,300 --> 00:02:16,640
+If you are interested,
+
+40
+00:02:16,640 --> 00:02:19,283
+welcome to follow my Twitter and blog.
+
+41
+00:02:22,460 --> 00:02:25,910
+Before I get started,
+here's the disclaimer.
+
+42
+00:02:25,910 --> 00:02:28,380
+All the CVS mentioned today
+
+43
+00:02:28,380 --> 00:02:31,020
+have been reported responsibly,
+
+44
+00:02:31,020 --> 00:02:33,863
+and have been patched by Microsoft.
+
+45
+00:02:36,790 --> 00:02:40,630
+So why were we targeting Exchange Server?
+
+46
+00:02:40,630 --> 00:02:43,460
+In terms of enterprise security,
+
+47
+00:02:43,460 --> 00:02:46,350
+mail servers are high-value assets
+
+48
+00:02:46,350 --> 00:02:49,793
+since they are the place to
+keep corporate confidentials.
+
+49
+00:02:51,180 --> 00:02:52,610
+With that being said,
+
+50
+00:02:52,610 --> 00:02:55,260
+if someone controls the mail server,
+
+51
+00:02:55,260 --> 00:02:58,583
+they can dominate the
+lifeline of the corporation.
+
+52
+00:02:59,700 --> 00:03:02,290
+Exchange Server is the most well-known
+
+53
+00:03:02,290 --> 00:03:05,650
+and important mail solution in the world.
+
+54
+00:03:05,650 --> 00:03:08,480
+With this in mind, Exchange has also
+
+55
+00:03:08,480 --> 00:03:10,610
+been the top target for nation
+
+56
+00:03:10,610 --> 00:03:12,833
+state hackers for a long time.
+
+57
+00:03:13,890 --> 00:03:16,300
+Based on our research, there are more
+
+58
+00:03:16,300 --> 00:03:21,300
+than 400,000 Exchange Servers
+exposed on the internet.
+
+59
+00:03:22,220 --> 00:03:25,590
+Every server represents a company.
+
+60
+00:03:25,590 --> 00:03:28,800
+You can imagine how severe it could be
+
+61
+00:03:28,800 --> 00:03:32,867
+when there's a critical
+vulnerability on Exchange Server.
+
+62
+00:03:36,000 --> 00:03:39,010
+Normally, I will review
+the existing papers
+
+63
+00:03:39,010 --> 00:03:42,193
+and bugs before starting a research.
+
+64
+00:03:43,112 --> 00:03:45,420
+Another whole Exchange history,
+
+65
+00:03:45,420 --> 00:03:47,663
+is there any interesting bug?
+
+66
+00:03:48,870 --> 00:03:51,460
+Of course, also known bugs
+
+67
+00:03:51,460 --> 00:03:53,960
+are best unknown attack vectors,
+
+68
+00:03:53,960 --> 00:03:58,410
+such as the deserialization
+or input validation.
+
+69
+00:03:58,410 --> 00:04:01,913
+There are several bugs
+that are worth mentioning.
+
+70
+00:04:03,420 --> 00:04:05,840
+The more special one is the arsenal
+
+71
+00:04:05,840 --> 00:04:07,973
+from Equation Group in 2017.
+
+72
+00:04:09,579 --> 00:04:13,640
+It's the only practical
+and public pre-auth RCE
+
+73
+00:04:13,640 --> 00:04:15,683
+in the Exchange history.
+
+74
+00:04:17,160 --> 00:04:19,870
+Unfortunately, the arsenal only works
+
+75
+00:04:19,870 --> 00:04:22,073
+on an ancient Exchange Server.
+
+76
+00:04:23,090 --> 00:04:26,020
+If the arsenal leak happened earlier,
+
+77
+00:04:26,020 --> 00:04:29,573
+it could lead to another
+nuclear-label crisis.
+
+78
+00:04:31,620 --> 00:04:33,530
+Another oh, I would say the most
+
+79
+00:04:33,530 --> 00:04:38,530
+surprising one is CVE 2020-0688.
+
+80
+00:04:39,460 --> 00:04:41,300
+The nature of this bug is due
+
+81
+00:04:41,300 --> 00:04:43,633
+to a hard-code crypto key.
+
+82
+00:04:46,420 --> 00:04:49,760
+It's 2020 now, such a common weakness
+
+83
+00:04:49,760 --> 00:04:53,420
+could still be find in a crucial software,
+
+84
+00:04:53,420 --> 00:04:55,530
+which inspired me to dig more
+
+85
+00:04:55,530 --> 00:04:58,303
+into the security of Exchange.
+
+86
+00:05:02,440 --> 00:05:04,650
+So what have we done?
+
+87
+00:05:04,650 --> 00:05:07,360
+We have reviewed the Exchange security
+
+88
+00:05:07,360 --> 00:05:09,560
+from the architectural levels
+
+89
+00:05:09,560 --> 00:05:12,243
+and find a new attack surface.
+
+90
+00:05:13,180 --> 00:05:15,280
+Through this new attack surface,
+
+91
+00:05:15,280 --> 00:05:18,160
+we uncovered eight vulnerabilities
+
+92
+00:05:18,160 --> 00:05:22,513
+and chained these bugs into
+three attacking exploits.
+
+93
+00:05:23,840 --> 00:05:27,053
+The first and the most
+famous one is ProxyLogon.
+
+94
+00:05:28,170 --> 00:05:30,173
+It's a pre-auth RCE.
+
+95
+00:05:31,150 --> 00:05:33,930
+The second one is ProxyOracle.
+
+96
+00:05:33,930 --> 00:05:36,660
+It's an exploit that can recover
+
+97
+00:05:36,660 --> 00:05:40,123
+any user's password in plain text format.
+
+98
+00:05:41,100 --> 00:05:43,874
+The last one is ProxyShell.
+
+99
+00:05:43,874 --> 00:05:47,100
+It's the exploit we
+demonstrate at Pwn2Own 2021.
+
+100
+00:05:48,150 --> 00:05:51,093
+It's also a pre-auth RCE.
+
+101
+00:05:52,740 --> 00:05:56,080
+I would like to highlight
+that all vulnerabilities
+
+102
+00:05:56,080 --> 00:05:59,860
+we uncovered here are logic bugs,
+
+103
+00:05:59,860 --> 00:06:02,400
+which means they could be reproduced
+
+104
+00:06:02,400 --> 00:06:06,633
+and exploited easily than
+any memory corruption bugs.
+
+105
+00:06:10,140 --> 00:06:12,060
+Here's my bug list.
+
+106
+00:06:12,060 --> 00:06:14,570
+The ones in red indicates the bug
+
+107
+00:06:14,570 --> 00:06:17,423
+is relate to the attack surface directly.
+
+108
+00:06:18,840 --> 00:06:21,343
+And others are the bugs
+which shared together.
+
+109
+00:06:25,430 --> 00:06:28,250
+For your references, there are other bugs
+
+110
+00:06:28,250 --> 00:06:30,453
+relate to this new attack surface.
+
+111
+00:06:31,430 --> 00:06:33,480
+You can see from this table,
+
+112
+00:06:33,480 --> 00:06:38,220
+and as nation state hackers
+are also playing that,
+
+113
+00:06:38,220 --> 00:06:41,750
+which means the attack
+surface we shared today
+
+114
+00:06:41,750 --> 00:06:45,013
+is a critical hit for Exchange Server.
+
+115
+00:06:49,050 --> 00:06:51,763
+Exchange is a very
+sophisticated application.
+
+116
+00:06:52,707 --> 00:06:54,840
+Before we cut to the chase,
+
+117
+00:06:54,840 --> 00:06:57,763
+let me introduce the architecture first.
+
+118
+00:06:58,760 --> 00:07:01,460
+Since 2000, Exchange has released
+
+119
+00:07:01,460 --> 00:07:03,983
+a new version every three years.
+
+120
+00:07:04,920 --> 00:07:08,490
+Whenever Exchange released a new version,
+
+121
+00:07:08,490 --> 00:07:10,930
+the architecture changed a lot
+
+122
+00:07:10,930 --> 00:07:12,123
+and becomes different.
+
+123
+00:07:14,120 --> 00:07:17,610
+The change of architecture and iterations
+
+124
+00:07:17,610 --> 00:07:21,423
+make it difficult to
+upgrade an Exchange Server.
+
+125
+00:07:22,280 --> 00:07:24,850
+In order to ensure the compatibility
+
+126
+00:07:24,850 --> 00:07:28,200
+between the new architecture and old ones,
+
+127
+00:07:28,200 --> 00:07:31,400
+several design steps were incurred
+
+128
+00:07:31,400 --> 00:07:34,503
+and led to the new
+attack surface we found.
+
+129
+00:07:38,140 --> 00:07:41,640
+So currently, we focused
+
+130
+00:07:41,640 --> 00:07:44,430
+on the Client Access Service, CAS.
+
+131
+00:07:46,750 --> 00:07:50,840
+CAS is a fundamental
+component in Exchange.
+
+132
+00:07:50,840 --> 00:07:52,990
+The official document indicates CAS
+
+133
+00:07:54,448 --> 00:07:57,670
+is a frontend that accept client
+
+134
+00:07:57,670 --> 00:08:00,720
+connections for all protocols,
+
+135
+00:08:00,720 --> 00:08:03,410
+and they're responsible for routing
+
+136
+00:08:03,410 --> 00:08:05,863
+and proxying connections.
+
+137
+00:08:07,396 --> 00:08:09,750
+CAS was prior repatched attention
+
+138
+00:08:09,750 --> 00:08:13,773
+to the whole attack service existed.
+
+139
+00:08:14,870 --> 00:08:18,840
+Because the CAS is located
+at a very early stage
+
+140
+00:08:18,840 --> 00:08:21,443
+of Exchange requires processing,
+
+141
+00:08:22,280 --> 00:08:26,290
+all bugs here are authentication-free.
+
+142
+00:08:26,290 --> 00:08:29,650
+So you can imagine how dangerous it is
+
+143
+00:08:29,650 --> 00:08:33,093
+when this fundamental
+service is vulnerable.
+
+144
+00:08:36,670 --> 00:08:41,540
+Here is the CAS architecture
+copied from the document.
+
+145
+00:08:41,540 --> 00:08:45,550
+As you can see, the left
+side is the clients.
+
+146
+00:08:45,550 --> 00:08:49,020
+No matter where the connection comes from,
+
+147
+00:08:49,020 --> 00:08:53,640
+either HTTP, POP3, IMAP, or SMTP,
+
+148
+00:08:55,121 --> 00:08:59,340
+CAS in the middle part
+proxies all connections
+
+149
+00:08:59,340 --> 00:09:03,073
+and proxy to the backend
+service on the right side.
+
+150
+00:09:04,160 --> 00:09:06,220
+The backend service will continue
+
+151
+00:09:06,220 --> 00:09:09,113
+to handle first, the business logics.
+
+152
+00:09:13,930 --> 00:09:16,880
+Because I specialize in web security,
+
+153
+00:09:16,880 --> 00:09:18,913
+so we focus on the web part.
+
+154
+00:09:22,440 --> 00:09:25,797
+The CAS web is built on Microsoft IIS.
+
+155
+00:09:27,210 --> 00:09:30,787
+As you can see, there are
+two websites inside of IIS.
+
+156
+00:09:31,900 --> 00:09:36,520
+The default website is the
+frontend we mentioned before,
+
+157
+00:09:36,520 --> 00:09:41,033
+and the Exchange backend is
+where the business logic is.
+
+158
+00:09:44,460 --> 00:09:47,430
+If you look at the
+configuration carefully,
+
+159
+00:09:47,430 --> 00:09:50,080
+you will notice the frontend is listening
+
+160
+00:09:50,080 --> 00:09:53,820
+on ports 80 and 443,
+
+161
+00:09:53,820 --> 00:09:57,657
+and the backend is listening
+on ports 81 and 444.
+
+162
+00:10:00,060 --> 00:10:02,180
+It should be note that the ports
+
+163
+00:10:02,180 --> 00:10:04,043
+are exposed on all interfaces.
+
+164
+00:10:06,030 --> 00:10:08,740
+You may sense something wrong here.
+
+165
+00:10:08,740 --> 00:10:11,793
+All the ports are open to all interfaces,
+
+166
+00:10:12,839 --> 00:10:16,103
+which means you can access
+the backend directly.
+
+167
+00:10:17,062 --> 00:10:18,623
+Wouldn't it be dangerous?
+
+168
+00:10:19,620 --> 00:10:21,860
+Please keep this question in mind,
+
+169
+00:10:21,860 --> 00:10:24,233
+and we will answer that later.
+
+170
+00:10:27,920 --> 00:10:32,320
+The CAS is composed of
+several IIS modules.
+
+171
+00:10:32,320 --> 00:10:36,544
+Applications in frontend
+include the ProxyModule,
+
+172
+00:10:36,544 --> 00:10:40,690
+which is responsible for
+passing all incoming requests,
+
+173
+00:10:40,690 --> 00:10:43,640
+applying protocol-specific settings,
+
+174
+00:10:43,640 --> 00:10:46,043
+and forwarding them to the backend.
+
+175
+00:10:47,510 --> 00:10:50,070
+As for the backend, applications include
+
+176
+00:10:50,070 --> 00:10:53,670
+a RehydrationModule,
+which is taking charge
+
+177
+00:10:53,670 --> 00:10:56,530
+of parsing frontend requests,
+
+178
+00:10:56,530 --> 00:10:59,140
+populating the client information back,
+
+179
+00:10:59,140 --> 00:11:01,573
+and continue the business logic.
+
+180
+00:11:02,440 --> 00:11:05,490
+So here is a question for you,
+
+181
+00:11:05,490 --> 00:11:08,200
+how did the frontend and backend
+
+182
+00:11:08,200 --> 00:11:10,133
+exchange the information?
+
+183
+00:11:11,560 --> 00:11:13,380
+They synchronize the information
+
+184
+00:11:13,380 --> 00:11:15,733
+and internal status by HTTP headers.
+
+185
+00:11:20,170 --> 00:11:22,840
+For client requests, it will first
+
+186
+00:11:22,840 --> 00:11:25,020
+be handled by the frontend,
+
+187
+00:11:25,020 --> 00:11:29,360
+and the request will be passed
+through several IIS modules,
+
+188
+00:11:29,360 --> 00:11:33,770
+such as the filter, validation, locking,
+
+189
+00:11:33,770 --> 00:11:35,793
+and alas, Proxy Module.
+
+190
+00:11:36,630 --> 00:11:39,660
+The Proxy Module then takes up a handler
+
+191
+00:11:39,660 --> 00:11:42,770
+based on the current application tests
+
+192
+00:11:42,770 --> 00:11:47,770
+such as the \OWA or \ECP.
+
+193
+00:11:48,020 --> 00:11:50,490
+The handler will do the proxy warp
+
+194
+00:11:50,490 --> 00:11:53,233
+and forward the request to the backend.
+
+195
+00:11:54,690 --> 00:11:57,330
+When the backend receives the request,
+
+196
+00:11:57,330 --> 00:12:01,210
+it passes the request
+to the RehydrationModule
+
+197
+00:12:01,210 --> 00:12:04,080
+to restore the original client state
+
+198
+00:12:04,080 --> 00:12:06,743
+and continue the business logics.
+
+199
+00:12:09,900 --> 00:12:11,640
+Our idea is simple.
+
+200
+00:12:11,640 --> 00:12:14,633
+Could we access the backend intentionally?
+
+201
+00:12:15,770 --> 00:12:18,760
+Since the Exchange
+synchronize the information
+
+202
+00:12:18,760 --> 00:12:22,460
+by HTTP headers, it seems like most
+
+203
+00:12:22,460 --> 00:12:26,580
+of the access control
+is done by the frontend.
+
+204
+00:12:26,580 --> 00:12:30,574
+If we can access the backend
+without restrictions,
+
+205
+00:12:30,574 --> 00:12:34,313
+maybe there are several
+internal API we can abuse.
+
+206
+00:12:35,460 --> 00:12:39,210
+We all know implementing
+a proxy isn't easy,
+
+207
+00:12:39,210 --> 00:12:41,010
+and the frontend seems like
+
+208
+00:12:41,010 --> 00:12:43,233
+a well-implemented HTTP client.
+
+209
+00:12:44,270 --> 00:12:46,690
+If there are some magic checks
+
+210
+00:12:46,690 --> 00:12:48,700
+to manipulate the context
+
+211
+00:12:48,700 --> 00:12:52,323
+between the frontend and
+backend, it must be found.
+
+212
+00:12:56,347 --> 00:12:58,500
+In order to abuse the context,
+
+213
+00:12:58,500 --> 00:13:02,583
+we have to know how the
+ProxyModule works first.
+
+214
+00:13:03,640 --> 00:13:06,950
+The ProxyRequestHandler
+is the most important
+
+215
+00:13:06,950 --> 00:13:09,480
+part of the frontend.
+
+216
+00:13:09,480 --> 00:13:12,600
+All handlers should inherit this class
+
+217
+00:13:12,600 --> 00:13:14,640
+to implement their methods
+
+218
+00:13:14,640 --> 00:13:18,940
+such as how to handle the
+client cookies or headers,
+
+219
+00:13:18,940 --> 00:13:22,993
+and how to proxy the client
+request to the backend.
+
+220
+00:13:24,640 --> 00:13:27,970
+We separate the methods
+into three section.
+
+221
+00:13:27,970 --> 00:13:31,260
+The first is Request, which will pass
+
+222
+00:13:31,260 --> 00:13:33,043
+and modify the client request.
+
+223
+00:13:34,200 --> 00:13:37,920
+Next is Proxy section, which will proxy
+
+224
+00:13:37,920 --> 00:13:42,350
+and send the HTTP request to the backend.
+
+225
+00:13:42,350 --> 00:13:45,330
+And the last section is Response.
+
+226
+00:13:45,330 --> 00:13:47,770
+This section will receive the response
+
+227
+00:13:47,770 --> 00:13:51,170
+from the backend and decide which header
+
+228
+00:13:51,170 --> 00:13:54,353
+or cookie should be
+sent back to the client.
+
+229
+00:13:55,910 --> 00:13:58,480
+Because this handler is important,
+
+230
+00:13:58,480 --> 00:14:01,223
+we will explain the methods one by one.
+
+231
+00:14:04,530 --> 00:14:07,080
+The first method of Request section
+
+232
+00:14:07,080 --> 00:14:09,523
+is CopyHeadersToServerRequest.
+
+233
+00:14:10,570 --> 00:14:14,870
+It will decide which HTTP
+header from the client
+
+234
+00:14:14,870 --> 00:14:16,393
+to be sent to the backend.
+
+235
+00:14:18,350 --> 00:14:20,281
+As we said, the frontend
+
+236
+00:14:20,281 --> 00:14:22,660
+and backend synchronize information
+
+237
+00:14:22,660 --> 00:14:26,760
+and internal status by HTTP headers.
+
+238
+00:14:26,760 --> 00:14:29,160
+Maybe you are thinking I could forge
+
+239
+00:14:29,160 --> 00:14:31,553
+the header to confuse something.
+
+240
+00:14:32,520 --> 00:14:36,530
+This is a nice try but unfortunately,
+
+241
+00:14:36,530 --> 00:14:39,463
+you can see here is a
+backlist in the method.
+
+242
+00:14:40,610 --> 00:14:44,220
+The frontend blocks several HTTP headers
+
+243
+00:14:44,220 --> 00:14:46,283
+which are used internally.
+
+244
+00:14:47,440 --> 00:14:49,950
+Please keep in mind that the header,
+
+245
+00:14:49,950 --> 00:14:53,970
+X-CommonAccessToken is an important one,
+
+246
+00:14:53,970 --> 00:14:56,343
+and we will learn this later.
+
+247
+00:14:59,830 --> 00:15:01,880
+The second is CopyCookiesToServerRequest.
+
+248
+00:15:04,434 --> 00:15:07,970
+The functionality is the
+same as the previous one,
+
+249
+00:15:07,970 --> 00:15:10,263
+but it copies cookies instead.
+
+250
+00:15:13,490 --> 00:15:15,640
+The last method of Request
+
+251
+00:15:15,640 --> 00:15:19,643
+is
+AddProtocolSpecificHeadersToServerRequest.
+
+252
+00:15:20,820 --> 00:15:22,920
+This method allows a handler
+
+253
+00:15:22,920 --> 00:15:26,340
+to apply customized protocol settings.
+
+254
+00:15:26,340 --> 00:15:30,140
+For example, if the frontend OWA
+
+255
+00:15:30,140 --> 00:15:33,520
+would like to pass
+information to the backend,
+
+256
+00:15:33,520 --> 00:15:38,053
+here is the class it can
+insert information to headers.
+
+257
+00:15:41,240 --> 00:15:44,300
+Besides the customized protocol settings,
+
+258
+00:15:44,300 --> 00:15:47,290
+the method also clones the user identity
+
+259
+00:15:47,290 --> 00:15:49,373
+to a new HTTP header.
+
+260
+00:15:50,290 --> 00:15:55,010
+The identity is the client
+authentication result in IIS,
+
+261
+00:15:55,010 --> 00:15:58,693
+also consisting of your
+security identifier.
+
+262
+00:16:00,100 --> 00:16:02,980
+This method serialize it to a string
+
+263
+00:16:02,980 --> 00:16:05,570
+and put it into the headers,
+
+264
+00:16:05,570 --> 00:16:08,843
+which will be forward
+to the backend later.
+
+265
+00:16:10,200 --> 00:16:12,710
+As of now, you note how the frontend
+
+266
+00:16:12,710 --> 00:16:16,230
+and backend synchronized your identity.
+
+267
+00:16:16,230 --> 00:16:20,273
+They do it by the header
+X-CommonAccessToken.
+
+268
+00:16:24,410 --> 00:16:27,030
+Once the request passing is done,
+
+269
+00:16:27,030 --> 00:16:30,600
+it will lead to the Proxy section.
+
+270
+00:16:30,600 --> 00:16:34,860
+The Proxy first uses the
+GetTargetBackEndServerUrl
+
+271
+00:16:35,740 --> 00:16:40,740
+to calculate the URL where
+the frontend should send to.
+
+272
+00:16:40,820 --> 00:16:43,310
+This method is also a bad request
+
+273
+00:16:43,310 --> 00:16:45,920
+and full of vulnerabilities.
+
+274
+00:16:45,920 --> 00:16:48,023
+We will discuss this later.
+
+275
+00:16:51,430 --> 00:16:55,760
+The second step of Proxy
+is CreateServerRequest,
+
+276
+00:16:55,760 --> 00:16:59,660
+which first initialize an HTTP client,
+
+277
+00:16:59,660 --> 00:17:02,910
+sets up the HTTP method and headers,
+
+278
+00:17:02,910 --> 00:17:05,343
+and forwards it to the backend.
+
+279
+00:17:06,460 --> 00:17:10,970
+We mentioned that POSTs
+in IIS are open to anyone
+
+280
+00:17:10,970 --> 00:17:13,130
+and this is dangerous.
+
+281
+00:17:13,130 --> 00:17:16,137
+So that's why Exchange has a mechanics
+
+282
+00:17:16,137 --> 00:17:18,203
+and to avoid the situation.
+
+283
+00:17:21,030 --> 00:17:24,460
+While the frontend is creating a request,
+
+284
+00:17:24,460 --> 00:17:27,090
+it will generate a Kerberos ticket
+
+285
+00:17:27,090 --> 00:17:30,263
+and put it in the Authorization header.
+
+286
+00:17:31,440 --> 00:17:34,020
+This header will be sent to the backend
+
+287
+00:17:34,020 --> 00:17:36,380
+along with the request.
+
+288
+00:17:36,380 --> 00:17:40,500
+So how does backend know which connection
+
+289
+00:17:40,500 --> 00:17:42,623
+is from a valid frontend?
+
+290
+00:17:43,820 --> 00:17:47,223
+It do it by verifying
+this Kerberos ticket.
+
+291
+00:17:50,810 --> 00:17:54,590
+We look into the
+GenerateKerberosAuthHeader
+
+292
+00:17:54,590 --> 00:17:57,620
+and know that the header is generated
+
+293
+00:17:57,620 --> 00:18:02,620
+with the HTTP SPN of the
+Exchange machine account.
+
+294
+00:18:08,460 --> 00:18:10,240
+If you observe the traffic
+
+295
+00:18:10,240 --> 00:18:12,900
+between the frontend and backend,
+
+296
+00:18:12,900 --> 00:18:16,700
+you will see two headers
+shown in the request.
+
+297
+00:18:16,700 --> 00:18:19,410
+One is the Authorization header,
+
+298
+00:18:19,410 --> 00:18:21,715
+which is the Kerberos ticket used
+
+299
+00:18:21,715 --> 00:18:24,343
+to indicate you are a valid frontend.
+
+300
+00:18:25,320 --> 00:18:27,520
+The other is the header
+X-CommonAccessToken.
+
+301
+00:18:28,941 --> 00:18:32,463
+It's a serialized token
+indicates your identity.
+
+302
+00:18:33,640 --> 00:18:37,920
+For example, if you log
+in with the name Orange,
+
+303
+00:18:37,920 --> 00:18:40,650
+the header is the serialized result
+
+304
+00:18:40,650 --> 00:18:43,303
+of your security identifier.
+
+305
+00:18:48,060 --> 00:18:50,980
+After sending the request to the backend,
+
+306
+00:18:50,980 --> 00:18:53,400
+the frontend receives the response
+
+307
+00:18:53,400 --> 00:18:55,533
+and enter the last section.
+
+308
+00:18:58,800 --> 00:19:01,910
+The Response section
+is similar to Request.
+
+309
+00:19:01,910 --> 00:19:04,440
+It checks the response from the backend
+
+310
+00:19:04,440 --> 00:19:07,720
+and decide which headers or cookies
+
+311
+00:19:07,720 --> 00:19:10,383
+are allowed to be sent back to the client.
+
+312
+00:19:11,840 --> 00:19:14,900
+Now, you understand
+how the frontend works,
+
+313
+00:19:14,900 --> 00:19:18,500
+let's move on to see how
+the backend processes
+
+314
+00:19:18,500 --> 00:19:21,767
+and populates the requests
+from the frontend.
+
+315
+00:19:25,174 --> 00:19:29,140
+The BackendRehydrationModule
+first used SYSTEM method
+
+316
+00:19:29,140 --> 00:19:32,060
+to check whether the incoming request
+
+317
+00:19:32,060 --> 00:19:34,850
+is authenticated or not.
+
+318
+00:19:34,850 --> 00:19:36,470
+It is the time to leverage
+
+319
+00:19:36,470 --> 00:19:39,483
+the Kerberos ticket the frontend generate.
+
+320
+00:19:40,480 --> 00:19:42,400
+By handing over this ticket,
+
+321
+00:19:42,400 --> 00:19:46,113
+the backend knows you
+are a valid frontend now.
+
+322
+00:19:47,200 --> 00:19:51,910
+The backend then call the
+method TryGetCommonAccessToken
+
+323
+00:19:51,910 --> 00:19:55,613
+to restore the user's
+identity from the frontend.
+
+324
+00:19:59,880 --> 00:20:02,070
+The method retrieves the header,
+
+325
+00:20:02,070 --> 00:20:05,720
+deserialize it back to
+the original access token,
+
+326
+00:20:05,720 --> 00:20:10,667
+and post in the httpContext
+object for later use.
+
+327
+00:20:12,280 --> 00:20:14,250
+So far, you learned how the frontend
+
+328
+00:20:14,250 --> 00:20:17,920
+and backend synchronized
+the user's identity
+
+329
+00:20:17,920 --> 00:20:20,030
+and how the header X-CommonAccessToken
+
+330
+00:20:21,060 --> 00:20:24,983
+plays an important role
+in the CAS architecture.
+
+331
+00:20:25,870 --> 00:20:27,810
+Since the method just checks
+
+332
+00:20:27,810 --> 00:20:29,510
+if the users are logged in or not,
+
+333
+00:20:30,580 --> 00:20:33,320
+it doesn't check the identity.
+
+334
+00:20:33,320 --> 00:20:35,250
+Here comes a question.
+
+335
+00:20:35,250 --> 00:20:39,203
+Can we authenticate as a
+normal user in the backend?
+
+336
+00:20:40,450 --> 00:20:42,912
+If you access the backend directly
+
+337
+00:20:42,912 --> 00:20:46,060
+and authenticate with a normal account,
+
+338
+00:20:46,060 --> 00:20:48,640
+we can specify what header values
+
+339
+00:20:48,640 --> 00:20:50,290
+in the header X-CommonAccessToken
+
+340
+00:20:51,580 --> 00:20:53,703
+and impersonate as any users.
+
+341
+00:20:57,780 --> 00:20:59,080
+The idea is good,
+
+342
+00:20:59,080 --> 00:21:01,120
+and actually, you can test
+
+343
+00:21:01,120 --> 00:21:03,913
+the IIS authentication of backend.
+
+344
+00:21:05,380 --> 00:21:07,710
+But there's one more checkpoint.
+
+345
+00:21:07,710 --> 00:21:11,428
+The method IsTokenSerializationAllowed
+
+346
+00:21:11,428 --> 00:21:14,176
+magnifies the current logged user
+
+347
+00:21:14,176 --> 00:21:17,247
+and raised a RehydrationException
+
+348
+00:21:17,247 --> 00:21:19,580
+if the checkpoint is failed.
+
+349
+00:21:25,120 --> 00:21:29,811
+It checks if you have a
+token serialization right.
+
+350
+00:21:29,811 --> 00:21:32,470
+By default, only the Exchange machine
+
+351
+00:21:32,470 --> 00:21:34,323
+account has this right.
+
+352
+00:21:35,170 --> 00:21:37,370
+So that's why the Kerberos ticket
+
+353
+00:21:37,370 --> 00:21:41,330
+generate by frontend
+can pass the checkpoint,
+
+354
+00:21:41,330 --> 00:21:45,493
+but you will fail even you are
+using a correct credential.
+
+355
+00:21:49,170 --> 00:21:52,590
+So here is a quick summary for you.
+
+356
+00:21:52,590 --> 00:21:54,690
+When there is the client request,
+
+357
+00:21:54,690 --> 00:21:59,313
+the frontend IIS first tries
+to authenticate the request.
+
+358
+00:22:00,630 --> 00:22:04,940
+If succeed, the frontend
+serialize the user identity
+
+359
+00:22:04,940 --> 00:22:08,023
+and adds it into the
+header X-CommonAccessToken.
+
+360
+00:22:10,399 --> 00:22:12,250
+The frontend then generates
+
+361
+00:22:12,250 --> 00:22:16,280
+a Kerberos ticket by its HTTP SPN
+
+362
+00:22:16,280 --> 00:22:19,323
+and posts it into the
+Authorization header.
+
+363
+00:22:20,760 --> 00:22:22,720
+It will forward these headers
+
+364
+00:22:22,720 --> 00:22:25,950
+along with the client
+request to the backend.
+
+365
+00:22:27,800 --> 00:22:29,930
+The backend also tries to authenticate
+
+366
+00:22:29,930 --> 00:22:32,867
+the request at the beginning.
+
+367
+00:22:32,867 --> 00:22:35,250
+The RehydrationModule will verify
+
+368
+00:22:35,250 --> 00:22:39,583
+whether the user have the
+right of token serialization.
+
+369
+00:22:41,030 --> 00:22:43,250
+Since we are using a Kerberos ticket
+
+370
+00:22:43,250 --> 00:22:46,113
+generate by the frontend we passed.
+
+371
+00:22:47,790 --> 00:22:51,500
+Lastly, the Rehydration
+restores the user identity
+
+372
+00:22:51,500 --> 00:22:54,520
+from the header X-CommonAccessToken
+
+373
+00:22:54,520 --> 00:22:57,643
+and continue the backend business logic.
+
+374
+00:23:01,140 --> 00:23:04,750
+So far, we briefly
+explained the communication
+
+375
+00:23:04,750 --> 00:23:07,373
+between the frontend and backend in short.
+
+376
+00:23:08,320 --> 00:23:09,763
+Let's start a hack.
+
+377
+00:23:14,400 --> 00:23:18,260
+Okay, the first exploit is ProxyLogon.
+
+378
+00:23:18,260 --> 00:23:21,530
+As introduced before, this may be the most
+
+379
+00:23:21,530 --> 00:23:25,353
+severe vulnerability in
+the Exchange history.
+
+380
+00:23:26,766 --> 00:23:31,390
+ProxyLogon is chained with
+two bugs to get the RCE.
+
+381
+00:23:31,390 --> 00:23:34,710
+One is an SSRF on the frontend,
+
+382
+00:23:34,710 --> 00:23:37,920
+and the other is an arbitrary file write
+
+383
+00:23:37,920 --> 00:23:40,353
+on the Control Panel of the backend.
+
+384
+00:23:43,630 --> 00:23:46,710
+So here is the ProxyLogon.
+
+385
+00:23:46,710 --> 00:23:49,410
+The bug is mainly locate at the Proxy
+
+386
+00:23:49,410 --> 00:23:51,543
+section in the frontend.
+
+387
+00:23:52,590 --> 00:23:55,120
+We mentioned that the frontend handler
+
+388
+00:23:55,120 --> 00:23:57,500
+calculates the backend URL
+
+389
+00:23:57,500 --> 00:24:00,993
+and forwards the request to that URL.
+
+390
+00:24:04,610 --> 00:24:06,840
+One of the handlers is in charge
+
+391
+00:24:06,840 --> 00:24:10,270
+of processing the static resources.
+
+392
+00:24:10,270 --> 00:24:13,993
+It will assign a backend
+target from the cookie.
+
+393
+00:24:15,630 --> 00:24:17,710
+You will figure out how simple
+
+394
+00:24:17,710 --> 00:24:20,853
+this bug is after
+learning the architecture.
+
+395
+00:24:25,000 --> 00:24:28,230
+The frontend trace the
+user-supplied cookie
+
+396
+00:24:28,230 --> 00:24:30,570
+as the domain name, and the domain name
+
+397
+00:24:30,570 --> 00:24:33,653
+will be concatenate as the backend URL.
+
+398
+00:24:34,660 --> 00:24:39,040
+We used a bit of passing
+tricks to enclose the URL
+
+399
+00:24:39,040 --> 00:24:43,743
+and forced the Exchange
+to fetch example.com.
+
+400
+00:24:44,720 --> 00:24:46,930
+The Exchange will then return
+
+401
+00:24:46,930 --> 00:24:49,713
+the whole response back to us.
+
+402
+00:24:54,380 --> 00:24:57,470
+So what is the root cause of this
+
+403
+00:24:57,470 --> 00:24:59,783
+arbitrary backend assignment?
+
+404
+00:25:01,309 --> 00:25:03,900
+As we mentioned that the Exchange Server
+
+405
+00:25:03,900 --> 00:25:08,900
+changed its architecture
+while releasing new versions.
+
+406
+00:25:08,910 --> 00:25:12,440
+This cookie is a quick
+solution for Exchange
+
+407
+00:25:12,440 --> 00:25:15,570
+to make the frontend in new architecture
+
+408
+00:25:15,570 --> 00:25:19,400
+to identify where the old backend is.
+
+409
+00:25:19,400 --> 00:25:21,650
+It looks like a design step
+
+410
+00:25:21,650 --> 00:25:24,563
+to adopt backward compatibility.
+
+411
+00:25:26,260 --> 00:25:28,230
+With the backend assignment,
+
+412
+00:25:28,230 --> 00:25:32,470
+we have a super SSRF that can control
+
+413
+00:25:32,470 --> 00:25:36,973
+almost all the requests
+and get all the responses.
+
+414
+00:25:38,090 --> 00:25:40,310
+The most impressive is that
+
+415
+00:25:40,310 --> 00:25:44,340
+it will generate a Kerberos ticket for us,
+
+416
+00:25:44,340 --> 00:25:47,160
+which means even when we are taking
+
+417
+00:25:47,160 --> 00:25:51,860
+a protected and
+domain-joined HTTP service,
+
+418
+00:25:51,860 --> 00:25:54,750
+we can still hack with the authentication
+
+419
+00:25:54,750 --> 00:25:57,223
+of Exchange machine account.
+
+420
+00:25:58,870 --> 00:26:01,200
+Thanks to the super SSRF,
+
+421
+00:26:01,200 --> 00:26:06,200
+we can leverage the
+internal API /proxylogon.ecp
+
+422
+00:26:06,930 --> 00:26:10,563
+to get a valid session to
+assess the Control Panel.
+
+423
+00:26:11,510 --> 00:26:13,640
+The API is also the reason
+
+424
+00:26:13,640 --> 00:26:15,713
+why we call a ProxyLogon.
+
+425
+00:26:18,500 --> 00:26:21,420
+As for the rest of the exploitation,
+
+426
+00:26:21,420 --> 00:26:23,790
+I believe there are already lots
+
+427
+00:26:23,790 --> 00:26:27,190
+of technical analyses out there.
+
+428
+00:26:27,190 --> 00:26:31,783
+We will skip it today for
+the consideration of time.
+
+429
+00:26:35,530 --> 00:26:38,630
+We will not do the demonstration today,
+
+430
+00:26:38,630 --> 00:26:40,750
+but if you are interested,
+
+431
+00:26:40,750 --> 00:26:43,983
+welcome to check the demo on our website.
+
+432
+00:26:47,670 --> 00:26:50,943
+Next, I will be sharing
+details about ProxyOracle.
+
+433
+00:26:52,350 --> 00:26:53,613
+Compared to ProxyLogon,
+
+434
+00:26:54,470 --> 00:26:57,630
+ProxyOracle is an interesting exploit
+
+435
+00:26:57,630 --> 00:27:00,846
+with a different approach.
+
+436
+00:27:00,846 --> 00:27:03,540
+ProxyOracle will allow the attacker
+
+437
+00:27:03,540 --> 00:27:06,890
+to recover the victim's
+plain text password
+
+438
+00:27:06,890 --> 00:27:09,843
+simply by leading them
+to a malicious link.
+
+439
+00:27:11,610 --> 00:27:13,620
+We used a cross-site scripting
+
+440
+00:27:13,620 --> 00:27:16,823
+and padding oracle to
+complete the exploit.
+
+441
+00:27:19,870 --> 00:27:23,580
+First, we would like
+to explain how the OWA
+
+442
+00:27:23,580 --> 00:27:26,103
+or ECP authenticate users.
+
+443
+00:27:27,560 --> 00:27:31,350
+If the negative IIS
+authentication is used,
+
+444
+00:27:31,350 --> 00:27:33,910
+an ugly prompt will pop out,
+
+445
+00:27:33,910 --> 00:27:36,670
+asking you to enter the password
+
+446
+00:27:36,670 --> 00:27:40,490
+instead of this fancy interface,
+
+447
+00:27:40,490 --> 00:27:44,810
+which means Exchange is
+using a certain mechanics
+
+448
+00:27:44,810 --> 00:27:47,080
+to execute the transformation
+
+449
+00:27:47,080 --> 00:27:49,893
+between the credentials and cookies.
+
+450
+00:27:50,940 --> 00:27:55,228
+So let's take a look at
+how this fancy interface
+
+451
+00:27:55,228 --> 00:27:58,193
+is working with the original architecture.
+
+452
+00:28:00,900 --> 00:28:04,430
+Let's get back to the IIS architecture.
+
+453
+00:28:04,430 --> 00:28:08,450
+All the OWA and ECP login mechanics
+
+454
+00:28:08,450 --> 00:28:12,003
+are done by the Form-Based
+Authentication module.
+
+455
+00:28:13,050 --> 00:28:16,100
+The FBA is an authentication manager
+
+456
+00:28:16,100 --> 00:28:18,830
+prior to the Exchange frontend
+
+457
+00:28:18,830 --> 00:28:20,840
+and responsible for converting
+
+458
+00:28:20,840 --> 00:28:23,910
+the username and password into cookies,
+
+459
+00:28:23,910 --> 00:28:28,053
+or translating cookies to the
+original credential pairs.
+
+460
+00:28:29,120 --> 00:28:31,780
+The implementation store your username
+
+461
+00:28:31,780 --> 00:28:34,493
+and password in cookies directly.
+
+462
+00:28:35,680 --> 00:28:38,580
+Of course, the cookie is encrypted
+
+463
+00:28:38,580 --> 00:28:41,930
+to avoid bad guys catching your password
+
+464
+00:28:41,930 --> 00:28:43,803
+in plain text on the fly.
+
+465
+00:28:46,370 --> 00:28:49,460
+If you read the login traffic carefully,
+
+466
+00:28:49,460 --> 00:28:51,910
+you will see several cookies,
+
+467
+00:28:51,910 --> 00:28:54,990
+which stand for your identity.
+
+468
+00:28:54,990 --> 00:28:57,640
+For the later mail configuration,
+
+469
+00:28:57,640 --> 00:29:01,923
+you have to attach cookies
+to identify who you are,
+
+470
+00:29:02,870 --> 00:29:04,430
+but not all cookies,
+
+471
+00:29:04,430 --> 00:29:06,510
+there are five important ones
+
+472
+00:29:06,510 --> 00:29:08,563
+with the prefix cadata.
+
+473
+00:29:10,500 --> 00:29:12,330
+You can see from the screen,
+
+474
+00:29:12,330 --> 00:29:17,330
+the cadata contains your
+encrypted username and password.
+
+475
+00:29:20,520 --> 00:29:24,270
+Here is the pseudocode
+for the encryption logic.
+
+476
+00:29:24,270 --> 00:29:26,990
+Exchange generates two random strings
+
+477
+00:29:26,990 --> 00:29:30,400
+as the IV and Key for every session.
+
+478
+00:29:30,400 --> 00:29:32,410
+The IV and Key will be sent
+
+479
+00:29:32,410 --> 00:29:34,493
+and stored on the client's side.
+
+480
+00:29:35,740 --> 00:29:39,790
+However, to avoid someone
+stealing the cookies
+
+481
+00:29:39,790 --> 00:29:41,483
+and decrypting it with the IV and key,
+
+482
+00:29:43,570 --> 00:29:46,700
+Exchange uses RSA to encrypt
+
+483
+00:29:46,700 --> 00:29:49,873
+with its private key again before sending.
+
+484
+00:29:51,370 --> 00:29:54,520
+The Exchange then uses the AES
+
+485
+00:29:54,520 --> 00:29:59,490
+to encrypt your encoded
+credential with the IV and Key
+
+486
+00:29:59,490 --> 00:30:02,563
+and put the result into the cookies.
+
+487
+00:30:05,530 --> 00:30:08,543
+And yes, you can find padding oracle here.
+
+488
+00:30:14,210 --> 00:30:18,610
+Exchange texts the CBC
+of its padding mode.
+
+489
+00:30:18,610 --> 00:30:21,370
+If you are familiar with cryptography,
+
+490
+00:30:21,370 --> 00:30:24,500
+you must know that CBC is vulnerable
+
+491
+00:30:24,500 --> 00:30:26,533
+to the padding oracle attack.
+
+492
+00:30:27,610 --> 00:30:30,150
+The Exchange implementation catches
+
+493
+00:30:30,150 --> 00:30:33,703
+the padding error and returns immediately.
+
+494
+00:30:37,783 --> 00:30:39,880
+When the login process fails,
+
+495
+00:30:39,880 --> 00:30:42,930
+Exchange redirects the HTTP back
+
+496
+00:30:42,930 --> 00:30:46,470
+to the login patch with an error code.
+
+497
+00:30:46,470 --> 00:30:49,723
+Due to the return, we have an oracle here.
+
+498
+00:30:51,570 --> 00:30:55,690
+If the encryption fails,
+the error code is zero,
+
+499
+00:30:55,690 --> 00:30:57,253
+which stands for null.
+
+500
+00:30:58,270 --> 00:31:02,510
+And if we corrupt the
+cyber attacks successfully,
+
+501
+00:31:02,510 --> 00:31:05,070
+the Exchange will try to log in
+
+502
+00:31:05,070 --> 00:31:07,683
+with the corrupted credential pair.
+
+503
+00:31:08,570 --> 00:31:12,310
+At this moment, the
+result must be a failure
+
+504
+00:31:12,310 --> 00:31:14,293
+and the error code is two,
+
+505
+00:31:15,420 --> 00:31:18,993
+which stands for the invalid credentials.
+
+506
+00:31:20,170 --> 00:31:22,550
+By differing from the error number,
+
+507
+00:31:22,550 --> 00:31:26,413
+we have an oracle to
+recover the plain text.
+
+508
+00:31:30,450 --> 00:31:33,750
+Now, we know we can decrypt any cookies
+
+509
+00:31:33,750 --> 00:31:34,900
+with the padding oracle
+
+510
+00:31:35,920 --> 00:31:39,880
+but the problem is how to get
+
+511
+00:31:39,880 --> 00:31:41,813
+the cookies from the victim?
+
+512
+00:31:46,803 --> 00:31:49,640
+In order to get a cookie on clients,
+
+513
+00:31:49,640 --> 00:31:53,543
+we uncover a cross-site
+scripting to chain together.
+
+514
+00:31:54,740 --> 00:31:57,920
+But it comes up with another problem
+
+515
+00:32:00,440 --> 00:32:03,930
+being Exchange-authenticated cookies
+
+516
+00:32:03,930 --> 00:32:06,293
+are protected by HttpOnly,
+
+517
+00:32:07,390 --> 00:32:11,003
+so we can't access the
+cookies by JavaScript.
+
+518
+00:32:11,910 --> 00:32:13,833
+So how can we do?
+
+519
+00:32:15,830 --> 00:32:18,000
+Since we can execute arbitrary
+
+520
+00:32:18,000 --> 00:32:20,500
+JavaScript on client side,
+
+521
+00:32:20,500 --> 00:32:23,990
+why don't we just insert an SSRF cookie,
+
+522
+00:32:23,990 --> 00:32:25,993
+which is used in ProxyLogon?
+
+523
+00:32:27,840 --> 00:32:30,660
+Why don't we add a cookie to the browser?
+
+524
+00:32:30,660 --> 00:32:33,010
+We can sniff and take over
+
+525
+00:32:33,010 --> 00:32:35,223
+all the user's web requests.
+
+526
+00:32:36,480 --> 00:32:40,230
+All we need to do is to sit on our server
+
+527
+00:32:40,230 --> 00:32:43,223
+and wait for the cookies to come back.
+
+528
+00:32:46,270 --> 00:32:48,543
+I will elaborate the process further.
+
+529
+00:32:49,780 --> 00:32:53,443
+We first send a malicious
+link to the victim.
+
+530
+00:32:54,685 --> 00:32:58,311
+And once the victim triggers
+our cross-site scripting,
+
+531
+00:32:58,311 --> 00:33:01,885
+we insert the SSRF cookie to pretend
+
+532
+00:33:01,885 --> 00:33:04,468
+we are the backend of Exchange.
+
+533
+00:33:05,463 --> 00:33:08,748
+And then the Exchange
+Server becomes a proxy
+
+534
+00:33:08,748 --> 00:33:11,395
+between the victim and us,
+
+535
+00:33:11,395 --> 00:33:15,366
+we will take over all
+the traffic to bypass
+
+536
+00:33:15,366 --> 00:33:18,866
+the HttpOnly to get the encrypted cookies.
+
+537
+00:33:23,195 --> 00:33:24,862
+Okay, the demo part.
+
+538
+00:33:27,523 --> 00:33:29,690
+First, we have the victim,
+
+539
+00:33:30,574 --> 00:33:34,964
+and we pass his mail
+address to our exploit.
+
+540
+00:33:34,964 --> 00:33:39,896
+The exploit first send a
+malicious link to the target.
+
+541
+00:33:39,896 --> 00:33:43,327
+And once the victim triggers
+our cross-site scripting,
+
+542
+00:33:43,327 --> 00:33:47,840
+we insert a SSRF cookie
+and wait for the connection
+
+543
+00:33:47,840 --> 00:33:50,893
+back to obtain the encrypted cookies.
+
+544
+00:33:57,340 --> 00:33:59,640
+Okay, we got a connection.
+
+545
+00:33:59,640 --> 00:34:03,363
+We can now decrypt the
+blocks by padding oracle.
+
+546
+00:34:04,420 --> 00:34:07,320
+It should be note that all the decryption
+
+547
+00:34:07,320 --> 00:34:10,870
+could be done without
+the cross-site scripting.
+
+548
+00:34:10,870 --> 00:34:13,160
+Even the user close the browser,
+
+549
+00:34:13,160 --> 00:34:15,863
+we can still recover the password.
+
+550
+00:34:19,200 --> 00:34:20,730
+With a little bit waiting,
+
+551
+00:34:20,730 --> 00:34:24,933
+we recovered the password
+in plain text successfully.
+
+552
+00:34:32,591 --> 00:34:36,480
+The last exploit I will
+share today is ProxyShell.
+
+553
+00:34:36,480 --> 00:34:40,020
+This is the exploit we
+demonstrate at Pwn2Own 2021.
+
+554
+00:34:41,570 --> 00:34:43,350
+The result of ProxyShell
+
+555
+00:34:43,350 --> 00:34:45,263
+is the same as ProxyLogon.
+
+556
+00:34:46,750 --> 00:34:49,960
+An unauthenticated attacker can execute
+
+557
+00:34:49,960 --> 00:34:53,203
+arbitrary commands on the Exchange Server.
+
+558
+00:34:54,230 --> 00:34:56,550
+But the exploit chain is different.
+
+559
+00:34:56,550 --> 00:35:01,550
+ProxyShell is chained with an
+ACL bypass in the frontend,
+
+560
+00:35:02,450 --> 00:35:04,735
+an elevation of privilege
+
+561
+00:35:04,735 --> 00:35:07,810
+in the Exchange PowerShell backend,
+
+562
+00:35:07,810 --> 00:35:11,143
+and an arbitrary file-write to get RCE.
+
+563
+00:35:14,613 --> 00:35:16,881
+So where is the ProxyShell?
+
+564
+00:35:16,881 --> 00:35:19,596
+The first pre-auth path is also
+
+565
+00:35:19,596 --> 00:35:22,679
+a GET at the backend URL calculation.
+
+566
+00:35:25,130 --> 00:35:28,700
+ProxyShell begins with a path confusion.
+
+567
+00:35:28,700 --> 00:35:33,700
+Exchange has a feature called
+Explicit Logon feature.
+
+568
+00:35:33,800 --> 00:35:36,120
+This feature is used to describe
+
+569
+00:35:36,120 --> 00:35:39,220
+another user's mailbox or calendar
+
+570
+00:35:39,220 --> 00:35:41,013
+in a new browser window.
+
+571
+00:35:42,270 --> 00:35:44,930
+Of course, the displayed mailbox
+
+572
+00:35:44,930 --> 00:35:47,090
+must have to be configured
+
+573
+00:35:47,090 --> 00:35:49,653
+with permission to publish first.
+
+574
+00:35:51,040 --> 00:35:55,030
+In order to open with
+a single GET request,
+
+575
+00:35:55,030 --> 00:35:58,230
+the URL format must be simple,
+
+576
+00:35:58,230 --> 00:36:02,570
+and the mailbox address
+must be include in the URL
+
+577
+00:36:02,570 --> 00:36:05,563
+such as the highlight part in the slide.
+
+578
+00:36:07,120 --> 00:36:10,680
+The Exchange normalize this special URL
+
+579
+00:36:10,680 --> 00:36:14,473
+and reroutes it to the existing handlers.
+
+580
+00:36:17,780 --> 00:36:20,390
+Of course, the path is not the only way
+
+581
+00:36:20,390 --> 00:36:23,380
+to specify the mailbox address.
+
+582
+00:36:23,380 --> 00:36:28,290
+We find that a special cast
+in the Autodiscover handler,
+
+583
+00:36:28,290 --> 00:36:30,830
+Exchange will consider address
+
+584
+00:36:30,830 --> 00:36:32,180
+from the current string
+
+585
+00:36:32,180 --> 00:36:35,003
+if the path.EndsWith /autodiscover.json.
+
+586
+00:36:39,640 --> 00:36:41,450
+After getting the address,
+
+587
+00:36:41,450 --> 00:36:45,090
+the handler tries to normalize the URL.
+
+588
+00:36:45,090 --> 00:36:47,910
+You'll see that Exchange won't conduct
+
+589
+00:36:47,910 --> 00:36:50,400
+too much checking on the pattern
+
+590
+00:36:50,400 --> 00:36:53,440
+of removing mailbox address,
+
+591
+00:36:53,440 --> 00:36:56,460
+which led us to use the substring
+
+592
+00:36:56,460 --> 00:36:59,583
+to erase any part of the URL.
+
+593
+00:37:02,590 --> 00:37:04,850
+As you could see from the slide,
+
+594
+00:37:04,850 --> 00:37:07,853
+this is the URL we will be visiting.
+
+595
+00:37:09,920 --> 00:37:12,500
+And this is the mailbox address
+
+596
+00:37:12,500 --> 00:37:15,293
+we use the query string to specify.
+
+597
+00:37:17,870 --> 00:37:20,570
+And here is the part will be removed
+
+598
+00:37:20,570 --> 00:37:23,390
+from Exchange according to our pattern
+
+599
+00:37:27,220 --> 00:37:28,583
+with the address.
+
+600
+00:37:31,380 --> 00:37:33,610
+This is the actual URL
+
+601
+00:37:33,610 --> 00:37:36,833
+the request will be sent to the backend.
+
+602
+00:37:38,394 --> 00:37:42,830
+But for now, we can access
+any Exchange backend again.
+
+603
+00:37:46,210 --> 00:37:49,250
+Also, this block is not as powerful
+
+604
+00:37:49,250 --> 00:37:52,360
+as the SSRF in ProxyLogon.
+
+605
+00:37:52,360 --> 00:37:56,460
+It's sufficient to assess
+arbitrary backends.
+
+606
+00:37:56,460 --> 00:38:00,560
+We tries to access the API in the path
+
+607
+00:38:00,560 --> 00:38:03,360
+to identify our privilege.
+
+608
+00:38:03,360 --> 00:38:06,290
+From the screenshot, you could see that
+
+609
+00:38:06,290 --> 00:38:08,630
+we could access the backend
+
+610
+00:38:08,630 --> 00:38:12,223
+with the Exchange instant privilege again.
+
+611
+00:38:15,770 --> 00:38:19,120
+Here comes the post-exploitation part.
+
+612
+00:38:19,120 --> 00:38:22,440
+The approach of original ProxyLogon fails
+
+613
+00:38:22,440 --> 00:38:26,850
+due to some Exchange in-depth protections.
+
+614
+00:38:26,850 --> 00:38:30,170
+So we have to discover a new approach.
+
+615
+00:38:30,170 --> 00:38:35,170
+Now, let's turn the focus to
+Exchange PowerShell Remoting,
+
+616
+00:38:35,190 --> 00:38:37,903
+a feature for Exchange automations.
+
+617
+00:38:39,160 --> 00:38:42,170
+Through the defined PowerShell commands,
+
+618
+00:38:42,170 --> 00:38:45,260
+users can read mail, send mail,
+
+619
+00:38:45,260 --> 00:38:48,693
+and even configure
+settings by command lines.
+
+620
+00:38:49,690 --> 00:38:52,200
+The Exchange PowerShell implementation
+
+621
+00:38:52,200 --> 00:38:54,583
+is built upon the PowerShell API.
+
+622
+00:38:55,720 --> 00:38:57,210
+By calling the API,
+
+623
+00:38:57,210 --> 00:39:00,370
+Exchange could realize a PowerShell server
+
+624
+00:39:00,370 --> 00:39:01,970
+and uses the Runspace to name it
+
+625
+00:39:03,200 --> 00:39:05,503
+and isolate the command execution.
+
+626
+00:39:07,280 --> 00:39:12,280
+All the operations are
+based on the WinRM protocol.
+
+627
+00:39:12,280 --> 00:39:14,730
+It should be note that also we can access
+
+628
+00:39:14,730 --> 00:39:17,680
+the PowerShell backend directly.
+
+629
+00:39:17,680 --> 00:39:20,460
+We can still interact with it
+
+630
+00:39:20,460 --> 00:39:22,043
+because we are the SYSTEM.
+
+631
+00:39:23,150 --> 00:39:25,720
+We will fail the business logic
+
+632
+00:39:25,720 --> 00:39:29,693
+since there is no mailbox
+for the SYSTEM user.
+
+633
+00:39:31,460 --> 00:39:34,400
+We also can forge our identity
+
+634
+00:39:34,400 --> 00:39:36,160
+by the header X-CommonAccessToken
+
+635
+00:39:37,720 --> 00:39:41,140
+due to the blacklist in the frontend.
+
+636
+00:39:41,140 --> 00:39:43,173
+So what should I do?
+
+637
+00:39:44,030 --> 00:39:47,410
+We dive into the PowerShell
+server implementation
+
+638
+00:39:47,410 --> 00:39:49,950
+and find a piece of code that
+
+639
+00:39:49,950 --> 00:39:53,293
+extracts the access token from the URL.
+
+640
+00:39:56,310 --> 00:40:00,770
+The code is leading after the
+IIS backend authentication
+
+641
+00:40:00,770 --> 00:40:03,680
+and before the Rehydration.
+
+642
+00:40:03,680 --> 00:40:08,280
+It checks if there is no
+X-CommonAccessToken header,
+
+643
+00:40:08,280 --> 00:40:11,380
+the code will call out another method
+
+644
+00:40:11,380 --> 00:40:14,243
+to get the access token from the URL.
+
+645
+00:40:17,230 --> 00:40:21,950
+The CommonAccessTokenFromUrl
+is a short method
+
+646
+00:40:21,950 --> 00:40:26,950
+and retrieves the value of
+X-Rps-CAT from query string,
+
+647
+00:40:28,280 --> 00:40:32,223
+and then deserialize it
+back to the access token.
+
+648
+00:40:35,930 --> 00:40:39,040
+As for now, we have an
+elevation of privilege
+
+649
+00:40:39,040 --> 00:40:42,000
+because we can access
+the PowerShell backend
+
+650
+00:40:42,000 --> 00:40:44,163
+and specify the access token directly.
+
+651
+00:40:45,560 --> 00:40:47,740
+The intention of this operation
+
+652
+00:40:47,740 --> 00:40:50,820
+is to be a quick proxy for internal
+
+653
+00:40:50,820 --> 00:40:53,363
+Exchange PowerShell communication.
+
+654
+00:40:54,270 --> 00:40:56,280
+By abusing this feature,
+
+655
+00:40:56,280 --> 00:40:58,993
+we can impersonate as any user.
+
+656
+00:41:00,180 --> 00:41:04,350
+Here, we use the EOP to downgrade ourself
+
+657
+00:41:04,350 --> 00:41:09,063
+from the SYSTEM result
+mailbox to Exchange Admin.
+
+658
+00:41:12,300 --> 00:41:16,120
+I can now execute arbitrary
+Exchange PowerShell
+
+659
+00:41:16,120 --> 00:41:19,133
+commands as Admin, and then?
+
+660
+00:41:21,770 --> 00:41:23,580
+The last piece of the puzzle
+
+661
+00:41:23,580 --> 00:41:26,360
+is to find a post-auth RCE
+
+662
+00:41:26,360 --> 00:41:27,923
+to chain everything together.
+
+663
+00:41:29,130 --> 00:41:32,220
+Because we are adding,
+and there are hundreds
+
+664
+00:41:32,220 --> 00:41:35,490
+of Exchange PowerShell commands out there,
+
+665
+00:41:35,490 --> 00:41:38,403
+it's easy to find a post-auth bug.
+
+666
+00:41:39,860 --> 00:41:42,690
+We abused the command
+New-MailboxExportRequest
+
+667
+00:41:44,508 --> 00:41:47,190
+to explore the user's mailbox
+
+668
+00:41:47,190 --> 00:41:49,883
+into the WebLoad to be our WebShell.
+
+669
+00:41:53,480 --> 00:41:57,470
+Now, we can create files
+on arbitrary tests.
+
+670
+00:41:57,470 --> 00:42:00,090
+The next problem is how to embed
+
+671
+00:42:00,090 --> 00:42:03,263
+our malicious payload into this file.
+
+672
+00:42:04,160 --> 00:42:05,360
+It's also easy.
+
+673
+00:42:05,360 --> 00:42:08,033
+We can deliver our payload by mail.
+
+674
+00:42:08,940 --> 00:42:13,180
+However, the exploited file is encoded.
+
+675
+00:42:13,180 --> 00:42:15,660
+By reading the Microsoft document,
+
+676
+00:42:15,660 --> 00:42:18,390
+we learned it's in PST format
+
+677
+00:42:18,390 --> 00:42:21,603
+and the encoding is just
+a simple table matrix.
+
+678
+00:42:22,500 --> 00:42:27,040
+We can just encode the
+payload before sending out.
+
+679
+00:42:27,040 --> 00:42:29,610
+While the server tries to save
+
+680
+00:42:29,610 --> 00:42:31,700
+and encode our payload,
+
+681
+00:42:31,700 --> 00:42:34,783
+it turns into the original malicious code.
+
+682
+00:42:37,240 --> 00:42:39,740
+Let's check everything together.
+
+683
+00:42:39,740 --> 00:42:42,900
+We first deliver our encoded WebShell
+
+684
+00:42:42,900 --> 00:42:45,580
+to the target mailbox,
+
+685
+00:42:45,580 --> 00:42:48,900
+and then launch the
+Windows PowerShell client
+
+686
+00:42:48,900 --> 00:42:50,913
+to connect to our proxy server.
+
+687
+00:42:52,080 --> 00:42:55,490
+We use a proxy server
+because we have to modify
+
+688
+00:42:55,490 --> 00:42:59,750
+the WinRM protocol to rewrite the path
+
+689
+00:42:59,750 --> 00:43:03,150
+to the vulnerable Autodiscover handler,
+
+690
+00:43:03,150 --> 00:43:06,740
+which will eventually trigger
+the path confusion bug
+
+691
+00:43:06,740 --> 00:43:11,203
+and add an access token
+to the query string.
+
+692
+00:43:11,203 --> 00:43:14,020
+Once the station has been established,
+
+693
+00:43:14,020 --> 00:43:16,740
+we can execute the PowerShell command
+
+694
+00:43:16,740 --> 00:43:20,240
+to grant ourself the mailbox export log
+
+695
+00:43:20,240 --> 00:43:23,900
+and involve the mailbox exploiting.
+
+696
+00:43:23,900 --> 00:43:26,543
+And the next step is to enjoy the shell.
+
+697
+00:43:32,400 --> 00:43:34,293
+Let's go to the demonstration.
+
+698
+00:43:35,250 --> 00:43:38,170
+So this is the Exchange Server,
+
+699
+00:43:38,170 --> 00:43:40,383
+and we run our exploit.
+
+700
+00:43:43,720 --> 00:43:45,890
+The exploit first sent our
+
+701
+00:43:45,890 --> 00:43:49,100
+encoded payload to the mailbox
+
+702
+00:43:49,100 --> 00:43:51,270
+and launched the PowerShell
+
+703
+00:43:51,270 --> 00:43:55,080
+to establish the WinRM connection.
+
+704
+00:43:55,080 --> 00:43:56,820
+We used a proxy server to rewrite
+
+705
+00:43:56,820 --> 00:44:00,283
+the traffic to implement our exploit.
+
+706
+00:44:04,800 --> 00:44:07,610
+Okay, we see our shell is dropped.
+
+707
+00:44:24,910 --> 00:44:26,617
+And we are the SYSTEM.
+
+708
+00:44:35,930 --> 00:44:37,380
+Let's talk about mitigations.
+
+709
+00:44:39,160 --> 00:44:41,570
+Since it's an architectural problem,
+
+710
+00:44:41,570 --> 00:44:44,090
+it's hard to mitigate the attack surface
+
+711
+00:44:44,090 --> 00:44:46,410
+with one single action.
+
+712
+00:44:46,410 --> 00:44:50,400
+All you can do is keep your
+Exchange Server up to date
+
+713
+00:44:50,400 --> 00:44:53,060
+and with the support of a firewall
+
+714
+00:44:53,060 --> 00:44:57,323
+or ACL to not externally
+facing the internet.
+
+715
+00:44:59,360 --> 00:45:03,853
+Microsoft has enhanced the
+CAS architecture in April.
+
+716
+00:45:05,340 --> 00:45:07,900
+The authentication part
+of this attack surface
+
+717
+00:45:07,900 --> 00:45:11,000
+has been reduced in the patch.
+
+718
+00:45:11,000 --> 00:45:12,760
+So if you are lazy,
+
+719
+00:45:12,760 --> 00:45:15,403
+please update the April patch at least.
+
+720
+00:45:17,890 --> 00:45:20,280
+And if you are super lazy,
+
+721
+00:45:20,280 --> 00:45:25,003
+maybe you can give a
+shot at the Office 365.
+
+722
+00:45:27,930 --> 00:45:30,480
+Okay, conclusion, modern problems
+
+723
+00:45:30,480 --> 00:45:33,110
+require modern solutions.
+
+724
+00:45:33,110 --> 00:45:35,370
+It's hard to find traditional bugs
+
+725
+00:45:35,370 --> 00:45:37,630
+in modern architecture.
+
+726
+00:45:37,630 --> 00:45:40,440
+Sometimes comprehending the architecture
+
+727
+00:45:40,440 --> 00:45:43,410
+from a higher point of view can help you
+
+728
+00:45:43,410 --> 00:45:45,803
+fight new, interesting bugs.
+
+729
+00:45:46,770 --> 00:45:50,440
+The CAS is still a good attack surface
+
+730
+00:45:50,440 --> 00:45:53,463
+although Microsoft has
+patched it in April.
+
+731
+00:45:54,690 --> 00:45:58,850
+However, in fact, we still find a few bugs
+
+732
+00:45:58,850 --> 00:46:00,773
+after the April patch.
+
+733
+00:46:01,740 --> 00:46:03,700
+But since the authentication part
+
+734
+00:46:03,700 --> 00:46:06,640
+of this attack surface is reduced,
+
+735
+00:46:06,640 --> 00:46:09,740
+the result may not be as powerful
+
+736
+00:46:09,740 --> 00:46:13,263
+as before due to the
+lack of pre-auth bugs.
+
+737
+00:46:15,240 --> 00:46:18,970
+Lastly, the Exchange is still a treasure
+
+738
+00:46:18,970 --> 00:46:21,970
+waiting for you to find bugs.
+
+739
+00:46:21,970 --> 00:46:24,770
+As mentioned, even in 2020,
+
+740
+00:46:24,770 --> 00:46:27,410
+a hard-code crypto key can still
+
+741
+00:46:27,410 --> 00:46:30,440
+be find in Exchange Server.
+
+742
+00:46:30,440 --> 00:46:33,740
+I can assure you that Microsoft will fix
+
+743
+00:46:33,740 --> 00:46:37,183
+more Exchange vulnerabilities
+in the future.
+
+744
+00:46:38,480 --> 00:46:41,950
+But here comes the spoiler alert.
+
+745
+00:46:41,950 --> 00:46:45,730
+Even if you find a super
+critical vulnerability
+
+746
+00:46:45,730 --> 00:46:49,970
+like ProxyLogon, Microsoft will not reward
+
+747
+00:46:49,970 --> 00:46:54,100
+you any bounty because the Exchange Server
+
+748
+00:46:54,100 --> 00:46:56,853
+on-premise is out of scope.
+
+749
+00:46:57,980 --> 00:47:02,980
+So is it was fun hunting
+bugs on Exchange Server?
+
+750
+00:47:03,450 --> 00:47:04,343
+You tell me.
+
+751
+00:47:07,310 --> 00:47:10,260
+This is the end of my presentation.
+
+752
+00:47:10,260 --> 00:47:12,200
+If you have any questions,
+
+753
+00:47:12,200 --> 00:47:14,593
+here's my contact information.
+
+754
+00:47:15,480 --> 00:47:17,200
+By the way, I will post
+
+755
+00:47:17,200 --> 00:47:20,040
+a detailed article on my blog.
+
+756
+00:47:20,040 --> 00:47:22,430
+Please look forward to that.
+
+757
+00:47:22,430 --> 00:47:25,593
+Thank you again for being here, thanks.
+

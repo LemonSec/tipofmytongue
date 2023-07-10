@@ -1,0 +1,3304 @@
+﻿1
+00:00:00,000 --> 00:00:12,690
+yes thanks cool everybody my name is
+
+2
+00:00:11,040 --> 00:00:14,459
+grant and this is Tyler today we're
+
+3
+00:00:12,690 --> 00:00:16,529
+gonna be talking about Warner Warner's
+
+4
+00:00:14,460 --> 00:00:22,080
+kind of furniture for Windows kernel
+
+5
+00:00:16,529 --> 00:00:24,119
+fuzzing for mere mortals cool so Tyler
+
+6
+00:00:22,080 --> 00:00:26,459
+and I are security consultants for NCC
+
+7
+00:00:24,119 --> 00:00:32,099
+group we're both based out of Seattle
+
+8
+00:00:26,460 --> 00:00:34,260
+whoo we enjoy native low-level stuff
+
+9
+00:00:32,098 --> 00:00:35,790
+reverse engineering we do a little bit
+
+10
+00:00:34,260 --> 00:00:39,149
+of everything kind of what we're asked
+
+11
+00:00:35,790 --> 00:00:43,230
+to so take a look at web api and code
+
+12
+00:00:39,149 --> 00:00:45,239
+review cool so some of the motivations
+
+13
+00:00:43,230 --> 00:00:47,669
+behind this talk we were interested in
+
+14
+00:00:45,239 --> 00:00:51,149
+how the kernel works we want to kind of
+
+15
+00:00:47,670 --> 00:00:52,260
+share that interest with other people we
+
+16
+00:00:51,149 --> 00:00:53,910
+want to make sure that people who have
+
+17
+00:00:52,260 --> 00:00:56,309
+not seen this before have kind of a
+
+18
+00:00:53,910 --> 00:00:57,959
+bite-sized introduction to what we're
+
+19
+00:00:56,309 --> 00:01:02,789
+looking at so that if you want to do
+
+20
+00:00:57,960 --> 00:01:04,439
+this later on your own you can cool so
+
+21
+00:01:02,789 --> 00:01:07,380
+some of the key takeaways that we hope
+
+22
+00:01:04,438 --> 00:01:09,059
+you take are just a glimpse of how we do
+
+23
+00:01:07,380 --> 00:01:11,548
+things we don't have enough time to kind
+
+24
+00:01:09,060 --> 00:01:12,930
+of go through everything in detail but
+
+25
+00:01:11,549 --> 00:01:16,860
+hopefully we leave you some motivation
+
+26
+00:01:12,930 --> 00:01:21,320
+to learn more of this stuff so a small
+
+27
+00:01:16,860 --> 00:01:24,420
+caveat here this is hard
+
+28
+00:01:21,320 --> 00:01:27,360
+its technical its complex its low-level
+
+29
+00:01:24,420 --> 00:01:29,400
+it's really deep and we don't have quite
+
+30
+00:01:27,360 --> 00:01:30,720
+enough time here to talk about
+
+31
+00:01:29,400 --> 00:01:32,759
+everything but we're gonna give you as
+
+32
+00:01:30,720 --> 00:01:37,140
+much as we possibly can and we're more
+
+33
+00:01:32,759 --> 00:01:41,250
+than open to questions afterwards - so
+
+34
+00:01:37,140 --> 00:01:42,390
+the kernel the why and the what so show
+
+35
+00:01:41,250 --> 00:01:46,229
+of hands how many people are familiar
+
+36
+00:01:42,390 --> 00:01:51,270
+with the kernel Allison and the fuzzing
+
+37
+00:01:46,229 --> 00:01:53,549
+process awesome great so what is the
+
+38
+00:01:51,270 --> 00:01:55,770
+kernel the kernel is the heart of the
+
+39
+00:01:53,549 --> 00:01:58,020
+operating system this is the this is the
+
+40
+00:01:55,770 --> 00:02:01,289
+software that manages computer memory
+
+41
+00:01:58,020 --> 00:02:03,360
+i/o scheduling if you move your mouse
+
+42
+00:02:01,290 --> 00:02:07,500
+across the screen and you wonder like
+
+43
+00:02:03,360 --> 00:02:09,000
+hey what does that that's the kernel so
+
+44
+00:02:07,500 --> 00:02:11,160
+why would we want to actually start
+
+45
+00:02:09,000 --> 00:02:13,840
+targeting the kernel well they're not
+
+46
+00:02:11,160 --> 00:02:15,609
+going anywhere and they're relatively
+
+47
+00:02:13,840 --> 00:02:18,430
+unexplored attacks service compared to
+
+48
+00:02:15,610 --> 00:02:21,400
+userland so it makes it kind of a juicy
+
+49
+00:02:18,430 --> 00:02:23,170
+target finally any crash is technically
+
+50
+00:02:21,400 --> 00:02:27,849
+a denial of service because you're gonna
+
+51
+00:02:23,170 --> 00:02:30,780
+see a blue screen of death so before we
+
+52
+00:02:27,849 --> 00:02:33,339
+begin consider the following
+
+53
+00:02:30,780 --> 00:02:36,099
+we're gonna be fuzzing drivers that run
+
+54
+00:02:33,340 --> 00:02:38,290
+in kernel and so in user land if you
+
+55
+00:02:36,099 --> 00:02:40,000
+have a process that crashes then the
+
+56
+00:02:38,290 --> 00:02:42,069
+kernel is going to kind of take over
+
+57
+00:02:40,000 --> 00:02:44,200
+it's going to manage the memory it's
+
+58
+00:02:42,069 --> 00:02:45,880
+going to make sure that you get an error
+
+59
+00:02:44,200 --> 00:02:48,190
+message back and it's gonna do so
+
+60
+00:02:45,880 --> 00:02:50,950
+gracefully but if you see a crash in
+
+61
+00:02:48,190 --> 00:02:53,049
+kernel land it hits the fan it goes I
+
+62
+00:02:50,950 --> 00:02:54,250
+don't know what to do and the entire the
+
+63
+00:02:53,049 --> 00:02:58,030
+entire system crashes that's what you
+
+64
+00:02:54,250 --> 00:03:01,090
+see a blue screen of death so we need a
+
+65
+00:02:58,030 --> 00:03:02,620
+way in order to figure out what happened
+
+66
+00:03:01,090 --> 00:03:05,170
+if we do caused a crash in kernel land
+
+67
+00:03:02,620 --> 00:03:08,860
+and so how can we do that and the answer
+
+68
+00:03:05,170 --> 00:03:11,410
+is kernel debugging so Windows has a
+
+69
+00:03:08,860 --> 00:03:14,140
+tool called windbg or win debug that
+
+70
+00:03:11,410 --> 00:03:16,540
+allows you to kind of take control of a
+
+71
+00:03:14,140 --> 00:03:19,059
+kernel of another machine so that you
+
+72
+00:03:16,540 --> 00:03:21,790
+can run instruction by instruction use
+
+73
+00:03:19,060 --> 00:03:25,840
+kind of like a user like kind of like a
+
+74
+00:03:21,790 --> 00:03:27,700
+user mode debugger so you have you're
+
+75
+00:03:25,840 --> 00:03:28,930
+gonna have two computers sitting either
+
+76
+00:03:27,700 --> 00:03:31,268
+next to each other or on the same
+
+77
+00:03:28,930 --> 00:03:32,859
+physical machine using VMware or some
+
+78
+00:03:31,269 --> 00:03:34,989
+sort of virtualization software and
+
+79
+00:03:32,859 --> 00:03:37,329
+you're gonna have one machine your host
+
+80
+00:03:34,989 --> 00:03:39,549
+is going to be running the debugger and
+
+81
+00:03:37,329 --> 00:03:44,829
+is going to be controlling all execution
+
+82
+00:03:39,549 --> 00:03:46,510
+of our debug e so kernel debugging or
+
+83
+00:03:44,829 --> 00:03:49,389
+the debugger itself is kind of this
+
+84
+00:03:46,510 --> 00:03:50,530
+mandatory tool that we need to have so
+
+85
+00:03:49,389 --> 00:03:52,919
+that we're not stuck with static
+
+86
+00:03:50,530 --> 00:03:57,459
+analysis when it comes to analyzing the
+
+87
+00:03:52,919 --> 00:04:00,160
+crashes that we find so the tool is
+
+88
+00:03:57,459 --> 00:04:01,660
+betrayed for this process first we're
+
+89
+00:04:00,160 --> 00:04:04,030
+gonna need a debugger we're gonna be
+
+90
+00:04:01,660 --> 00:04:06,940
+using windbg it's publicly free
+
+91
+00:04:04,030 --> 00:04:08,410
+available online awesome number two we
+
+92
+00:04:06,940 --> 00:04:10,660
+need an actual fuzzer
+
+93
+00:04:08,410 --> 00:04:12,970
+we chose to go with a fuzzing tool
+
+94
+00:04:10,660 --> 00:04:15,340
+called D IBF this is publicly available
+
+95
+00:04:12,970 --> 00:04:17,950
+it was written by some of our co-workers
+
+96
+00:04:15,340 --> 00:04:19,090
+so whenever we have problems is awesome
+
+97
+00:04:17,950 --> 00:04:21,099
+just to be able to hit somebody up on
+
+98
+00:04:19,089 --> 00:04:23,859
+chat and say hey why is this working the
+
+99
+00:04:21,099 --> 00:04:25,180
+way it does what exactly broke also
+
+100
+00:04:23,860 --> 00:04:27,580
+we're going to be using a disassembler
+
+101
+00:04:25,180 --> 00:04:30,430
+such as binary ninja or Ida
+
+102
+00:04:27,580 --> 00:04:32,198
+this can be the free version here so all
+
+103
+00:04:30,430 --> 00:04:35,340
+this stuff is online publicly available
+
+104
+00:04:32,199 --> 00:04:37,150
+and free which is good news for all
+
+105
+00:04:35,340 --> 00:04:39,219
+finally we're going to be using win aa
+
+106
+00:04:37,150 --> 00:04:41,080
+band the Microsoft documentation
+
+107
+00:04:39,220 --> 00:04:46,000
+extensively if you really dive into this
+
+108
+00:04:41,080 --> 00:04:47,380
+project so we're gonna talk a little bit
+
+109
+00:04:46,000 --> 00:04:50,530
+about setting up the debugger this is
+
+110
+00:04:47,380 --> 00:04:53,169
+gonna be kind of the slow part sorry in
+
+111
+00:04:50,530 --> 00:04:56,320
+advance so we're gonna be using windbg
+
+112
+00:04:53,169 --> 00:04:58,590
+when dbg has two kind of options that
+
+113
+00:04:56,320 --> 00:05:02,020
+you can use one of them you will use
+
+114
+00:04:58,590 --> 00:05:05,010
+serial debugging is legacy it's old it's
+
+115
+00:05:02,020 --> 00:05:07,630
+slow and you're not going to use it
+
+116
+00:05:05,010 --> 00:05:09,340
+you're gonna use Katie net Katie net
+
+117
+00:05:07,630 --> 00:05:14,409
+stands for kernel debugging over the
+
+118
+00:05:09,340 --> 00:05:16,179
+network cool so I'm gonna kind of go
+
+119
+00:05:14,410 --> 00:05:19,000
+through the steps on how to set Katie
+
+120
+00:05:16,180 --> 00:05:19,270
+net up so that you can do this on your
+
+121
+00:05:19,000 --> 00:05:21,580
+own
+
+122
+00:05:19,270 --> 00:05:23,650
+so first you're gonna find two modern
+
+123
+00:05:21,580 --> 00:05:25,719
+Windows machines they can either be on
+
+124
+00:05:23,650 --> 00:05:26,859
+the same physical hardware or they can
+
+125
+00:05:25,720 --> 00:05:29,260
+be sitting next to each other
+
+126
+00:05:26,860 --> 00:05:30,910
+you're gonna have one be the host or
+
+127
+00:05:29,260 --> 00:05:32,889
+that's running the debugger and one's
+
+128
+00:05:30,910 --> 00:05:34,930
+gonna be your debug e the debug e is
+
+129
+00:05:32,889 --> 00:05:36,880
+going to be running the fuzzer and it's
+
+130
+00:05:34,930 --> 00:05:38,440
+going to be crashing so when we run the
+
+131
+00:05:36,880 --> 00:05:40,930
+fuzzer hopefully we get some crashes in
+
+132
+00:05:38,440 --> 00:05:42,910
+kernel and those will be that those will
+
+133
+00:05:40,930 --> 00:05:45,220
+cause the debug e or a guest machine to
+
+134
+00:05:42,910 --> 00:05:46,780
+crash and the host that is running the
+
+135
+00:05:45,220 --> 00:05:50,169
+debugger will be the one taking in
+
+136
+00:05:46,780 --> 00:05:51,789
+taking control of what's happening so in
+
+137
+00:05:50,169 --> 00:05:52,780
+order to set up this connection we need
+
+138
+00:05:51,789 --> 00:05:55,210
+to establish a network connection
+
+139
+00:05:52,780 --> 00:05:57,489
+between the machines then we're going to
+
+140
+00:05:55,210 --> 00:05:59,320
+create a debugging key on the guest that
+
+141
+00:05:57,490 --> 00:06:01,030
+we're going to pass to the host then
+
+142
+00:05:59,320 --> 00:06:02,919
+we're gonna reboot the debug e and if
+
+143
+00:06:01,030 --> 00:06:05,948
+everything has gone correctly then the
+
+144
+00:06:02,919 --> 00:06:07,630
+kernel debugger will break in so setting
+
+145
+00:06:05,949 --> 00:06:11,199
+this up on VMware there's only one
+
+146
+00:06:07,630 --> 00:06:12,610
+additional step that you need besides if
+
+147
+00:06:11,199 --> 00:06:14,080
+you were going to use two physical
+
+148
+00:06:12,610 --> 00:06:15,820
+machines and that is you need to set up
+
+149
+00:06:14,080 --> 00:06:17,590
+a host only or private network in
+
+150
+00:06:15,820 --> 00:06:22,389
+between your hosts in your D and your
+
+151
+00:06:17,590 --> 00:06:23,799
+debug a or your guest then you're going
+
+152
+00:06:22,389 --> 00:06:25,810
+to log in to your guest whether or not
+
+153
+00:06:23,800 --> 00:06:28,510
+it is virtualized or not and you're
+
+154
+00:06:25,810 --> 00:06:30,789
+gonna run this command bcdedit debug on
+
+155
+00:06:28,510 --> 00:06:32,710
+what this does is it enables kernel
+
+156
+00:06:30,789 --> 00:06:34,630
+debugging bcdedit has an array of
+
+157
+00:06:32,710 --> 00:06:36,280
+options that you can use that do a whole
+
+158
+00:06:34,630 --> 00:06:37,810
+bunch of complex things I'm not going to
+
+159
+00:06:36,280 --> 00:06:41,169
+talk about them at all I'm just going to
+
+160
+00:06:37,810 --> 00:06:41,740
+use this to enable debugging you can
+
+161
+00:06:41,169 --> 00:06:42,460
+also check
+
+162
+00:06:41,740 --> 00:06:45,389
+make sure that you've done this
+
+163
+00:06:42,460 --> 00:06:50,979
+correctly by running bcdedit without any
+
+164
+00:06:45,389 --> 00:06:52,720
+commandlineoptions cool so on your guest
+
+165
+00:06:50,979 --> 00:06:55,810
+machine you're going to go to the
+
+166
+00:06:52,720 --> 00:06:57,699
+Internet and pull down with windbg and
+
+167
+00:06:55,810 --> 00:07:00,580
+along with it is going to come KD net
+
+168
+00:06:57,699 --> 00:07:02,410
+exe so on your guest you're gonna run KD
+
+169
+00:07:00,580 --> 00:07:04,990
+net exe and you're going to specify the
+
+170
+00:07:02,410 --> 00:07:06,789
+IP address of your host machine and the
+
+171
+00:07:04,990 --> 00:07:10,090
+port 50,000 which is the kind of the
+
+172
+00:07:06,789 --> 00:07:12,280
+standard port for kernel debugging if
+
+173
+00:07:10,090 --> 00:07:15,130
+you run this then it will give you a key
+
+174
+00:07:12,280 --> 00:07:17,198
+that you're going to use on your host
+
+175
+00:07:15,130 --> 00:07:21,460
+machines windbg so you're gonna copy
+
+176
+00:07:17,199 --> 00:07:24,159
+this key and open windbg and your host
+
+177
+00:07:21,460 --> 00:07:30,520
+enable kernel debugging and slap the key
+
+178
+00:07:24,159 --> 00:07:31,840
+in there cool so we're almost there once
+
+179
+00:07:30,520 --> 00:07:33,430
+you have this connection setup between
+
+180
+00:07:31,840 --> 00:07:36,039
+the two machines then you're going to
+
+181
+00:07:33,430 --> 00:07:37,990
+enable verbose mode and you're going to
+
+182
+00:07:36,039 --> 00:07:39,849
+tell it to break in on the next boot
+
+183
+00:07:37,990 --> 00:07:41,319
+verbose mode will let you know the
+
+184
+00:07:39,849 --> 00:07:43,659
+second that your driver has been loaded
+
+185
+00:07:41,319 --> 00:07:45,789
+and breaking in the next boot will let
+
+186
+00:07:43,659 --> 00:07:51,130
+you know that the connection has been
+
+187
+00:07:45,789 --> 00:07:52,960
+set up correctly so the pro about using
+
+188
+00:07:51,130 --> 00:07:54,310
+KD net versus serial which we didn't
+
+189
+00:07:52,960 --> 00:07:56,380
+mention at all is that it is
+
+190
+00:07:54,310 --> 00:07:57,789
+significantly faster the only con here
+
+191
+00:07:56,380 --> 00:07:58,659
+is that you have to have a compatible
+
+192
+00:07:57,789 --> 00:08:00,639
+network card
+
+193
+00:07:58,659 --> 00:08:02,979
+luckily windows has a huge list of
+
+194
+00:08:00,639 --> 00:08:04,389
+compatible network cards chances are if
+
+195
+00:08:02,979 --> 00:08:06,940
+you are doing this you already have one
+
+196
+00:08:04,389 --> 00:08:11,229
+that is compatible and if you don't I
+
+197
+00:08:06,940 --> 00:08:12,759
+can't help you cool so we made it
+
+198
+00:08:11,229 --> 00:08:16,539
+through the boring stuff made it through
+
+199
+00:08:12,759 --> 00:08:19,300
+the setup we're able to get on to more
+
+200
+00:08:16,539 --> 00:08:21,068
+of the fun part so just a quick recap we
+
+201
+00:08:19,300 --> 00:08:24,340
+have one computer our hosts is going to
+
+202
+00:08:21,069 --> 00:08:26,080
+be debugging I have it and have windbg
+
+203
+00:08:24,340 --> 00:08:27,489
+setup and our guest is going to be
+
+204
+00:08:26,080 --> 00:08:31,810
+actually fuzzing the drivers and
+
+205
+00:08:27,490 --> 00:08:35,409
+hopefully causing crashes so now we're
+
+206
+00:08:31,810 --> 00:08:37,539
+gonna be on to the fuzzing process so
+
+207
+00:08:35,409 --> 00:08:39,370
+how do you speak how do you speak to a
+
+208
+00:08:37,539 --> 00:08:41,348
+driver the main interface that we're
+
+209
+00:08:39,370 --> 00:08:46,630
+going to be using are called I octal x'
+
+210
+00:08:41,349 --> 00:08:49,300
+or input output control codes so the way
+
+211
+00:08:46,630 --> 00:08:50,829
+that we are going to so the process kind
+
+212
+00:08:49,300 --> 00:08:52,270
+of goes like this first we need to open
+
+213
+00:08:50,829 --> 00:08:53,620
+a handle to the device that is
+
+214
+00:08:52,270 --> 00:08:55,020
+correlated to the driver that we're
+
+215
+00:08:53,620 --> 00:08:56,610
+going to be fuzzing
+
+216
+00:08:55,020 --> 00:08:59,189
+then we're gonna start sending I octal
+
+217
+00:08:56,610 --> 00:09:02,220
+codes from user land that the device
+
+218
+00:08:59,190 --> 00:09:06,630
+driver will receive each I octal calls a
+
+219
+00:09:02,220 --> 00:09:07,860
+subroutine of the driver so you're kind
+
+220
+00:09:06,630 --> 00:09:09,540
+of telling the driver this is the
+
+221
+00:09:07,860 --> 00:09:11,970
+function that I want that I want to call
+
+222
+00:09:09,540 --> 00:09:16,620
+in kernel and it will do something with
+
+223
+00:09:11,970 --> 00:09:18,570
+it and respond back to you this is the
+
+224
+00:09:16,620 --> 00:09:21,810
+Windows API that we're gonna be using in
+
+225
+00:09:18,570 --> 00:09:24,600
+order to send iocked O's to the driver
+
+226
+00:09:21,810 --> 00:09:28,290
+it's called device IO control and if you
+
+227
+00:09:24,600 --> 00:09:30,120
+take a look here at the parameters the
+
+228
+00:09:28,290 --> 00:09:31,680
+second parameter here is IO control code
+
+229
+00:09:30,120 --> 00:09:33,330
+that is the actual I octal that you're
+
+230
+00:09:31,680 --> 00:09:35,010
+going to be sending along with it you're
+
+231
+00:09:33,330 --> 00:09:36,300
+gonna send an input buffer that you're
+
+232
+00:09:35,010 --> 00:09:39,120
+that's going to be filled with all of
+
+233
+00:09:36,300 --> 00:09:41,189
+our fuzzing data we also pass it input
+
+234
+00:09:39,120 --> 00:09:43,380
+buffer size which should be rain
+
+235
+00:09:41,190 --> 00:09:45,240
+security flags because sometimes drivers
+
+236
+00:09:43,380 --> 00:09:46,890
+don't check that the size of what you
+
+237
+00:09:45,240 --> 00:09:49,320
+sent them is actually the size of what
+
+238
+00:09:46,890 --> 00:09:51,270
+you sent them and we're also going going
+
+239
+00:09:49,320 --> 00:09:52,620
+to optionally provide an output buffer
+
+240
+00:09:51,270 --> 00:09:54,720
+and what this does is it allows the
+
+241
+00:09:52,620 --> 00:09:58,200
+driver to fill in information and send
+
+242
+00:09:54,720 --> 00:09:59,820
+it back to you when it has finished the
+
+243
+00:09:58,200 --> 00:10:07,410
+process of the I octal that you've
+
+244
+00:09:59,820 --> 00:10:09,360
+specified cool so div F our fuzzer takes
+
+245
+00:10:07,410 --> 00:10:11,400
+in a device name which is correlated to
+
+246
+00:10:09,360 --> 00:10:14,790
+our driver and optionally takes in a
+
+247
+00:10:11,400 --> 00:10:16,709
+list of i/o of iocked O's to send to the
+
+248
+00:10:14,790 --> 00:10:18,260
+driver so the problem here is that
+
+249
+00:10:16,710 --> 00:10:21,540
+iocked those are rarely if ever
+
+250
+00:10:18,260 --> 00:10:22,890
+documented fastest way to find out which
+
+251
+00:10:21,540 --> 00:10:24,660
+I octaves are valid for a particular
+
+252
+00:10:22,890 --> 00:10:27,720
+driver is usually just to brute force
+
+253
+00:10:24,660 --> 00:10:29,969
+them so just start sending codes from 0
+
+254
+00:10:27,720 --> 00:10:34,860
+up to ffff C we'll see what the driver
+
+255
+00:10:29,970 --> 00:10:36,510
+response responds with and figure out
+
+256
+00:10:34,860 --> 00:10:38,930
+whether or not those are valid I octal
+
+257
+00:10:36,510 --> 00:10:42,000
+luckily div F does all of this for us
+
+258
+00:10:38,930 --> 00:10:46,560
+and it is also a pretty good buzzer in
+
+259
+00:10:42,000 --> 00:10:49,620
+its own right cool
+
+260
+00:10:46,560 --> 00:10:51,569
+so in order to start using div F we need
+
+261
+00:10:49,620 --> 00:10:53,910
+to find the name of the device that
+
+262
+00:10:51,570 --> 00:10:55,620
+corresponds to the target driver we need
+
+263
+00:10:53,910 --> 00:10:57,449
+to verify that it's actually present on
+
+264
+00:10:55,620 --> 00:10:58,620
+the machine using win AAB
+
+265
+00:10:57,450 --> 00:11:01,500
+and then we're going to pass this
+
+266
+00:10:58,620 --> 00:11:02,940
+information to div F and let it rip so
+
+267
+00:11:01,500 --> 00:11:04,350
+to go into a little more detail about
+
+268
+00:11:02,940 --> 00:11:08,520
+this process I'm going to pass it off to
+
+269
+00:11:04,350 --> 00:11:08,880
+Tyler alright so actually what I'm gonna
+
+270
+00:11:08,520 --> 00:11:10,740
+do now
+
+271
+00:11:08,880 --> 00:11:30,600
+is I'm gonna do some demos so hopefully
+
+272
+00:11:10,740 --> 00:11:34,649
+these will work okay let's see here okay
+
+273
+00:11:30,600 --> 00:11:36,630
+cool so what we're doing here is so
+
+274
+00:11:34,649 --> 00:11:38,490
+we're doing the first step that we just
+
+275
+00:11:36,630 --> 00:11:39,870
+discussed which is finding the name of
+
+276
+00:11:38,490 --> 00:11:43,560
+the device that corresponds to the
+
+277
+00:11:39,870 --> 00:11:45,630
+target driver so typically when you load
+
+278
+00:11:43,560 --> 00:11:49,290
+a device driver it's going to create
+
+279
+00:11:45,630 --> 00:11:51,750
+this like abstract OS object called a
+
+280
+00:11:49,290 --> 00:11:54,599
+device so that's the thing that you need
+
+281
+00:11:51,750 --> 00:11:57,930
+to to open a handle to in order to
+
+282
+00:11:54,600 --> 00:11:59,279
+actually make IAP tolls there I often
+
+283
+00:11:57,930 --> 00:12:02,130
+calls I should say so what we're doing
+
+284
+00:11:59,279 --> 00:12:03,899
+here is we've taken an example driver in
+
+285
+00:12:02,130 --> 00:12:06,300
+this case this is called the axis
+
+286
+00:12:03,899 --> 00:12:09,180
+extreme vulnerable driver which is a
+
+287
+00:12:06,300 --> 00:12:10,769
+driver that specifically meant to give
+
+288
+00:12:09,180 --> 00:12:13,859
+people practice doing like Colonel
+
+289
+00:12:10,769 --> 00:12:15,240
+exploitation stuff also because we
+
+290
+00:12:13,860 --> 00:12:16,920
+didn't want to we didn't want to pick on
+
+291
+00:12:15,240 --> 00:12:18,209
+any like specific manufacturers and be
+
+292
+00:12:16,920 --> 00:12:21,240
+like look at these look at these were
+
+293
+00:12:18,209 --> 00:12:22,920
+gonna fuzz this guy's stuff so I've
+
+294
+00:12:21,240 --> 00:12:24,990
+opened up in Ida this is actually Ida
+
+295
+00:12:22,920 --> 00:12:27,630
+free so basically you can do this in Ida
+
+296
+00:12:24,990 --> 00:12:30,569
+free I assume it would work just as well
+
+297
+00:12:27,630 --> 00:12:33,060
+in binary ninja so what we're gonna do
+
+298
+00:12:30,569 --> 00:12:35,279
+here is we're gonna go to the imports
+
+299
+00:12:33,060 --> 00:12:38,339
+tab of Ida the purpose of why we're
+
+300
+00:12:35,279 --> 00:12:40,529
+doing this is because in order to create
+
+301
+00:12:38,339 --> 00:12:41,639
+the device object you so there are
+
+302
+00:12:40,529 --> 00:12:43,889
+several ways to do it there's several
+
+303
+00:12:41,639 --> 00:12:46,139
+different windows API you can call to
+
+304
+00:12:43,889 --> 00:12:48,000
+create the device all of them happen to
+
+305
+00:12:46,139 --> 00:12:49,350
+have the word device in them so if you
+
+306
+00:12:48,000 --> 00:12:50,910
+go to the import section which
+
+307
+00:12:49,350 --> 00:12:52,319
+essentially tells you all of the windows
+
+308
+00:12:50,910 --> 00:12:54,569
+API is that are gonna be called by your
+
+309
+00:12:52,319 --> 00:12:56,610
+driver and just search for api's that
+
+310
+00:12:54,569 --> 00:12:58,829
+have device in the name then you're
+
+311
+00:12:56,610 --> 00:13:01,439
+gonna find the one you're looking for
+
+312
+00:12:58,829 --> 00:13:03,779
+so at the bottom which you may not be
+
+313
+00:13:01,439 --> 00:13:04,829
+able to see typing device and then
+
+314
+00:13:03,779 --> 00:13:07,199
+suddenly there are two things in the
+
+315
+00:13:04,829 --> 00:13:08,790
+list here io delete device IO create
+
+316
+00:13:07,199 --> 00:13:09,779
+device as you might guess IO create
+
+317
+00:13:08,790 --> 00:13:13,889
+device is the one that we're interested
+
+318
+00:13:09,779 --> 00:13:15,480
+in so we're gonna look at places in the
+
+319
+00:13:13,889 --> 00:13:17,010
+driver where this function is actually
+
+320
+00:13:15,480 --> 00:13:19,470
+called we're gonna use the
+
+321
+00:13:17,010 --> 00:13:21,360
+cross-reference feature here and we're
+
+322
+00:13:19,470 --> 00:13:22,620
+gonna see there's only one instance of
+
+323
+00:13:21,360 --> 00:13:25,140
+it actually being called
+
+324
+00:13:22,620 --> 00:13:26,700
+and that's in the driver entry which is
+
+325
+00:13:25,140 --> 00:13:29,880
+the function that's called when a
+
+326
+00:13:26,700 --> 00:13:31,500
+drivers first loaded so I'm gonna pause
+
+327
+00:13:29,880 --> 00:13:33,210
+it right here so what we see right here
+
+328
+00:13:31,500 --> 00:13:34,890
+is I'm mousing over this string that's
+
+329
+00:13:33,210 --> 00:13:36,510
+being passed as an argument to IO create
+
+330
+00:13:34,890 --> 00:13:38,939
+device you can see pretty clearly it's
+
+331
+00:13:36,510 --> 00:13:41,189
+passing the strings / dos devices /
+
+332
+00:13:38,940 --> 00:13:44,070
+hacks this extreme vulnerable driver so
+
+333
+00:13:41,190 --> 00:13:47,010
+basically from this we can we can deduce
+
+334
+00:13:44,070 --> 00:13:48,990
+pretty pretty clearly that that is the
+
+335
+00:13:47,010 --> 00:13:50,760
+device name right there the axis extreme
+
+336
+00:13:48,990 --> 00:13:52,920
+vulnerable driver so we're gonna do is
+
+337
+00:13:50,760 --> 00:13:54,180
+just to double check that this actually
+
+338
+00:13:52,920 --> 00:13:57,060
+is the correct name we're going to open
+
+339
+00:13:54,180 --> 00:13:58,770
+the sysinternals tool called win AAB the
+
+340
+00:13:57,060 --> 00:14:01,199
+list of devices that are actually
+
+341
+00:13:58,770 --> 00:14:02,939
+currently present on the machine and
+
+342
+00:14:01,200 --> 00:14:05,700
+we're gonna see if it's there so you got
+
+343
+00:14:02,940 --> 00:14:08,010
+to launch it elevated I'm gonna go to
+
+344
+00:14:05,700 --> 00:14:09,180
+the driver or sorry the device section
+
+345
+00:14:08,010 --> 00:14:13,910
+on the left here and I'm going to scroll
+
+346
+00:14:09,180 --> 00:14:18,209
+down let's go down to the H section and
+
+347
+00:14:13,910 --> 00:14:21,420
+there it is so okay so what we what we
+
+348
+00:14:18,210 --> 00:14:22,830
+get from this is we know that the this
+
+349
+00:14:21,420 --> 00:14:24,060
+is the device name so essentially this
+
+350
+00:14:22,830 --> 00:14:27,330
+is the device name that we're gonna pass
+
+351
+00:14:24,060 --> 00:14:29,189
+to div F later so this is like our entry
+
+352
+00:14:27,330 --> 00:14:31,560
+point entry point for how we actually
+
+353
+00:14:29,190 --> 00:14:38,490
+start fuzzing this driver so that is a
+
+354
+00:14:31,560 --> 00:14:49,439
+demo number 1 of 1 sec that is demo
+
+355
+00:14:38,490 --> 00:14:52,020
+number 1 of 3 so okay hold on alright
+
+356
+00:14:49,440 --> 00:14:53,550
+cool so here is demo number 2 so so this
+
+357
+00:14:52,020 --> 00:14:55,410
+one is pretty straightforward compared
+
+358
+00:14:53,550 --> 00:14:59,069
+to the previous one what we're doing
+
+359
+00:14:55,410 --> 00:15:01,469
+here is we're just we're gonna load this
+
+360
+00:14:59,070 --> 00:15:03,480
+up in we're gonna so we have a command
+
+361
+00:15:01,470 --> 00:15:05,760
+prompt that what's going on here oh yeah
+
+362
+00:15:03,480 --> 00:15:07,260
+okay so we're starting div F and we're
+
+363
+00:15:05,760 --> 00:15:09,360
+passing it the name of the device that
+
+364
+00:15:07,260 --> 00:15:11,040
+we just found in item so now you see a
+
+365
+00:15:09,360 --> 00:15:13,200
+bunch of output spitting out I have it
+
+366
+00:15:11,040 --> 00:15:15,089
+in for both mode just to show like here
+
+367
+00:15:13,200 --> 00:15:16,470
+the oculus is trying so you might not be
+
+368
+00:15:15,090 --> 00:15:18,570
+able to see this but it says found I
+
+369
+00:15:16,470 --> 00:15:22,050
+octal and I had like a list of about 12
+
+370
+00:15:18,570 --> 00:15:23,610
+IO codes so at this point in DI BFS
+
+371
+00:15:22,050 --> 00:15:25,680
+execution if you just press control C
+
+372
+00:15:23,610 --> 00:15:27,120
+like if you if you think okay yeah we're
+
+373
+00:15:25,680 --> 00:15:28,560
+I don't need to brute-force anymore if
+
+374
+00:15:27,120 --> 00:15:31,100
+you press control seat then it'll start
+
+375
+00:15:28,560 --> 00:15:33,359
+just fuzzing these and you may very well
+
+376
+00:15:31,100 --> 00:15:35,460
+start finding crashes at that point so
+
+377
+00:15:33,360 --> 00:15:36,360
+essentially at this point arguably you
+
+378
+00:15:35,460 --> 00:15:38,639
+are colonel
+
+379
+00:15:36,360 --> 00:15:46,559
+at this point depending on your
+
+380
+00:15:38,639 --> 00:15:56,069
+definition of it let's see and for the
+
+381
+00:15:46,559 --> 00:15:57,629
+third demo okay so for the third demo so
+
+382
+00:15:56,069 --> 00:15:59,248
+the previous two demos these were both
+
+383
+00:15:57,629 --> 00:16:01,319
+being shown from the perspective of the
+
+384
+00:15:59,249 --> 00:16:02,939
+debugging target so this is the Machine
+
+385
+00:16:01,319 --> 00:16:04,319
+where we're actually doing the fuzzing
+
+386
+00:16:02,939 --> 00:16:06,449
+this is the machine that's gonna blue
+
+387
+00:16:04,319 --> 00:16:10,589
+screen if we find an actual book right
+
+388
+00:16:06,449 --> 00:16:12,959
+so what we're seeing here like in
+
+389
+00:16:10,589 --> 00:16:14,519
+opposition to the other ones is this is
+
+390
+00:16:12,959 --> 00:16:17,609
+the machine that is running the the
+
+391
+00:16:14,519 --> 00:16:20,009
+kernel debugger so here what we're gonna
+
+392
+00:16:17,610 --> 00:16:21,989
+do is we're gonna show the debugger at
+
+393
+00:16:20,009 --> 00:16:25,319
+the time that we hit a driver crash on
+
+394
+00:16:21,989 --> 00:16:26,699
+the debugging target machine so I don't
+
+395
+00:16:25,319 --> 00:16:28,559
+know how readable the text is gonna be
+
+396
+00:16:26,699 --> 00:16:32,429
+so I'm gonna read this stuff out loud
+
+397
+00:16:28,559 --> 00:16:34,469
+pretty for Bhosle hopefully Windows
+
+398
+00:16:32,429 --> 00:16:35,910
+Media Player actually will cooperate and
+
+399
+00:16:34,470 --> 00:16:37,110
+play so it's gonna stay here for a
+
+400
+00:16:35,910 --> 00:16:38,939
+couple seconds and then suddenly we're
+
+401
+00:16:37,110 --> 00:16:40,319
+gonna get a thing that's like hey you
+
+402
+00:16:38,939 --> 00:16:43,439
+crashed yeah okay here we go
+
+403
+00:16:40,319 --> 00:16:45,179
+so I'm gonna actually walk up here so
+
+404
+00:16:43,439 --> 00:16:47,998
+what we see is a fatal system error and
+
+405
+00:16:45,179 --> 00:16:49,589
+a particular bug check code and then
+
+406
+00:16:47,999 --> 00:16:52,679
+below we see driver at fault
+
+407
+00:16:49,589 --> 00:16:54,360
+HEV D is so HEV d stands for hax this
+
+408
+00:16:52,679 --> 00:16:56,040
+extreme vulnerable driver so we know
+
+409
+00:16:54,360 --> 00:16:57,540
+that the driver that caused the crash
+
+410
+00:16:56,040 --> 00:17:00,118
+pretty much is the exact one that we
+
+411
+00:16:57,540 --> 00:17:03,569
+expected to have crash in this situation
+
+412
+00:17:00,119 --> 00:17:05,399
+so it lines up with our expectations so
+
+413
+00:17:03,569 --> 00:17:06,990
+I'm going to continue so okay so we know
+
+414
+00:17:05,398 --> 00:17:09,599
+we got a crash right so we know we got a
+
+415
+00:17:06,990 --> 00:17:11,339
+crash here what we want to do next is to
+
+416
+00:17:09,599 --> 00:17:14,309
+try to do at least some basic debugging
+
+417
+00:17:11,339 --> 00:17:15,480
+to figure out what happens that's sort
+
+418
+00:17:14,309 --> 00:17:17,189
+of like the interesting part like if you
+
+419
+00:17:15,480 --> 00:17:19,049
+have an exploitable bug then you can
+
+420
+00:17:17,189 --> 00:17:21,059
+come up with a kernel exploit and you
+
+421
+00:17:19,049 --> 00:17:25,439
+know do nasty stuff with it
+
+422
+00:17:21,059 --> 00:17:28,349
+so I am NOT going to pretend to be able
+
+423
+00:17:25,439 --> 00:17:29,730
+to teach you how to like debug kernel
+
+424
+00:17:28,349 --> 00:17:31,260
+crashes in the space of like five
+
+425
+00:17:29,730 --> 00:17:33,510
+minutes it's definitely an art
+
+426
+00:17:31,260 --> 00:17:35,580
+definitely something that we could do
+
+427
+00:17:33,510 --> 00:17:36,779
+like hours and hours of talks on so I'm
+
+428
+00:17:35,580 --> 00:17:38,250
+just gonna give like extremely
+
+429
+00:17:36,779 --> 00:17:40,049
+bare-bones information about what you
+
+430
+00:17:38,250 --> 00:17:42,539
+could do just to get enough information
+
+431
+00:17:40,049 --> 00:17:45,990
+to figure out like exactly which I octal
+
+432
+00:17:42,539 --> 00:17:47,940
+is causing the crash and what the input
+
+433
+00:17:45,990 --> 00:17:49,040
+buffer was that causes the crash so that
+
+434
+00:17:47,940 --> 00:17:50,300
+you can
+
+435
+00:17:49,040 --> 00:17:53,960
+throw the bug as much as you want and
+
+436
+00:17:50,300 --> 00:17:55,490
+then kind of dig deeper from there so
+
+437
+00:17:53,960 --> 00:17:57,820
+the first thing we're gonna do is look
+
+438
+00:17:55,490 --> 00:18:00,020
+at the call stack using this command Kay
+
+439
+00:17:57,820 --> 00:18:01,159
+the call stack is a little bit messed up
+
+440
+00:18:00,020 --> 00:18:03,170
+I'm gonna kind of gloss over the details
+
+441
+00:18:01,160 --> 00:18:05,000
+of why it's messed up but long story
+
+442
+00:18:03,170 --> 00:18:06,740
+short I need to fix the debugging
+
+443
+00:18:05,000 --> 00:18:09,230
+symbols so I'm gonna run this command
+
+444
+00:18:06,740 --> 00:18:12,110
+called dots in fix which fixes the
+
+445
+00:18:09,230 --> 00:18:15,710
+debugger symbol loading path then dot
+
+446
+00:18:12,110 --> 00:18:17,929
+reload to reload the symbols now that
+
+447
+00:18:15,710 --> 00:18:19,400
+the simple path has been fixed now we're
+
+448
+00:18:17,930 --> 00:18:21,860
+gonna look at the call stack again and
+
+449
+00:18:19,400 --> 00:18:24,440
+now it's actually readable in particular
+
+450
+00:18:21,860 --> 00:18:27,169
+down at the bottom here you can see that
+
+451
+00:18:24,440 --> 00:18:29,300
+the name of the user mode process that
+
+452
+00:18:27,170 --> 00:18:31,310
+was executing code at the time that the
+
+453
+00:18:29,300 --> 00:18:33,500
+Machine crashed happened to be called D
+
+454
+00:18:31,310 --> 00:18:34,730
+ibf which again is exactly you would
+
+455
+00:18:33,500 --> 00:18:37,010
+expect because that's the fuzzer that
+
+456
+00:18:34,730 --> 00:18:40,280
+we're running so what we're gonna do is
+
+457
+00:18:37,010 --> 00:18:42,590
+we're going to take a look at this
+
+458
+00:18:40,280 --> 00:18:44,450
+bottom most stack frame here so we're
+
+459
+00:18:42,590 --> 00:18:46,699
+gonna click on you might not be able to
+
+460
+00:18:44,450 --> 00:18:48,320
+see it but this number 15 right here
+
+461
+00:18:46,700 --> 00:18:52,640
+this is the this is like the lowest
+
+462
+00:18:48,320 --> 00:18:54,290
+stack frame of D ibf execution so I'm
+
+463
+00:18:52,640 --> 00:18:57,710
+gonna click there and it's gonna show us
+
+464
+00:18:54,290 --> 00:18:59,480
+all of the all the variables that were
+
+465
+00:18:57,710 --> 00:19:03,590
+present in that stack frame what their
+
+466
+00:18:59,480 --> 00:19:05,540
+values were so then we can look at in
+
+467
+00:19:03,590 --> 00:19:06,860
+firm so you mean again you may not be
+
+468
+00:19:05,540 --> 00:19:09,500
+able to see this
+
+469
+00:19:06,860 --> 00:19:12,260
+if you click request it's gonna show you
+
+470
+00:19:09,500 --> 00:19:15,140
+the contents of this IO request variable
+
+471
+00:19:12,260 --> 00:19:17,990
+which includes right here the actual IO
+
+472
+00:19:15,140 --> 00:19:19,400
+code so basically from this you know
+
+473
+00:19:17,990 --> 00:19:22,130
+exactly which I opted ill was
+
+474
+00:19:19,400 --> 00:19:23,810
+responsible for the crash so that's like
+
+475
+00:19:22,130 --> 00:19:27,170
+the important piece of repro information
+
+476
+00:19:23,810 --> 00:19:28,909
+number one number two is the in buff the
+
+477
+00:19:27,170 --> 00:19:30,290
+input buffer that was being sent to this
+
+478
+00:19:28,910 --> 00:19:34,460
+particular octal at the time of the
+
+479
+00:19:30,290 --> 00:19:38,330
+crash so I'm gonna continue here and if
+
+480
+00:19:34,460 --> 00:19:40,310
+we just click on in buff and do a little
+
+481
+00:19:38,330 --> 00:19:49,939
+bit of windbg stuff which i'm not going
+
+482
+00:19:40,310 --> 00:19:52,519
+to talk about in detail and there we go
+
+483
+00:19:49,940 --> 00:19:54,019
+so what we see here is the actual
+
+484
+00:19:52,519 --> 00:19:55,490
+contents of the buffer that was being
+
+485
+00:19:54,019 --> 00:19:58,909
+sent to the octal at the time of the
+
+486
+00:19:55,490 --> 00:20:01,720
+crash so it's basically all zeros except
+
+487
+00:19:58,909 --> 00:20:05,649
+there's there's some FS near the top so
+
+488
+00:20:01,720 --> 00:20:07,639
+actually not particularly complex input
+
+489
+00:20:05,649 --> 00:20:09,110
+you know this is a driver that was
+
+490
+00:20:07,639 --> 00:20:10,820
+specifically written to be very very
+
+491
+00:20:09,110 --> 00:20:11,990
+crash II so I guess it's not super
+
+492
+00:20:10,820 --> 00:20:14,029
+surprising that you send it like a
+
+493
+00:20:11,990 --> 00:20:18,980
+couple FS and then everything else is
+
+494
+00:20:14,029 --> 00:20:23,210
+all zeros and then it just falls over so
+
+495
+00:20:18,980 --> 00:20:27,289
+those are the three demos so we close
+
+496
+00:20:23,210 --> 00:20:29,330
+out of this all right so just to like
+
+497
+00:20:27,289 --> 00:20:31,759
+just to recap the general process of
+
+498
+00:20:29,330 --> 00:20:35,000
+using an idle fuzzer whether it be IBF
+
+499
+00:20:31,759 --> 00:20:37,700
+or another fuzzer step one is you have
+
+500
+00:20:35,000 --> 00:20:39,919
+to figure out the device name of the
+
+501
+00:20:37,700 --> 00:20:41,230
+device object that corresponds to the
+
+502
+00:20:39,919 --> 00:20:43,100
+driver that you're trying to fuzz
+
+503
+00:20:41,230 --> 00:20:45,919
+typically you're gonna find that through
+
+504
+00:20:43,100 --> 00:20:47,600
+looking through Ida or maybe you can go
+
+505
+00:20:45,919 --> 00:20:48,889
+and win up and look through the list of
+
+506
+00:20:47,600 --> 00:20:51,408
+devices and find something that looks
+
+507
+00:20:48,889 --> 00:20:53,360
+related to your particular device like
+
+508
+00:20:51,409 --> 00:20:55,129
+in our case we were testing the hax this
+
+509
+00:20:53,360 --> 00:20:56,479
+extreme vulnerable driver so if you just
+
+510
+00:20:55,129 --> 00:20:58,519
+scroll through the list of devices
+
+511
+00:20:56,480 --> 00:20:59,899
+there's a thing if this hax this extreme
+
+512
+00:20:58,519 --> 00:21:02,509
+vulnerable driver so in that case like
+
+513
+00:20:59,899 --> 00:21:06,049
+you don't really need to open in Ida
+
+514
+00:21:02,509 --> 00:21:08,059
+step two is again if you were doing this
+
+515
+00:21:06,049 --> 00:21:09,470
+analytically through Ida then check and
+
+516
+00:21:08,059 --> 00:21:10,460
+win table that the name is actually
+
+517
+00:21:09,470 --> 00:21:14,860
+correct the name is actually what you
+
+518
+00:21:10,460 --> 00:21:14,860
+think it is and then pass Aditi IBF
+
+519
+00:21:15,429 --> 00:21:21,519
+already did that demo and that one and
+
+520
+00:21:19,159 --> 00:21:24,769
+that one oh yeah okay
+
+521
+00:21:21,519 --> 00:21:28,250
+recap so you open handle to the device
+
+522
+00:21:24,769 --> 00:21:31,159
+next one is you you test specific IAP
+
+523
+00:21:28,250 --> 00:21:32,840
+dolls or you figure out you figure out
+
+524
+00:21:31,159 --> 00:21:33,980
+which I obviously want to test so here
+
+525
+00:21:32,840 --> 00:21:35,750
+we're doing this mostly by brute force
+
+526
+00:21:33,980 --> 00:21:39,710
+thing by just trying every value from
+
+527
+00:21:35,750 --> 00:21:41,389
+zero to a FS and seeing what the kernel
+
+528
+00:21:39,710 --> 00:21:42,860
+tells us like was this a real high octal
+
+529
+00:21:41,389 --> 00:21:44,719
+we just had an invalid argument being
+
+530
+00:21:42,860 --> 00:21:46,820
+sent or is this like no this is not not
+
+531
+00:21:44,720 --> 00:21:48,620
+a real one go away you can also find it
+
+532
+00:21:46,820 --> 00:21:50,570
+analytically we have a little bit extra
+
+533
+00:21:48,620 --> 00:21:54,199
+time so we have a little like so like
+
+534
+00:21:50,570 --> 00:21:56,928
+add-on demo that shows like super like
+
+535
+00:21:54,200 --> 00:21:58,940
+in super basic terms how you could start
+
+536
+00:21:56,929 --> 00:22:00,289
+analytically finding I octal codes but
+
+537
+00:21:58,940 --> 00:22:01,369
+long story short you need to you know
+
+538
+00:22:00,289 --> 00:22:03,259
+find which octal is you want a brute
+
+539
+00:22:01,369 --> 00:22:03,720
+force and then number three of course is
+
+540
+00:22:03,259 --> 00:22:06,960
+you
+
+541
+00:22:03,720 --> 00:22:10,289
+you send garbage data to these octaves
+
+542
+00:22:06,960 --> 00:22:13,950
+to fuzz the driver here we got a little
+
+543
+00:22:10,289 --> 00:22:15,419
+slide on sort of like some places you
+
+544
+00:22:13,950 --> 00:22:17,370
+could go to get additional information
+
+545
+00:22:15,419 --> 00:22:19,769
+about debugging and reverse engineering
+
+546
+00:22:17,370 --> 00:22:21,059
+again like I said this is like this is
+
+547
+00:22:19,769 --> 00:22:23,580
+very much an art something you put a
+
+548
+00:22:21,059 --> 00:22:25,590
+huge amount of time into from the point
+
+549
+00:22:23,580 --> 00:22:27,779
+that you get a crash then that's sort of
+
+550
+00:22:25,590 --> 00:22:30,209
+like when the real fun begins
+
+551
+00:22:27,779 --> 00:22:32,039
+and frankly like once you've at that
+
+552
+00:22:30,210 --> 00:22:33,690
+point then you may be in for much more
+
+553
+00:22:32,039 --> 00:22:35,580
+effort than sort of like just the
+
+554
+00:22:33,690 --> 00:22:38,070
+fuzzing part so we have these three
+
+555
+00:22:35,580 --> 00:22:39,949
+books either I or grant or both of us
+
+556
+00:22:38,070 --> 00:22:42,809
+has read all of these and so we
+
+557
+00:22:39,950 --> 00:22:44,639
+recommend these first one is reversing
+
+558
+00:22:42,809 --> 00:22:46,668
+secrets of reverse engineering good for
+
+559
+00:22:44,639 --> 00:22:48,600
+general reversing knowledge for x86
+
+560
+00:22:46,669 --> 00:22:50,940
+practical reverse engineering which
+
+561
+00:22:48,600 --> 00:22:54,149
+gives specific reverse engineering
+
+562
+00:22:50,940 --> 00:22:55,769
+information for x86 amd64 and arm also
+
+563
+00:22:54,149 --> 00:22:57,629
+gives a little bit of Windows kernel
+
+564
+00:22:55,769 --> 00:23:00,029
+specific information as well as some
+
+565
+00:22:57,629 --> 00:23:01,889
+information by using windbg and then
+
+566
+00:23:00,029 --> 00:23:03,480
+this third one which is one that grant
+
+567
+00:23:01,889 --> 00:23:05,370
+is a fan of called a guide to kernel
+
+568
+00:23:03,480 --> 00:23:07,139
+exploitation attacking the core which is
+
+569
+00:23:05,370 --> 00:23:09,418
+talking about kernel specific
+
+570
+00:23:07,139 --> 00:23:10,908
+exploitation not just like not user mode
+
+571
+00:23:09,419 --> 00:23:13,889
+programs but specifically in the kernel
+
+572
+00:23:10,909 --> 00:23:18,029
+so with that I will pass it back to
+
+573
+00:23:13,889 --> 00:23:22,070
+grant cool so when you go through this
+
+574
+00:23:18,029 --> 00:23:24,210
+process you run into trial and error and
+
+575
+00:23:22,070 --> 00:23:25,740
+we've run into a lot of trial and error
+
+576
+00:23:24,210 --> 00:23:26,759
+we kind of wanted to share those trials
+
+577
+00:23:25,740 --> 00:23:28,860
+and errors with you so that you can
+
+578
+00:23:26,759 --> 00:23:31,529
+number one laugh at us and number two
+
+579
+00:23:28,860 --> 00:23:35,100
+not do these yourself just like a lot of
+
+580
+00:23:31,529 --> 00:23:35,659
+good advice in life so doob mistake
+
+581
+00:23:35,100 --> 00:23:39,719
+number one
+
+582
+00:23:35,659 --> 00:23:42,210
+buzzing with breakpoints on if you have
+
+583
+00:23:39,720 --> 00:23:44,000
+any information or have any use with a
+
+584
+00:23:42,210 --> 00:23:46,110
+debugger you know how stupid this is
+
+585
+00:23:44,000 --> 00:23:48,929
+breakpoints essentially stop the
+
+586
+00:23:46,110 --> 00:23:50,939
+execution of a program the second that
+
+587
+00:23:48,929 --> 00:23:52,289
+you hit that point or that it's
+
+588
+00:23:50,940 --> 00:23:54,659
+particular instruction that you chose to
+
+589
+00:23:52,289 --> 00:23:56,250
+break on so if you leave all of your
+
+590
+00:23:54,659 --> 00:23:58,919
+breakpoints on while you're fuzzing if
+
+591
+00:23:56,250 --> 00:24:00,779
+your fuzzer accidentally or purposefully
+
+592
+00:23:58,919 --> 00:24:03,840
+hits one of these code paths then it's
+
+593
+00:24:00,779 --> 00:24:05,509
+going to stop completely it's not going
+
+594
+00:24:03,840 --> 00:24:08,189
+to continue fuzzing it's going to return
+
+595
+00:24:05,509 --> 00:24:10,320
+back to it's going to break and wait for
+
+596
+00:24:08,190 --> 00:24:12,240
+the user that's you to do something with
+
+597
+00:24:10,320 --> 00:24:13,230
+it so if you fuzz with breakpoints on
+
+598
+00:24:12,240 --> 00:24:15,690
+and you actually hit one of those
+
+599
+00:24:13,230 --> 00:24:17,250
+breakpoints you're gonna have a bad time
+
+600
+00:24:15,690 --> 00:24:19,409
+you're going to come back the next more
+
+601
+00:24:17,250 --> 00:24:21,780
+hoping and waiting for crashes and dumps
+
+602
+00:24:19,409 --> 00:24:23,460
+and you're gonna end up with hey you hit
+
+603
+00:24:21,780 --> 00:24:27,120
+your second breakpoint that you forgot
+
+604
+00:24:23,460 --> 00:24:31,110
+to turn off number two I think everybody
+
+605
+00:24:27,120 --> 00:24:32,760
+can get behind this one if you have a
+
+606
+00:24:31,110 --> 00:24:34,229
+machine that's not doesn't have any
+
+607
+00:24:32,760 --> 00:24:36,179
+power then you're never gonna be able to
+
+608
+00:24:34,230 --> 00:24:39,299
+fuzz anything this is really compelling
+
+609
+00:24:36,179 --> 00:24:40,770
+stuff here guys so make sure that your
+
+610
+00:24:39,299 --> 00:24:42,809
+computer's plugged in to the wall
+
+611
+00:24:40,770 --> 00:24:44,400
+because if it's not in my die overnight
+
+612
+00:24:42,809 --> 00:24:49,549
+and then you might run into a problem
+
+613
+00:24:44,400 --> 00:24:49,549
+where I you look stupid
+
+614
+00:24:50,970 --> 00:24:58,380
+cool next one Windows Firewall can be a
+
+615
+00:24:54,570 --> 00:25:01,620
+bitch it will get in the way of your
+
+616
+00:24:58,380 --> 00:25:02,760
+machines talking to each other so if you
+
+617
+00:25:01,620 --> 00:25:05,908
+don't want to bash your head against the
+
+618
+00:25:02,760 --> 00:25:07,770
+keyboard for fifteen to thirty seven
+
+619
+00:25:05,909 --> 00:25:11,909
+minutes make sure you add your
+
+620
+00:25:07,770 --> 00:25:14,629
+exceptions for your windows firewall fun
+
+621
+00:25:11,909 --> 00:25:16,740
+story I was trying to set this up and
+
+622
+00:25:14,630 --> 00:25:18,720
+ended up having to just turn off my
+
+623
+00:25:16,740 --> 00:25:20,789
+firewall completely on a private network
+
+624
+00:25:18,720 --> 00:25:24,750
+of course and to figure out that this
+
+625
+00:25:20,789 --> 00:25:26,220
+was actually the problem cool this next
+
+626
+00:25:24,750 --> 00:25:28,380
+one is a little less obvious fuzzing
+
+627
+00:25:26,220 --> 00:25:31,530
+without driver verifier so verifier is a
+
+628
+00:25:28,380 --> 00:25:32,850
+tool that you can use it's kind of like
+
+629
+00:25:31,530 --> 00:25:35,789
+valgrind what it will do is it will
+
+630
+00:25:32,850 --> 00:25:38,549
+detect memory weird memory accesses and
+
+631
+00:25:35,789 --> 00:25:40,440
+will crash immediately so there have
+
+632
+00:25:38,549 --> 00:25:42,418
+been times where we were fuzzing for
+
+633
+00:25:40,440 --> 00:25:44,580
+twelve hours on the same driver with
+
+634
+00:25:42,419 --> 00:25:46,789
+nothing the second we turned on driver
+
+635
+00:25:44,580 --> 00:25:49,139
+verifier it crashed instantly so
+
+636
+00:25:46,789 --> 00:25:51,419
+verifier is a very good tool to turn on
+
+637
+00:25:49,140 --> 00:25:54,240
+all I have to do is open up an elevated
+
+638
+00:25:51,419 --> 00:25:56,039
+command prompt type in verifier and then
+
+639
+00:25:54,240 --> 00:25:57,720
+you can see some of the things that it
+
+640
+00:25:56,039 --> 00:25:58,830
+does for you is it will create a special
+
+641
+00:25:57,720 --> 00:26:01,559
+pool
+
+642
+00:25:58,830 --> 00:26:04,889
+it checks IO verification a lot of
+
+643
+00:26:01,559 --> 00:26:06,149
+really fun stuff that is kind of out of
+
+644
+00:26:04,890 --> 00:26:13,470
+scope for what we're talking about right
+
+645
+00:26:06,150 --> 00:26:15,900
+here cool so we are going to go on a
+
+646
+00:26:13,470 --> 00:26:17,520
+little bit further about finding how to
+
+647
+00:26:15,900 --> 00:26:18,720
+actually find the aisle handler in Ida
+
+648
+00:26:17,520 --> 00:26:20,879
+this will be helpful once you have found
+
+649
+00:26:18,720 --> 00:26:23,400
+a crash and want to find exactly which
+
+650
+00:26:20,880 --> 00:26:25,380
+ioco caused it and what it's correlated
+
+651
+00:26:23,400 --> 00:26:27,720
+to so you can continue your triaging
+
+652
+00:26:25,380 --> 00:26:29,429
+process but before that we just want to
+
+653
+00:26:27,720 --> 00:26:30,639
+give a shout out to some of our NCC
+
+654
+00:26:29,429 --> 00:26:33,070
+folks
+
+655
+00:26:30,639 --> 00:26:38,709
+some of them have moved on to better
+
+656
+00:26:33,070 --> 00:26:41,710
+places not heaven but you know other
+
+657
+00:26:38,710 --> 00:26:45,099
+companies so things to these wonderful
+
+658
+00:26:41,710 --> 00:26:46,690
+gentlemen for all their support and then
+
+659
+00:26:45,099 --> 00:26:50,468
+we're going to give you a little bonus
+
+660
+00:26:46,690 --> 00:26:53,200
+so to talk about this I'll pass it back
+
+661
+00:26:50,469 --> 00:26:57,059
+to Tyler all right um
+
+662
+00:26:53,200 --> 00:26:59,619
+so earlier on we mentioned that you can
+
+663
+00:26:57,059 --> 00:27:01,719
+you can find articles by just like
+
+664
+00:26:59,619 --> 00:27:05,259
+brute-forcing or you can find them
+
+665
+00:27:01,719 --> 00:27:06,669
+analytically let's see if I can get this
+
+666
+00:27:05,259 --> 00:27:08,320
+to show up on the correct monitor here
+
+667
+00:27:06,669 --> 00:27:11,710
+and then get my mouse pointer on the
+
+668
+00:27:08,320 --> 00:27:14,619
+correct monitor all right so what I'm
+
+669
+00:27:11,710 --> 00:27:17,499
+doing here is I have opened a driver in
+
+670
+00:27:14,619 --> 00:27:20,259
+Ida and I'm going to just analytically
+
+671
+00:27:17,499 --> 00:27:22,179
+in Ida try to find the aisle handler so
+
+672
+00:27:20,259 --> 00:27:23,950
+essentially what I'm doing here is I'm
+
+673
+00:27:22,179 --> 00:27:26,200
+going through the list of functions in
+
+674
+00:27:23,950 --> 00:27:28,960
+the binary and then just looking at the
+
+675
+00:27:26,200 --> 00:27:30,940
+graph overview section here and looking
+
+676
+00:27:28,960 --> 00:27:32,379
+at looking roughly at the pattern of it
+
+677
+00:27:30,940 --> 00:27:33,820
+so you can see these are these are
+
+678
+00:27:32,379 --> 00:27:35,080
+mostly linear like there are some if
+
+679
+00:27:33,820 --> 00:27:36,820
+statements where it splits into two
+
+680
+00:27:35,080 --> 00:27:39,580
+blocks but other than that they're like
+
+681
+00:27:36,820 --> 00:27:41,320
+not super complicated if we just keep
+
+682
+00:27:39,580 --> 00:27:43,739
+rolling through these we're eventually
+
+683
+00:27:41,320 --> 00:27:47,379
+going to get to one that stands out like
+
+684
+00:27:43,739 --> 00:27:52,779
+pretty clearly you'll you'll know when
+
+685
+00:27:47,379 --> 00:27:53,738
+we get there there it is yeah so it
+
+686
+00:27:52,779 --> 00:27:55,119
+looks like this
+
+687
+00:27:53,739 --> 00:27:57,190
+so the gravel review looks like this
+
+688
+00:27:55,119 --> 00:27:59,379
+when you have a like a whole bunch of if
+
+689
+00:27:57,190 --> 00:28:00,789
+statements or you like you wrote C or
+
+690
+00:27:59,379 --> 00:28:03,728
+C++ code that has a switch case
+
+691
+00:28:00,789 --> 00:28:05,469
+statement in it so this is like a dead
+
+692
+00:28:03,729 --> 00:28:08,169
+giveaway that this is an octal Handler
+
+693
+00:28:05,469 --> 00:28:10,330
+because it's doing stuff like check the
+
+694
+00:28:08,169 --> 00:28:11,950
+check the i/o code that was that was
+
+695
+00:28:10,330 --> 00:28:14,678
+sent to us on this call is it this value
+
+696
+00:28:11,950 --> 00:28:16,029
+no okay is it this value no okay is it
+
+697
+00:28:14,679 --> 00:28:17,739
+this value and that's typically
+
+698
+00:28:16,029 --> 00:28:19,899
+implemented inside a single function so
+
+699
+00:28:17,739 --> 00:28:21,519
+usually an octal Handler is gonna look
+
+700
+00:28:19,899 --> 00:28:24,039
+like this no matter no matter what you
+
+701
+00:28:21,519 --> 00:28:25,359
+do unless you specifically like factored
+
+702
+00:28:24,039 --> 00:28:29,259
+out parts of the code to make it not
+
+703
+00:28:25,359 --> 00:28:31,239
+look like this also another thing let's
+
+704
+00:28:29,259 --> 00:28:35,409
+see is it still playing that's opposed
+
+705
+00:28:31,239 --> 00:28:37,960
+all right so another another piece of it
+
+706
+00:28:35,409 --> 00:28:38,950
+is that if you look this again this may
+
+707
+00:28:37,960 --> 00:28:43,119
+not be visible from where you guys are
+
+708
+00:28:38,950 --> 00:28:44,140
+but in the code typically the if
+
+709
+00:28:43,119 --> 00:28:46,300
+statements are using these
+
+710
+00:28:44,140 --> 00:28:47,620
+like these immediate values like there's
+
+711
+00:28:46,300 --> 00:28:49,720
+some value that's like eight eight eight
+
+712
+00:28:47,620 --> 00:28:51,669
+eight three Oh two oh eight eight eight
+
+713
+00:28:49,720 --> 00:28:55,930
+eight three oh four Oh like when you
+
+714
+00:28:51,670 --> 00:28:57,880
+have these like you know four byte
+
+715
+00:28:55,930 --> 00:28:59,110
+values that are like all close to each
+
+716
+00:28:57,880 --> 00:29:00,670
+other that are all being used in if
+
+717
+00:28:59,110 --> 00:29:02,320
+statements again that's a dead giveaway
+
+718
+00:29:00,670 --> 00:29:05,440
+that those are probably i/o codes that
+
+719
+00:29:02,320 --> 00:29:07,330
+are being checked for so if you like you
+
+720
+00:29:05,440 --> 00:29:09,420
+can kind of bypass the brute forcing
+
+721
+00:29:07,330 --> 00:29:11,350
+process entirely by like actually
+
+722
+00:29:09,420 --> 00:29:13,090
+searching for the i/o codes through a
+
+723
+00:29:11,350 --> 00:29:23,889
+disassembler but it's pretty much up to
+
+724
+00:29:13,090 --> 00:29:25,270
+you whatever you'd like to do cool so
+
+725
+00:29:23,890 --> 00:29:28,300
+one final note here is that each of
+
+726
+00:29:25,270 --> 00:29:31,180
+these io codes are invoking a particular
+
+727
+00:29:28,300 --> 00:29:32,950
+subroutine so this is where we will go
+
+728
+00:29:31,180 --> 00:29:35,290
+back once we have our crash and we've
+
+729
+00:29:32,950 --> 00:29:36,940
+discovered which I oak owed actually
+
+730
+00:29:35,290 --> 00:29:39,250
+caused the crash we're gonna head back
+
+731
+00:29:36,940 --> 00:29:42,400
+to this function in Ida and we're going
+
+732
+00:29:39,250 --> 00:29:44,110
+to trace exactly which il code we hit
+
+733
+00:29:42,400 --> 00:29:46,390
+that caused that crash and then we're
+
+734
+00:29:44,110 --> 00:29:50,679
+going to continue down the code graph
+
+735
+00:29:46,390 --> 00:29:52,240
+and we're going to see a subroutine that
+
+736
+00:29:50,680 --> 00:29:54,490
+it that that particular IO code is
+
+737
+00:29:52,240 --> 00:29:56,490
+associated with and Chancellor's are
+
+738
+00:29:54,490 --> 00:29:58,630
+very high that exactly
+
+739
+00:29:56,490 --> 00:30:00,520
+somewhere in that subroutine is where
+
+740
+00:29:58,630 --> 00:30:16,570
+the crash occurred or where the driver
+
+741
+00:30:00,520 --> 00:30:19,300
+started to behave badly cool sweet so
+
+742
+00:30:16,570 --> 00:30:24,550
+that's all we have for you for today we
+
+743
+00:30:19,300 --> 00:30:40,990
+are happy to answer some questions sure
+
+744
+00:30:24,550 --> 00:30:42,690
+up front so yes we will make sure to
+
+745
+00:30:40,990 --> 00:30:52,450
+share all these sides with you
+
+746
+00:30:42,690 --> 00:31:04,029
+sure we cannot
+
+747
+00:30:52,450 --> 00:31:05,559
+not naming names so a couple of our
+
+748
+00:31:04,029 --> 00:31:09,100
+co-workers have done the process similar
+
+749
+00:31:05,559 --> 00:31:11,168
+to this and they were fuzzing Lenovo
+
+750
+00:31:09,100 --> 00:31:13,359
+power drivers there is and that there's
+
+751
+00:31:11,169 --> 00:31:15,309
+they created an advisory for it and all
+
+752
+00:31:13,359 --> 00:31:16,989
+these have been patched before what they
+
+753
+00:31:15,309 --> 00:31:18,639
+what they determine is that they can
+
+754
+00:31:16,989 --> 00:31:21,399
+cause a dent denial of service and can
+
+755
+00:31:18,639 --> 00:31:23,918
+cause kernel memory to be leaked from
+
+756
+00:31:21,399 --> 00:31:27,039
+user land which is bad it can help you
+
+757
+00:31:23,919 --> 00:31:28,570
+bypass kasl are it's usually just a bad
+
+758
+00:31:27,039 --> 00:31:30,549
+idea in order there's usually a
+
+759
+00:31:28,570 --> 00:31:32,649
+separation between kernel and user land
+
+760
+00:31:30,549 --> 00:31:34,259
+that we want to make sure maintains
+
+761
+00:31:32,650 --> 00:31:39,460
+[Music]
+
+762
+00:31:34,259 --> 00:31:43,679
+maintains intact oh they had an
+
+763
+00:31:39,460 --> 00:31:46,480
+arbitrary read right in the kernel space
+
+764
+00:31:43,679 --> 00:31:48,489
+one of the fun things about fuzzing one
+
+765
+00:31:46,480 --> 00:31:50,919
+of the fun things about fuzzing power
+
+766
+00:31:48,489 --> 00:31:52,389
+drivers is that your screen starts
+
+767
+00:31:50,919 --> 00:31:56,409
+flickering in weird ways you can create
+
+768
+00:31:52,389 --> 00:32:07,508
+a kind of rave with your own laptop cool
+
+769
+00:31:56,409 --> 00:32:09,909
+anybody else sure no we have not added
+
+770
+00:32:07,509 --> 00:32:11,889
+anything to automation of this process
+
+771
+00:32:09,909 --> 00:32:14,379
+does is a actually leads me straight
+
+772
+00:32:11,889 --> 00:32:15,369
+into it that's awesome there are some of
+
+773
+00:32:14,379 --> 00:32:17,559
+the things that we still need to do
+
+774
+00:32:15,369 --> 00:32:19,629
+moving forward some of the stuff that we
+
+775
+00:32:17,559 --> 00:32:21,789
+would like to to have happen includes
+
+776
+00:32:19,629 --> 00:32:24,428
+that automation process of some of these
+
+777
+00:32:21,789 --> 00:32:27,460
+bugs as well as we like to add in some
+
+778
+00:32:24,429 --> 00:32:29,519
+functionality 2d ibf some of our ideas
+
+779
+00:32:27,460 --> 00:32:31,450
+include checking the output buffer for
+
+780
+00:32:29,519 --> 00:32:33,629
+addresses that look like their kernel
+
+781
+00:32:31,450 --> 00:32:36,359
+addresses also we want to make sure that
+
+782
+00:32:33,629 --> 00:32:38,799
+once we have a crash we can continue
+
+783
+00:32:36,359 --> 00:32:40,389
+fuzzing from exactly where we were
+
+784
+00:32:38,799 --> 00:32:43,509
+currently we need to restart the entire
+
+785
+00:32:40,389 --> 00:32:45,549
+fuzz run if we do find a crash so a part
+
+786
+00:32:43,509 --> 00:32:47,499
+of the automation and those features are
+
+787
+00:32:45,549 --> 00:32:52,918
+going to be v2 we don't have them
+
+788
+00:32:47,499 --> 00:32:52,919
+currently right now sure
+
+789
+00:33:04,080 --> 00:33:12,449
+so we used the axes extreme vulnerable
+
+790
+00:33:07,780 --> 00:33:22,720
+driver in this case for just for example
+
+791
+00:33:12,450 --> 00:33:24,850
+the so the plugin so there are drivers
+
+792
+00:33:22,720 --> 00:33:26,500
+and that'll that are you can just start
+
+793
+00:33:24,850 --> 00:33:28,240
+ripping right out of the right of the
+
+794
+00:33:26,500 --> 00:33:30,520
+box as soon as you plug in the device or
+
+795
+00:33:28,240 --> 00:33:33,430
+whatever it is associated with it will
+
+796
+00:33:30,520 --> 00:33:35,770
+create a device on the machine that you
+
+797
+00:33:33,430 --> 00:33:38,500
+can identify very easily and you can
+
+798
+00:33:35,770 --> 00:33:40,270
+start going ahead right away sometimes
+
+799
+00:33:38,500 --> 00:33:42,790
+the the actual device that you need to
+
+800
+00:33:40,270 --> 00:33:44,379
+pass the div F is obfuscated or you
+
+801
+00:33:42,790 --> 00:33:46,300
+actually do a little more digging in
+
+802
+00:33:44,380 --> 00:33:48,010
+order to find out what that is
+
+803
+00:33:46,300 --> 00:33:49,870
+I will I will say just on top of that
+
+804
+00:33:48,010 --> 00:33:51,610
+that it's probably best to target
+
+805
+00:33:49,870 --> 00:33:53,679
+drivers that were not written by
+
+806
+00:33:51,610 --> 00:33:55,389
+Microsoft just because they've been
+
+807
+00:33:53,680 --> 00:33:57,460
+although they are a good target because
+
+808
+00:33:55,390 --> 00:33:59,140
+they're on all Windows machines they've
+
+809
+00:33:57,460 --> 00:34:01,540
+been beaten up they've been attacked
+
+810
+00:33:59,140 --> 00:34:04,480
+quite a bit so if you are curious about
+
+811
+00:34:01,540 --> 00:34:06,190
+of kind of doing this own process and
+
+812
+00:34:04,480 --> 00:34:08,020
+having it be fruitful it's probably best
+
+813
+00:34:06,190 --> 00:34:11,290
+to look after drivers that are not
+
+814
+00:34:08,020 --> 00:34:13,590
+directly written by Microsoft does that
+
+815
+00:34:11,290 --> 00:34:13,590
+answer your question
+
+816
+00:34:35,070 --> 00:34:39,669
+that's absolutely right that's true
+
+817
+00:34:38,230 --> 00:34:42,040
+we didn't have quite enough time where
+
+818
+00:34:39,668 --> 00:34:43,810
+we thought we didn't haven't quite
+
+819
+00:34:42,040 --> 00:35:05,680
+enough time to to elaborate on that but
+
+820
+00:34:43,810 --> 00:35:11,350
+you're absolutely right sure do you I
+
+821
+00:35:05,680 --> 00:35:14,770
+don't know he said that we would not be
+
+822
+00:35:11,350 --> 00:35:18,270
+surprised but while we do not have any
+
+823
+00:35:14,770 --> 00:35:18,270
+experience with that personally
+
+824
+00:35:18,450 --> 00:35:24,779
+cool please catch us afterwards if you
+
+825
+00:35:21,490 --> 00:35:29,359
+have any more questions let's go party
+
+826
+00:35:24,780 --> 00:35:29,359
+[Applause]
+

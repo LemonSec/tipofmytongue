@@ -1,0 +1,2308 @@
+﻿1
+00:00:10,410 --> 00:00:14,640
+my name is Besser and I'm a software
+
+2
+00:00:12,270 --> 00:00:17,550
+engineer in Nutanix today we'll be
+
+3
+00:00:14,640 --> 00:00:19,860
+talking about ISO this is a system which
+
+4
+00:00:17,550 --> 00:00:21,570
+automatically detects and mitigates a
+
+5
+00:00:19,860 --> 00:00:23,640
+new class of failures we have seen in
+
+6
+00:00:21,570 --> 00:00:25,470
+distributed storage services which we
+
+7
+00:00:23,640 --> 00:00:30,510
+call or which is commonly known as fail
+
+8
+00:00:25,470 --> 00:00:33,150
+slow but before I introduce ISO I'm we
+
+9
+00:00:30,510 --> 00:00:34,830
+must understand fail slow itself so more
+
+10
+00:00:33,150 --> 00:00:36,750
+specifically we would want to know what
+
+11
+00:00:34,830 --> 00:00:39,870
+is fail slow and is it even a
+
+12
+00:00:36,750 --> 00:00:41,280
+significant enough problem to solve also
+
+13
+00:00:39,870 --> 00:00:43,290
+we would want to explore the problem
+
+14
+00:00:41,280 --> 00:00:45,330
+space of these failures and find a
+
+15
+00:00:43,290 --> 00:00:48,720
+solution which is like stable and
+
+16
+00:00:45,330 --> 00:00:51,300
+accurate so let me try to explain fail
+
+17
+00:00:48,720 --> 00:00:54,089
+slow by comparing it with one of the
+
+18
+00:00:51,300 --> 00:00:57,300
+commonly seen or understood problem in
+
+19
+00:00:54,089 --> 00:00:59,100
+distributed systems fail stop so in
+
+20
+00:00:57,300 --> 00:01:01,290
+faced of failures we assume that
+
+21
+00:00:59,100 --> 00:01:03,629
+whenever nodes in a cluster fail they
+
+22
+00:01:01,290 --> 00:01:06,330
+always fail completely like they shut
+
+23
+00:01:03,629 --> 00:01:08,039
+down completely however we have seen
+
+24
+00:01:06,330 --> 00:01:10,080
+that in many scenarios in complex
+
+25
+00:01:08,040 --> 00:01:12,630
+systems this assumption doesn't always
+
+26
+00:01:10,080 --> 00:01:14,039
+hold and there are these failure cases
+
+27
+00:01:12,630 --> 00:01:17,250
+where hardware and software components
+
+28
+00:01:14,040 --> 00:01:18,990
+are still functioning but in much much
+
+29
+00:01:17,250 --> 00:01:21,360
+lower performance than intended and
+
+30
+00:01:18,990 --> 00:01:24,869
+that's what constitutes a fail slow
+
+31
+00:01:21,360 --> 00:01:27,840
+failure so let's take an example in one
+
+32
+00:01:24,869 --> 00:01:30,119
+of our production cluster of three nodes
+
+33
+00:01:27,840 --> 00:01:32,100
+we saw that the ethernet interfaces
+
+34
+00:01:30,119 --> 00:01:34,320
+speed on one of the nodes had dropped
+
+35
+00:01:32,100 --> 00:01:36,780
+from 10 gigabits per second to 100
+
+36
+00:01:34,320 --> 00:01:39,240
+megabits per second now later we
+
+37
+00:01:36,780 --> 00:01:41,700
+diagnosed this found out that this is
+
+38
+00:01:39,240 --> 00:01:44,490
+because of a bad cable however during
+
+39
+00:01:41,700 --> 00:01:46,649
+the failure interval the services from
+
+40
+00:01:44,490 --> 00:01:48,420
+the faulty node did not fully die so
+
+41
+00:01:46,649 --> 00:01:50,549
+they were just slow enough that our meta
+
+42
+00:01:48,420 --> 00:01:52,829
+data service instances running on the
+
+43
+00:01:50,549 --> 00:01:54,539
+healthy nodes started seeing I'm out
+
+44
+00:01:52,829 --> 00:01:57,600
+from the material to service instances
+
+45
+00:01:54,539 --> 00:01:59,130
+on the slow node so this cost a metadata
+
+46
+00:01:57,600 --> 00:02:01,859
+service to be slow which eventually
+
+47
+00:01:59,130 --> 00:02:03,689
+cascaded to our data service causing a
+
+48
+00:02:01,859 --> 00:02:06,359
+severe drop in performance and a
+
+49
+00:02:03,689 --> 00:02:08,310
+subsequent cluster outage now given that
+
+50
+00:02:06,359 --> 00:02:11,310
+this was like a three node scenario we
+
+51
+00:02:08,310 --> 00:02:13,830
+could easily drill down to the node
+
+52
+00:02:11,310 --> 00:02:15,450
+which was actually slow but if this
+
+53
+00:02:13,830 --> 00:02:17,190
+would have been a bigger cluster of
+
+54
+00:02:15,450 --> 00:02:18,630
+let's say 30 nodes then this would have
+
+55
+00:02:17,190 --> 00:02:23,550
+been a nightmare to find out the actual
+
+56
+00:02:18,630 --> 00:02:24,120
+slow node here so now that we have seen
+
+57
+00:02:23,550 --> 00:02:26,129
+how
+
+58
+00:02:24,120 --> 00:02:27,959
+feels slow failure looks like let's try
+
+59
+00:02:26,129 --> 00:02:31,200
+to argue that these problems are indeed
+
+60
+00:02:27,959 --> 00:02:33,750
+significant enough to solve so fails
+
+61
+00:02:31,200 --> 00:02:36,599
+look problems are frequent in fact we
+
+62
+00:02:33,750 --> 00:02:40,440
+did a study of all faint slow failures
+
+63
+00:02:36,599 --> 00:02:42,390
+on our production systems and the study
+
+64
+00:02:40,440 --> 00:02:44,879
+was over seven or seven month period
+
+65
+00:02:42,390 --> 00:02:48,629
+where we studied a like or deployment
+
+66
+00:02:44,879 --> 00:02:52,409
+pool of 39,000 nodes and we sawed 232
+
+67
+00:02:48,629 --> 00:02:54,390
+such incidents and this figure shows the
+
+68
+00:02:52,409 --> 00:02:56,190
+distribution of those failures over
+
+69
+00:02:54,390 --> 00:03:01,190
+those months and what we see is that
+
+70
+00:02:56,190 --> 00:03:01,190
+there is at least one failure every day
+
+71
+00:03:01,579 --> 00:03:06,239
+the second thing is that these failures
+
+72
+00:03:03,840 --> 00:03:08,519
+are also very severe now this figure
+
+73
+00:03:06,239 --> 00:03:11,040
+shows us the CDF of the time taken to
+
+74
+00:03:08,519 --> 00:03:12,989
+root cause those failures and what we
+
+75
+00:03:11,040 --> 00:03:15,209
+see is that in the worst case though
+
+76
+00:03:12,989 --> 00:03:16,980
+these failures can take even days to be
+
+77
+00:03:15,209 --> 00:03:19,470
+fully resolved like someone needs to
+
+78
+00:03:16,980 --> 00:03:24,170
+find out what the root causes or what
+
+79
+00:03:19,470 --> 00:03:29,040
+actually late led to the failure right
+
+80
+00:03:24,170 --> 00:03:30,030
+so how do we solve them so we took we
+
+81
+00:03:29,040 --> 00:03:31,980
+took a look at some of the
+
+82
+00:03:30,030 --> 00:03:33,720
+characteristics of this problem and the
+
+83
+00:03:31,980 --> 00:03:37,440
+figure on the Left shows us the result
+
+84
+00:03:33,720 --> 00:03:39,900
+right so we try to what we found is that
+
+85
+00:03:37,440 --> 00:03:42,299
+these failures are more frequent on
+
+86
+00:03:39,900 --> 00:03:44,430
+these newly deployed nodes or younger
+
+87
+00:03:42,299 --> 00:03:46,889
+nodes exhibiting the typical infant
+
+88
+00:03:44,430 --> 00:03:48,389
+mortality kind of a pattern so an
+
+89
+00:03:46,889 --> 00:03:50,910
+intuitive solution here would have been
+
+90
+00:03:48,389 --> 00:03:52,739
+to aggressively monitor failure prone
+
+91
+00:03:50,910 --> 00:03:56,069
+entities like we would say that you
+
+92
+00:03:52,739 --> 00:03:58,889
+didn't want to monitor Network to take
+
+93
+00:03:56,069 --> 00:04:00,780
+care of network faults right so that we
+
+94
+00:03:58,889 --> 00:04:03,480
+can catch these failures early on right
+
+95
+00:04:00,780 --> 00:04:05,160
+but we try to dig a little deeper into
+
+96
+00:04:03,480 --> 00:04:06,750
+the root causes of these failures like
+
+97
+00:04:05,160 --> 00:04:09,239
+what we're causing these failures and
+
+98
+00:04:06,750 --> 00:04:11,940
+the table and the right is what shows us
+
+99
+00:04:09,239 --> 00:04:14,760
+the result what we saw is that there is
+
+100
+00:04:11,940 --> 00:04:16,858
+no single major entity which was
+
+101
+00:04:14,760 --> 00:04:18,238
+responsible for all these failures in
+
+102
+00:04:16,858 --> 00:04:20,638
+fact there were five different
+
+103
+00:04:18,238 --> 00:04:23,130
+categories and distincts of causes
+
+104
+00:04:20,639 --> 00:04:25,199
+within them there are also these
+
+105
+00:04:23,130 --> 00:04:27,599
+unconventional failure types like
+
+106
+00:04:25,199 --> 00:04:30,060
+environment and human errors which are
+
+107
+00:04:27,599 --> 00:04:32,130
+even harder to monitor also some of
+
+108
+00:04:30,060 --> 00:04:36,259
+these root causes may be unknown up
+
+109
+00:04:32,130 --> 00:04:39,479
+front which makes monitoring impossible
+
+110
+00:04:36,259 --> 00:04:41,759
+however we did get a few key ideas the
+
+111
+00:04:39,479 --> 00:04:43,889
+first idea was that any such failure
+
+112
+00:04:41,759 --> 00:04:45,780
+eventually bubbles up to an
+
+113
+00:04:43,889 --> 00:04:47,940
+application-level causing a service to
+
+114
+00:04:45,780 --> 00:04:50,429
+run slower for example here's this a
+
+115
+00:04:47,940 --> 00:04:52,469
+machine with a VM and the service s1
+
+116
+00:04:50,430 --> 00:04:54,930
+running in the VM now if there is a bad
+
+117
+00:04:52,470 --> 00:04:56,460
+disk and s1 is doing local i/o then
+
+118
+00:04:54,930 --> 00:04:58,410
+eventually as soon as this threat will
+
+119
+00:04:56,460 --> 00:05:01,590
+get blocked and s1 will be slowed as
+
+120
+00:04:58,410 --> 00:05:03,270
+well the second observation is that in
+
+121
+00:05:01,590 --> 00:05:05,400
+any distributor storage service usually
+
+122
+00:05:03,270 --> 00:05:07,859
+the peer instances keep communicating
+
+123
+00:05:05,400 --> 00:05:10,409
+with each other for example s2 and s3
+
+124
+00:05:07,860 --> 00:05:13,259
+may be forwarding iOS from the local
+
+125
+00:05:10,410 --> 00:05:16,349
+clients which are meant for s1 so from 1
+
+126
+00:05:13,259 --> 00:05:18,930
+& 2 we can we have this intuition that a
+
+127
+00:05:16,349 --> 00:05:20,969
+set of healthy peers of a service can
+
+128
+00:05:18,930 --> 00:05:22,740
+then collectively identify a slope here
+
+129
+00:05:20,970 --> 00:05:27,780
+and that's the fundamental idea behind
+
+130
+00:05:22,740 --> 00:05:29,400
+ISO so essentially clustering and this
+
+131
+00:05:27,780 --> 00:05:31,440
+figure shows on the high level is with
+
+132
+00:05:29,400 --> 00:05:33,270
+architecture and solution so we have
+
+133
+00:05:31,440 --> 00:05:35,250
+these cluster of machines with VMs
+
+134
+00:05:33,270 --> 00:05:37,139
+running on top of it and service
+
+135
+00:05:35,250 --> 00:05:40,770
+instances of different services running
+
+136
+00:05:37,139 --> 00:05:44,520
+in each of these VMs what every instance
+
+137
+00:05:40,770 --> 00:05:47,280
+does is to periodically publish a stable
+
+138
+00:05:44,520 --> 00:05:49,889
+score for each of its other peer by a
+
+139
+00:05:47,280 --> 00:05:52,820
+stable score I mean the performance of
+
+140
+00:05:49,889 --> 00:05:55,320
+the other peers which this peer has seen
+
+141
+00:05:52,820 --> 00:05:57,300
+me publish it to a database called the
+
+142
+00:05:55,320 --> 00:05:59,280
+score DB and periodically there's a
+
+143
+00:05:57,300 --> 00:06:01,320
+score analyzer which aggregates these
+
+144
+00:05:59,280 --> 00:06:05,130
+course per service so we compare the
+
+145
+00:06:01,320 --> 00:06:08,250
+peers among a service to only within
+
+146
+00:06:05,130 --> 00:06:10,949
+that service and then we run it through
+
+147
+00:06:08,250 --> 00:06:12,539
+outlier detection algorithm and if there
+
+148
+00:06:10,949 --> 00:06:14,639
+is a fail slow note that pops up we are
+
+149
+00:06:12,539 --> 00:06:19,349
+just as outlier and that's the detection
+
+150
+00:06:14,639 --> 00:06:21,240
+part at a high level so once we have
+
+151
+00:06:19,349 --> 00:06:24,389
+detected a fail slow node we still need
+
+152
+00:06:21,240 --> 00:06:26,430
+to prevent the failure from spreading
+
+153
+00:06:24,389 --> 00:06:28,229
+we just need what we need to do is to
+
+154
+00:06:26,430 --> 00:06:30,060
+localize the problem so that the entire
+
+155
+00:06:28,229 --> 00:06:32,310
+cluster as a whole is not effective and
+
+156
+00:06:30,060 --> 00:06:35,430
+that's the core intoning part which also
+
+157
+00:06:32,310 --> 00:06:37,860
+iso does automatically and then the last
+
+158
+00:06:35,430 --> 00:06:39,509
+step is to notify the user who can then
+
+159
+00:06:37,860 --> 00:06:42,030
+to take a look into the root cause of
+
+160
+00:06:39,509 --> 00:06:45,659
+the issue and this is the only manual
+
+161
+00:06:42,030 --> 00:06:49,489
+part which is there in IE so today so to
+
+162
+00:06:45,659 --> 00:06:50,719
+explain detection in more detail I'll
+
+163
+00:06:49,490 --> 00:06:54,470
+go through these following questions
+
+164
+00:06:50,720 --> 00:06:56,180
+right so the first question is why what
+
+165
+00:06:54,470 --> 00:06:58,340
+is the requirement on this tables course
+
+166
+00:06:56,180 --> 00:07:01,099
+or what does a stable score even mean
+
+167
+00:06:58,340 --> 00:07:02,900
+and then the second thing is once we
+
+168
+00:07:01,099 --> 00:07:04,520
+have defined what a stable score is what
+
+169
+00:07:02,900 --> 00:07:06,948
+kind of algorithm will give us these
+
+170
+00:07:04,520 --> 00:07:09,258
+table scores and then the third thing is
+
+171
+00:07:06,949 --> 00:07:12,770
+how do we cluster these scores to even
+
+172
+00:07:09,259 --> 00:07:15,740
+find an outlier so I'll answer the first
+
+173
+00:07:12,770 --> 00:07:18,710
+question by using this example let's say
+
+174
+00:07:15,740 --> 00:07:20,780
+we have this failure interval where a
+
+175
+00:07:18,710 --> 00:07:22,549
+fault gradually increases in severity
+
+176
+00:07:20,780 --> 00:07:24,318
+and then it stays high for a while and
+
+177
+00:07:22,550 --> 00:07:27,830
+then it gradually decreases in severity
+
+178
+00:07:24,319 --> 00:07:31,130
+what we expect here is a function that
+
+179
+00:07:27,830 --> 00:07:33,289
+maps to a 1 or a high when the fault is
+
+180
+00:07:31,130 --> 00:07:36,530
+severe and a zero or a low when the
+
+181
+00:07:33,289 --> 00:07:39,560
+fault is not so let's say we have a
+
+182
+00:07:36,530 --> 00:07:40,969
+score pattern like this and the problem
+
+183
+00:07:39,560 --> 00:07:43,159
+with this score pattern is that it can
+
+184
+00:07:40,970 --> 00:07:45,050
+map to both 1 and zero when the fault is
+
+185
+00:07:43,159 --> 00:07:48,050
+severe and hence this is not even a
+
+186
+00:07:45,050 --> 00:07:50,539
+function which we can use what we expect
+
+187
+00:07:48,050 --> 00:07:53,360
+here is a pattern like this the line in
+
+188
+00:07:50,539 --> 00:07:54,800
+purple and we call that as a stable
+
+189
+00:07:53,360 --> 00:07:57,560
+score pattern so that when the fault
+
+190
+00:07:54,800 --> 00:08:02,180
+remains if it's severe this course given
+
+191
+00:07:57,560 --> 00:08:06,740
+out are also higher so the scores are
+
+192
+00:08:02,180 --> 00:08:08,509
+essentially not flaky and now you see
+
+193
+00:08:06,740 --> 00:08:10,969
+what kind of algorithm will give us such
+
+194
+00:08:08,509 --> 00:08:12,500
+a stable score pattern then to come to
+
+195
+00:08:10,969 --> 00:08:14,180
+that let's run through some of the
+
+196
+00:08:12,500 --> 00:08:16,789
+unsuccessful attempts that we have hired
+
+197
+00:08:14,180 --> 00:08:18,680
+in our course of building and also in
+
+198
+00:08:16,789 --> 00:08:22,240
+our first attempt we try to use the
+
+199
+00:08:18,680 --> 00:08:24,620
+number of time outs as a scoring metric
+
+200
+00:08:22,240 --> 00:08:26,389
+the problem with that it gave us a
+
+201
+00:08:24,620 --> 00:08:27,680
+bursty score pattern like this and to
+
+202
+00:08:26,389 --> 00:08:30,770
+emphasize these are the time outs
+
+203
+00:08:27,680 --> 00:08:33,070
+between two peer servers and why we got
+
+204
+00:08:30,770 --> 00:08:35,929
+this bursty score pattern is because
+
+205
+00:08:33,070 --> 00:08:38,419
+depending on the peer because different
+
+206
+00:08:35,929 --> 00:08:40,640
+peers this peers are also heterogeneous
+
+207
+00:08:38,419 --> 00:08:44,420
+so the number of requests to appear can
+
+208
+00:08:40,640 --> 00:08:46,970
+vary and so do the number of timeouts to
+
+209
+00:08:44,420 --> 00:08:48,620
+avoid that next we try to use the ratio
+
+210
+00:08:46,970 --> 00:08:50,899
+of the number of timeouts to the number
+
+211
+00:08:48,620 --> 00:08:52,279
+of total number of responses from a peer
+
+212
+00:08:50,899 --> 00:08:55,149
+which is also equal to the total number
+
+213
+00:08:52,279 --> 00:08:57,410
+of requests sent out to the pier
+
+214
+00:08:55,149 --> 00:08:59,300
+unfortunately this also did not give
+
+215
+00:08:57,410 --> 00:09:01,990
+give us a stable score pattern instead
+
+216
+00:08:59,300 --> 00:09:04,000
+what it gave us was chunks of spikes and
+
+217
+00:09:01,990 --> 00:09:06,650
+we found
+
+218
+00:09:04,000 --> 00:09:08,840
+we found that this is because there are
+
+219
+00:09:06,650 --> 00:09:09,920
+these tiny intervals when a peer may not
+
+220
+00:09:08,840 --> 00:09:11,750
+receive any requests
+
+221
+00:09:09,920 --> 00:09:14,360
+hence the ratio is effectively zero for
+
+222
+00:09:11,750 --> 00:09:16,280
+us also another interesting thing to
+
+223
+00:09:14,360 --> 00:09:18,320
+note here is that the spike on the right
+
+224
+00:09:16,280 --> 00:09:21,829
+is slightly lower than the spike on the
+
+225
+00:09:18,320 --> 00:09:24,110
+left and that's because the degradation
+
+226
+00:09:21,830 --> 00:09:25,790
+level what we are talking about can also
+
+227
+00:09:24,110 --> 00:09:27,350
+fluctuate a little for example if
+
+228
+00:09:25,790 --> 00:09:29,360
+there's a network packet loss scenario
+
+229
+00:09:27,350 --> 00:09:32,420
+where the network packet loss varies
+
+230
+00:09:29,360 --> 00:09:34,160
+between 10 to 15% so given a constant
+
+231
+00:09:32,420 --> 00:09:36,560
+number of requests if the network packet
+
+232
+00:09:34,160 --> 00:09:38,750
+loss is at 10% the number of timeouts we
+
+233
+00:09:36,560 --> 00:09:42,020
+see from a peer unless so hence the
+
+234
+00:09:38,750 --> 00:09:45,380
+ratio the timeouts to the number of
+
+235
+00:09:42,020 --> 00:09:47,449
+requests is less right so as the
+
+236
+00:09:45,380 --> 00:09:51,860
+degradation level also varies the ratio
+
+237
+00:09:47,450 --> 00:09:54,920
+also varies so essentially we wanted an
+
+238
+00:09:51,860 --> 00:09:57,080
+algorithm which is robust not just
+
+239
+00:09:54,920 --> 00:09:59,990
+across the fluctuation in the request
+
+240
+00:09:57,080 --> 00:10:01,640
+pattern but also which is robust across
+
+241
+00:09:59,990 --> 00:10:03,950
+the fluctuation in the degradation level
+
+242
+00:10:01,640 --> 00:10:08,390
+itself and that's why we came to
+
+243
+00:10:03,950 --> 00:10:10,190
+building iso and we built to build ia so
+
+244
+00:10:08,390 --> 00:10:13,069
+we used as techniques similar to what
+
+245
+00:10:10,190 --> 00:10:15,220
+TCP uses in congestion avoidance which
+
+246
+00:10:13,070 --> 00:10:17,240
+is based on the principle of aimd or
+
+247
+00:10:15,220 --> 00:10:20,320
+additive increase and multiplicative
+
+248
+00:10:17,240 --> 00:10:23,840
+decrease and we use this principle to
+
+249
+00:10:20,320 --> 00:10:25,610
+create a stable score pattern and that's
+
+250
+00:10:23,840 --> 00:10:28,340
+the fundamental idea and this figure
+
+251
+00:10:25,610 --> 00:10:30,320
+shows us how we apply AMD so we start
+
+252
+00:10:28,340 --> 00:10:33,050
+off with a similar timeout to the
+
+253
+00:10:30,320 --> 00:10:35,150
+response ratio as previously but instead
+
+254
+00:10:33,050 --> 00:10:37,819
+of and this is the left figure I have
+
+255
+00:10:35,150 --> 00:10:39,590
+talking about but instead of discarding
+
+256
+00:10:37,820 --> 00:10:42,140
+the our previous history we keep a
+
+257
+00:10:39,590 --> 00:10:44,060
+history of 1 so every peer remembers the
+
+258
+00:10:42,140 --> 00:10:45,949
+last score it has given out in the
+
+259
+00:10:44,060 --> 00:10:48,349
+figure we see that's the previous score
+
+260
+00:10:45,950 --> 00:10:50,360
+and we also have this upper bound or the
+
+261
+00:10:48,350 --> 00:10:53,540
+worst score as peer can get and the
+
+262
+00:10:50,360 --> 00:10:55,040
+lower bound the idea then is to take the
+
+263
+00:10:53,540 --> 00:10:57,290
+current time out to the response ratio
+
+264
+00:10:55,040 --> 00:11:00,439
+in the current round and then either
+
+265
+00:10:57,290 --> 00:11:02,360
+move previous that previous score up so
+
+266
+00:11:00,440 --> 00:11:06,560
+that it eventually hits the upper bound
+
+267
+00:11:02,360 --> 00:11:08,720
+or down so that it hits 0 so as such our
+
+268
+00:11:06,560 --> 00:11:10,939
+calculate score algorithms look
+
+269
+00:11:08,720 --> 00:11:13,040
+something like this so it takes in two
+
+270
+00:11:10,940 --> 00:11:16,040
+parameters previous and timer to the
+
+271
+00:11:13,040 --> 00:11:17,660
+response ratio so if we see that the
+
+272
+00:11:16,040 --> 00:11:20,000
+time auto response ratio is zero
+
+273
+00:11:17,660 --> 00:11:22,160
+which means that the pier might be
+
+274
+00:11:20,000 --> 00:11:23,750
+getting better and better and then
+
+275
+00:11:22,160 --> 00:11:25,610
+intuitively we would want to decrease
+
+276
+00:11:23,750 --> 00:11:27,260
+the score for the pier but we don't want
+
+277
+00:11:25,610 --> 00:11:28,730
+to decrease it immediately to zero
+
+278
+00:11:27,260 --> 00:11:30,939
+because that would give us a flaky
+
+279
+00:11:28,730 --> 00:11:33,650
+pattern we want to gradually decrease it
+
+280
+00:11:30,940 --> 00:11:35,300
+so equation one represents the additive
+
+281
+00:11:33,650 --> 00:11:37,100
+decrease part of our algorithm so if you
+
+282
+00:11:35,300 --> 00:11:39,410
+see the second part of the equation is a
+
+283
+00:11:37,100 --> 00:11:41,810
+constant so we decrease it step by step
+
+284
+00:11:39,410 --> 00:11:44,920
+until it hits zero and if the time out
+
+285
+00:11:41,810 --> 00:11:47,300
+to the response ratio is non zero then
+
+286
+00:11:44,920 --> 00:11:49,280
+which means that the pier is seeing some
+
+287
+00:11:47,300 --> 00:11:51,530
+time on so you want to gradually
+
+288
+00:11:49,280 --> 00:11:53,390
+increase or even exponentially increase
+
+289
+00:11:51,530 --> 00:11:55,250
+the score so that it gets a bad score as
+
+290
+00:11:53,390 --> 00:11:56,750
+quickly as possible and then the
+
+291
+00:11:55,250 --> 00:11:58,370
+equation two represents the
+
+292
+00:11:56,750 --> 00:12:00,980
+multiplicative increased part of the
+
+293
+00:11:58,370 --> 00:12:02,870
+algorithm and we see that there is a
+
+294
+00:12:00,980 --> 00:12:04,670
+variable called mere threshold which
+
+295
+00:12:02,870 --> 00:12:06,410
+regulates the rate at which we increase
+
+296
+00:12:04,670 --> 00:12:08,930
+that score and it's proportional to the
+
+297
+00:12:06,410 --> 00:12:10,579
+time out to the response ratio so if you
+
+298
+00:12:08,930 --> 00:12:14,420
+take an example let's say our previous
+
+299
+00:12:10,580 --> 00:12:16,460
+score was 32 and we are seeing nonzero
+
+300
+00:12:14,420 --> 00:12:17,959
+time out to response ratios let's say in
+
+301
+00:12:16,460 --> 00:12:20,390
+the first case we see a timeout to
+
+302
+00:12:17,960 --> 00:12:22,550
+response ratio of 0.1 then the score
+
+303
+00:12:20,390 --> 00:12:24,020
+increases this fractionally like thirty
+
+304
+00:12:22,550 --> 00:12:26,780
+five point two because we are saying
+
+305
+00:12:24,020 --> 00:12:28,280
+that to the pier that the other pier is
+
+306
+00:12:26,780 --> 00:12:30,680
+seeing some time out so you want to
+
+307
+00:12:28,280 --> 00:12:34,100
+increase it score but not exponentially
+
+308
+00:12:30,680 --> 00:12:35,540
+but if this pier is seeing a lot of time
+
+309
+00:12:34,100 --> 00:12:37,430
+out for example if the timeout of the
+
+310
+00:12:35,540 --> 00:12:38,780
+response ratio is one so all the
+
+311
+00:12:37,430 --> 00:12:41,060
+requests we are sending out to the pier
+
+312
+00:12:38,780 --> 00:12:42,770
+are timing out so we just increase the
+
+313
+00:12:41,060 --> 00:12:45,859
+score exponentially and it can even
+
+314
+00:12:42,770 --> 00:12:47,960
+double to 64 and what we saw is that
+
+315
+00:12:45,860 --> 00:12:50,030
+this algorithm did give us a stable
+
+316
+00:12:47,960 --> 00:12:53,000
+score pattern like this which matched
+
+317
+00:12:50,030 --> 00:12:54,530
+the failure severity pattern which
+
+318
+00:12:53,000 --> 00:12:59,360
+aligned well with the failure severity
+
+319
+00:12:54,530 --> 00:13:01,280
+interval so what now we have this table
+
+320
+00:12:59,360 --> 00:13:04,310
+score so how do we analyze this course
+
+321
+00:13:01,280 --> 00:13:06,829
+so in our system what we do is that
+
+322
+00:13:04,310 --> 00:13:09,290
+every pier instance submits a score for
+
+323
+00:13:06,830 --> 00:13:12,230
+each of its other peers every minute and
+
+324
+00:13:09,290 --> 00:13:14,660
+it some publishes this course to a score
+
+325
+00:13:12,230 --> 00:13:17,690
+d-beam this code DB what it does is that
+
+326
+00:13:14,660 --> 00:13:19,310
+it keeps a sliding window of scores in
+
+327
+00:13:17,690 --> 00:13:22,100
+our system the sliding window of scores
+
+328
+00:13:19,310 --> 00:13:25,189
+is essentially 10 and periodically it
+
+329
+00:13:22,100 --> 00:13:26,930
+creates this mapping of appear to the
+
+330
+00:13:25,190 --> 00:13:30,380
+set of scores it has received within the
+
+331
+00:13:26,930 --> 00:13:31,359
+sliding window and then what it does is
+
+332
+00:13:30,380 --> 00:13:33,310
+to take the third
+
+333
+00:13:31,360 --> 00:13:35,920
+a percentile score and it calls it as a
+
+334
+00:13:33,310 --> 00:13:38,079
+representative score for each peer so
+
+335
+00:13:35,920 --> 00:13:40,740
+now we have this map of each peer and a
+
+336
+00:13:38,079 --> 00:13:43,630
+representative score for each peer and
+
+337
+00:13:40,740 --> 00:13:45,250
+then it once it has the set of
+
+338
+00:13:43,630 --> 00:13:46,570
+representative score for all the peers
+
+339
+00:13:45,250 --> 00:13:47,860
+it passes it through a clustering
+
+340
+00:13:46,570 --> 00:13:50,230
+algorithm we use the clustering
+
+341
+00:13:47,860 --> 00:13:52,690
+algorithm like BB scan and if there is a
+
+342
+00:13:50,230 --> 00:13:55,450
+fail stone node it pops up as an outlier
+
+343
+00:13:52,690 --> 00:13:57,190
+so the intuition behind taking this 30th
+
+344
+00:13:55,450 --> 00:14:00,519
+percentile score is that since it's a
+
+345
+00:13:57,190 --> 00:14:03,010
+percentile if this representative score
+
+346
+00:14:00,519 --> 00:14:05,290
+itself is bad which means that we have
+
+347
+00:14:03,010 --> 00:14:08,860
+seen a majority of bad scores for that
+
+348
+00:14:05,290 --> 00:14:11,110
+peer in that sliding window for example
+
+349
+00:14:08,860 --> 00:14:13,329
+if we see the first figure note 3 is
+
+350
+00:14:11,110 --> 00:14:16,060
+receiving bad scores from all of its
+
+351
+00:14:13,329 --> 00:14:17,979
+other peers but it is not for us it has
+
+352
+00:14:16,060 --> 00:14:20,589
+not yet received a majority of bad
+
+353
+00:14:17,980 --> 00:14:22,720
+scores yet but in the second figure
+
+354
+00:14:20,589 --> 00:14:25,480
+since the 38th percentile score is bad
+
+355
+00:14:22,720 --> 00:14:29,350
+enough now we can now label it as a fail
+
+356
+00:14:25,480 --> 00:14:32,290
+slow node now let's talk about how how
+
+357
+00:14:29,350 --> 00:14:34,720
+ISO has done in production so ISO has
+
+358
+00:14:32,290 --> 00:14:36,849
+been deployed now for over three years
+
+359
+00:14:34,720 --> 00:14:39,519
+now when we did the study it was
+
+360
+00:14:36,850 --> 00:14:42,579
+deployed for over 1.5 years and our
+
+361
+00:14:39,519 --> 00:14:44,890
+study was over like seven months what we
+
+362
+00:14:42,579 --> 00:14:47,170
+saw is that I saw offers two significant
+
+363
+00:14:44,890 --> 00:14:49,870
+benefits the first one is that I also
+
+364
+00:14:47,170 --> 00:14:51,579
+bounced this failure detection time by a
+
+365
+00:14:49,870 --> 00:14:53,860
+constant value so it's a constant
+
+366
+00:14:51,579 --> 00:14:55,239
+configurable value and it's that
+
+367
+00:14:53,860 --> 00:14:56,680
+constant configurable value is
+
+368
+00:14:55,240 --> 00:14:58,540
+essentially that length of the sliding
+
+369
+00:14:56,680 --> 00:15:01,269
+window for us the length of the sliding
+
+370
+00:14:58,540 --> 00:15:03,849
+with the window is 10 minutes so once a
+
+371
+00:15:01,269 --> 00:15:05,980
+failure happens in 10 minutes we are
+
+372
+00:15:03,850 --> 00:15:08,470
+able to detect the fail slow failure and
+
+373
+00:15:05,980 --> 00:15:12,160
+mitigate it and the second thing is I
+
+374
+00:15:08,470 --> 00:15:13,930
+saw is highly accurate so it has this 96
+
+375
+00:15:12,160 --> 00:15:16,269
+point because it's the heuristic based
+
+376
+00:15:13,930 --> 00:15:18,489
+algorithm there are there were some
+
+377
+00:15:16,269 --> 00:15:20,829
+false positives but the false positive
+
+378
+00:15:18,490 --> 00:15:25,480
+ratio or other false positive rate is
+
+379
+00:15:20,829 --> 00:15:27,579
+very low so now that we talked about the
+
+380
+00:15:25,480 --> 00:15:29,320
+detection part in detail now let's jump
+
+381
+00:15:27,579 --> 00:15:31,269
+to the second part the second part is
+
+382
+00:15:29,320 --> 00:15:33,130
+essentially that we have a fail slow
+
+383
+00:15:31,269 --> 00:15:35,170
+node but we still want to localize the
+
+384
+00:15:33,130 --> 00:15:37,180
+failure node so that the failure does
+
+385
+00:15:35,170 --> 00:15:41,020
+not spread to all of the other nodes in
+
+386
+00:15:37,180 --> 00:15:43,589
+the system and so to do that I saw also
+
+387
+00:15:41,020 --> 00:15:45,189
+supports these automatic policy based
+
+388
+00:15:43,589 --> 00:15:48,400
+mitigation techniques
+
+389
+00:15:45,190 --> 00:15:50,680
+go over them as below so on smaller
+
+390
+00:15:48,400 --> 00:15:52,060
+clusters where we do not want to take
+
+391
+00:15:50,680 --> 00:15:54,160
+down the fields no node because the
+
+392
+00:15:52,060 --> 00:15:55,869
+drastic thing which we can do here is to
+
+393
+00:15:54,160 --> 00:15:57,370
+just convert this fail slow failure into
+
+394
+00:15:55,870 --> 00:15:59,590
+a field stop failure just shut down
+
+395
+00:15:57,370 --> 00:16:02,200
+everything right but in smaller cluster
+
+396
+00:15:59,590 --> 00:16:04,540
+it's very expensive so what is Oh
+
+397
+00:16:02,200 --> 00:16:06,340
+support is to take away leadership
+
+398
+00:16:04,540 --> 00:16:09,000
+leases from the services on the fail
+
+399
+00:16:06,340 --> 00:16:11,620
+store node and that's important because
+
+400
+00:16:09,000 --> 00:16:13,030
+we know that these leaders in the
+
+401
+00:16:11,620 --> 00:16:15,460
+distributed system actors like
+
+402
+00:16:13,030 --> 00:16:17,290
+coordination point and so if the leader
+
+403
+00:16:15,460 --> 00:16:19,930
+is slow the whole service as a whole is
+
+404
+00:16:17,290 --> 00:16:21,939
+slow but if we take away the leader said
+
+405
+00:16:19,930 --> 00:16:24,219
+leases from the service instances on the
+
+406
+00:16:21,940 --> 00:16:26,860
+slow node then at least this cluster as
+
+407
+00:16:24,220 --> 00:16:29,050
+a whole is stable the cons of this
+
+408
+00:16:26,860 --> 00:16:31,180
+approach however are that the node still
+
+409
+00:16:29,050 --> 00:16:33,729
+remains as part of the cluster however
+
+410
+00:16:31,180 --> 00:16:36,640
+is still useful if the failure itself
+
+411
+00:16:33,730 --> 00:16:39,100
+does not persist for long it's a failure
+
+412
+00:16:36,640 --> 00:16:40,720
+which we can easily find and fix and so
+
+413
+00:16:39,100 --> 00:16:42,730
+we can just restore the node back to
+
+414
+00:16:40,720 --> 00:16:45,010
+normal so we don't have to go through
+
+415
+00:16:42,730 --> 00:16:47,740
+the expensive process of taking it out
+
+416
+00:16:45,010 --> 00:16:50,830
+and then adding it back although in
+
+417
+00:16:47,740 --> 00:16:52,150
+bigger clusters where we do not want the
+
+418
+00:16:50,830 --> 00:16:55,840
+cluster to be running in a degraded
+
+419
+00:16:52,150 --> 00:16:58,150
+State I so does support policies like
+
+420
+00:16:55,840 --> 00:17:00,100
+shutting down the VM itself or shutting
+
+421
+00:16:58,150 --> 00:17:01,900
+down the slow node itself obviously the
+
+422
+00:17:00,100 --> 00:17:04,630
+cons here are that it would trigger a VM
+
+423
+00:17:01,900 --> 00:17:07,420
+rebalancing or a service reconfiguration
+
+424
+00:17:04,630 --> 00:17:09,510
+and then the last part is the resolution
+
+425
+00:17:07,420 --> 00:17:12,699
+of these fails slow failure where ISO
+
+426
+00:17:09,510 --> 00:17:15,879
+alerts the user that okay the that's the
+
+427
+00:17:12,699 --> 00:17:17,620
+fail slow failure and someone needs to
+
+428
+00:17:15,880 --> 00:17:19,329
+take a look into it this part is manual
+
+429
+00:17:17,619 --> 00:17:23,020
+but two important things to note here
+
+430
+00:17:19,329 --> 00:17:25,810
+that by this time ISO has pinpointed the
+
+431
+00:17:23,020 --> 00:17:27,369
+actual node which is slow so anyone
+
+432
+00:17:25,810 --> 00:17:29,409
+taking a look at the cluster does not
+
+433
+00:17:27,369 --> 00:17:31,389
+need to look at all the nodes in the
+
+434
+00:17:29,410 --> 00:17:33,910
+cluster they just need to look at this
+
+435
+00:17:31,390 --> 00:17:35,980
+one specific node and then the second
+
+436
+00:17:33,910 --> 00:17:37,810
+thing is by this time ISO has also
+
+437
+00:17:35,980 --> 00:17:41,380
+localized the problem so the cluster as
+
+438
+00:17:37,810 --> 00:17:44,200
+a whole is not affected yes to conclude
+
+439
+00:17:41,380 --> 00:17:46,360
+phase low failures are severe problems
+
+440
+00:17:44,200 --> 00:17:48,210
+which need to be addressed correctly the
+
+441
+00:17:46,360 --> 00:17:50,979
+correctness part is very important and
+
+442
+00:17:48,210 --> 00:17:56,200
+ISO does that with a very low false
+
+443
+00:17:50,980 --> 00:17:58,090
+positive rate of 3.7% and also the study
+
+444
+00:17:56,200 --> 00:17:59,200
+of fail slow failures that we have done
+
+445
+00:17:58,090 --> 00:18:01,570
+in our production
+
+446
+00:17:59,200 --> 00:18:03,760
+over seven months we have collected the
+
+447
+00:18:01,570 --> 00:18:14,970
+data set and made it public so do check
+
+448
+00:18:03,760 --> 00:18:14,970
+it out yeah thank you any questions
+
+449
+00:18:19,360 --> 00:18:23,919
+Nelson Leo from future way a quick
+
+450
+00:18:22,120 --> 00:18:26,620
+question actually your models Braille a
+
+451
+00:18:23,920 --> 00:18:29,560
+paisa pound the monitoring of each node
+
+452
+00:18:26,620 --> 00:18:32,770
+of the clusters with homogenious type of
+
+453
+00:18:29,560 --> 00:18:34,899
+configurations are right no it can be
+
+454
+00:18:32,770 --> 00:18:39,010
+heterogeneous I think the ratio is what
+
+455
+00:18:34,900 --> 00:18:40,990
+makes yeah so if it is heterogeneous and
+
+456
+00:18:39,010 --> 00:18:42,000
+we are using time outs that's where we
+
+457
+00:18:40,990 --> 00:18:44,650
+saw that in a heterogeneous
+
+458
+00:18:42,000 --> 00:18:47,380
+configuration using this raw time outs
+
+459
+00:18:44,650 --> 00:18:51,220
+fail because the number of time outs to
+
+460
+00:18:47,380 --> 00:18:54,550
+different peers can vary right and so it
+
+461
+00:18:51,220 --> 00:18:55,420
+yeah it does not support home ISO
+
+462
+00:18:54,550 --> 00:18:58,030
+supports for heterogeneous
+
+463
+00:18:55,420 --> 00:18:59,860
+configurations has been yes okay a
+
+464
+00:18:58,030 --> 00:19:01,810
+second question this actually I don't
+
+465
+00:18:59,860 --> 00:19:04,510
+see I see that you're using the
+
+466
+00:19:01,810 --> 00:19:06,040
+adjustment score which is very similar
+
+467
+00:19:04,510 --> 00:19:10,090
+to a kind of like a sliding window
+
+468
+00:19:06,040 --> 00:19:13,420
+things to face out at the to to to
+
+469
+00:19:10,090 --> 00:19:15,850
+reduce the spikes right the adjustment
+
+470
+00:19:13,420 --> 00:19:18,760
+score is not to reduce the spike itself
+
+471
+00:19:15,850 --> 00:19:20,830
+because the spike reduction is taken
+
+472
+00:19:18,760 --> 00:19:23,280
+care by that aimd approach we talked
+
+473
+00:19:20,830 --> 00:19:26,439
+about the adjustment score is more like
+
+474
+00:19:23,280 --> 00:19:28,570
+we are seeing these timeouts but at what
+
+475
+00:19:26,440 --> 00:19:31,720
+point do we cut over and say that oh
+
+476
+00:19:28,570 --> 00:19:34,419
+this node is slow let's say our timeout
+
+477
+00:19:31,720 --> 00:19:36,520
+let's say we just wait for one minute or
+
+478
+00:19:34,420 --> 00:19:38,680
+even slower than that let's say a few
+
+479
+00:19:36,520 --> 00:19:41,950
+seconds right so then we would have
+
+480
+00:19:38,680 --> 00:19:45,280
+these even in flicky scenarios where we
+
+481
+00:19:41,950 --> 00:19:47,800
+are seeing a small fault for only a few
+
+482
+00:19:45,280 --> 00:19:50,530
+seconds which just disappears after that
+
+483
+00:19:47,800 --> 00:19:53,919
+we'll still label the cluster the node
+
+484
+00:19:50,530 --> 00:19:55,930
+as slow and the reason we wait for a
+
+485
+00:19:53,920 --> 00:19:57,460
+longer period like ten minutes so that
+
+486
+00:19:55,930 --> 00:19:59,590
+essentially to answer your question that
+
+487
+00:19:57,460 --> 00:20:01,480
+sliding window is the amount of time
+
+488
+00:19:59,590 --> 00:20:04,689
+which we wait before we label it and
+
+489
+00:20:01,480 --> 00:20:06,220
+that's important because the mitigation
+
+490
+00:20:04,690 --> 00:20:08,350
+techniques can be drastic we can take
+
+491
+00:20:06,220 --> 00:20:10,840
+down the node right so we want it to be
+
+492
+00:20:08,350 --> 00:20:13,120
+we want to be more conservative okay the
+
+493
+00:20:10,840 --> 00:20:15,370
+last question actually in your
+
+494
+00:20:13,120 --> 00:20:19,179
+very first light you market the the
+
+495
+00:20:15,370 --> 00:20:21,760
+cause of those are fell slow yeah could
+
+496
+00:20:19,180 --> 00:20:23,590
+be coming from something trinsic a
+
+497
+00:20:21,760 --> 00:20:26,020
+permanent type of causes like a
+
+498
+00:20:23,590 --> 00:20:28,600
+configuration the environmental type of
+
+499
+00:20:26,020 --> 00:20:31,210
+thing yes how do you count them this I
+
+500
+00:20:28,600 --> 00:20:33,310
+mean how do you have the household to be
+
+501
+00:20:31,210 --> 00:20:35,110
+able to detect this type of intrinsic
+
+502
+00:20:33,310 --> 00:20:37,780
+failure the prominent failure not a
+
+503
+00:20:35,110 --> 00:20:39,429
+temporary so so what we are saying is
+
+504
+00:20:37,780 --> 00:20:42,070
+that there can be a lower level
+
+505
+00:20:39,430 --> 00:20:43,420
+permanent failure but eventually it
+
+506
+00:20:42,070 --> 00:20:47,649
+bubbles up to make the application
+
+507
+00:20:43,420 --> 00:20:50,440
+slower so what we are interested in is
+
+508
+00:20:47,650 --> 00:20:52,960
+is the application permanently failed or
+
+509
+00:20:50,440 --> 00:20:56,110
+slow right so if the permanent failure
+
+510
+00:20:52,960 --> 00:20:58,030
+of a desk let's say permanently stop
+
+511
+00:20:56,110 --> 00:21:00,520
+that or the application is in a crash
+
+512
+00:20:58,030 --> 00:21:02,350
+loop for example right so or the
+
+513
+00:21:00,520 --> 00:21:05,290
+application is for some reason has shut
+
+514
+00:21:02,350 --> 00:21:08,590
+down that the permanent failure disk
+
+515
+00:21:05,290 --> 00:21:10,690
+level has manifested as a permanent
+
+516
+00:21:08,590 --> 00:21:13,209
+failure at the application level then
+
+517
+00:21:10,690 --> 00:21:15,100
+it's anywhere fail stop failure and we
+
+518
+00:21:13,210 --> 00:21:17,650
+are anywhere we have mitigation
+
+519
+00:21:15,100 --> 00:21:19,270
+technique like if there is a faced of
+
+520
+00:21:17,650 --> 00:21:21,400
+failure with a failover to some other
+
+521
+00:21:19,270 --> 00:21:23,080
+node like the leader there's leader real
+
+522
+00:21:21,400 --> 00:21:24,760
+election protocols and all which take
+
+523
+00:21:23,080 --> 00:21:27,159
+care of electing a different leader and
+
+524
+00:21:24,760 --> 00:21:29,020
+all those things right but in this cases
+
+525
+00:21:27,160 --> 00:21:31,870
+where there is a permanent failure at a
+
+526
+00:21:29,020 --> 00:21:33,610
+desk level but it manifest as a slow
+
+527
+00:21:31,870 --> 00:21:35,830
+application or the slow service instance
+
+528
+00:21:33,610 --> 00:21:39,610
+right so those are the kind of things we
+
+529
+00:21:35,830 --> 00:21:43,720
+catch so at the root cause yes it can be
+
+530
+00:21:39,610 --> 00:21:45,780
+a permanent or a slow disk yeah thank
+
+531
+00:21:43,720 --> 00:21:45,780
+you
+
+532
+00:21:48,370 --> 00:21:52,209
+I'm curious about false postures what
+
+533
+00:21:50,170 --> 00:21:54,460
+kind of false positives you see what are
+
+534
+00:21:52,210 --> 00:21:57,250
+the reasons and there are things like GC
+
+535
+00:21:54,460 --> 00:21:58,810
+could be running on a node and that
+
+536
+00:21:57,250 --> 00:22:01,510
+means there may be this a performance
+
+537
+00:21:58,810 --> 00:22:04,899
+bottleneck it's not really a field slow
+
+538
+00:22:01,510 --> 00:22:08,050
+scenario yes yes yes actually GC is a
+
+539
+00:22:04,900 --> 00:22:10,690
+good point because the thing is if it is
+
+540
+00:22:08,050 --> 00:22:13,060
+slow enough right so what we say is that
+
+541
+00:22:10,690 --> 00:22:16,120
+it is persistently slow so that if the
+
+542
+00:22:13,060 --> 00:22:19,060
+GC is running for a long period of time
+
+543
+00:22:16,120 --> 00:22:21,909
+when let's say the service instance also
+
+544
+00:22:19,060 --> 00:22:24,070
+hosts the leader and so for that amount
+
+545
+00:22:21,910 --> 00:22:25,880
+of time you would still want to like
+
+546
+00:22:24,070 --> 00:22:28,580
+failover the leader somewhere else
+
+547
+00:22:25,880 --> 00:22:30,440
+so you're saying that and that's where
+
+548
+00:22:28,580 --> 00:22:31,669
+the when I was talking about the sliding
+
+549
+00:22:30,440 --> 00:22:33,860
+window that sliding window is a
+
+550
+00:22:31,670 --> 00:22:37,460
+configurable parameter to say that this
+
+551
+00:22:33,860 --> 00:22:40,520
+is an amount of time period to which I
+
+552
+00:22:37,460 --> 00:22:42,680
+can tolerate and after that and just
+
+553
+00:22:40,520 --> 00:22:45,020
+declare that node to be slow so if the
+
+554
+00:22:42,680 --> 00:22:47,660
+GC is running for an hour or let's say
+
+555
+00:22:45,020 --> 00:22:49,580
+like a long period of time right more
+
+556
+00:22:47,660 --> 00:22:51,110
+than I was like a window then we will
+
+557
+00:22:49,580 --> 00:22:54,409
+label it as slow so that we can still
+
+558
+00:22:51,110 --> 00:22:58,280
+mitigate and failover the leader to some
+
+559
+00:22:54,410 --> 00:22:59,960
+other instance for example just curious
+
+560
+00:22:58,280 --> 00:23:01,430
+have you looked at any other anomaly
+
+561
+00:22:59,960 --> 00:23:04,310
+detection algorithms or any other
+
+562
+00:23:01,430 --> 00:23:06,680
+clustering algorithms so any of the
+
+563
+00:23:04,310 --> 00:23:10,040
+clustering or you mean apart from DBC
+
+564
+00:23:06,680 --> 00:23:11,750
+diversion yeah so we didn't spend much
+
+565
+00:23:10,040 --> 00:23:14,629
+time in the clustering algorithm itself
+
+566
+00:23:11,750 --> 00:23:16,700
+because I think that was more like a
+
+567
+00:23:14,630 --> 00:23:18,530
+standard we can just use any standard
+
+568
+00:23:16,700 --> 00:23:20,150
+clustering algorithm there is no logic
+
+569
+00:23:18,530 --> 00:23:23,450
+as such in the clustering algorithm
+
+570
+00:23:20,150 --> 00:23:25,220
+itself I think the two important things
+
+571
+00:23:23,450 --> 00:23:28,490
+are this ability to generate table
+
+572
+00:23:25,220 --> 00:23:30,830
+scores because we want it to accurately
+
+573
+00:23:28,490 --> 00:23:32,780
+align with the failure interval right I
+
+574
+00:23:30,830 --> 00:23:36,830
+think that was one of the major concerns
+
+575
+00:23:32,780 --> 00:23:38,120
+thank you yes okay let's check okay if
+
+576
+00:23:36,830 --> 00:23:41,320
+you have other questions you can of
+
+577
+00:23:38,120 --> 00:23:41,320
+course talk to let's become a fly
+

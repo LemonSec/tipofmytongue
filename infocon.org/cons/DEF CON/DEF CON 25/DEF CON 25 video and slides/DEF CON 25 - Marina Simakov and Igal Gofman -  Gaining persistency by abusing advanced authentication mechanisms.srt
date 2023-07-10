@@ -1,0 +1,2048 @@
+﻿00:00:00.000-->00:00:04.500
+>>So, hi and welcome to our
+talk: “Here to stay- Gaining
+persistence by abusing advanced
+
+00:00:04.500-->00:00:09.250
+communication mechanisms.” I’m
+Marina. I’m here today with
+Igal. We’re both security
+
+00:00:09.250-->00:00:15.833
+researchers at Microsoft at the
+ATA group. So today we want to
+discuss with you some legitimate
+
+00:00:15.833-->00:00:20.333
+mechanisms in active directory
+which might get abused by
+attackers in order to get
+
+00:00:20.333-->00:00:25.708
+persistence in the environment.
+So first of all, they’re
+relatively easy to exploit, and
+
+00:00:25.708-->00:00:30.750
+you’re not required to search
+for any zero-day exploits. Also
+they can be very easily
+
+00:00:30.750-->00:00:35.625
+automated. And last and worst of
+all, those are usually not
+monitored which may allow
+
+00:00:35.625-->00:00:40.958
+attackers to stay under the
+radar and gain persistence
+without being detected for a
+
+00:00:40.958-->00:00:50.542
+long time. After presenting some
+of those, we’ll discuss some of
+the detection methods, what you
+
+00:00:50.542-->00:00:54.000
+can do in order to prevent this
+from happening in your own
+environment. Also, if you have
+
+00:00:54.000-->00:00:58.750
+any feedback, we’d love to hear
+from you after this talk. So
+what’s our agenda for today?
+
+00:00:58.750-->00:01:03.458
+We’ll begin with an introduction
+to some key terms which are
+important to understand the
+
+00:01:03.458-->00:01:07.375
+attacks and orders we’re going
+to show a little bit later on.
+We’ll begin with an intro to
+
+00:01:07.375-->00:01:12.375
+kerberos and kerberos
+delegation. Then we’ll dive in
+into our main subject of the
+
+00:01:12.375-->00:01:15.958
+talk: how attackers can gain
+persistence in an active
+directory environment.
+
+00:01:15.958-->00:01:20.333
+Specifically, we will focus on
+the stage in which attackers
+have already gained high
+
+00:01:20.333-->00:01:25.542
+privileges. And they’re
+interested in maintaining them
+for as long as possible without
+
+00:01:25.542-->00:01:32.208
+being detected. We’ll also
+introduce a new concept that we
+call “malicious just-in-time
+
+00:01:32.208-->00:01:38.875
+administration” which I’ll
+define a bit later on. Also,
+we’re going to try and go with a
+
+00:01:38.875-->00:01:46.458
+live demo and finally, show some
+mitigations and take aways from
+our talk. Alright, so let’s take
+
+00:01:46.458-->00:01:50.458
+a few minutes to discuss
+kerberos. So kerberos is a
+ticket-based authentication
+
+00:01:50.458-->00:01:56.750
+protocol. Say some domain user
+wants to access some
+communication server in the
+
+00:01:56.750-->00:02:00.792
+domain. How would the
+authentication process work?
+First of all, the kerberos
+
+00:02:00.792-->00:02:06.792
+client will issue an ask request
+to the domain controller,
+requesting a special ticket to a
+
+00:02:06.792-->00:02:12.375
+service called the krbtgt. In
+response, you will get a special
+ticket called the “ticket
+
+00:02:12.375-->00:02:19.417
+granting ticket,” which is then
+used in the second stage. So,
+the second stage would be the
+
+00:02:19.417-->00:02:25.667
+client sending a TGS request to
+the ticket granting service,
+this time requesting a ticket
+
+00:02:25.667-->00:02:30.750
+for that specific service he
+wanted access to. So he will
+attach the ticket granting
+
+00:02:30.750-->00:02:34.708
+ticket here, along with
+additional authentication data.
+And if the authentication is
+
+00:02:34.708-->00:02:43.667
+successful, he will get in
+return that service ticket for
+that specific service. Third and
+
+00:02:43.667-->00:02:48.958
+final stage would be using that
+ticket to access that
+application service. So the
+
+00:02:48.958-->00:02:53.167
+thing to remember here is the
+difference between the ticket
+granting ticket and the service
+
+00:02:53.167-->00:02:58.042
+ticket. While the service ticket
+can only be used to access that
+specific service, the ticket
+
+00:02:58.042-->00:03:03.667
+granting ticket can be used in
+multiple T-TGS requests to
+request more service tickets and
+
+00:03:03.667-->00:03:10.667
+access more domain resources. So
+a ticket granting ticket in a
+way is more powerful than a
+
+00:03:10.667-->00:03:15.500
+regular service ticket and it is
+sort of the master ticket for
+every user. This is why
+
+00:03:15.500-->00:03:20.417
+attackers would usually target
+those tickets since it can allow
+them to access more domain
+
+00:03:20.417-->00:03:27.250
+resources. Alright, let’s move
+on to kerberos legations. First
+of all, why is legation needed?
+
+00:03:27.250-->00:03:32.750
+So it’s needed in scenarios in
+which an application needs to
+reuse user credentials. Let’s
+
+00:03:32.750-->00:03:37.083
+take for example the user
+authenticating to some web
+server which then in return
+
+00:03:37.083-->00:03:44.750
+needs to access some SQL server
+and perform some operations on
+behalf of that user. So the
+
+00:03:44.750-->00:03:51.208
+question is how can the web
+server access that SQL server on
+behalf of the user since the web
+
+00:03:51.208-->00:03:56.833
+server is not aware of the user
+credentials and also we don’t
+want it to be. So for those
+
+00:03:56.833-->00:04:01.917
+scenario exa-exactly is why the
+delegation mechanism was
+introduced. It means that the
+
+00:04:01.917-->00:04:07.250
+web server would be allowed to
+delegate kerberos tickets to the
+SQL server. Technically this
+
+00:04:07.250-->00:04:13.375
+means that the web server is
+going to be able to request for
+service tickets on behalf of
+
+00:04:13.375-->00:04:19.583
+other users. So in this case,
+the web server would request a
+service ticket to that SQL
+
+00:04:19.583-->00:04:25.500
+server on behalf of the
+authenticating user. Third stage
+would be just accessing the SQL
+
+00:04:25.500-->00:04:30.833
+server using that ticket and
+performing any operations using
+the user’s privileges. So as you
+
+00:04:30.833-->00:04:37.958
+can hear, this in not a trivial
+functionality since it allows
+the servers to impersonate other
+
+00:04:37.958-->00:04:43.667
+users and use their, eh, user
+privileges. So defining it
+requires additional privileges
+
+00:04:43.667-->00:04:50.833
+which we’ll discuss a bit later
+on. So there are two types of
+delegations. The first one is
+
+00:04:50.833-->00:04:56.458
+the unconstrained delegation
+which means that a single server
+can request tickets to any other
+
+00:04:56.458-->00:05:01.625
+service in the domain. As you
+can hear, this is way too much
+power for a single service and
+
+00:05:01.625-->00:05:05.833
+it’s not recommended to use on
+any account which is not a
+domain controller. This is
+
+00:05:05.833-->00:05:11.250
+exactly why the constrained
+delegation functionality was
+introduced. It means that a
+
+00:05:11.250-->00:05:17.667
+single service can only perform
+the legation to a single service
+or a few services which were
+
+00:05:17.667-->00:05:23.000
+defined in advanced. So this
+makes a lot more sense. It means
+that a service would only be
+
+00:05:23.000-->00:05:28.458
+allowed to request for service
+tickets on behalf of other users
+only to specific services. This
+
+00:05:28.458-->00:05:35.083
+is the scenario that we will
+focus on today. Alright. So
+let’s see how attackers can gain
+
+00:05:35.083-->00:05:40.458
+persistence active directory
+environments. First of all, just
+a quick look at attack stages.
+
+00:05:40.458-->00:05:45.583
+Attackers get into the network.
+They do not have any privileges.
+They do not have any access to
+
+00:05:45.583-->00:05:50.625
+any domain resources. And the
+first stage would be to search
+for that initial access which
+
+00:05:50.625-->00:05:55.500
+usually-usually comes in the
+form of credentials. So they
+send any phishing emails or
+
+00:05:55.500-->00:06:00.500
+anything else and at the end,
+they would get either a domain
+account or local system access
+
+00:06:00.500-->00:06:07.875
+to one of the domain computers.
+Second stage would be moving
+from that domain account,
+
+00:06:07.875-->00:06:14.708
+regular domain user to a domain
+admin. So this is the lateral
+movement phase. They perform a
+
+00:06:14.708-->00:06:18.083
+lot of recall. They move one
+machine to the next, each time
+dumping more credentials, using
+
+00:06:18.083-->00:06:22.083
+them to connect to more
+machines, until they finally
+reach the credentials of the
+
+00:06:22.083-->00:06:28.625
+domain admin. So usually this
+stage does not take more than
+forty-eight hours, and
+
+00:06:28.625-->00:06:34.375
+unfortunately in a lot of times
+it takes even a lot less since
+admin credentials as you know
+
+00:06:34.375-->00:06:41.750
+as-are not as well secured as
+they should be. Also monitoring
+systems many times focus on this
+
+00:06:41.750-->00:06:47.375
+stage to catch attackers. So the
+attackers might get busted some
+here along the way. However, if
+
+00:06:47.375-->00:06:52.167
+all detections fail it’s very
+important to be aware of that
+last and final stage which is
+
+00:06:52.167-->00:06:56.875
+the last chance to get the
+attackers in our environment. So
+the third and final stage would
+
+00:06:56.875-->00:07:00.917
+be getting from that domain
+admin account to full
+persistence of the environment.
+
+00:07:00.917-->00:07:08.125
+First of all, why is a domain
+admin not enough to already gain
+persistence? Well, what happens
+
+00:07:08.125-->00:07:14.208
+if that domain admin account is
+discovered and its password
+needs to be reset? So attackers
+
+00:07:14.208-->00:07:18.750
+are going to lose their high
+privileges and they’re going to
+start this entire process all
+
+00:07:18.750-->00:07:23.917
+over again. This is why
+attackers would like the moment
+they have the domain admin
+
+00:07:23.917-->00:07:29.250
+credentials to make sure that
+they would remain and have those
+high privileges for as long as
+
+00:07:29.250-->00:07:34.708
+possible without being detected.
+And this is exactly the stage
+that we will focus on: what
+
+00:07:34.708-->00:07:38.875
+attackers might do once they
+already have that domain
+administrator to ensure that
+
+00:07:38.875-->00:07:43.417
+even if they lose ahold of that
+account, they would be able to
+elevate their privileges at any
+
+00:07:43.417-->00:07:50.583
+stage. Alright. So let’s discuss
+what attackers might do to get
+from a domain admin to full
+
+00:07:50.583-->00:07:56.125
+persistence in the active
+directory environment. Before
+moving on to the methods we want
+
+00:07:56.125-->00:08:01.292
+to talk to you today, let’s just
+mention shortly a few of the
+common methods that attackers
+
+00:08:01.292-->00:08:08.375
+may use today. One of the most
+common methods is to force down
+the NTD’s DIT file through the
+
+00:08:08.375-->00:08:13.708
+active directory which contains
+all domain secrets, all the user
+hashes they can later on use to
+
+00:08:13.708-->00:08:20.375
+access any user domain resource.
+Also they can use the golden
+ticket attack in which they
+
+00:08:20.375-->00:08:24.583
+forge a ticket granting ticket
+for an administrative account
+and later on use it to request
+
+00:08:24.583-->00:08:31.458
+more service tickets and access
+more domain resources. Also
+there is the skeleton key or any
+
+00:08:31.458-->00:08:36.917
+other back door which can be
+left on the domain controller.
+So each of those has its own
+
+00:08:36.917-->00:08:41.167
+weaknesses. For example,
+replication requests using the
+DRS UPAI from a non domain
+
+00:08:41.167-->00:08:47.833
+controller machine can be
+detected by analyzing network
+traffic. Also, there’s some ways
+
+00:08:47.833-->00:08:53.083
+to detect crafted tickets. And
+to any backdoor that is left on
+the domain controller has own-
+
+00:08:53.083-->00:08:59.708
+has its own signature. For
+example, the skeleton key can be
+detected by an encryption
+
+00:08:59.708-->00:09:04.500
+downgrade activity from the
+domain controller. So those are
+just some of the methods that
+
+00:09:04.500-->00:09:09.750
+attackers use today to gain
+persistence. And today we’ll
+want to discuss a few different
+
+00:09:09.750-->00:09:13.792
+methods which all rely on the
+new concept that we want to
+introduce to you today which is
+
+00:09:13.792-->00:09:20.792
+called the malicious
+just-in-time administration. So
+before discussing about the
+
+00:09:20.792-->00:09:25.458
+malicious concept, let’s mention
+what the just-in-time
+administration concept means. So
+
+00:09:25.458-->00:09:31.458
+it’s not recommended to have
+users that have permanent high
+privilege in the environment
+
+00:09:31.458-->00:09:36.708
+since obviously those servers
+are very valuable targets for
+attackers. Attackers would
+
+00:09:36.708-->00:09:41.375
+target those users that have
+permanent high privileges and
+would enable them to gain access
+
+00:09:41.375-->00:09:48.042
+to any domain resource. For this
+reason, exact-exactly the JIT
+administration concept was
+
+00:09:48.042-->00:09:52.458
+introduced. It means that users
+will not have permanent high
+privileges in the environment.
+
+00:09:52.458-->00:09:59.125
+However, at any stage, if a user
+requires high privileges to
+perform an operation, he will
+
+00:09:59.125-->00:10:04.917
+request those privileges. If
+he’s authorized to get them, he
+would get them, but just for a
+
+00:10:04.917-->00:10:10.125
+limited amount of time- usually
+just a few hours. And when the
+time period expires, the high
+
+00:10:10.125-->00:10:15.708
+privileges would be revoked. So
+if the user would need those
+high privileges again, he would
+
+00:10:15.708-->00:10:20.750
+need to go through this entire
+process once again. So as you
+can see, this reduces the attack
+
+00:10:20.750-->00:10:24.875
+surface since it makes the life
+of the attackers a bit harder.
+It’s going to be harder to find
+
+00:10:24.875-->00:10:31.708
+a user that is- has the
+privileges of that domain admin.
+So while this concept was
+
+00:10:31.708-->00:10:37.083
+introduced to protect the
+environment from attackers, a
+very similar concept can be
+
+00:10:37.083-->00:10:42.208
+abused by attackers in order to
+evade most of the tection- most
+of the detection mechanism there
+
+00:10:42.208-->00:10:49.583
+are that are in place today.
+This is exactly what brings us
+to the malicious just-in-time
+
+00:10:49.583-->00:10:55.625
+concept. So what this concept
+means is that attackers might
+have limited access in the
+
+00:10:55.625-->00:11:00.917
+environment. However at any
+stage, they would be able to
+perform a huge- a few short
+
+00:11:00.917-->00:11:07.000
+steps in order to regain those
+high privileges, perform any
+malicious operations, and then
+
+00:11:07.000-->00:11:12.500
+immediately erase their
+footprints, delete all traces
+from the environment that they
+
+00:11:12.500-->00:11:17.417
+ever had those privileges, in
+order to avoi-to-to avoid all
+the detections that might be in
+
+00:11:17.417-->00:11:23.417
+place in the system. So we’re
+going to talk about what
+attackers might do when they
+
+00:11:23.417-->00:11:28.083
+have the domain admin account.
+In order to ensure themselves,
+they would be able to perform a
+
+00:11:28.083-->00:11:32.375
+malicious JIT operation at any
+time and regain those high
+privileges, possibly without
+
+00:11:32.375-->00:11:39.250
+being detected. So we’ll show
+three scenarios to illustrate
+this concept. The first is the
+
+00:11:39.250-->00:11:44.500
+delegation scenario and then
+we’ll discuss two concepts
+involving the admin as the
+
+00:11:44.500-->00:11:50.875
+holder object. So at this stage
+Igal will discuss the first
+delegation scenario and I’ll
+
+00:11:50.875-->00:12:09.083
+come back in a bit later.
+Alright. >>Alright. Thank you
+Marina. How is everybody doing
+
+00:12:09.083-->00:12:22.667
+so far? Alright. So We’re now
+going to explore several
+malicious JIT attacks scenarios,
+
+00:12:22.667-->00:12:29.667
+but, eh, those scenarios are
+just the tip of the iceberg what
+can be done by using the JIT
+
+00:12:29.667-->00:12:33.000
+concept. I like to emphasize
+that the malicious JIT is just a
+concept which can be implemented
+
+00:12:33.000-->00:12:40.000
+in many different ways. So I
+hope the following examples will
+give you some ideas as a base
+
+00:12:40.000-->00:12:46.125
+that you can expand and develop
+on later on. So let’s begin this
+section by reviewing tic- two
+
+00:12:46.125-->00:12:51.583
+key concepts which relates to
+object security. So almost
+everything in active directory
+
+00:12:51.583-->00:12:56.750
+is an object and those objects
+need to be protected from
+unauthorized access. So there
+
+00:12:56.750-->00:13:02.708
+are several different security
+mechanisms which protects those,
+eh, active directory object and
+
+00:13:02.708-->00:13:07.333
+one of the main ones called
+access control list. So an
+access control list is a list of
+
+00:13:07.333-->00:13:12.125
+access control entries or “ACE”s
+and each ACE is an access
+control identify security
+
+00:13:12.125-->00:13:19.333
+principle and specifies the
+access write allowed/denied for
+that account. So basically, eh,
+
+00:13:19.333-->00:13:26.375
+access control list is a list of
+permissions for specific, eh,
+users on, eh, that object. So in
+
+00:13:26.375-->00:13:30.208
+addition to an access list, we
+have something called object
+ownership or an object owner.
+
+00:13:30.208-->00:13:35.208
+The owner of an object can
+modify permissions and give
+other users the right to take
+
+00:13:35.208-->00:13:40.833
+ownership or have full control
+over that object. So short
+example would be if user receive
+
+00:13:40.833-->00:13:47.167
+a new laptop from the
+[inaudible] esteem and he joined
+that laptop to the, eh, active
+
+00:13:47.167-->00:13:51.792
+directory. What happened behind
+the scene is that the new
+computer account object will be
+
+00:13:51.792-->00:13:55.542
+created and the owner of that
+computer account will be the
+user because this user was the
+
+00:13:55.542-->00:14:00.333
+first one who created that
+object- the first one who
+touched that object. In some
+
+00:14:00.333-->00:14:04.750
+other cases when IT staff create
+an object in active directory,
+by default, that administrator
+
+00:14:04.750-->00:14:12.333
+group will be the owner of those
+objects. So what is so special
+about object ownership? Well,
+
+00:14:12.333-->00:14:18.458
+eh, an owner of an object has
+special permission which a-allow
+him to, eh, regain himself full
+
+00:14:18.458-->00:14:23.875
+written write, eh, permission to
+that object. So basically if you
+are an own-owner of an object,
+
+00:14:23.875-->00:14:27.333
+you can always regain yourself
+full permissions. Also you can,
+eh, gain permission to other,
+
+00:14:27.333-->00:14:34.792
+eh, user account. So now th- now
+that we have explored these
+concepts, we can move, eh, to
+
+00:14:34.792-->00:14:40.083
+our first attack scenario. So
+before diving in, I would like
+to mention that each attack
+
+00:14:40.083-->00:14:45.375
+scenario we will show you today
+are divided into two main parts.
+The first is- part we’ll explain
+
+00:14:45.375-->00:14:50.292
+what steps need to be followed,
+eh, in order to remain
+persistence in environments.
+
+00:14:50.292-->00:14:55.208
+During the time the attacker
+have, eh, full, eh, domain
+privileges. And the second stage
+
+00:14:55.208-->00:15:00.417
+e-explain what steps need to be
+followed in order to regain
+those privileges after losing
+
+00:15:00.417-->00:15:06.042
+the, eh, access to the
+environment. So let’s get going
+by showing how attackers can
+
+00:15:06.042-->00:15:13.458
+adopt the malicious JIT concept
+and abuse the kerberos
+delegation mechanism. Alright.
+
+00:15:13.458-->00:15:20.250
+So the first step, eh, attackers
+need to follow would be adding a
+new computer account. And you’re
+
+00:15:20.250-->00:15:23.958
+probably asking yourself, “Why
+do we need to create a computer
+account? We can use just an
+
+00:15:23.958-->00:15:29.333
+existing computer account.” But
+actually, eh, eh, we prefer to
+create a new computer account
+
+00:15:29.333-->00:15:33.333
+because, eh, we’re only creating
+an active directory object so
+there is no physical computer
+
+00:15:33.333-->00:15:38.958
+behind it and in that way, the
+encryption key of that computer
+account will be generated once
+
+00:15:38.958-->00:15:43.208
+and attackers can then save this
+encryption key. And this is
+important because we’re going to
+
+00:15:43.208-->00:15:48.250
+use this computer account to
+authenticate again the domain
+controller later on. In addition
+
+00:15:48.250-->00:15:54.667
+to that, eh, attackers need to
+change the owner of the computer
+account to some, em, eh, to some
+
+00:15:54.667-->00:16:01.292
+account that they hold on to. In
+our example, when they use a
+malicious user, it’s just a
+
+00:16:01.292-->00:16:06.875
+regular domain user, it’s-they
+created. So as you see on the
+screen, eh, we’ve created a new
+
+00:16:06.875-->00:16:11.583
+computer account which is called
+the Client One and the owner of
+that computer account is, eh,
+
+00:16:11.583-->00:16:17.625
+the malicious user. So just to
+sum up: we added a new computer
+account and changed its owner to
+
+00:16:17.625-->00:16:23.333
+the user account in the attacker
+possession. Eh, later on also
+the attackers need to save the
+
+00:16:23.333-->00:16:26.833
+encryption key that can get into
+that computer account. And we
+also changed the owner of that
+
+00:16:26.833-->00:16:30.917
+computer account so attackers
+can’t regain themselves full
+privileges to that, eh, computer
+
+00:16:30.917-->00:16:36.333
+account object. So although the
+attackers can regain full
+write/written permission to that
+
+00:16:36.333-->00:16:41.250
+object, there are a few special
+attributes and properties which,
+eh, allow, which require
+
+00:16:41.250-->00:16:46.667
+additional permissions, eh, and
+additional user right. And
+because we are showing you today
+
+00:16:46.667-->00:16:51.708
+the delegation scenario, eh,
+this, eh, malicious user would
+need to have special, eh, user
+
+00:16:51.708-->00:16:57.833
+right. So the next step will be
+going to the domain controller
+group policy and searching for a
+
+00:16:57.833-->00:17:03.125
+special user right which is
+called enable computer and user
+accounts to be trusted for
+
+00:17:03.125-->00:17:06.792
+delegation. So we registered
+our- registered our malicious
+user to possess this, eh,
+
+00:17:06.792-->00:17:11.208
+special user right. We are
+showing you it in the GUI but it
+can be done easily using
+
+00:17:11.208-->00:17:17.042
+PowerShell or some other
+scripting language. And now the
+attackers will be able to edit
+
+00:17:17.042-->00:17:22.333
+any delegation, properties, and
+attributes on that computer
+account object. Alright. That’s
+
+00:17:22.333-->00:17:28.333
+all the steps attackers need to
+prepare in advance in order to
+be ready for the malicious JIT
+
+00:17:28.333-->00:17:32.250
+operation. So now we’re going to
+discuss the second stage in
+which we will explain what steps
+
+00:17:32.250-->00:17:41.917
+need to be followed in order to
+regain those privileges.
+Alright. So right now we have a
+
+00:17:41.917-->00:17:45.792
+computer account and the owner
+of that computer account is the
+previously created, eh, the
+
+00:17:45.792-->00:17:50.333
+malicious user account. And- but
+actually we don’t have any
+effective, eh, read re- we have
+
+00:17:50.333-->00:17:56.625
+reader, eh, permissions but we
+don’t have any write permission
+on that object. So the first
+
+00:17:56.625-->00:18:00.750
+step would be regaining-
+regaining yourself full
+permission to that object. After
+
+00:18:00.750-->00:18:06.000
+that, we can edit any properties
+of that object so we just
+showing you that we edited this
+
+00:18:06.000-->00:18:11.958
+malicious user into the access
+list of that computer account
+object. Alright. Next step will
+
+00:18:11.958-->00:18:17.583
+be, eh, searching a special, eh,
+attribute which is called the
+MSDS allowed to delegate to.
+
+00:18:17.583-->00:18:23.667
+This attribute is basically a
+list of service principal names
+to which this specific computer
+
+00:18:23.667-->00:18:29.583
+account is allowed to delegate
+to. Meaning, to which service is
+this computer account allowed to
+
+00:18:29.583-->00:18:35.208
+address service tickets on
+behalf of other users. So we’re
+going to use this computer
+
+00:18:35.208-->00:18:40.292
+account, eh, like a service,
+and, eh, this computer account
+will-will impersonate some user.
+
+00:18:40.292-->00:18:47.125
+So it will, eh, request tickets
+on behalf of domain users. So
+you can see that we edited a
+
+00:18:47.125-->00:18:52.792
+special service principal name
+which is called the krbtgt. So,
+eh, as Marina mentioned in the
+
+00:18:52.792-->00:18:57.792
+intro section, em, before the
+user can request specific, eh,
+service tickets, they first need
+
+00:18:57.792-->00:19:02.292
+to grant themselves the ticket
+granting ticket. And the way to
+do that will be approaching the,
+
+00:19:02.292-->00:19:08.708
+eh, s- eh, krbtgt service. These
+basically service trip the, eh,
+the KDC eh the kerberos
+
+00:19:08.708-->00:19:15.458
+mechanism. So if authentication
+is successful, eh, the user will
+see a v-valid ticket granting
+
+00:19:15.458-->00:19:19.917
+ticket with- a-and with this
+ticket he can address additional
+service tickets. So we added
+
+00:19:19.917-->00:19:25.500
+this krbtgt service to the list
+and now we can use this computer
+account to, uh, a-add on the
+
+00:19:25.500-->00:19:33.875
+behalf of other users and
+request, eh, eh, appropriate
+krbtgt service. So we’re going
+
+00:19:33.875-->00:19:38.292
+to impersonate that
+administrator account so we’re
+going to, eh, request the ticket
+
+00:19:38.292-->00:19:43.458
+granting ticket on behalf of
+that administrator account. And
+if everything, eh, goes well,
+
+00:19:43.458-->00:19:48.750
+eh, the domain controller will
+return a valid ticket granting
+ticket. So meaning now attackers
+
+00:19:48.750-->00:19:53.750
+have full, eh, access to any
+resources in the domain
+environment for the next ten
+
+00:19:53.750-->00:19:59.125
+hours. And this ticket also can
+be renewed by default for the
+next seven days. So with a few
+
+00:19:59.125-->00:20:05.417
+steps, attackers are able to
+regain themselves full access to
+the domain environment. So last
+
+00:20:05.417-->00:20:10.375
+step, eh- to complete our
+malicious JIT concept, the last
+step would be removing footprint
+
+00:20:10.375-->00:20:16.042
+and removing traces. So we need
+to remove the krbtgt service
+principal name from this
+
+00:20:16.042-->00:20:21.167
+attribute and re-remove our
+malicious user from the access
+list of that computer account
+
+00:20:21.167-->00:20:24.917
+object. So the only thing left
+will be this computer account
+(the new computer account we
+
+00:20:24.917-->00:20:30.583
+created) and the owner of that
+computer account which belongs
+to-to malicious user. So now
+
+00:20:30.583-->00:20:41.375
+we’re going to show you a short
+demo of this attack. >>Alright.
+So don’t worry if you haven’t
+
+00:20:41.375-->00:20:46.458
+been able to follow all the
+technicalities. We’ll sh-We’ll
+show a live demo which will
+
+00:20:46.458-->00:20:57.292
+hopefully be a bit more clear
+and show every single step that
+Igal just explained. Alright. So
+
+00:20:57.292-->00:21:03.417
+as we said we have- just make,
+uh, duplicate- we have two steps
+in a malicious JIT scenario.
+
+00:21:03.417-->00:21:10.667
+First of all what attackers
+might do once they have the
+domain admin account, in order
+
+00:21:10.667-->00:21:15.833
+to ensure they can regain high
+privileges at a- at a later
+stage and what happens once they
+
+00:21:15.833-->00:21:21.708
+lost- lost tho-those admin
+privileges and they want to
+regain them. So the first stage
+
+00:21:21.708-->00:21:26.167
+attackers gain that domain
+admin. What do they need to do
+in order to prepare the
+
+00:21:26.167-->00:21:31.833
+environment fro-for malicious
+JIT operation? So first of all,
+Igal created here a new computer
+
+00:21:31.833-->00:21:38.042
+account called Client One. And
+as you can see, the malicious
+user is not part of the ACL of
+
+00:21:38.042-->00:21:44.583
+this computer. However, if we
+examine more carefully, we can
+see that our malicious user is
+
+00:21:44.583-->00:21:50.708
+the owner of this object. So all
+we have now is just a simple
+computer account with a-a user
+
+00:21:50.708-->00:21:55.750
+as its owner, and this computer
+of course is not allowed to
+perform delegation so we just
+
+00:21:55.750-->00:22:01.333
+have a normal computer account-
+nothing suspicious about this.
+Any user can usually add up to
+
+00:22:01.333-->00:22:08.042
+ten domain computers to the
+domain. Second thing would be
+adding that malicious user, who
+
+00:22:08.042-->00:22:12.500
+is not a domain admin, just a
+regular domain account that is
+under the control of the
+
+00:22:12.500-->00:22:18.542
+attackers and grant him the
+special permission to edit the
+delegation attributes of active
+
+00:22:18.542-->00:22:23.583
+directory objects. So here we
+added our malicious user. And by
+default, only the administrators
+
+00:22:23.583-->00:22:30.750
+should be present in that group
+policy. So what happens next is
+that the attackers have lost
+
+00:22:30.750-->00:22:36.250
+their a-domain admin privileges
+and they want to regain them by
+performing a malicious JIT
+
+00:22:36.250-->00:22:41.917
+operation. So now we’re
+connected from a remote machine
+in hold of the attackers as
+
+00:22:41.917-->00:22:47.125
+their malicious user- just a
+regular domain user without
+administrator privileges. As you
+
+00:22:47.125-->00:22:51.667
+can see he cannot access the C
+Drive on the domain controller-
+no spe- no special privileges
+
+00:22:51.667-->00:22:58.167
+there. So we have a few tickets
+here in memory. All the tickets
+are for that malicious user.
+
+00:22:58.167-->00:23:08.792
+We’re going to go ahead and
+delete all those tickets from
+the memory. Alright. So we’re
+
+00:23:08.792-->00:23:12.583
+going to clear the tickets
+cache. Great. So now we do not
+have any tickets and what we’re
+
+00:23:12.583-->00:23:17.917
+going to do is, we have prepared
+a script in advance which
+performs our malicious
+
+00:23:17.917-->00:23:22.167
+operation. Let’s go ahead and
+run our script real quick and
+see how it affected the domain
+
+00:23:22.167-->00:23:26.000
+controller environment. So let’s
+get back to the domain
+controller and let’s see what
+
+00:23:26.000-->00:23:33.542
+happens as a result of the
+script. So first of all, we
+added the malicious user to the
+
+00:23:33.542-->00:23:38.375
+ACL of the computer, now
+granting the- granting him full
+control of that object. Second
+
+00:23:38.375-->00:23:43.833
+thing and most important is that
+now this computer is able to
+perform delegation. You can see
+
+00:23:43.833-->00:23:49.875
+in the UI that you do not see
+any services to which this
+computer is allowed to perform
+
+00:23:49.875-->00:23:54.458
+delegation to. However, if we
+look at the attribute editor, we
+can see that this computer is
+
+00:23:54.458-->00:24:00.042
+allowed to perform delegation to
+the krbtgt account. Meaning we
+have now a computer account that
+
+00:24:00.042-->00:24:05.708
+is able to obtain ticket
+granting tickets on behalf of
+other users. So of course the
+
+00:24:05.708-->00:24:11.500
+last stage would be simply
+getting a ticket granting ticket
+for an administrative account
+
+00:24:11.500-->00:24:17.375
+using this privilege. So in
+order to do this, we use the
+open source tool, eh, MIT
+
+00:24:17.375-->00:24:22.792
+kerberos. We didn’t use any
+windows API’s. And a result we
+can see that we got the ticket
+
+00:24:22.792-->00:24:29.833
+of an administrator. Alright.
+Let’s take a look at the files
+that we have in our- in our
+
+00:24:29.833-->00:24:37.000
+directory. As we can see, we
+have a SKSH file that was
+created right now as a result
+
+00:24:37.000-->00:24:41.917
+from us running the script. So
+this file contains all the
+tickets we got in-as a result
+
+00:24:41.917-->00:24:48.500
+from running our command. What
+we’re going to do in the next
+stage is load those tickets from
+
+00:24:48.500-->00:24:55.083
+the SKSH file to our current
+session’s memory. Alright. So we
+use the MIT kerberos for that as
+
+00:24:55.083-->00:25:00.958
+well. And let’s too-take a look
+at the tickets we have in memory
+now. So as you can see, now we
+
+00:25:00.958-->00:25:06.875
+have a ticket to the krbtgt for
+that administrative account.
+Let’s see whether we can access
+
+00:25:06.875-->00:25:14.458
+the C Drive now. And we were
+successful. Now we are able to
+access the [applause] haha.
+
+00:25:14.458-->00:25:23.750
+Thank you. So yeah. Live demos
+are hard, but So we were able
+to access the C Drive as that
+
+00:25:23.750-->00:25:30.625
+computer- using that computer
+account. So by a simple saying
+as using that computer account
+
+00:25:30.625-->00:25:35.542
+along with that special user
+right, we were able to get an
+administrator ticket. All we
+
+00:25:35.542-->00:25:41.250
+need is to just get the ticket
+and immediate-immediately we can
+remove all traces for-from the
+
+00:25:41.250-->00:25:44.958
+environment that we ever
+performed this operation.
+Meaning we will immediately
+
+00:25:44.958-->00:25:50.458
+disable this computer from
+performing delegation and
+removing the user from the ACL
+
+00:25:50.458-->00:25:57.083
+of that computer object. So we
+saw how you can- so just one
+example of how you can perform a
+
+00:25:57.083-->00:26:00.750
+malicious JIT operation, get a
+ticket granting ticket,
+immediately remove the
+
+00:26:00.750-->00:26:04.875
+footprints, and then you can use
+this ticket along with renewals
+for up to a week. So this was
+
+00:26:04.875-->00:26:12.917
+our first example. Now Igal will
+discuss the second attack
+scenario. >>Thanks Marina.
+
+00:26:12.917-->00:26:52.292
+[inaudible] >>So technical
+problems are common here as you
+understand. >>Just a second.
+
+00:26:52.292-->00:27:22.708
+[inaudible] >>Alright. We’re
+going to try that again.
+[inaudible] >>Alright. So having
+
+00:27:22.708-->00:27:30.083
+looked at the attack
+delegations, we can we can move
+on and speak, eh, about our, eh,
+
+00:27:30.083-->00:27:36.375
+admin as the holder
+manipulation. So recently, there
+were a lot of online boughts
+
+00:27:36.375-->00:27:42.250
+about how a-attackers can abuse
+access lists- active directory
+access lists. And how those
+
+00:27:42.250-->00:27:47.625
+access lists can be used in
+order to elevate privileges and
+or remain persistence in our
+
+00:27:47.625-->00:27:53.708
+environment. So, eh, to
+illustrate how access lists
+elevation of privilege work,
+
+00:27:53.708-->00:27:58.708
+let’s look at the building
+administrator group. If a
+compromised account has write
+
+00:27:58.708-->00:28:04.458
+permission on this group object,
+attackers will be able to add
+new members as needed and gain,
+
+00:28:04.458-->00:28:10.417
+eh, full domain access. But
+actually all the building groups
+are protected by a special
+
+00:28:10.417-->00:28:15.792
+mechanism which is called the
+the admin as the holder
+mechanism. So what happened
+
+00:28:15.792-->00:28:21.833
+behind this thing is that we
+have a special process which is
+called the SDPROP Process, and
+
+00:28:21.833-->00:28:29.833
+this process runs once every
+hour on all the protected groups
+and their members recoursery and
+
+00:28:29.833-->00:28:32.125
+inspects the access lists of
+those groups. If, eh, for some
+reason, there is a new entry on
+
+00:28:32.125-->00:28:36.000
+the those access list, eh, the
+SDPROP Process basically compare
+those access list against the
+
+00:28:36.000-->00:28:41.167
+access list which defined on the
+admin as the holder object. So
+an admin is the holder object is
+
+00:28:41.167-->00:28:47.042
+just a regular active directory
+object which- wis- with- its-
+its- its own access list. And
+
+00:28:47.042-->00:28:53.125
+this access list act like a
+template. So every time the
+process runs, he inspects the
+
+00:28:53.125-->00:28:57.292
+access list of the protected
+groups and compares those access
+lists against the access list of
+
+00:28:57.292-->00:29:00.875
+the admin as the holder. If
+there are any, eh, new changes
+to those access lists, he will
+
+00:29:00.875-->00:29:05.333
+copy the access list from the
+admin as the holder object, eh,
+and it will replace the access
+
+00:29:05.333-->00:29:12.625
+list defined on the protected
+group. So, eh, actually a-as you
+can see, it-it’s not-not so
+
+00:29:12.625-->00:29:20.833
+simple to, eh, edit or add new
+entries to access list, eh, of
+protected groups. Eh,
+
+00:29:20.833-->00:29:33.250
+there-there are also, eh Sorry
+about that. I’m a bit nervous
+today. So, eh, there also an old
+
+00:29:33.250-->00:29:37.917
+technique which, eh, explain
+how, eh, attackers what- how
+attackers can use the admin as
+
+00:29:37.917-->00:29:42.250
+the holder object, eh, in order
+to remain persistence in the
+environment. But instead of
+
+00:29:42.250-->00:29:47.208
+editing, eh, the protected group
+access list, eh, what attackers
+can do, they can go and-and
+
+00:29:47.208-->00:29:52.875
+change the access list of the
+admin as the holder object and
+in that way, after one hour when
+
+00:29:52.875-->00:29:58.958
+the SD Process runs, eh, he will
+copy the new entry of that
+access list to all-to all
+
+00:29:58.958-->00:30:04.000
+protected groups. Meaning
+attackers will have again, eh,
+full access to resources. But
+
+00:30:04.000-->00:30:09.708
+this technique considered to be
+a bit noisy, eh, because it’s
+propagate to all the building
+
+00:30:09.708-->00:30:14.500
+groups. So today we’re going to
+show you a bit different
+technique which does not involve
+
+00:30:14.500-->00:30:20.083
+any editing of the, eh, admin as
+the holder object. Instead, what
+we’re going to do is, eh, just
+
+00:30:20.083-->00:30:25.667
+exclude one of the building
+groups. There are four building
+groups which can be excluded
+
+00:30:25.667-->00:30:30.958
+from the SDPROP mechanisms. You
+see those on the screen. One of
+those is the backup operator
+
+00:30:30.958-->00:30:36.708
+group which-which is also
+considered to be a highly
+sensitive group. So in order to
+
+00:30:36.708-->00:30:41.542
+perform this operation,
+attackers need to search for a
+special attribute which is
+
+00:30:41.542-->00:30:48.417
+called the dsHeuristic attribute
+and, eh, ex-exclude this, eh,
+group. So we excluded this group
+
+00:30:48.417-->00:30:53.208
+from the SDPROP inspection and
+now when the SD process will
+run, he will bypass this
+
+00:30:53.208-->00:31:01.917
+specific group. So now attackers
+can go ahead and add a new entry
+to the- to the access list of
+
+00:31:01.917-->00:31:06.792
+speci- of this building group,
+but they’re adding, eh, only one
+entry only to this specific
+
+00:31:06.792-->00:31:12.667
+group without, eh, affecting any
+other building groups. So it’s a
+more specific technique. So
+
+00:31:12.667-->00:31:17.375
+after adding, eh, a malicious
+user to the access list of that
+group, attackers can add
+
+00:31:17.375-->00:31:21.500
+themselves as a member of that
+group. And the backup operator
+group provided special
+
+00:31:21.500-->00:31:26.833
+permissions to its members which
+allow them to backup any domain
+machine including the domain
+
+00:31:26.833-->00:31:31.000
+controllers. So attackers can
+authenticate again the domain
+controller down the local hard
+
+00:31:31.000-->00:31:35.792
+drive which also include the
+NTD’s dot T file which is the
+active directory database, and
+
+00:31:35.792-->00:31:42.500
+extract from them, eh, all the
+necessary, eh, user accounts. So
+performing- by performing a-a
+
+00:31:42.500-->00:31:47.333
+few steps, attacker can easily
+regain themselves again full,
+eh, access to the domain
+
+00:31:47.333-->00:31:53.167
+environment. So the last step
+will be, of course, removing
+this, eh, ehm, malicious user
+
+00:31:53.167-->00:31:57.208
+from being a member of the
+backup operator group and
+the-tha-that will complete the
+
+00:31:57.208-->00:32:07.208
+malicious JIT concept. So now
+Marina will present you the last
+attack scenario. >>Alright. So
+
+00:32:07.208-->00:32:10.917
+the third and final scenario
+also deals with
+ma-ma-manipulation of the admin
+
+00:32:10.917-->00:32:17.375
+as the holder in order to gain
+persistence. So in this step,
+all the attackers might do when
+
+00:32:17.375-->00:32:23.625
+they have that domain admin
+account is simply change the
+owner of the admin as the holder
+
+00:32:23.625-->00:32:28.417
+object. So here we’re changing
+the owner of our malicious- to
+our malicious user that we used
+
+00:32:28.417-->00:32:33.833
+before- just a regular domain
+user, not a domain admin. So
+what brought us into looking
+
+00:32:33.833-->00:32:38.417
+into this owner attribute? So
+one of the other steps that
+attackers use to gain
+
+00:32:38.417-->00:32:43.542
+persistence in the environment
+is simply adding a new
+domain-domain admin account to
+
+00:32:43.542-->00:32:47.167
+the environment. However, since
+high privilege groups
+memberships started to be
+
+00:32:47.167-->00:32:53.750
+monitored, it’s not that easy to
+get away with a new domain
+admin. This is why now there is
+
+00:32:53.750-->00:32:59.167
+a lot of talk about how
+attackers can gain persistence
+by abusing ACL’s. Also Will and
+
+00:32:59.167-->00:33:05.167
+Andy gave a great talk, eh,
+about that at Black Ha-Black Hat
+and DEFCON. And so if, for
+
+00:33:05.167-->00:33:10.750
+example, you have a ACL granting
+you full control of the domain
+admin’s group, you can get to a
+
+00:33:10.750-->00:33:16.000
+domain admin account in a single
+step by simply adding a new
+domain member- domain admin
+
+00:33:16.000-->00:33:21.667
+member. However as a result we
+have now a new- a bunch of new
+tools emerging that are scanning
+
+00:33:21.667-->00:33:26.958
+the environment and attempting
+to find any ACL
+misconfigurations that might be
+
+00:33:26.958-->00:33:31.750
+abused by attackers. This is why
+we took another step back and
+we’re looking at the owner of
+
+00:33:31.750-->00:33:36.792
+the object which is not part of
+the ACL. So for example if you
+have ownership over the domain
+
+00:33:36.792-->00:33:43.375
+admin’s group, you can get any
+admin privileges in two steps.
+First of all you can grant
+
+00:33:43.375-->00:33:47.625
+yourself an access control entry
+giving you full control of
+tha-of that object. And second
+
+00:33:47.625-->00:33:54.708
+stage simply just add a new
+domain admin. So between those
+three attack techniques, the
+
+00:33:54.708-->00:34:02.000
+owner attribute is the least
+monitored one, and hopefully
+after this talk, this will
+
+00:34:02.000-->00:34:06.417
+change. So back to our example,
+we just changed the owner of the
+admin as the holder object. Next
+
+00:34:06.417-->00:34:12.083
+step, attackers lost their
+administrative privileges. Let’s
+see how they can abuse the
+
+00:34:12.083-->00:34:18.583
+previous stage in order to
+perform a malicious JIT
+operation. So they can do is the
+
+00:34:18.583-->00:34:22.708
+just before the- as the SDPROP
+Process runs, they would add a
+malicious user to the admin as
+
+00:34:22.708-->00:34:29.750
+the older ACL granting him full
+control of the admin as the
+holder object. Since he’s the
+
+00:34:29.750-->00:34:36.458
+owner of the object, he can edit
+the ACL as he wants. As Igal
+explained, what’s going to
+
+00:34:36.458-->00:34:41.875
+happen when the SDPROP Process
+runs, is that that-this access
+control entry is going to be
+
+00:34:41.875-->00:34:47.250
+copied to all protected groups
+and users in the domain. So now
+our malicious users-user has
+
+00:34:47.250-->00:34:51.083
+full control of the domain
+environment. Specifically he has
+full control of the domain
+
+00:34:51.083-->00:34:57.292
+admin’s group. So obviously from
+this stage, it’s pretty easy to
+get to domain admin privileges.
+
+00:34:57.292-->00:35:02.917
+He would simply add a new domain
+admin to an environment and get
+an administrative ticket
+
+00:35:02.917-->00:35:10.583
+granting ticket. So in order to
+not raise any flags and complete
+entirely the malicious JIT
+
+00:35:10.583-->00:35:14.667
+operation, he would of course
+need to delete all traces from
+the environment, immediately
+
+00:35:14.667-->00:35:20.500
+remove the traces. So they would
+remove the malicious user from
+the ACL of the admin as the
+
+00:35:20.500-->00:35:26.042
+holder. And in order to not keep
+that access control entry on all
+protected groups and users until
+
+00:35:26.042-->00:35:31.583
+the next time the SDPROP Process
+runs which would be in another
+hour, they can just force the
+
+00:35:31.583-->00:35:37.417
+SDPROP Process to run which
+would immediately remove that
+malicious access control entry
+
+00:35:37.417-->00:35:41.583
+from all the protected group and
+users. So last step would be
+removing the malicious users
+
+00:35:41.583-->00:35:49.708
+from the do-domain admin’s
+group. So as you can see, the
+access control entry and the
+
+00:35:49.708-->00:35:54.875
+group membership was present in
+the environment for just a few
+seconds, which was enough for
+
+00:35:54.875-->00:36:00.000
+attackers to get a ticket
+granting ticket and potentially
+avoid any det-detection
+
+00:36:00.000-->00:36:05.500
+mechanisms which are scanning
+the environment. So we showed an
+example about how the owner of
+
+00:36:05.500-->00:36:09.667
+the admin as the holder object
+can be abused to gain
+persistence, but of course a
+
+00:36:09.667-->00:36:15.500
+similar manner- in a similar
+manner, you can use this to gain
+persistence by editing the owner
+
+00:36:15.500-->00:36:20.958
+of any protected group in the
+environment. Alright. So now
+that we’ve discussed the attack
+
+00:36:20.958-->00:36:29.625
+techniques, let’s discuss some
+of the mitigations. If you’re a
+defender, let’s see what you can
+
+00:36:29.625-->00:36:33.375
+do in order to protect yourself
+from such attack scenarios. So
+first of all we want to detect
+
+00:36:33.375-->00:36:38.250
+any delegation’s
+misconfiguration. Of course we
+need to monitor the group policy
+
+00:36:38.250-->00:36:44.042
+that enables account- accounts
+to edit the delegation
+attributes of active directory
+
+00:36:44.042-->00:36:50.292
+objects. And so we saw what this
+privileges does; we really need
+to monitor this. And only domain
+
+00:36:50.292-->00:36:56.583
+admins or administrators should
+be able to do this. Also we need
+to monitor the accounts that are
+
+00:36:56.583-->00:37:01.542
+trusted to perform delegation.
+Who are the accounts that are
+allowed to request service
+
+00:37:01.542-->00:37:07.125
+tickets on behalf of other
+users? Also, of course, we need
+to monitor the allowed to
+
+00:37:07.125-->00:37:13.000
+delegate to attribute, which
+states to which services exactly
+this account is allowed to
+
+00:37:13.000-->00:37:19.500
+perform delegation. No reason
+for the Care TG-TGT account to
+be present there whatsoever.
+
+00:37:19.500-->00:37:26.125
+Another important thing is that
+on every active directory
+object, there is a checkbox
+
+00:37:26.125-->00:37:31.500
+stating that this account is
+sensitive and cannot be
+delegated. What it means is even
+
+00:37:31.500-->00:37:36.625
+if a service is allowed to
+perform delegation and request
+service tickets on behalf of
+
+00:37:36.625-->00:37:41.875
+other users, it would not be
+able to request service tickets
+on behalf of those sensitive
+
+00:37:41.875-->00:37:46.958
+users. So we’re-we recommend to
+turn this off for any high
+privilege users in the
+
+00:37:46.958-->00:37:53.458
+environment in order to not
+allow services to use those
+accounts’ privileges. Also we
+
+00:37:53.458-->00:37:59.167
+need to monitor the admin as the
+holder object. Of course the
+access control list which is
+
+00:37:59.167-->00:38:03.542
+very important and is then
+copied to all protected users
+and groups in the domain. Also
+
+00:38:03.542-->00:38:09.417
+the owner of this object since
+we saw how attackers can abuse
+this. And of any other protected
+
+00:38:09.417-->00:38:15.625
+group in the domain. Also
+monitor the excluded groups from
+the admin as the holder
+
+00:38:15.625-->00:38:20.250
+protection. Monitor they- their
+ACL as well, why they’re
+excluded, and their access
+
+00:38:20.250-->00:38:27.917
+control list. Of course, eh, we
+recommend using any VAN logging
+to see if there was a suspicious
+
+00:38:27.917-->00:38:33.833
+change on any active directory
+object. So what we want you to
+take from this talk whether you
+
+00:38:33.833-->00:38:39.667
+are from the blue team or the
+red team is the malicious
+just-in-time concept. So in
+
+00:38:39.667-->00:38:44.667
+which attackers may not have
+constant high privileges in the
+environment. However at any
+
+00:38:44.667-->00:38:50.333
+stage, they have the ability to
+regain their privileges- regain
+high privileges, perform any
+
+00:38:50.333-->00:38:55.292
+malicious operations, and then
+immediately delete all the
+traces in order to avoid most of
+
+00:38:55.292-->00:39:00.542
+the detection systems that are
+in place. So we showed a few
+examples that illustrate this
+
+00:39:00.542-->00:39:05.875
+concept, but of course it can be
+used and extended in a lot of
+similar scenarios. So as a
+
+00:39:05.875-->00:39:12.292
+defender, it’s very important to
+be aware of any such escalation
+path and when you scan the
+
+00:39:12.292-->00:39:17.125
+environment to see whether
+attackers currently hold
+persistence on the environment,
+
+00:39:17.125-->00:39:21.333
+don’t just scan the stage in
+which attackers already have
+that admin domain account. But
+
+00:39:21.333-->00:39:26.000
+also monitor all the stages in
+between which might allow him to
+leap to quick privilege
+
+00:39:26.000-->00:39:33.083
+escalation at any time. Alright.
+So this is all we have time for.
+Thanks for listening, guys.
+
+00:39:33.083-->00:00:00.000
+[Applause]
+

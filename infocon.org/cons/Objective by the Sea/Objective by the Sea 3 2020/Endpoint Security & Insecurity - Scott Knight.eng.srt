@@ -1,0 +1,5340 @@
+﻿1
+00:00:06,080 --> 00:00:08,000
+without further ado
+
+2
+00:00:08,000 --> 00:00:10,320
+let's get the real show started uh we
+
+3
+00:00:10,320 --> 00:00:13,280
+have scott who is going to give us uh an
+
+4
+00:00:13,280 --> 00:00:15,040
+incredible talk about
+
+5
+00:00:15,040 --> 00:00:17,199
+apple's new endpoint security framework
+
+6
+00:00:17,199 --> 00:00:19,439
+and some really interesting research he
+
+7
+00:00:19,439 --> 00:00:20,480
+has done
+
+8
+00:00:20,480 --> 00:00:22,800
+so last year wwdc
+
+9
+00:00:22,800 --> 00:00:24,560
+one of the most exciting things
+
+10
+00:00:24,560 --> 00:00:26,560
+announced i think in my opinion
+
+11
+00:00:26,560 --> 00:00:29,039
+was system extensions
+
+12
+00:00:29,039 --> 00:00:31,599
+so in this talk i'm going to kind of go
+
+13
+00:00:31,599 --> 00:00:32,558
+over
+
+14
+00:00:32,558 --> 00:00:34,399
+one specific type of system extension
+
+15
+00:00:34,399 --> 00:00:35,920
+the an endpoint security system
+
+16
+00:00:35,920 --> 00:00:36,960
+extension
+
+17
+00:00:36,960 --> 00:00:39,440
+uh i'm going to go into details on the
+
+18
+00:00:39,440 --> 00:00:41,120
+internals of the framework kind of how
+
+19
+00:00:41,120 --> 00:00:44,719
+it works how apple architected it
+
+20
+00:00:44,719 --> 00:00:47,039
+from a reverse engineer's perspective
+
+21
+00:00:47,039 --> 00:00:50,160
+and then i'll get into a vulnerability
+
+22
+00:00:50,160 --> 00:00:51,360
+in the framework
+
+23
+00:00:51,360 --> 00:00:54,640
+that i found and reported to apple
+
+24
+00:00:54,640 --> 00:00:56,320
+real quick who am i
+
+25
+00:00:56,320 --> 00:00:58,559
+like patrick said scott scott knight i'm
+
+26
+00:00:58,559 --> 00:01:00,879
+a threat researcher on the threat
+
+27
+00:01:00,879 --> 00:01:03,840
+analysis unit at vmware carbon black
+
+28
+00:01:03,840 --> 00:01:06,479
+uh i like to describe myself as a mac os
+
+29
+00:01:06,479 --> 00:01:07,840
+enthusiast
+
+30
+00:01:07,840 --> 00:01:10,799
+especially mac os system internals
+
+31
+00:01:10,799 --> 00:01:13,360
+and you can find me uh on the web uh
+
+32
+00:01:13,360 --> 00:01:17,280
+github twitter the usual places
+
+33
+00:01:18,000 --> 00:01:19,759
+so i'm gonna start and kind of just give
+
+34
+00:01:19,759 --> 00:01:21,920
+a
+
+35
+00:01:22,000 --> 00:01:23,920
+kind of broad overview of system
+
+36
+00:01:23,920 --> 00:01:25,280
+extensions in general because i think
+
+37
+00:01:25,280 --> 00:01:26,400
+it's uh
+
+38
+00:01:26,400 --> 00:01:27,759
+important to kind of set the stage of
+
+39
+00:01:27,759 --> 00:01:28,960
+what they are
+
+40
+00:01:28,960 --> 00:01:31,200
+and then i'll go into the endpoint
+
+41
+00:01:31,200 --> 00:01:33,759
+security uh
+
+42
+00:01:33,759 --> 00:01:35,280
+one specifically
+
+43
+00:01:35,280 --> 00:01:36,799
+uh then finally like i mentioned going
+
+44
+00:01:36,799 --> 00:01:38,720
+into the vulnerability and and
+
+45
+00:01:38,720 --> 00:01:40,640
+kind of what my thought process was and
+
+46
+00:01:40,640 --> 00:01:43,840
+how i went about finding it
+
+47
+00:01:47,119 --> 00:01:50,240
+so what are system extensions
+
+48
+00:01:50,240 --> 00:01:51,040
+uh
+
+49
+00:01:51,040 --> 00:01:53,040
+kind of boiled down they're essentially
+
+50
+00:01:53,040 --> 00:01:55,920
+user space kernel extensions sort of
+
+51
+00:01:55,920 --> 00:01:58,479
+uh there's definitely limitations
+
+52
+00:01:58,479 --> 00:02:00,479
+uh you have to package them inside of an
+
+53
+00:02:00,479 --> 00:02:02,399
+application which can be a little funky
+
+54
+00:02:02,399 --> 00:02:04,960
+because traditionally kernel extensions
+
+55
+00:02:04,960 --> 00:02:06,320
+are installed
+
+56
+00:02:06,320 --> 00:02:08,239
+you know at the system level there's
+
+57
+00:02:08,239 --> 00:02:10,639
+currently three different types
+
+58
+00:02:10,639 --> 00:02:12,160
+uh there are driver kit system
+
+59
+00:02:12,160 --> 00:02:13,360
+extensions
+
+60
+00:02:13,360 --> 00:02:16,000
+uh network extensions and then the
+
+61
+00:02:16,000 --> 00:02:17,920
+endpoint security extensions
+
+62
+00:02:17,920 --> 00:02:19,840
+uh an apple sort of overview page
+
+63
+00:02:19,840 --> 00:02:21,680
+actually does a pretty good job of just
+
+64
+00:02:21,680 --> 00:02:23,599
+sort of giving that broad overview of
+
+65
+00:02:23,599 --> 00:02:26,959
+those three different types
+
+66
+00:02:27,520 --> 00:02:29,200
+so why
+
+67
+00:02:29,200 --> 00:02:31,440
+would you want to use a system extension
+
+68
+00:02:31,440 --> 00:02:35,120
+either as a user or a developer
+
+69
+00:02:35,120 --> 00:02:37,120
+made it pretty clear last year that mac
+
+70
+00:02:37,120 --> 00:02:39,360
+os 1015 will be the last release to
+
+71
+00:02:39,360 --> 00:02:41,120
+fully support uh kernel extensions
+
+72
+00:02:41,120 --> 00:02:42,480
+without compromise
+
+73
+00:02:42,480 --> 00:02:43,360
+so
+
+74
+00:02:43,360 --> 00:02:44,959
+uh i don't think it should come as a
+
+75
+00:02:44,959 --> 00:02:47,840
+surprise to developers for sure
+
+76
+00:02:47,840 --> 00:02:50,480
+but yeah apple does not want developers
+
+77
+00:02:50,480 --> 00:02:51,630
+in the kernel
+
+78
+00:02:51,630 --> 00:02:52,959
+[Music]
+
+79
+00:02:52,959 --> 00:02:54,480
+more than that though i think it
+
+80
+00:02:54,480 --> 00:02:56,879
+presents a lot of exciting opportunities
+
+81
+00:02:56,879 --> 00:02:58,879
+from the development side
+
+82
+00:02:58,879 --> 00:03:00,319
+you know the promise of being able to
+
+83
+00:03:00,319 --> 00:03:02,959
+use more programming languages than just
+
+84
+00:03:02,959 --> 00:03:04,640
+c and c plus plus
+
+85
+00:03:04,640 --> 00:03:08,319
+nothing against cnc plus uh but anybody
+
+86
+00:03:08,319 --> 00:03:10,239
+who's been doing other mac os
+
+87
+00:03:10,239 --> 00:03:12,800
+development using objective c or swift
+
+88
+00:03:12,800 --> 00:03:14,400
+uh it's a lot
+
+89
+00:03:14,400 --> 00:03:17,200
+nicer uh than having to just write low
+
+90
+00:03:17,200 --> 00:03:19,120
+level c code
+
+91
+00:03:19,120 --> 00:03:21,440
+and theoretically it should be easier to
+
+92
+00:03:21,440 --> 00:03:22,879
+debug because you don't have to set up
+
+93
+00:03:22,879 --> 00:03:24,080
+complicated
+
+94
+00:03:24,080 --> 00:03:26,400
+uh kernel debug setup where you're
+
+95
+00:03:26,400 --> 00:03:27,840
+trying to debug your driver or you're
+
+96
+00:03:27,840 --> 00:03:29,360
+trying to take
+
+97
+00:03:29,360 --> 00:03:31,519
+crash stack traces and symbolicate them
+
+98
+00:03:31,519 --> 00:03:34,159
+and track back uh
+
+99
+00:03:34,159 --> 00:03:37,679
+why the thing crashed
+
+100
+00:03:38,799 --> 00:03:40,480
+um i thought it'd be useful just to kind
+
+101
+00:03:40,480 --> 00:03:42,640
+of
+
+102
+00:03:42,640 --> 00:03:44,159
+cover briefly
+
+103
+00:03:44,159 --> 00:03:45,760
+how apple has kind of changed and locked
+
+104
+00:03:45,760 --> 00:03:48,000
+down things over time
+
+105
+00:03:48,000 --> 00:03:50,720
+uh with kernel extensions uh and again i
+
+106
+00:03:50,720 --> 00:03:52,000
+kind of just said that it shouldn't be a
+
+107
+00:03:52,000 --> 00:03:54,080
+surprise that that apple does not want
+
+108
+00:03:54,080 --> 00:03:56,319
+developers in the kernel so
+
+109
+00:03:56,319 --> 00:03:58,799
+in 10.9 that was the first version of
+
+110
+00:03:58,799 --> 00:04:00,959
+mac os where apple said okay you should
+
+111
+00:04:00,959 --> 00:04:02,400
+be signing your kernel extensions we
+
+112
+00:04:02,400 --> 00:04:04,560
+don't want just anything running uh in
+
+113
+00:04:04,560 --> 00:04:05,599
+the kernel
+
+114
+00:04:05,599 --> 00:04:07,599
+10.10 then they kind of went a step
+
+115
+00:04:07,599 --> 00:04:09,760
+further and said okay
+
+116
+00:04:09,760 --> 00:04:11,599
+it's not a should it's a must you have
+
+117
+00:04:11,599 --> 00:04:14,400
+to sign your your kernel extensions but
+
+118
+00:04:14,400 --> 00:04:16,079
+uh there is a boot argument you can set
+
+119
+00:04:16,079 --> 00:04:18,478
+it you can disable it if you want
+
+120
+00:04:18,478 --> 00:04:21,440
+10.11 then there's just no it's required
+
+121
+00:04:21,440 --> 00:04:23,040
+uh they removed the boot flag and pretty
+
+122
+00:04:23,040 --> 00:04:25,280
+much kernel extensions had to be signed
+
+123
+00:04:25,280 --> 00:04:28,240
+uh 1012 there wasn't really huge changes
+
+124
+00:04:28,240 --> 00:04:30,560
+1013 was was quite interesting because
+
+125
+00:04:30,560 --> 00:04:33,040
+that introduced kind of user approved
+
+126
+00:04:33,040 --> 00:04:36,240
+uh kernel extension loading so
+
+127
+00:04:36,240 --> 00:04:37,840
+again apple's just kind of continuing to
+
+128
+00:04:37,840 --> 00:04:39,600
+lock things down i said it's not good
+
+129
+00:04:39,600 --> 00:04:40,960
+enough that we've got a kernel extension
+
+130
+00:04:40,960 --> 00:04:42,560
+that's theoretically been signed by a
+
+131
+00:04:42,560 --> 00:04:44,479
+developer that's been vetted by us we
+
+132
+00:04:44,479 --> 00:04:46,320
+want the end user to actually have to
+
+133
+00:04:46,320 --> 00:04:47,919
+click a button and approve the kernel
+
+134
+00:04:47,919 --> 00:04:49,919
+extension loading
+
+135
+00:04:49,919 --> 00:04:51,120
+and more than that they went to great
+
+136
+00:04:51,120 --> 00:04:53,040
+lengths to make sure that it has to be a
+
+137
+00:04:53,040 --> 00:04:55,280
+real user sitting there you can't
+
+138
+00:04:55,280 --> 00:04:56,639
+script it away you can't try to
+
+139
+00:04:56,639 --> 00:04:57,919
+programmatically
+
+140
+00:04:57,919 --> 00:04:59,680
+load it and get it to click and
+
+141
+00:04:59,680 --> 00:05:01,520
+disappear
+
+142
+00:05:01,520 --> 00:05:03,199
+10 14 5
+
+143
+00:05:03,199 --> 00:05:04,479
+then they started to introduce the
+
+144
+00:05:04,479 --> 00:05:06,400
+concept of notarization
+
+145
+00:05:06,400 --> 00:05:07,680
+which sort of
+
+146
+00:05:07,680 --> 00:05:08,880
+is another
+
+147
+00:05:08,880 --> 00:05:12,880
+level of vetting by apple in a way
+
+148
+00:05:12,880 --> 00:05:14,400
+in addition to signing your kernel
+
+149
+00:05:14,400 --> 00:05:16,080
+extension you
+
+150
+00:05:16,080 --> 00:05:18,000
+submit your code to apple you know they
+
+151
+00:05:18,000 --> 00:05:19,840
+run some automatic sort of sanity checks
+
+152
+00:05:19,840 --> 00:05:21,440
+to make sure you're not medieval and
+
+153
+00:05:21,440 --> 00:05:23,520
+they stamp it notarized
+
+154
+00:05:23,520 --> 00:05:25,280
+you know i don't think they said but
+
+155
+00:05:25,280 --> 00:05:26,720
+essentially it's just a better way for
+
+156
+00:05:26,720 --> 00:05:28,160
+them to be able to control and revoke
+
+157
+00:05:28,160 --> 00:05:29,199
+things
+
+158
+00:05:29,199 --> 00:05:30,720
+that i think they they think shouldn't
+
+159
+00:05:30,720 --> 00:05:32,639
+be out there running
+
+160
+00:05:32,639 --> 00:05:35,440
+1015 then said
+
+161
+00:05:35,440 --> 00:05:36,800
+yes everything should be signed and
+
+162
+00:05:36,800 --> 00:05:38,720
+notarized and then the big announcement
+
+163
+00:05:38,720 --> 00:05:41,280
+of 1015 was system extensions
+
+164
+00:05:41,280 --> 00:05:44,160
+and them saying that long term
+
+165
+00:05:44,160 --> 00:05:46,479
+they were 100 planning to deprecate
+
+166
+00:05:46,479 --> 00:05:48,479
+kernel extensions
+
+167
+00:05:48,479 --> 00:05:51,600
+there's been a lot of speculation 10.16
+
+168
+00:05:51,600 --> 00:05:54,240
+kind of based on looking at this history
+
+169
+00:05:54,240 --> 00:05:55,840
+i don't think you're going to see
+
+170
+00:05:55,840 --> 00:05:58,319
+everything banned come 1016. i think
+
+171
+00:05:58,319 --> 00:06:00,960
+you'll see to see the sort of slow
+
+172
+00:06:00,960 --> 00:06:04,400
+progression of more warnings uh apple
+
+173
+00:06:04,400 --> 00:06:05,360
+kind of
+
+174
+00:06:05,360 --> 00:06:08,000
+they've already started in in
+
+175
+00:06:08,000 --> 00:06:09,440
+in certain versions to kind of prompt
+
+176
+00:06:09,440 --> 00:06:10,639
+the end user let them know hey you're
+
+177
+00:06:10,639 --> 00:06:12,000
+loading the kernel extension it's going
+
+178
+00:06:12,000 --> 00:06:13,600
+to be deprecated start talking to the
+
+179
+00:06:13,600 --> 00:06:16,639
+developers of these things
+
+180
+00:06:17,680 --> 00:06:20,080
+so system extensions in general kind of
+
+181
+00:06:20,080 --> 00:06:22,800
+what does it look like
+
+182
+00:06:22,800 --> 00:06:25,440
+uh it's very complex
+
+183
+00:06:25,440 --> 00:06:27,280
+in all the different moving parts in the
+
+184
+00:06:27,280 --> 00:06:28,319
+system
+
+185
+00:06:28,319 --> 00:06:30,400
+and you'll hear me kind of come back to
+
+186
+00:06:30,400 --> 00:06:32,639
+this topic
+
+187
+00:06:32,639 --> 00:06:34,800
+but you know you've got everything from
+
+188
+00:06:34,800 --> 00:06:36,479
+the user application that you have to
+
+189
+00:06:36,479 --> 00:06:38,160
+get installed that contains your system
+
+190
+00:06:38,160 --> 00:06:40,960
+extension uh that then has to kind of go
+
+191
+00:06:40,960 --> 00:06:42,319
+about the steps to get it installed
+
+192
+00:06:42,319 --> 00:06:43,680
+correctly
+
+193
+00:06:43,680 --> 00:06:45,919
+it's coordinating with a new
+
+194
+00:06:45,919 --> 00:06:48,639
+system daemon called system extension d
+
+195
+00:06:48,639 --> 00:06:50,319
+which then delegates out to other
+
+196
+00:06:50,319 --> 00:06:51,840
+daemons which then delegates out to
+
+197
+00:06:51,840 --> 00:06:54,080
+launch d which then finally runs your
+
+198
+00:06:54,080 --> 00:06:55,599
+system extension
+
+199
+00:06:55,599 --> 00:06:58,160
+your system extension is going to run
+
+200
+00:06:58,160 --> 00:07:00,000
+pretty much like a system game it's
+
+201
+00:07:00,000 --> 00:07:02,720
+going to run as as root
+
+202
+00:07:02,720 --> 00:07:04,560
+and then those system extensions are
+
+203
+00:07:04,560 --> 00:07:07,039
+what talk to the kernel and the kernel
+
+204
+00:07:07,039 --> 00:07:08,479
+then is kind of
+
+205
+00:07:08,479 --> 00:07:09,919
+apple's playground they're trying to
+
+206
+00:07:09,919 --> 00:07:12,080
+kind of say it's off limits we're going
+
+207
+00:07:12,080 --> 00:07:15,360
+to write all the apis you need
+
+208
+00:07:15,360 --> 00:07:17,680
+here's everything that you need
+
+209
+00:07:17,680 --> 00:07:19,919
+so
+
+210
+00:07:20,080 --> 00:07:22,639
+i'll touch on uh
+
+211
+00:07:22,639 --> 00:07:24,160
+the system extensions that are not in
+
+212
+00:07:24,160 --> 00:07:26,160
+point security just briefly like i said
+
+213
+00:07:26,160 --> 00:07:28,400
+driver kit is an interesting one
+
+214
+00:07:28,400 --> 00:07:30,800
+if anyone uh has ever looked at
+
+215
+00:07:30,800 --> 00:07:32,800
+uh writing apple drivers they have a
+
+216
+00:07:32,800 --> 00:07:35,120
+framework called io kit
+
+217
+00:07:35,120 --> 00:07:38,639
+uh it's pretty robust it's c plus uh
+
+218
+00:07:38,639 --> 00:07:40,400
+it's got a whole inheritance structure
+
+219
+00:07:40,400 --> 00:07:42,400
+you know you can write your usb drivers
+
+220
+00:07:42,400 --> 00:07:44,639
+and inherit from common apple usb codes
+
+221
+00:07:44,639 --> 00:07:45,919
+you're not trying to write everything
+
+222
+00:07:45,919 --> 00:07:47,919
+from scratching and private
+
+223
+00:07:47,919 --> 00:07:49,840
+driver kit is kind of you know their
+
+224
+00:07:49,840 --> 00:07:51,440
+their move to kind of put this into user
+
+225
+00:07:51,440 --> 00:07:52,479
+space
+
+226
+00:07:52,479 --> 00:07:55,919
+and it is very similar to io kit
+
+227
+00:07:55,919 --> 00:07:58,080
+currently it supports usb drivers serial
+
+228
+00:07:58,080 --> 00:08:00,400
+drivers network drivers
+
+229
+00:08:00,400 --> 00:08:02,319
+and kind of human human interface
+
+230
+00:08:02,319 --> 00:08:03,680
+devices
+
+231
+00:08:03,680 --> 00:08:05,680
+it's still c plus
+
+232
+00:08:05,680 --> 00:08:08,160
+thumbs down on that
+
+233
+00:08:08,160 --> 00:08:09,360
+because you kind of lose out on the
+
+234
+00:08:09,360 --> 00:08:10,960
+promises of well i can write these
+
+235
+00:08:10,960 --> 00:08:13,759
+things in in swift or objective c and
+
+236
+00:08:13,759 --> 00:08:15,759
+and all that uh so
+
+237
+00:08:15,759 --> 00:08:17,680
+i'm hoping maybe that evolves a little
+
+238
+00:08:17,680 --> 00:08:19,759
+bit more um but it kind of comes from
+
+239
+00:08:19,759 --> 00:08:20,560
+the
+
+240
+00:08:20,560 --> 00:08:22,560
+architecture of it all which is pretty
+
+241
+00:08:22,560 --> 00:08:25,120
+interesting apple kind of set up this
+
+242
+00:08:25,120 --> 00:08:27,599
+whole user space almost mirror of the
+
+243
+00:08:27,599 --> 00:08:30,080
+kernel space io kit
+
+244
+00:08:30,080 --> 00:08:32,320
+and when you run a driver kit system
+
+245
+00:08:32,320 --> 00:08:33,519
+extension
+
+246
+00:08:33,519 --> 00:08:34,719
+it's actually going to go and register
+
+247
+00:08:34,719 --> 00:08:37,279
+with the kernel
+
+248
+00:08:37,599 --> 00:08:38,839
+and
+
+249
+00:08:38,839 --> 00:08:40,479
+uh
+
+250
+00:08:40,479 --> 00:08:42,719
+create the similar sort of classes in
+
+251
+00:08:42,719 --> 00:08:44,240
+the kernel space that it did before
+
+252
+00:08:44,240 --> 00:08:46,160
+where normally you'd create them now
+
+253
+00:08:46,160 --> 00:08:47,440
+just sort of mirrors them in the kernel
+
+254
+00:08:47,440 --> 00:08:48,720
+and forwards things back and forth
+
+255
+00:08:48,720 --> 00:08:50,800
+between them so
+
+256
+00:08:50,800 --> 00:08:51,600
+uh
+
+257
+00:08:51,600 --> 00:08:53,519
+apple did just release
+
+258
+00:08:53,519 --> 00:08:56,000
+kernel source code so
+
+259
+00:08:56,000 --> 00:08:57,120
+it's been interesting to kind of poke
+
+260
+00:08:57,120 --> 00:08:58,399
+around and see a little bit more about
+
+261
+00:08:58,399 --> 00:08:59,600
+how they went and implemented some of
+
+262
+00:08:59,600 --> 00:09:02,480
+the driver kit stuff
+
+263
+00:09:03,680 --> 00:09:05,279
+network extensions
+
+264
+00:09:05,279 --> 00:09:07,360
+these i didn't dig into a whole lot some
+
+265
+00:09:07,360 --> 00:09:09,600
+of these existed prior to catalina some
+
+266
+00:09:09,600 --> 00:09:12,800
+of these existed already on ios
+
+267
+00:09:12,800 --> 00:09:14,959
+but if you were writing
+
+268
+00:09:14,959 --> 00:09:16,800
+say a firewall before you're using
+
+269
+00:09:16,800 --> 00:09:18,800
+network kernel extensions
+
+270
+00:09:18,800 --> 00:09:21,200
+now again you're doing kind of a user
+
+271
+00:09:21,200 --> 00:09:23,440
+space application
+
+272
+00:09:23,440 --> 00:09:25,040
+you can
+
+273
+00:09:25,040 --> 00:09:27,279
+implement custom vpn protocols you can
+
+274
+00:09:27,279 --> 00:09:28,800
+do your sort of traditional firewall
+
+275
+00:09:28,800 --> 00:09:31,519
+stuff filtering flows or filtering
+
+276
+00:09:31,519 --> 00:09:33,279
+individual packets
+
+277
+00:09:33,279 --> 00:09:37,000
+and then it also supports
+
+278
+00:09:37,360 --> 00:09:38,880
+dns proxy
+
+279
+00:09:38,880 --> 00:09:40,800
+type things
+
+280
+00:09:40,800 --> 00:09:41,600
+and
+
+281
+00:09:41,600 --> 00:09:43,040
+this was one of the areas that apple
+
+282
+00:09:43,040 --> 00:09:44,080
+actually did
+
+283
+00:09:44,080 --> 00:09:45,760
+release an example app
+
+284
+00:09:45,760 --> 00:09:47,760
+and you can write this stuff in swift
+
+285
+00:09:47,760 --> 00:09:49,120
+and it is pretty cool to kind of see
+
+286
+00:09:49,120 --> 00:09:50,560
+that where something before you were
+
+287
+00:09:50,560 --> 00:09:52,720
+writing in kernel space you're using c c
+
+288
+00:09:52,720 --> 00:09:53,839
+plus plus
+
+289
+00:09:53,839 --> 00:09:55,440
+and now you can kind of
+
+290
+00:09:55,440 --> 00:09:57,360
+more easily kind of use these things and
+
+291
+00:09:57,360 --> 00:10:00,920
+debug these things
+
+292
+00:10:07,839 --> 00:10:10,240
+so endpoint security
+
+293
+00:10:10,240 --> 00:10:11,519
+here's our kind of
+
+294
+00:10:11,519 --> 00:10:13,279
+architecture diagram again
+
+295
+00:10:13,279 --> 00:10:14,240
+kind of
+
+296
+00:10:14,240 --> 00:10:15,680
+cut down
+
+297
+00:10:15,680 --> 00:10:17,440
+showing all the main pieces that are
+
+298
+00:10:17,440 --> 00:10:19,519
+used as part of
+
+299
+00:10:19,519 --> 00:10:22,079
+the endpoint security architecture again
+
+300
+00:10:22,079 --> 00:10:24,720
+you've kind of got you've got user space
+
+301
+00:10:24,720 --> 00:10:27,279
+uh talking to multiple system daemons uh
+
+302
+00:10:27,279 --> 00:10:29,040
+eventually your own system extension is
+
+303
+00:10:29,040 --> 00:10:30,480
+running and then talking to an apple
+
+304
+00:10:30,480 --> 00:10:32,720
+kernel extension i'm going to go over
+
+305
+00:10:32,720 --> 00:10:34,160
+kind of the details of each one of these
+
+306
+00:10:34,160 --> 00:10:35,600
+pieces
+
+307
+00:10:35,600 --> 00:10:36,640
+and start
+
+308
+00:10:36,640 --> 00:10:37,839
+actually from the bottom up so i'm going
+
+309
+00:10:37,839 --> 00:10:40,160
+to start with the kernel
+
+310
+00:10:40,160 --> 00:10:41,839
+because that's
+
+311
+00:10:41,839 --> 00:10:43,440
+definitely
+
+312
+00:10:43,440 --> 00:10:45,120
+the place where apple provides the least
+
+313
+00:10:45,120 --> 00:10:46,720
+public information about kind of what
+
+314
+00:10:46,720 --> 00:10:48,480
+they're doing and it was what originally
+
+315
+00:10:48,480 --> 00:10:50,959
+prompted me to kind of dig into
+
+316
+00:10:50,959 --> 00:10:53,040
+this new framework to kind of see
+
+317
+00:10:53,040 --> 00:10:54,320
+what were they doing how did they
+
+318
+00:10:54,320 --> 00:10:55,760
+architect it
+
+319
+00:10:55,760 --> 00:10:56,720
+you know what were they trying to
+
+320
+00:10:56,720 --> 00:11:00,680
+provide to us as developers
+
+321
+00:11:00,959 --> 00:11:01,839
+so
+
+322
+00:11:01,839 --> 00:11:03,440
+endpoint security
+
+323
+00:11:03,440 --> 00:11:05,760
+kernel extension you find it in system
+
+324
+00:11:05,760 --> 00:11:07,760
+library extensions if you've never
+
+325
+00:11:07,760 --> 00:11:09,839
+looked at a kernel extension it is just
+
+326
+00:11:09,839 --> 00:11:12,399
+another bundle just like an app bundle
+
+327
+00:11:12,399 --> 00:11:15,040
+so you can open it up you can expect it
+
+328
+00:11:15,040 --> 00:11:17,680
+it has an info.plist
+
+329
+00:11:17,680 --> 00:11:19,040
+uh there's kind of a snippet here of
+
+330
+00:11:19,040 --> 00:11:20,079
+just some of the stuff in the
+
+331
+00:11:20,079 --> 00:11:21,680
+input.plist
+
+332
+00:11:21,680 --> 00:11:24,720
+since this is an iokay driver
+
+333
+00:11:24,720 --> 00:11:26,720
+uh running in kernel space you don't
+
+334
+00:11:26,720 --> 00:11:28,880
+have your traditional main entry point
+
+335
+00:11:28,880 --> 00:11:30,000
+so
+
+336
+00:11:30,000 --> 00:11:33,120
+instead in the input.plist you'll have
+
+337
+00:11:33,120 --> 00:11:35,760
+different classes called out
+
+338
+00:11:35,760 --> 00:11:37,360
+related to
+
+339
+00:11:37,360 --> 00:11:39,360
+telling io kit how it should load the
+
+340
+00:11:39,360 --> 00:11:40,800
+driver or run the driver so this is
+
+341
+00:11:40,800 --> 00:11:42,399
+usually when i'm looking at a kernel
+
+342
+00:11:42,399 --> 00:11:43,600
+extension i don't have source forward
+
+343
+00:11:43,600 --> 00:11:45,680
+and reversing it i'll start there try to
+
+344
+00:11:45,680 --> 00:11:47,360
+look at some of these main classes
+
+345
+00:11:47,360 --> 00:11:49,279
+identified here
+
+346
+00:11:49,279 --> 00:11:51,200
+and then go forward
+
+347
+00:11:51,200 --> 00:11:52,959
+because it is c plus you do get some
+
+348
+00:11:52,959 --> 00:11:55,040
+nice runtime information
+
+349
+00:11:55,040 --> 00:11:57,279
+to start pulling out class names methods
+
+350
+00:11:57,279 --> 00:11:59,680
+things like that
+
+351
+00:11:59,680 --> 00:12:02,399
+um so there's really four main classes
+
+352
+00:12:02,399 --> 00:12:04,639
+to this this driver
+
+353
+00:12:04,639 --> 00:12:06,320
+there's the endpoint security driver
+
+354
+00:12:06,320 --> 00:12:08,399
+which is mentioned in the info p list
+
+355
+00:12:08,399 --> 00:12:10,160
+this is kind of the entry point of the
+
+356
+00:12:10,160 --> 00:12:12,079
+chemical extension
+
+357
+00:12:12,079 --> 00:12:13,680
+there's an endpoint security event
+
+358
+00:12:13,680 --> 00:12:16,079
+manager class this really is taking care
+
+359
+00:12:16,079 --> 00:12:18,720
+of doing all of the hooking in kernel
+
+360
+00:12:18,720 --> 00:12:21,680
+space basically
+
+361
+00:12:21,760 --> 00:12:23,279
+using apple's
+
+362
+00:12:23,279 --> 00:12:25,279
+public and non-public apis to kind of
+
+363
+00:12:25,279 --> 00:12:26,560
+pay attention to everything that's going
+
+364
+00:12:26,560 --> 00:12:28,000
+on in the kernel
+
+365
+00:12:28,000 --> 00:12:30,639
+to provide that information then to
+
+366
+00:12:30,639 --> 00:12:32,399
+your system extension
+
+367
+00:12:32,399 --> 00:12:33,920
+there's an endpoint security client
+
+368
+00:12:33,920 --> 00:12:35,760
+manager class that's just strictly
+
+369
+00:12:35,760 --> 00:12:38,000
+keeping track of different clients that
+
+370
+00:12:38,000 --> 00:12:40,399
+are connected uh clients in this case
+
+371
+00:12:40,399 --> 00:12:42,639
+would be the system extension
+
+372
+00:12:42,639 --> 00:12:43,920
+that you've written as developer and
+
+373
+00:12:43,920 --> 00:12:45,360
+then there's an endpoint security
+
+374
+00:12:45,360 --> 00:12:46,880
+message manager which is doing the
+
+375
+00:12:46,880 --> 00:12:48,800
+communication
+
+376
+00:12:48,800 --> 00:12:50,480
+so this is really after the hooks have
+
+377
+00:12:50,480 --> 00:12:52,079
+been set and it's sporting messages back
+
+378
+00:12:52,079 --> 00:12:53,279
+and forth this is the class that's
+
+379
+00:12:53,279 --> 00:12:54,880
+responsible
+
+380
+00:12:54,880 --> 00:12:56,639
+and apple does a good job just trying to
+
+381
+00:12:56,639 --> 00:12:58,720
+be efficient here
+
+382
+00:12:58,720 --> 00:13:00,079
+you know i think sometimes when i think
+
+383
+00:13:00,079 --> 00:13:02,319
+of
+
+384
+00:13:03,680 --> 00:13:06,000
+security kernel extensions there's a lot
+
+385
+00:13:06,000 --> 00:13:07,920
+going on apple tries to keep it pretty
+
+386
+00:13:07,920 --> 00:13:09,760
+minimal and make sure that they're only
+
+387
+00:13:09,760 --> 00:13:11,839
+hooking things when they need to so if
+
+388
+00:13:11,839 --> 00:13:13,839
+you've got a stock catalina machine
+
+389
+00:13:13,839 --> 00:13:15,279
+you've never installed any system
+
+390
+00:13:15,279 --> 00:13:16,480
+extension
+
+391
+00:13:16,480 --> 00:13:18,320
+this kernel extension really isn't doing
+
+392
+00:13:18,320 --> 00:13:19,839
+much it's not it's not hooking anything
+
+393
+00:13:19,839 --> 00:13:21,760
+it's not coordinating events anywhere
+
+394
+00:13:21,760 --> 00:13:23,279
+it's really not until you have a system
+
+395
+00:13:23,279 --> 00:13:24,959
+extension that's installed and running
+
+396
+00:13:24,959 --> 00:13:26,720
+that then it will sort of activate the
+
+397
+00:13:26,720 --> 00:13:31,200
+hooks that it has and go from there
+
+398
+00:13:32,800 --> 00:13:34,800
+so in terms of what this kernel
+
+399
+00:13:34,800 --> 00:13:37,120
+extension is doing there's really
+
+400
+00:13:37,120 --> 00:13:40,480
+two sets of apis that drive kind of its
+
+401
+00:13:40,480 --> 00:13:43,600
+hooking functionality the first is a
+
+402
+00:13:43,600 --> 00:13:46,079
+chaos listener this is a
+
+403
+00:13:46,079 --> 00:13:48,160
+public apple kernel api that's been in
+
+404
+00:13:48,160 --> 00:13:50,240
+the kernel for a long time
+
+405
+00:13:50,240 --> 00:13:51,279
+um
+
+406
+00:13:51,279 --> 00:13:52,079
+i
+
+407
+00:13:52,079 --> 00:13:53,760
+i would say that it's never really been
+
+408
+00:13:53,760 --> 00:13:54,959
+used
+
+409
+00:13:54,959 --> 00:13:57,199
+uh
+
+410
+00:13:57,680 --> 00:14:00,320
+in great detail by actual products
+
+411
+00:14:00,320 --> 00:14:03,279
+because it's not very robust uh there's
+
+412
+00:14:03,279 --> 00:14:04,800
+there's limitations to kind of what it
+
+413
+00:14:04,800 --> 00:14:06,639
+can do
+
+414
+00:14:06,639 --> 00:14:07,360
+in
+
+415
+00:14:07,360 --> 00:14:09,839
+the case of endpoint security um you
+
+416
+00:14:09,839 --> 00:14:11,680
+know again reverse engineering i'll
+
+417
+00:14:11,680 --> 00:14:12,959
+usually start with kind of what are
+
+418
+00:14:12,959 --> 00:14:14,560
+those public apis and start searching
+
+419
+00:14:14,560 --> 00:14:16,560
+for that stuff so in this case
+
+420
+00:14:16,560 --> 00:14:19,360
+you can search for chaos listen scope
+
+421
+00:14:19,360 --> 00:14:21,120
+and start to see what is the kernel
+
+422
+00:14:21,120 --> 00:14:22,560
+extension doing
+
+423
+00:14:22,560 --> 00:14:24,320
+you can see that it's registering and
+
+424
+00:14:24,320 --> 00:14:27,199
+it's listening for file operations file
+
+425
+00:14:27,199 --> 00:14:28,160
+up
+
+426
+00:14:28,160 --> 00:14:30,240
+and it's saying when this file operation
+
+427
+00:14:30,240 --> 00:14:32,000
+triggers here's this method to go and
+
+428
+00:14:32,000 --> 00:14:33,519
+run
+
+429
+00:14:33,519 --> 00:14:34,959
+if you then go and kind of look into
+
+430
+00:14:34,959 --> 00:14:37,199
+that method and see what is it doing
+
+431
+00:14:37,199 --> 00:14:38,880
+there's really only one
+
+432
+00:14:38,880 --> 00:14:41,680
+case that it handles and that is
+
+433
+00:14:41,680 --> 00:14:45,279
+file op close
+
+434
+00:14:45,279 --> 00:14:46,399
+so this is kind of interesting this is
+
+435
+00:14:46,399 --> 00:14:48,560
+one of the apis that again is public
+
+436
+00:14:48,560 --> 00:14:50,800
+apple has said is deprecated so as a
+
+437
+00:14:50,800 --> 00:14:52,399
+developer
+
+438
+00:14:52,399 --> 00:14:53,680
+when they announced system extensions
+
+439
+00:14:53,680 --> 00:14:55,199
+they said these democrats don't use this
+
+440
+00:14:55,199 --> 00:14:57,120
+anymore but they're using it themselves
+
+441
+00:14:57,120 --> 00:14:58,639
+within the kernel extension but really
+
+442
+00:14:58,639 --> 00:15:00,880
+just for the small case of handling
+
+443
+00:15:00,880 --> 00:15:03,360
+uh when files close
+
+444
+00:15:03,360 --> 00:15:05,120
+and it's kind of interesting my best
+
+445
+00:15:05,120 --> 00:15:07,760
+guess is just that uh the timing of
+
+446
+00:15:07,760 --> 00:15:09,360
+where this hooks into in the kernel they
+
+447
+00:15:09,360 --> 00:15:11,600
+felt like we still want to use this api
+
+448
+00:15:11,600 --> 00:15:14,000
+to get this one tiny hook paint uh to be
+
+449
+00:15:14,000 --> 00:15:17,279
+able to notify system extensions
+
+450
+00:15:17,279 --> 00:15:20,880
+the the other larger uh sort of kernel
+
+451
+00:15:20,880 --> 00:15:23,519
+apis that are being used that are
+
+452
+00:15:23,519 --> 00:15:25,519
+actually not public but everybody uses
+
+453
+00:15:25,519 --> 00:15:29,360
+them uh is the mac f uh apis mandatory
+
+454
+00:15:29,360 --> 00:15:31,120
+access control framework
+
+455
+00:15:31,120 --> 00:15:32,639
+um
+
+456
+00:15:32,639 --> 00:15:34,720
+if you've ever looked at any other
+
+457
+00:15:34,720 --> 00:15:36,720
+security kernel extension
+
+458
+00:15:36,720 --> 00:15:38,800
+it is definitely using this
+
+459
+00:15:38,800 --> 00:15:40,480
+lots of apple extensions use this it's
+
+460
+00:15:40,480 --> 00:15:42,399
+how they build up the security of their
+
+461
+00:15:42,399 --> 00:15:44,639
+operating system so again we kind of
+
+462
+00:15:44,639 --> 00:15:45,920
+start from
+
+463
+00:15:45,920 --> 00:15:48,240
+uh that api that is known you're kind of
+
+464
+00:15:48,240 --> 00:15:50,160
+reversing this stuff in this case it's
+
+465
+00:15:50,160 --> 00:15:53,279
+mac policy register
+
+466
+00:15:53,279 --> 00:15:54,959
+and we can start to see okay what are
+
+467
+00:15:54,959 --> 00:15:56,720
+the parameters that are passed in
+
+468
+00:15:56,720 --> 00:15:59,680
+uh to this function call uh and and even
+
+469
+00:15:59,680 --> 00:16:02,639
+though it's not public uh it it is a
+
+470
+00:16:02,639 --> 00:16:04,160
+method that is
+
+471
+00:16:04,160 --> 00:16:05,600
+pretty well documented on the internet
+
+472
+00:16:05,600 --> 00:16:07,360
+and you can look into kind of the
+
+473
+00:16:07,360 --> 00:16:10,320
+internals but in the kernel source code
+
+474
+00:16:10,320 --> 00:16:11,920
+so the first parameter there is this
+
+475
+00:16:11,920 --> 00:16:14,560
+sort of big mega structure
+
+476
+00:16:14,560 --> 00:16:17,600
+that specifies all this information
+
+477
+00:16:17,600 --> 00:16:19,440
+we sort of start to decompile that
+
+478
+00:16:19,440 --> 00:16:20,880
+structure down
+
+479
+00:16:20,880 --> 00:16:23,199
+we can see that they're defining uh
+
+480
+00:16:23,199 --> 00:16:26,320
+endpoint security kernel extension
+
+481
+00:16:26,320 --> 00:16:27,759
+there's some label names but the most
+
+482
+00:16:27,759 --> 00:16:30,160
+important thing are these mac operations
+
+483
+00:16:30,160 --> 00:16:32,560
+this is basically a giant array of every
+
+484
+00:16:32,560 --> 00:16:35,279
+single hook point that you can sort of
+
+485
+00:16:35,279 --> 00:16:36,320
+uh
+
+486
+00:16:36,320 --> 00:16:38,320
+point your function to and say okay when
+
+487
+00:16:38,320 --> 00:16:40,160
+this fires here's here's my function
+
+488
+00:16:40,160 --> 00:16:41,759
+that i want you to run
+
+489
+00:16:41,759 --> 00:16:44,079
+so we can start to look at
+
+490
+00:16:44,079 --> 00:16:46,240
+what is apple's kernel extension
+
+491
+00:16:46,240 --> 00:16:47,360
+hooking
+
+492
+00:16:47,360 --> 00:16:49,120
+within really this main area that
+
+493
+00:16:49,120 --> 00:16:52,160
+they're they're hooking stuff
+
+494
+00:16:52,320 --> 00:16:54,240
+[Music]
+
+495
+00:16:54,240 --> 00:16:57,759
+there's really four main book categories
+
+496
+00:16:57,759 --> 00:16:59,440
+there's file events
+
+497
+00:16:59,440 --> 00:17:02,000
+uh process events socket events
+
+498
+00:17:02,000 --> 00:17:04,079
+and then a couple kernel events i don't
+
+499
+00:17:04,079 --> 00:17:05,359
+think anything too
+
+500
+00:17:05,359 --> 00:17:07,359
+surprising in terms of when i looked at
+
+501
+00:17:07,359 --> 00:17:09,119
+this and reversed into this it's what i
+
+502
+00:17:09,119 --> 00:17:10,959
+would expect
+
+503
+00:17:10,959 --> 00:17:13,760
+for apple trying to provide a
+
+504
+00:17:13,760 --> 00:17:15,919
+uh public api
+
+505
+00:17:15,919 --> 00:17:18,000
+essentially for
+
+506
+00:17:18,000 --> 00:17:19,599
+security vendors to make endpoint
+
+507
+00:17:19,599 --> 00:17:20,880
+security
+
+508
+00:17:20,880 --> 00:17:22,400
+applications and point security system
+
+509
+00:17:22,400 --> 00:17:24,959
+extensions
+
+510
+00:17:24,959 --> 00:17:26,720
+they do all have names that start with
+
+511
+00:17:26,720 --> 00:17:28,799
+es understood so even without
+
+512
+00:17:28,799 --> 00:17:30,880
+necessarily
+
+513
+00:17:30,880 --> 00:17:32,960
+going to the kernel source code to see
+
+514
+00:17:32,960 --> 00:17:35,280
+what is uh what are all the
+
+515
+00:17:35,280 --> 00:17:37,360
+um values in this giant array of
+
+516
+00:17:37,360 --> 00:17:39,679
+operations um you can at least look at
+
+517
+00:17:39,679 --> 00:17:41,679
+the names and start to see what are the
+
+518
+00:17:41,679 --> 00:17:42,880
+different things they're hooking so you
+
+519
+00:17:42,880 --> 00:17:44,080
+know things like
+
+520
+00:17:44,080 --> 00:17:46,720
+es file check dupe you know it's it's
+
+521
+00:17:46,720 --> 00:17:48,880
+hooking a point in the dupe system call
+
+522
+00:17:48,880 --> 00:17:52,640
+uh where it's gonna call into this
+
+523
+00:17:55,520 --> 00:17:56,320
+um
+
+524
+00:17:56,320 --> 00:17:57,039
+the
+
+525
+00:17:57,039 --> 00:17:58,840
+kernel extension does have user space
+
+526
+00:17:58,840 --> 00:18:01,360
+communication this is an area where i
+
+527
+00:18:01,360 --> 00:18:03,600
+think
+
+528
+00:18:03,679 --> 00:18:06,880
+io kit drivers
+
+529
+00:18:07,039 --> 00:18:09,760
+tend to be robust but also really nice
+
+530
+00:18:09,760 --> 00:18:11,600
+for reverse engineer
+
+531
+00:18:11,600 --> 00:18:13,039
+because they provide these nice sort of
+
+532
+00:18:13,039 --> 00:18:15,039
+c plus plus
+
+533
+00:18:15,039 --> 00:18:17,039
+apis that are kind of easier to get at
+
+534
+00:18:17,039 --> 00:18:18,320
+versus
+
+535
+00:18:18,320 --> 00:18:20,320
+if you ever think of looking at maybe a
+
+536
+00:18:20,320 --> 00:18:22,080
+driver on linux and you're
+
+537
+00:18:22,080 --> 00:18:23,280
+trying to reverse engineer it and you're
+
+538
+00:18:23,280 --> 00:18:24,010
+looking at like a
+
+539
+00:18:24,010 --> 00:18:25,440
+[Music]
+
+540
+00:18:25,440 --> 00:18:27,440
+i o control call and trying to figure
+
+541
+00:18:27,440 --> 00:18:28,799
+out what was this number what did it
+
+542
+00:18:28,799 --> 00:18:30,880
+mean that sort of stuff
+
+543
+00:18:30,880 --> 00:18:35,120
+so io kit has a i o user client class
+
+544
+00:18:35,120 --> 00:18:36,400
+what you'll see in drivers is that
+
+545
+00:18:36,400 --> 00:18:38,559
+you'll have a subclass of that
+
+546
+00:18:38,559 --> 00:18:41,360
+created and then that's kind of when a
+
+547
+00:18:41,360 --> 00:18:42,880
+user space application wants to talk to
+
+548
+00:18:42,880 --> 00:18:44,559
+the kernel extension they're kind of
+
+549
+00:18:44,559 --> 00:18:46,880
+communicating through that interface
+
+550
+00:18:46,880 --> 00:18:48,320
+in this case there was actually two
+
+551
+00:18:48,320 --> 00:18:50,240
+subclasses of io user client in the
+
+552
+00:18:50,240 --> 00:18:52,160
+driver
+
+553
+00:18:52,160 --> 00:18:54,160
+which was kind of interesting
+
+554
+00:18:54,160 --> 00:18:57,120
+one was a class called endpoint security
+
+555
+00:18:57,120 --> 00:18:58,720
+driver client
+
+556
+00:18:58,720 --> 00:19:01,039
+um
+
+557
+00:19:01,039 --> 00:19:03,360
+this one uh requires entitlement com
+
+558
+00:19:03,360 --> 00:19:05,600
+apple private endpoint security manager
+
+559
+00:19:05,600 --> 00:19:06,960
+and there's only
+
+560
+00:19:06,960 --> 00:19:09,280
+uh at least when i checked i think the
+
+561
+00:19:09,280 --> 00:19:11,280
+original recent catalina only one binary
+
+562
+00:19:11,280 --> 00:19:12,640
+on the system that has this entitlement
+
+563
+00:19:12,640 --> 00:19:15,120
+and that's endpoint security
+
+564
+00:19:15,120 --> 00:19:17,360
+the second uh user client class is
+
+565
+00:19:17,360 --> 00:19:19,600
+endpoint security extra client
+
+566
+00:19:19,600 --> 00:19:21,200
+it still does require entitlement in
+
+567
+00:19:21,200 --> 00:19:22,720
+this case it's com apple developer
+
+568
+00:19:22,720 --> 00:19:24,559
+endpoint security client
+
+569
+00:19:24,559 --> 00:19:26,480
+this is the entitlement that if you're a
+
+570
+00:19:26,480 --> 00:19:28,080
+developer and you want to write a
+
+571
+00:19:28,080 --> 00:19:29,520
+endpoint security system extension that
+
+572
+00:19:29,520 --> 00:19:30,799
+you're essentially
+
+573
+00:19:30,799 --> 00:19:32,960
+applying to apple for this entitlement
+
+574
+00:19:32,960 --> 00:19:34,720
+that has to be granted
+
+575
+00:19:34,720 --> 00:19:36,320
+and your system extension is the one
+
+576
+00:19:36,320 --> 00:19:38,160
+that has this so it can connect and
+
+577
+00:19:38,160 --> 00:19:40,640
+communicate
+
+578
+00:19:40,960 --> 00:19:42,320
+but again the nice thing about having
+
+579
+00:19:42,320 --> 00:19:44,080
+these two class names is now we can kind
+
+580
+00:19:44,080 --> 00:19:45,360
+of just start
+
+581
+00:19:45,360 --> 00:19:47,200
+gripping through some of the disassembly
+
+582
+00:19:47,200 --> 00:19:48,720
+not even necessarily getting into the
+
+583
+00:19:48,720 --> 00:19:50,400
+functions themselves
+
+584
+00:19:50,400 --> 00:19:52,000
+but just trying to look at what are
+
+585
+00:19:52,000 --> 00:19:53,919
+these classes what are the method names
+
+586
+00:19:53,919 --> 00:19:55,520
+that come with them and get a better
+
+587
+00:19:55,520 --> 00:19:57,760
+idea of okay what type of
+
+588
+00:19:57,760 --> 00:20:00,000
+api and communication
+
+589
+00:20:00,000 --> 00:20:01,280
+do we see
+
+590
+00:20:01,280 --> 00:20:02,640
+going on
+
+591
+00:20:02,640 --> 00:20:04,640
+in the case of the
+
+592
+00:20:04,640 --> 00:20:07,520
+driver client so this is the privileged
+
+593
+00:20:07,520 --> 00:20:09,679
+api from apple's binary there's only two
+
+594
+00:20:09,679 --> 00:20:12,640
+methods there's one called clear cache
+
+595
+00:20:12,640 --> 00:20:15,039
+and another called register for early
+
+596
+00:20:15,039 --> 00:20:17,919
+boot so endpoint security d
+
+597
+00:20:17,919 --> 00:20:20,880
+doesn't do a ton of talking to
+
+598
+00:20:20,880 --> 00:20:22,559
+the kernel extension
+
+599
+00:20:22,559 --> 00:20:24,480
+which honestly when i kind of started
+
+600
+00:20:24,480 --> 00:20:26,000
+looking into this whole architecture
+
+601
+00:20:26,000 --> 00:20:29,039
+kind of surprised me i assumed based on
+
+602
+00:20:29,039 --> 00:20:30,640
+how apple typically architects things
+
+603
+00:20:30,640 --> 00:20:31,760
+well sure they've got their kernel
+
+604
+00:20:31,760 --> 00:20:33,520
+extension they've got a system daemon
+
+605
+00:20:33,520 --> 00:20:34,880
+kind of the same name
+
+606
+00:20:34,880 --> 00:20:36,080
+that's what's talking to each other
+
+607
+00:20:36,080 --> 00:20:37,840
+they're doing a whole lot in this case
+
+608
+00:20:37,840 --> 00:20:39,520
+not so much endpoint security d is kind
+
+609
+00:20:39,520 --> 00:20:40,960
+of involved in some of the early boot
+
+610
+00:20:40,960 --> 00:20:42,880
+stuff and we'll see later on kind of
+
+611
+00:20:42,880 --> 00:20:45,039
+what it what its actual purpose is
+
+612
+00:20:45,039 --> 00:20:47,679
+so the main apis really come from
+
+613
+00:20:47,679 --> 00:20:48,880
+the
+
+614
+00:20:48,880 --> 00:20:51,440
+public if you will uh aspect of the
+
+615
+00:20:51,440 --> 00:20:54,000
+driver and when i say public it's still
+
+616
+00:20:54,000 --> 00:20:56,720
+restricted by entitlement but we can see
+
+617
+00:20:56,720 --> 00:20:58,400
+that there's there's basically methods
+
+618
+00:20:58,400 --> 00:20:59,919
+for kind of subscribing to something
+
+619
+00:20:59,919 --> 00:21:01,600
+unsubscribing unsubscribing from
+
+620
+00:21:01,600 --> 00:21:02,400
+everything
+
+621
+00:21:02,400 --> 00:21:04,799
+muting different processes so this is
+
+622
+00:21:04,799 --> 00:21:06,960
+this is clearly the class that is
+
+623
+00:21:06,960 --> 00:21:09,919
+corresponding with
+
+624
+00:21:10,240 --> 00:21:12,480
+what your system extension will
+
+625
+00:21:12,480 --> 00:21:14,640
+will
+
+626
+00:21:14,840 --> 00:21:18,080
+do so moving up this sort of stack out
+
+627
+00:21:18,080 --> 00:21:20,320
+of kernel space now uh the next thing we
+
+628
+00:21:20,320 --> 00:21:21,440
+get to
+
+629
+00:21:21,440 --> 00:21:22,960
+after the kernel extension is really
+
+630
+00:21:22,960 --> 00:21:25,440
+your system extension itself
+
+631
+00:21:25,440 --> 00:21:27,440
+um
+
+632
+00:21:27,440 --> 00:21:29,200
+this is really what is doing in
+
+633
+00:21:29,200 --> 00:21:31,919
+communication with the kernel extension
+
+634
+00:21:31,919 --> 00:21:33,440
+and there's a
+
+635
+00:21:33,440 --> 00:21:35,679
+a new library called live endpoint
+
+636
+00:21:35,679 --> 00:21:37,280
+security dialog
+
+637
+00:21:37,280 --> 00:21:40,240
+it is a c library
+
+638
+00:21:40,240 --> 00:21:42,000
+that you use in your system extension
+
+639
+00:21:42,000 --> 00:21:43,280
+which presents
+
+640
+00:21:43,280 --> 00:21:44,559
+some challenges at times because it's
+
+641
+00:21:44,559 --> 00:21:46,559
+not very high level um and this is
+
+642
+00:21:46,559 --> 00:21:48,960
+what's actually using the io kit user
+
+643
+00:21:48,960 --> 00:21:51,200
+space calls uh to then you know
+
+644
+00:21:51,200 --> 00:21:53,200
+communicate with the kernel driver uh if
+
+645
+00:21:53,200 --> 00:21:54,320
+you've ever
+
+646
+00:21:54,320 --> 00:21:56,320
+done anything with io kit or or maybe
+
+647
+00:21:56,320 --> 00:21:57,679
+looked at
+
+648
+00:21:57,679 --> 00:21:59,280
+malicious applications that are trying
+
+649
+00:21:59,280 --> 00:22:00,400
+to
+
+650
+00:22:00,400 --> 00:22:01,840
+get platform serial numbers or things
+
+651
+00:22:01,840 --> 00:22:03,440
+like that you'll see i o service
+
+652
+00:22:03,440 --> 00:22:04,880
+matching calls they're trying to connect
+
+653
+00:22:04,880 --> 00:22:07,120
+to the driver and then call
+
+654
+00:22:07,120 --> 00:22:09,679
+those methods that we just looked at
+
+655
+00:22:09,679 --> 00:22:12,480
+right now this library
+
+656
+00:22:12,480 --> 00:22:14,080
+appears to be just like a very thin
+
+657
+00:22:14,080 --> 00:22:18,000
+wrapper around the io kit communication
+
+658
+00:22:18,000 --> 00:22:19,760
+my hope is that this is one of those
+
+659
+00:22:19,760 --> 00:22:21,840
+libraries that apple will continue to
+
+660
+00:22:21,840 --> 00:22:24,720
+to update and improve and add kind of
+
+661
+00:22:24,720 --> 00:22:27,120
+like higher level um
+
+662
+00:22:27,120 --> 00:22:28,960
+abstractions onto it
+
+663
+00:22:28,960 --> 00:22:30,720
+it is it is possible
+
+664
+00:22:30,720 --> 00:22:32,400
+uh to call
+
+665
+00:22:32,400 --> 00:22:34,480
+into this library from swift without
+
+666
+00:22:34,480 --> 00:22:35,760
+using bridging
+
+667
+00:22:35,760 --> 00:22:38,159
+uh it's not awesome following c code
+
+668
+00:22:38,159 --> 00:22:41,840
+from swift right
+
+669
+00:22:42,400 --> 00:22:44,320
+if we go up kind of one more level then
+
+670
+00:22:44,320 --> 00:22:46,720
+we'll get to endpoint security
+
+671
+00:22:46,720 --> 00:22:48,240
+and again i mentioned this is what i
+
+672
+00:22:48,240 --> 00:22:50,159
+originally thought was
+
+673
+00:22:50,159 --> 00:22:52,240
+going to be
+
+674
+00:22:52,240 --> 00:22:53,520
+doing
+
+675
+00:22:53,520 --> 00:22:55,200
+most of the communication
+
+676
+00:22:55,200 --> 00:22:56,880
+uh
+
+677
+00:22:56,880 --> 00:22:58,640
+with with the kernel driver which was
+
+678
+00:22:58,640 --> 00:23:00,080
+not the case i originally was
+
+679
+00:23:00,080 --> 00:23:01,760
+anticipating that your system extension
+
+680
+00:23:01,760 --> 00:23:02,960
+would talk to this daemon and this
+
+681
+00:23:02,960 --> 00:23:04,960
+damage to the kernel in this case
+
+682
+00:23:04,960 --> 00:23:07,360
+endpoint security d is really there just
+
+683
+00:23:07,360 --> 00:23:09,919
+to validate uh the endpoint security
+
+684
+00:23:09,919 --> 00:23:11,760
+system extensions
+
+685
+00:23:11,760 --> 00:23:15,919
+um as well as then uh communicating vena
+
+686
+00:23:15,919 --> 00:23:18,000
+it itself has appropriate entitlements
+
+687
+00:23:18,000 --> 00:23:19,840
+to communicate with
+
+688
+00:23:19,840 --> 00:23:21,760
+launch d to then run your system
+
+689
+00:23:21,760 --> 00:23:24,480
+extension as a route daemon on the
+
+690
+00:23:24,480 --> 00:23:25,840
+system
+
+691
+00:23:25,840 --> 00:23:27,840
+and then it is involved in early boot
+
+692
+00:23:27,840 --> 00:23:29,280
+startup of endpoint security system
+
+693
+00:23:29,280 --> 00:23:30,480
+extensions
+
+694
+00:23:30,480 --> 00:23:33,120
+you can set a flag in your info p list
+
+695
+00:23:33,120 --> 00:23:34,720
+and essentially say
+
+696
+00:23:34,720 --> 00:23:35,520
+my
+
+697
+00:23:35,520 --> 00:23:36,960
+endpoint security extension is so
+
+698
+00:23:36,960 --> 00:23:38,640
+important that i needed to load earlier
+
+699
+00:23:38,640 --> 00:23:42,000
+on in the boot cycle
+
+700
+00:23:43,279 --> 00:23:44,880
+going up again we get to the system
+
+701
+00:23:44,880 --> 00:23:48,000
+extension daemon
+
+702
+00:23:48,000 --> 00:23:49,600
+this daemon is
+
+703
+00:23:49,600 --> 00:23:51,760
+interesting uh it's got a lot of code
+
+704
+00:23:51,760 --> 00:23:53,120
+for a new damon
+
+705
+00:23:53,120 --> 00:23:54,480
+um
+
+706
+00:23:54,480 --> 00:23:58,000
+and uh right now uh
+
+707
+00:23:58,000 --> 00:23:59,760
+for the most part all that code is being
+
+708
+00:23:59,760 --> 00:24:02,320
+used to kind of validate and activate
+
+709
+00:24:02,320 --> 00:24:05,520
+system extensions um so it moves things
+
+710
+00:24:05,520 --> 00:24:07,919
+into the proper locations and then
+
+711
+00:24:07,919 --> 00:24:10,240
+really just asks endpoint security d to
+
+712
+00:24:10,240 --> 00:24:11,760
+do the real work of loading this thing
+
+713
+00:24:11,760 --> 00:24:13,520
+if you remember back to kind of the the
+
+714
+00:24:13,520 --> 00:24:15,679
+first diagram i had where it kind of
+
+715
+00:24:15,679 --> 00:24:18,640
+split out into three pieces um you know
+
+716
+00:24:18,640 --> 00:24:21,200
+if you have a network uh
+
+717
+00:24:21,200 --> 00:24:23,679
+extension or a driver kit extension
+
+718
+00:24:23,679 --> 00:24:25,120
+system extension d is trying to figure
+
+719
+00:24:25,120 --> 00:24:26,720
+out what type of extension it is who do
+
+720
+00:24:26,720 --> 00:24:29,279
+i need to really ask to do real work
+
+721
+00:24:29,279 --> 00:24:33,559
+and then going on from there
+
+722
+00:24:35,039 --> 00:24:37,440
+once we get up to the user level then
+
+723
+00:24:37,440 --> 00:24:39,360
+there is an actual framework that apple
+
+724
+00:24:39,360 --> 00:24:42,080
+has provided system extensions framework
+
+725
+00:24:42,080 --> 00:24:43,279
+again when i first glanced at this
+
+726
+00:24:43,279 --> 00:24:44,720
+framework after they announced it this
+
+727
+00:24:44,720 --> 00:24:46,000
+was another spot they thought oh there's
+
+728
+00:24:46,000 --> 00:24:47,279
+going to be all this interesting stuff
+
+729
+00:24:47,279 --> 00:24:48,640
+in this framework
+
+730
+00:24:48,640 --> 00:24:50,480
+here's where i want to start it's not a
+
+731
+00:24:50,480 --> 00:24:52,480
+lot here it's really just activate a
+
+732
+00:24:52,480 --> 00:24:54,320
+system extension
+
+733
+00:24:54,320 --> 00:24:56,159
+there there are different sort of
+
+734
+00:24:56,159 --> 00:24:58,320
+internal classes within this that apple
+
+735
+00:24:58,320 --> 00:25:00,960
+leverages in some of their binaries
+
+736
+00:25:00,960 --> 00:25:03,360
+but for the most part this is just
+
+737
+00:25:03,360 --> 00:25:06,000
+how your installed user application can
+
+738
+00:25:06,000 --> 00:25:07,360
+tell the system
+
+739
+00:25:07,360 --> 00:25:09,039
+i have a system
+
+740
+00:25:09,039 --> 00:25:11,200
+system extension inside go ahead and
+
+741
+00:25:11,200 --> 00:25:14,600
+activate it
+
+742
+00:25:15,360 --> 00:25:16,720
+uh there's
+
+743
+00:25:16,720 --> 00:25:19,520
+one more binary just worth mentioning
+
+744
+00:25:19,520 --> 00:25:21,600
+in user space and that is system
+
+745
+00:25:21,600 --> 00:25:24,080
+extension control
+
+746
+00:25:24,080 --> 00:25:27,200
+does not have great documentation
+
+747
+00:25:27,200 --> 00:25:29,520
+which conference full of mac people i
+
+748
+00:25:29,520 --> 00:25:30,960
+don't think would be surprising apple's
+
+749
+00:25:30,960 --> 00:25:33,279
+not always awesome at documenting
+
+750
+00:25:33,279 --> 00:25:35,120
+uh brand new things
+
+751
+00:25:35,120 --> 00:25:37,279
+so if you do a man page on system
+
+752
+00:25:37,279 --> 00:25:38,880
+extension control it just says this
+
+753
+00:25:38,880 --> 00:25:40,880
+controls system extensions or something
+
+754
+00:25:40,880 --> 00:25:42,720
+like that
+
+755
+00:25:42,720 --> 00:25:44,640
+uh but essentially it provides very
+
+756
+00:25:44,640 --> 00:25:46,559
+basic control to the system extension
+
+757
+00:25:46,559 --> 00:25:47,919
+attainment
+
+758
+00:25:47,919 --> 00:25:49,919
+on the right here is kind of just
+
+759
+00:25:49,919 --> 00:25:52,400
+a list of methods from the system
+
+760
+00:25:52,400 --> 00:25:54,320
+extension daemon where if you're looking
+
+761
+00:25:54,320 --> 00:25:56,559
+for the commands that it understands
+
+762
+00:25:56,559 --> 00:25:58,000
+these kind of correspond to with what
+
+763
+00:25:58,000 --> 00:26:00,000
+system extension control can do it's
+
+764
+00:26:00,000 --> 00:26:01,600
+basic stuff like list the extensions
+
+765
+00:26:01,600 --> 00:26:03,200
+that are installed
+
+766
+00:26:03,200 --> 00:26:04,720
+check the extension uninstall the
+
+767
+00:26:04,720 --> 00:26:07,600
+extension a handful of
+
+768
+00:26:07,600 --> 00:26:09,840
+methods named testing
+
+769
+00:26:09,840 --> 00:26:11,600
+which in the betas you could actually
+
+770
+00:26:11,600 --> 00:26:13,200
+trigger some of these test methods
+
+771
+00:26:13,200 --> 00:26:15,200
+through system extension control
+
+772
+00:26:15,200 --> 00:26:16,480
+it seemed to be just
+
+773
+00:26:16,480 --> 00:26:17,919
+i think a way that
+
+774
+00:26:17,919 --> 00:26:20,320
+internal apple qa was working to kind of
+
+775
+00:26:20,320 --> 00:26:22,720
+test the process and the orchestration
+
+776
+00:26:22,720 --> 00:26:24,640
+of all this stuff
+
+777
+00:26:24,640 --> 00:26:27,279
+you can give it help on the command line
+
+778
+00:26:27,279 --> 00:26:28,400
+and it gives you a little bit more
+
+779
+00:26:28,400 --> 00:26:30,000
+information you can see some of these
+
+780
+00:26:30,000 --> 00:26:31,840
+same commands they'll piss to reset and
+
+781
+00:26:31,840 --> 00:26:33,679
+uninstall
+
+782
+00:26:33,679 --> 00:26:36,159
+if you're building a system extension
+
+783
+00:26:36,159 --> 00:26:37,440
+this binary is important you can
+
+784
+00:26:37,440 --> 00:26:39,840
+basically turn on a developer mode
+
+785
+00:26:39,840 --> 00:26:41,120
+which just
+
+786
+00:26:41,120 --> 00:26:42,960
+relaxes some of the restrictions that
+
+787
+00:26:42,960 --> 00:26:44,960
+the system has on
+
+788
+00:26:44,960 --> 00:26:46,240
+system extensions and when they're
+
+789
+00:26:46,240 --> 00:26:49,679
+allowed to run who can run them
+
+790
+00:26:49,919 --> 00:26:51,760
+so that is kind of top to bottom of all
+
+791
+00:26:51,760 --> 00:26:53,279
+these different parts
+
+792
+00:26:53,279 --> 00:26:54,880
+uh and here's kind of the image of it
+
+793
+00:26:54,880 --> 00:26:58,480
+again uh again a lot of moving parts a
+
+794
+00:26:58,480 --> 00:26:59,760
+couple of things that i just want to
+
+795
+00:26:59,760 --> 00:27:01,440
+call out that struck me as i started
+
+796
+00:27:01,440 --> 00:27:03,760
+playing around with this whole framework
+
+797
+00:27:03,760 --> 00:27:04,880
+uh
+
+798
+00:27:04,880 --> 00:27:07,120
+you know after wwdc
+
+799
+00:27:07,120 --> 00:27:08,159
+is that
+
+800
+00:27:08,159 --> 00:27:09,679
+because of all these moving parts it was
+
+801
+00:27:09,679 --> 00:27:11,600
+really easy to get into
+
+802
+00:27:11,600 --> 00:27:13,440
+weird situations where you thought you
+
+803
+00:27:13,440 --> 00:27:15,679
+had a system extension
+
+804
+00:27:15,679 --> 00:27:17,200
+you said go ahead and activate it and
+
+805
+00:27:17,200 --> 00:27:20,480
+run it system extension d go might may
+
+806
+00:27:20,480 --> 00:27:23,279
+have said perfect this is valid go ahead
+
+807
+00:27:23,279 --> 00:27:25,360
+and activate pass off endpoint security
+
+808
+00:27:25,360 --> 00:27:27,039
+d and then endpoint security d would
+
+809
+00:27:27,039 --> 00:27:28,799
+find something wrong and say nope this
+
+810
+00:27:28,799 --> 00:27:31,440
+can't run and you don't get any feedback
+
+811
+00:27:31,440 --> 00:27:32,880
+you just have this api that kind of
+
+812
+00:27:32,880 --> 00:27:34,240
+returns right away and you're hunting
+
+813
+00:27:34,240 --> 00:27:35,919
+through the console trying to to figure
+
+814
+00:27:35,919 --> 00:27:38,799
+out what went wrong
+
+815
+00:27:38,799 --> 00:27:40,830
+the other common thing
+
+816
+00:27:40,830 --> 00:27:42,640
+[Music]
+
+817
+00:27:42,640 --> 00:27:44,080
+is just that i think
+
+818
+00:27:44,080 --> 00:27:46,080
+a lot of the folks who were looking into
+
+819
+00:27:46,080 --> 00:27:47,919
+this api originally were interested in
+
+820
+00:27:47,919 --> 00:27:49,279
+just creating command line tools to kind
+
+821
+00:27:49,279 --> 00:27:50,399
+of play around with it they didn't want
+
+822
+00:27:50,399 --> 00:27:52,000
+to create a whole
+
+823
+00:27:52,000 --> 00:27:54,480
+user app and things like that
+
+824
+00:27:54,480 --> 00:27:56,000
+and because you're required to have this
+
+825
+00:27:56,000 --> 00:27:58,640
+entitlement it can be kind of
+
+826
+00:27:58,640 --> 00:28:00,559
+tricky at times
+
+827
+00:28:00,559 --> 00:28:02,240
+with entitlement validation sometimes
+
+828
+00:28:02,240 --> 00:28:03,520
+the time with validation of the system
+
+829
+00:28:03,520 --> 00:28:05,760
+is looking within inside a bundle
+
+830
+00:28:05,760 --> 00:28:07,440
+so even though you can add entitlements
+
+831
+00:28:07,440 --> 00:28:09,679
+to a command line program uh it's not
+
+832
+00:28:09,679 --> 00:28:10,559
+always
+
+833
+00:28:10,559 --> 00:28:12,399
+easy
+
+834
+00:28:12,399 --> 00:28:14,880
+to create this thing get it signed
+
+835
+00:28:14,880 --> 00:28:16,799
+notarize the correct entitlement so that
+
+836
+00:28:16,799 --> 00:28:18,159
+it's working from
+
+837
+00:28:18,159 --> 00:28:20,960
+the command line
+
+838
+00:28:22,799 --> 00:28:26,000
+so on to this this vulnerability cve
+
+839
+00:28:26,000 --> 00:28:29,120
+2019 8805
+
+840
+00:28:29,120 --> 00:28:31,360
+uh apple described it as just a
+
+841
+00:28:31,360 --> 00:28:33,919
+validation issue that existed
+
+842
+00:28:33,919 --> 00:28:37,200
+in entitlement verification
+
+843
+00:28:37,200 --> 00:28:39,840
+so i'm going to go into kind of
+
+844
+00:28:39,840 --> 00:28:41,679
+how i went about finding it kind of my
+
+845
+00:28:41,679 --> 00:28:43,039
+process some of the stuff that i
+
+846
+00:28:43,039 --> 00:28:45,440
+reversed for that
+
+847
+00:28:45,440 --> 00:28:47,279
+uh with any reversing again i kind of
+
+848
+00:28:47,279 --> 00:28:50,480
+start from the apis so looking at what's
+
+849
+00:28:50,480 --> 00:28:52,159
+known what's public is the point to kind
+
+850
+00:28:52,159 --> 00:28:54,559
+of start digging into this stuff
+
+851
+00:28:54,559 --> 00:28:56,000
+in this case here's a couple snippets
+
+852
+00:28:56,000 --> 00:28:58,240
+from the system extension framework
+
+853
+00:28:58,240 --> 00:29:00,399
+documentation so again you have kind of
+
+854
+00:29:00,399 --> 00:29:02,320
+an activation request and then
+
+855
+00:29:02,320 --> 00:29:03,840
+submitting that request to the system to
+
+856
+00:29:03,840 --> 00:29:07,600
+try to activate your system extension
+
+857
+00:29:08,470 --> 00:29:11,200
+[Music]
+
+858
+00:29:11,200 --> 00:29:13,520
+so in the system extension framework you
+
+859
+00:29:13,520 --> 00:29:15,840
+know there's a couple different uh
+
+860
+00:29:15,840 --> 00:29:17,279
+classes that are interesting there's
+
+861
+00:29:17,279 --> 00:29:19,760
+this os system extension manager
+
+862
+00:29:19,760 --> 00:29:20,880
+i think that's the one you're actually
+
+863
+00:29:20,880 --> 00:29:22,399
+using in your user application that
+
+864
+00:29:22,399 --> 00:29:24,720
+apple does have some documentation on
+
+865
+00:29:24,720 --> 00:29:26,480
+behind the scenes though that's actually
+
+866
+00:29:26,480 --> 00:29:29,440
+creating an os system extension
+
+867
+00:29:29,440 --> 00:29:31,039
+request object and there's appropriate
+
+868
+00:29:31,039 --> 00:29:32,640
+subclasses whether it's an activation
+
+869
+00:29:32,640 --> 00:29:36,080
+request or a deactivation request
+
+870
+00:29:36,080 --> 00:29:37,440
+but essentially
+
+871
+00:29:37,440 --> 00:29:40,720
+that framework is
+
+872
+00:29:40,720 --> 00:29:42,000
+just
+
+873
+00:29:42,000 --> 00:29:44,480
+creating some of these
+
+874
+00:29:44,480 --> 00:29:46,159
+details around what your endpoint
+
+875
+00:29:46,159 --> 00:29:48,640
+security system extension is and passing
+
+876
+00:29:48,640 --> 00:29:51,279
+it off to the system extension daemon
+
+877
+00:29:51,279 --> 00:29:54,559
+over xpc
+
+878
+00:29:54,559 --> 00:29:56,000
+so
+
+879
+00:29:56,000 --> 00:29:58,720
+real quick if you've never seen xpc it
+
+880
+00:29:58,720 --> 00:30:01,120
+is a inner process communication
+
+881
+00:30:01,120 --> 00:30:02,559
+protocol
+
+882
+00:30:02,559 --> 00:30:05,200
+so think you know being able to call
+
+883
+00:30:05,200 --> 00:30:06,960
+methods in another process from your
+
+884
+00:30:06,960 --> 00:30:09,440
+process
+
+885
+00:30:09,440 --> 00:30:12,960
+it's it's pretty nice compared to
+
+886
+00:30:12,960 --> 00:30:14,159
+let's say if you're trying to use the
+
+887
+00:30:14,159 --> 00:30:15,760
+low-level mock
+
+888
+00:30:15,760 --> 00:30:17,360
+message apis
+
+889
+00:30:17,360 --> 00:30:19,279
+you can define a
+
+890
+00:30:19,279 --> 00:30:22,559
+protocol where you can just say hey uh
+
+891
+00:30:22,559 --> 00:30:24,559
+conceptually you know in this case ramp
+
+892
+00:30:24,559 --> 00:30:26,559
+is documentation it's a
+
+893
+00:30:26,559 --> 00:30:28,960
+a method called feed me a cookie
+
+894
+00:30:28,960 --> 00:30:31,039
+you can define it uh and then your
+
+895
+00:30:31,039 --> 00:30:33,200
+server kind of registers and says hey
+
+896
+00:30:33,200 --> 00:30:35,039
+i'm listening on xpc
+
+897
+00:30:35,039 --> 00:30:37,440
+uh here's my protocol here's the the
+
+898
+00:30:37,440 --> 00:30:39,760
+methods that i provide that you can call
+
+899
+00:30:39,760 --> 00:30:41,279
+and the clients just then have to kind
+
+900
+00:30:41,279 --> 00:30:42,960
+of connect to it and can just start
+
+901
+00:30:42,960 --> 00:30:44,640
+applying those methods and passing
+
+902
+00:30:44,640 --> 00:30:47,440
+across information
+
+903
+00:30:47,520 --> 00:30:48,720
+this is
+
+904
+00:30:48,720 --> 00:30:50,000
+you know basically what the system
+
+905
+00:30:50,000 --> 00:30:52,320
+extension framework is
+
+906
+00:30:52,320 --> 00:30:54,559
+is is doing as it's trying to talk to
+
+907
+00:30:54,559 --> 00:30:57,279
+the game in itself um and
+
+908
+00:30:57,279 --> 00:30:59,760
+it's a very common pattern
+
+909
+00:30:59,760 --> 00:31:00,880
+across
+
+910
+00:31:00,880 --> 00:31:02,240
+uh
+
+911
+00:31:02,240 --> 00:31:04,000
+apple and all their system names at this
+
+912
+00:31:04,000 --> 00:31:06,960
+point um so again kind of
+
+913
+00:31:06,960 --> 00:31:08,000
+from
+
+914
+00:31:08,000 --> 00:31:09,600
+looking into internals looking at kind
+
+915
+00:31:09,600 --> 00:31:11,279
+of the security of these new system
+
+916
+00:31:11,279 --> 00:31:12,880
+daemons it's a place that i'll usually
+
+917
+00:31:12,880 --> 00:31:16,080
+start just to kind of see
+
+918
+00:31:16,799 --> 00:31:19,440
+great apple has a public api but then
+
+919
+00:31:19,440 --> 00:31:20,960
+one level down
+
+920
+00:31:20,960 --> 00:31:22,399
+you know what is it actually doing with
+
+921
+00:31:22,399 --> 00:31:24,960
+xpc what is it sending off to the system
+
+922
+00:31:24,960 --> 00:31:27,919
+daemons um and you know are there any
+
+923
+00:31:27,919 --> 00:31:31,679
+maybe things not documented as part of
+
+924
+00:31:31,679 --> 00:31:34,000
+the public api that i can see within
+
+925
+00:31:34,000 --> 00:31:34,960
+these
+
+926
+00:31:34,960 --> 00:31:38,720
+xpc protocols that are being used
+
+927
+00:31:38,720 --> 00:31:42,640
+so within the system extension daemon
+
+928
+00:31:42,960 --> 00:31:44,840
+you know we have a main class
+
+929
+00:31:44,840 --> 00:31:45,840
+called uh
+
+930
+00:31:45,840 --> 00:31:48,320
+sys extd server this is kind of your
+
+931
+00:31:48,320 --> 00:31:49,279
+main
+
+932
+00:31:49,279 --> 00:31:52,159
+listener class
+
+933
+00:31:52,880 --> 00:31:55,120
+and then there's it's kind of boiled
+
+934
+00:31:55,120 --> 00:31:57,600
+down to just a handful of classes but
+
+935
+00:31:57,600 --> 00:31:58,880
+it'll listen to the kind of the request
+
+936
+00:31:58,880 --> 00:32:00,960
+coming in from the framework
+
+937
+00:32:00,960 --> 00:32:02,480
+getting passed in you can see kind of
+
+938
+00:32:02,480 --> 00:32:04,720
+the system extension api framework
+
+939
+00:32:04,720 --> 00:32:06,159
+client class
+
+940
+00:32:06,159 --> 00:32:08,080
+which then is calling into a
+
+941
+00:32:08,080 --> 00:32:12,000
+standard extension delegate class so
+
+942
+00:32:12,000 --> 00:32:13,519
+one of the things that struck me i think
+
+943
+00:32:13,519 --> 00:32:14,720
+i mentioned earlier about the system
+
+944
+00:32:14,720 --> 00:32:16,480
+extension d is that there's a lot of
+
+945
+00:32:16,480 --> 00:32:19,440
+code in it for a new daemon compared to
+
+946
+00:32:19,440 --> 00:32:20,960
+at least what i was able to tell from
+
+947
+00:32:20,960 --> 00:32:22,320
+reversing
+
+948
+00:32:22,320 --> 00:32:24,000
+that it did i think it comes from the
+
+949
+00:32:24,000 --> 00:32:26,080
+complexity of this damon having to
+
+950
+00:32:26,080 --> 00:32:27,519
+handle
+
+951
+00:32:27,519 --> 00:32:30,000
+all the different
+
+952
+00:32:30,000 --> 00:32:32,159
+system extension types as well as i
+
+953
+00:32:32,159 --> 00:32:34,559
+think apple planning for there to be
+
+954
+00:32:34,559 --> 00:32:35,919
+more system extension types in the
+
+955
+00:32:35,919 --> 00:32:39,760
+future so standard extension delegate
+
+956
+00:32:39,760 --> 00:32:41,360
+you know that name standard there
+
+957
+00:32:41,360 --> 00:32:42,799
+they've definitely built up this whole
+
+958
+00:32:42,799 --> 00:32:45,039
+sort of object hierarchy of different
+
+959
+00:32:45,039 --> 00:32:47,039
+internal classes
+
+960
+00:32:47,039 --> 00:32:48,880
+so that in the future there could be
+
+961
+00:32:48,880 --> 00:32:49,840
+more
+
+962
+00:32:49,840 --> 00:32:52,720
+uh daemons like endpoint security d
+
+963
+00:32:52,720 --> 00:32:54,159
+that are handling different system
+
+964
+00:32:54,159 --> 00:32:56,799
+extension points
+
+965
+00:32:56,799 --> 00:32:58,159
+so
+
+966
+00:32:58,159 --> 00:32:59,679
+i kind of started here with these first
+
+967
+00:32:59,679 --> 00:33:01,440
+two pieces the system extension
+
+968
+00:33:01,440 --> 00:33:05,039
+framework system extension d and xpc
+
+969
+00:33:05,039 --> 00:33:06,240
+at this point you can use something like
+
+970
+00:33:06,240 --> 00:33:07,600
+class dump
+
+971
+00:33:07,600 --> 00:33:09,120
+you can run it on
+
+972
+00:33:09,120 --> 00:33:10,640
+system extension d and you can get that
+
+973
+00:33:10,640 --> 00:33:13,200
+protocol that is that it's using
+
+974
+00:33:13,200 --> 00:33:15,360
+uh out to kind of see again what does it
+
+975
+00:33:15,360 --> 00:33:17,039
+support and you can basically build a
+
+976
+00:33:17,039 --> 00:33:18,559
+little stub application rather than
+
+977
+00:33:18,559 --> 00:33:20,480
+going through the system extension
+
+978
+00:33:20,480 --> 00:33:22,559
+framework uh you know take your little
+
+979
+00:33:22,559 --> 00:33:25,600
+stub application uh copy and paste your
+
+980
+00:33:25,600 --> 00:33:27,919
+your class don't protocol out
+
+981
+00:33:27,919 --> 00:33:30,000
+and then just use kind of standard xpc
+
+982
+00:33:30,000 --> 00:33:32,960
+methods to then connect to this uh
+
+983
+00:33:32,960 --> 00:33:35,919
+service um and run different methods and
+
+984
+00:33:35,919 --> 00:33:39,679
+in this case uh you know you're
+
+985
+00:33:39,679 --> 00:33:41,039
+you're starting from the system
+
+986
+00:33:41,039 --> 00:33:42,559
+extension framework which is meant to be
+
+987
+00:33:42,559 --> 00:33:44,880
+called from user space it's probably the
+
+988
+00:33:44,880 --> 00:33:46,640
+the least amount of security
+
+989
+00:33:46,640 --> 00:33:48,399
+restrictions because a normal
+
+990
+00:33:48,399 --> 00:33:49,919
+application is meant to call these
+
+991
+00:33:49,919 --> 00:33:54,000
+things to activate a system uh extension
+
+992
+00:33:54,000 --> 00:33:55,440
+um
+
+993
+00:33:55,440 --> 00:33:58,559
+and and i just sort of started um
+
+994
+00:33:58,559 --> 00:34:01,840
+manually fuzzing this if you would uh
+
+995
+00:34:01,840 --> 00:34:03,360
+i wouldn't even call it fuzzing i'd call
+
+996
+00:34:03,360 --> 00:34:06,159
+it maybe just doing qa i'm kind of just
+
+997
+00:34:06,159 --> 00:34:08,239
+trying to call these things what are the
+
+998
+00:34:08,239 --> 00:34:09,760
+different things that i can pass in what
+
+999
+00:34:09,760 --> 00:34:11,839
+are acceptable values you know again
+
+1000
+00:34:11,839 --> 00:34:13,520
+system extension d really only
+
+1001
+00:34:13,520 --> 00:34:14,800
+understands kind of activate to
+
+1002
+00:34:14,800 --> 00:34:16,079
+deactivate
+
+1003
+00:34:16,079 --> 00:34:18,000
+but passing in different things and
+
+1004
+00:34:18,000 --> 00:34:19,199
+watching the console and trying to
+
+1005
+00:34:19,199 --> 00:34:21,440
+figure out what's happening internally
+
+1006
+00:34:21,440 --> 00:34:24,159
+cross-referencing with disassembly
+
+1007
+00:34:24,159 --> 00:34:25,599
+the new
+
+1008
+00:34:25,599 --> 00:34:27,520
+you know the log framework is pretty
+
+1009
+00:34:27,520 --> 00:34:29,679
+robust console is a great place to look
+
+1010
+00:34:29,679 --> 00:34:31,280
+at that and you can usually find those
+
+1011
+00:34:31,280 --> 00:34:33,040
+log messages in disassembly to kind of
+
+1012
+00:34:33,040 --> 00:34:34,560
+correlate these things and pay attention
+
+1013
+00:34:34,560 --> 00:34:36,560
+what's happening
+
+1014
+00:34:36,560 --> 00:34:38,159
+um
+
+1015
+00:34:38,159 --> 00:34:40,480
+ultimately this didn't leave me anywhere
+
+1016
+00:34:40,480 --> 00:34:42,639
+there's not a lot that is is happening
+
+1017
+00:34:42,639 --> 00:34:45,119
+um system extension d did a pretty good
+
+1018
+00:34:45,119 --> 00:34:46,879
+job of trying to validate these things
+
+1019
+00:34:46,879 --> 00:34:48,719
+and then and then pass them forward to
+
+1020
+00:34:48,719 --> 00:34:51,918
+the next the next piece
+
+1021
+00:34:51,918 --> 00:34:54,879
+uh so again just kept going down the
+
+1022
+00:34:54,879 --> 00:34:56,399
+path to understand like okay what
+
+1023
+00:34:56,399 --> 00:34:57,359
+happens
+
+1024
+00:34:57,359 --> 00:34:59,119
+uh when it passes off
+
+1025
+00:34:59,119 --> 00:35:01,680
+to the to the next level again it's xbc
+
+1026
+00:35:01,680 --> 00:35:03,680
+communication again
+
+1027
+00:35:03,680 --> 00:35:06,480
+in the case of endpoint security d again
+
+1028
+00:35:06,480 --> 00:35:08,880
+you have a main class called esd
+
+1029
+00:35:08,880 --> 00:35:10,880
+uh it is doing the kind of the
+
+1030
+00:35:10,880 --> 00:35:13,680
+uh xpc dance of starting up and
+
+1031
+00:35:13,680 --> 00:35:15,440
+declaring itself as a listener and
+
+1032
+00:35:15,440 --> 00:35:17,119
+saying these are the methods and here's
+
+1033
+00:35:17,119 --> 00:35:19,839
+the protocol that i support
+
+1034
+00:35:19,839 --> 00:35:21,200
+endpoint security d is interesting
+
+1035
+00:35:21,200 --> 00:35:22,079
+though
+
+1036
+00:35:22,079 --> 00:35:25,280
+because it is using sm job submit
+
+1037
+00:35:25,280 --> 00:35:27,040
+and again this is the piece that's
+
+1038
+00:35:27,040 --> 00:35:28,800
+talking to launch d
+
+1039
+00:35:28,800 --> 00:35:30,640
+so as a regular
+
+1040
+00:35:30,640 --> 00:35:31,920
+uh
+
+1041
+00:35:31,920 --> 00:35:34,000
+application running as a regular user on
+
+1042
+00:35:34,000 --> 00:35:35,839
+a system uh
+
+1043
+00:35:35,839 --> 00:35:38,240
+you know you can't tell launch d2 to run
+
+1044
+00:35:38,240 --> 00:35:39,119
+something
+
+1045
+00:35:39,119 --> 00:35:41,280
+um but endpoint security d does have the
+
+1046
+00:35:41,280 --> 00:35:43,200
+proper entitlements and permissions to
+
+1047
+00:35:43,200 --> 00:35:44,250
+do that
+
+1048
+00:35:44,250 --> 00:35:45,520
+[Music]
+
+1049
+00:35:45,520 --> 00:35:46,240
+so
+
+1050
+00:35:46,240 --> 00:35:47,520
+again kind of continuing through this
+
+1051
+00:35:47,520 --> 00:35:50,560
+process again okay doing class dump
+
+1052
+00:35:50,560 --> 00:35:52,320
+pulling out these methods
+
+1053
+00:35:52,320 --> 00:35:54,960
+and starting to play around with them
+
+1054
+00:35:54,960 --> 00:35:58,000
+in this case
+
+1055
+00:35:58,000 --> 00:36:00,160
+it was a class that actually exists in
+
+1056
+00:36:00,160 --> 00:36:02,000
+the system extension framework a private
+
+1057
+00:36:02,000 --> 00:36:02,800
+one
+
+1058
+00:36:02,800 --> 00:36:03,920
+um
+
+1059
+00:36:03,920 --> 00:36:07,200
+again i mentioned kind of the
+
+1060
+00:36:07,760 --> 00:36:09,599
+the clear thought from apple of kind of
+
+1061
+00:36:09,599 --> 00:36:11,680
+building out this
+
+1062
+00:36:11,680 --> 00:36:12,880
+i don't know if i want to say overly
+
+1063
+00:36:12,880 --> 00:36:16,160
+complex but sort of forward-thinking
+
+1064
+00:36:16,160 --> 00:36:18,640
+way to support more system extension
+
+1065
+00:36:18,640 --> 00:36:20,480
+types in the future so a lot of the
+
+1066
+00:36:20,480 --> 00:36:22,880
+common functionality you may find in
+
+1067
+00:36:22,880 --> 00:36:24,400
+private classes in the system extension
+
+1068
+00:36:24,400 --> 00:36:26,240
+framework that then get used by the
+
+1069
+00:36:26,240 --> 00:36:29,280
+private daemons that apple's creating
+
+1070
+00:36:29,280 --> 00:36:31,920
+in this case
+
+1071
+00:36:33,599 --> 00:36:35,520
+at first there's not really any methods
+
+1072
+00:36:35,520 --> 00:36:36,560
+that are
+
+1073
+00:36:36,560 --> 00:36:38,480
+maybe that different from an activator
+
+1074
+00:36:38,480 --> 00:36:40,240
+deactivate you see one level up in
+
+1075
+00:36:40,240 --> 00:36:42,000
+system extension d you know you have
+
+1076
+00:36:42,000 --> 00:36:44,480
+start extension terminated extension
+
+1077
+00:36:44,480 --> 00:36:46,960
+uh validate extension
+
+1078
+00:36:46,960 --> 00:36:48,480
+but i think this was kind of the first
+
+1079
+00:36:48,480 --> 00:36:50,400
+place after having kind of pulled out
+
+1080
+00:36:50,400 --> 00:36:51,839
+the flow of everything and looking at
+
+1081
+00:36:51,839 --> 00:36:53,119
+some of the stuff
+
+1082
+00:36:53,119 --> 00:36:55,520
+that i thought you know maybe maybe this
+
+1083
+00:36:55,520 --> 00:36:57,119
+is a good spot to kind of focus a little
+
+1084
+00:36:57,119 --> 00:36:58,240
+more time on
+
+1085
+00:36:58,240 --> 00:36:59,920
+um you know just looking at some of
+
+1086
+00:36:59,920 --> 00:37:02,079
+these you kind of can tell you know
+
+1087
+00:37:02,079 --> 00:37:04,800
+based on having uh start extension and
+
+1088
+00:37:04,800 --> 00:37:06,960
+will start extinction that there's sort
+
+1089
+00:37:06,960 --> 00:37:09,200
+of this flow of events
+
+1090
+00:37:09,200 --> 00:37:11,280
+uh that are supposed to happen that are
+
+1091
+00:37:11,280 --> 00:37:12,800
+being coordinated by the system
+
+1092
+00:37:12,800 --> 00:37:15,119
+extension daemon and then past endpoint
+
+1093
+00:37:15,119 --> 00:37:16,160
+security
+
+1094
+00:37:16,160 --> 00:37:18,240
+so i can sort of conceivably you know
+
+1095
+00:37:18,240 --> 00:37:20,960
+even without uh getting into all the
+
+1096
+00:37:20,960 --> 00:37:22,960
+details just from the name start to
+
+1097
+00:37:22,960 --> 00:37:25,040
+understand system extension d is maybe
+
+1098
+00:37:25,040 --> 00:37:26,960
+doing its level of checking but then
+
+1099
+00:37:26,960 --> 00:37:28,720
+handing off to endpoint security d and
+
+1100
+00:37:28,720 --> 00:37:29,599
+saying
+
+1101
+00:37:29,599 --> 00:37:31,520
+validate an extension and report back to
+
+1102
+00:37:31,520 --> 00:37:32,240
+b
+
+1103
+00:37:32,240 --> 00:37:33,119
+okay
+
+1104
+00:37:33,119 --> 00:37:34,880
+you've said it's good now i'm going to
+
+1105
+00:37:34,880 --> 00:37:36,400
+give you an event of
+
+1106
+00:37:36,400 --> 00:37:37,920
+getting ready to start an extension now
+
+1107
+00:37:37,920 --> 00:37:38,880
+i'm going to tell you to actually go
+
+1108
+00:37:38,880 --> 00:37:40,880
+ahead and start the extension
+
+1109
+00:37:40,880 --> 00:37:42,640
+so it provides a place to say well what
+
+1110
+00:37:42,640 --> 00:37:43,920
+happens if i'm calling these things
+
+1111
+00:37:43,920 --> 00:37:46,000
+directly from my own little xbc stub
+
+1112
+00:37:46,000 --> 00:37:47,839
+what if i don't call validated extension
+
+1113
+00:37:47,839 --> 00:37:49,200
+what if i don't call will start
+
+1114
+00:37:49,200 --> 00:37:51,920
+extension um you know what happens if i
+
+1115
+00:37:51,920 --> 00:37:54,320
+call terminated extension uh on on
+
+1116
+00:37:54,320 --> 00:37:56,160
+random things
+
+1117
+00:37:56,160 --> 00:37:58,400
+um
+
+1118
+00:37:58,400 --> 00:38:00,079
+and and ultimately
+
+1119
+00:38:00,079 --> 00:38:01,920
+you know this was kind of the thing
+
+1120
+00:38:01,920 --> 00:38:03,599
+uh that i was looking for one level up
+
+1121
+00:38:03,599 --> 00:38:05,760
+in the system extension team and
+
+1122
+00:38:05,760 --> 00:38:07,680
+that i ended up finding
+
+1123
+00:38:07,680 --> 00:38:09,119
+uh
+
+1124
+00:38:09,119 --> 00:38:10,880
+what i was hoping for which was a way to
+
+1125
+00:38:10,880 --> 00:38:13,280
+kind of uh get something to happen that
+
+1126
+00:38:13,280 --> 00:38:15,440
+wasn't intended to
+
+1127
+00:38:15,440 --> 00:38:16,839
+to happen
+
+1128
+00:38:16,839 --> 00:38:19,839
+um so i ended up kind of in my stub
+
+1129
+00:38:19,839 --> 00:38:22,560
+application with something like this
+
+1130
+00:38:22,560 --> 00:38:25,440
+there's a os system extension info class
+
+1131
+00:38:25,440 --> 00:38:26,880
+it's another one of those internal
+
+1132
+00:38:26,880 --> 00:38:29,040
+system extension framework classes and
+
+1133
+00:38:29,040 --> 00:38:30,480
+it's got all sorts of different
+
+1134
+00:38:30,480 --> 00:38:32,800
+properties about the system extension
+
+1135
+00:38:32,800 --> 00:38:34,880
+normally system extension d is filling
+
+1136
+00:38:34,880 --> 00:38:36,240
+out all this information after it's done
+
+1137
+00:38:36,240 --> 00:38:39,280
+its validation passing it across
+
+1138
+00:38:39,280 --> 00:38:40,800
+and was able to kind of just boil it
+
+1139
+00:38:40,800 --> 00:38:44,000
+down to no you know as long as i specify
+
+1140
+00:38:44,000 --> 00:38:46,079
+a stage bundle url
+
+1141
+00:38:46,079 --> 00:38:48,560
+and give it this identifier value of any
+
+1142
+00:38:48,560 --> 00:38:50,320
+random string i want
+
+1143
+00:38:50,320 --> 00:38:52,400
+and then call start extension
+
+1144
+00:38:52,400 --> 00:38:54,960
+endpoint security d will happily do
+
+1145
+00:38:54,960 --> 00:38:57,440
+just that
+
+1146
+00:38:57,760 --> 00:38:59,040
+and what really hit me about this in
+
+1147
+00:38:59,040 --> 00:39:01,119
+this case i used calculator you know why
+
+1148
+00:39:01,119 --> 00:39:02,960
+not pop a calculator
+
+1149
+00:39:02,960 --> 00:39:04,720
+but the best part was what's really
+
+1150
+00:39:04,720 --> 00:39:06,800
+happening is endpoint security d asking
+
+1151
+00:39:06,800 --> 00:39:09,040
+launch d to run this as a system daemon
+
+1152
+00:39:09,040 --> 00:39:13,200
+is root so calculator pops up
+
+1153
+00:39:13,200 --> 00:39:14,400
+there's nothing you can really do now
+
+1154
+00:39:14,400 --> 00:39:15,839
+it's running you want to quit it great
+
+1155
+00:39:15,839 --> 00:39:16,960
+it's going to pop up again pretty much
+
+1156
+00:39:16,960 --> 00:39:18,240
+had to restart
+
+1157
+00:39:18,240 --> 00:39:20,079
+uh so that the input security stuff was
+
+1158
+00:39:20,079 --> 00:39:22,320
+shut down uh because i hadn't really
+
+1159
+00:39:22,320 --> 00:39:23,760
+activated the system extension in the
+
+1160
+00:39:23,760 --> 00:39:26,800
+proper way uh to get it to go away
+
+1161
+00:39:26,800 --> 00:39:30,720
+um but this this was pretty exciting
+
+1162
+00:39:30,720 --> 00:39:33,760
+and i found this uh pretty early on
+
+1163
+00:39:33,760 --> 00:39:37,119
+in the beta cycle of catalina
+
+1164
+00:39:37,119 --> 00:39:38,720
+and kept thinking to myself okay these
+
+1165
+00:39:38,720 --> 00:39:40,640
+are new daemons especially endpoint
+
+1166
+00:39:40,640 --> 00:39:42,720
+security uh it was very clear during the
+
+1167
+00:39:42,720 --> 00:39:44,240
+data process
+
+1168
+00:39:44,240 --> 00:39:46,480
+of catalina that this was something
+
+1169
+00:39:46,480 --> 00:39:48,720
+influx in motion apple was still kind of
+
+1170
+00:39:48,720 --> 00:39:50,960
+creating it and was really releasing it
+
+1171
+00:39:50,960 --> 00:39:53,680
+as a way to get feedback from developers
+
+1172
+00:39:53,680 --> 00:39:56,079
+um
+
+1173
+00:39:56,079 --> 00:39:59,520
+but it never it never got patched so
+
+1174
+00:39:59,520 --> 00:40:00,720
+um
+
+1175
+00:40:00,720 --> 00:40:02,400
+catalina then got released i reported it
+
+1176
+00:40:02,400 --> 00:40:04,720
+to apple uh and they did
+
+1177
+00:40:04,720 --> 00:40:06,240
+uh then
+
+1178
+00:40:06,240 --> 00:40:07,119
+uh
+
+1179
+00:40:07,119 --> 00:40:11,119
+include this fix in 10 15 1. uh again i
+
+1180
+00:40:11,119 --> 00:40:12,800
+went back to reversing
+
+1181
+00:40:12,800 --> 00:40:14,640
+this is basically objective c code that
+
+1182
+00:40:14,640 --> 00:40:16,720
+i've just reversed from the disassembly
+
+1183
+00:40:16,720 --> 00:40:19,599
+uh of the patch um it's another one of
+
+1184
+00:40:19,599 --> 00:40:21,119
+those classes in the system extension
+
+1185
+00:40:21,119 --> 00:40:24,480
+framework that is internal os system
+
+1186
+00:40:24,480 --> 00:40:27,119
+extension point listener it's
+
+1187
+00:40:27,119 --> 00:40:29,760
+it was clearly meant to be a class that
+
+1188
+00:40:29,760 --> 00:40:31,599
+apple would use in all future system
+
+1189
+00:40:31,599 --> 00:40:32,720
+extensions
+
+1190
+00:40:32,720 --> 00:40:34,720
+so while the bug that i found was just
+
+1191
+00:40:34,720 --> 00:40:36,960
+an endpoint security t
+
+1192
+00:40:36,960 --> 00:40:38,640
+uh you know if they had any other system
+
+1193
+00:40:38,640 --> 00:40:40,000
+extensions that would have had the same
+
+1194
+00:40:40,000 --> 00:40:42,640
+bug and it literally was just
+
+1195
+00:40:42,640 --> 00:40:46,000
+no entitlement check
+
+1196
+00:40:46,480 --> 00:40:49,040
+at all so any client could connect to
+
+1197
+00:40:49,040 --> 00:40:51,040
+endpoint security d and attempt to kind
+
+1198
+00:40:51,040 --> 00:40:53,359
+of send those messages and ask it to do
+
+1199
+00:40:53,359 --> 00:40:54,160
+things
+
+1200
+00:40:54,160 --> 00:40:55,680
+uh
+
+1201
+00:40:55,680 --> 00:40:58,240
+it was an easy fix
+
+1202
+00:40:58,240 --> 00:41:00,079
+but i mentioned earlier that
+
+1203
+00:41:00,079 --> 00:41:02,560
+one of the biggest i think architectural
+
+1204
+00:41:02,560 --> 00:41:04,800
+issues and challenges is the complexity
+
+1205
+00:41:04,800 --> 00:41:06,720
+of all this if i put on my
+
+1206
+00:41:06,720 --> 00:41:08,000
+uh
+
+1207
+00:41:08,000 --> 00:41:09,440
+developer hat
+
+1208
+00:41:09,440 --> 00:41:12,880
+uh looking at how apple built this
+
+1209
+00:41:12,880 --> 00:41:14,960
+i wouldn't want to try to test this
+
+1210
+00:41:14,960 --> 00:41:17,359
+whole process he was hard enough to test
+
+1211
+00:41:17,359 --> 00:41:18,800
+this whole process as a developer
+
+1212
+00:41:18,800 --> 00:41:21,280
+anybody who who used the framework uh
+
+1213
+00:41:21,280 --> 00:41:22,160
+knows
+
+1214
+00:41:22,160 --> 00:41:24,400
+um so
+
+1215
+00:41:24,400 --> 00:41:25,760
+you know but it's one of those things
+
+1216
+00:41:25,760 --> 00:41:27,119
+where
+
+1217
+00:41:27,119 --> 00:41:29,200
+if i ran a uh
+
+1218
+00:41:29,200 --> 00:41:30,960
+a dev team at apple
+
+1219
+00:41:30,960 --> 00:41:32,720
+building system demons
+
+1220
+00:41:32,720 --> 00:41:34,240
+i'd probably make sure that i had
+
+1221
+00:41:34,240 --> 00:41:36,240
+entitlements as like my number one thing
+
+1222
+00:41:36,240 --> 00:41:38,319
+on my code review checklist to make sure
+
+1223
+00:41:38,319 --> 00:41:39,359
+we have
+
+1224
+00:41:39,359 --> 00:41:41,680
+um so it's just you know nothing nothing
+
+1225
+00:41:41,680 --> 00:41:43,359
+against apple or their dev teams it's
+
+1226
+00:41:43,359 --> 00:41:45,200
+just i think again to kind of point out
+
+1227
+00:41:45,200 --> 00:41:47,200
+the complexity of all it's easy to kind
+
+1228
+00:41:47,200 --> 00:41:48,560
+of miss this and this is really the
+
+1229
+00:41:48,560 --> 00:41:50,000
+pattern that i see
+
+1230
+00:41:50,000 --> 00:41:52,560
+uh apple doing more and more more
+
+1231
+00:41:52,560 --> 00:41:55,040
+entitlements more system daemons
+
+1232
+00:41:55,040 --> 00:41:57,839
+more granularity which is good from a
+
+1233
+00:41:57,839 --> 00:42:00,079
+security perspective but can be really
+
+1234
+00:42:00,079 --> 00:42:03,040
+challenging from kind of building that
+
+1235
+00:42:03,040 --> 00:42:04,800
+type of
+
+1236
+00:42:04,800 --> 00:42:07,680
+system perspective
+
+1237
+00:42:08,960 --> 00:42:09,920
+so
+
+1238
+00:42:09,920 --> 00:42:11,280
+you know just a couple
+
+1239
+00:42:11,280 --> 00:42:13,599
+closing thoughts on all this
+
+1240
+00:42:13,599 --> 00:42:15,119
+is it a good framework you know do i
+
+1241
+00:42:15,119 --> 00:42:16,800
+think system extensions and specifically
+
+1242
+00:42:16,800 --> 00:42:19,920
+endpoint security is a good framework
+
+1243
+00:42:19,920 --> 00:42:22,880
+it's a resounding yes for me i think uh
+
+1244
+00:42:22,880 --> 00:42:24,560
+there are just too many
+
+1245
+00:42:24,560 --> 00:42:27,119
+positive things about this framework uh
+
+1246
+00:42:27,119 --> 00:42:29,040
+to discount it on top of the fact that
+
+1247
+00:42:29,040 --> 00:42:31,520
+apple is kind of saying you don't have a
+
+1248
+00:42:31,520 --> 00:42:32,640
+choice you're going to have to use the
+
+1249
+00:42:32,640 --> 00:42:35,359
+framework um but but i do i do
+
+1250
+00:42:35,359 --> 00:42:36,960
+wholeheartedly believe that it's it
+
+1251
+00:42:36,960 --> 00:42:39,280
+should lead to better system stability
+
+1252
+00:42:39,280 --> 00:42:41,040
+less third-party code
+
+1253
+00:42:41,040 --> 00:42:42,720
+in in kernel space
+
+1254
+00:42:42,720 --> 00:42:45,280
+um
+
+1255
+00:42:45,280 --> 00:42:47,839
+you know i think it's it's easy to
+
+1256
+00:42:47,839 --> 00:42:50,079
+uh just shove too much stuff in kernel
+
+1257
+00:42:50,079 --> 00:42:52,400
+space that really shouldn't be there
+
+1258
+00:42:52,400 --> 00:42:54,560
+you know i think it leads to kind of
+
+1259
+00:42:54,560 --> 00:42:56,880
+less attack surface as well you have
+
+1260
+00:42:56,880 --> 00:42:59,119
+less of that third-party code
+
+1261
+00:42:59,119 --> 00:43:02,160
+in kernel space especially with uh the
+
+1262
+00:43:02,160 --> 00:43:05,440
+security area you know i think just from
+
+1263
+00:43:05,440 --> 00:43:07,680
+my own sort of reversing of
+
+1264
+00:43:07,680 --> 00:43:10,000
+various kernel drivers you know it's
+
+1265
+00:43:10,000 --> 00:43:12,319
+pretty common to see sort of lots of
+
+1266
+00:43:12,319 --> 00:43:14,720
+cross-platform c plus plus code shoved
+
+1267
+00:43:14,720 --> 00:43:16,480
+into a kernel driver and then that
+
+1268
+00:43:16,480 --> 00:43:19,040
+kernel driver running on a mac
+
+1269
+00:43:19,040 --> 00:43:20,560
+so there's just a lot of code a lot of
+
+1270
+00:43:20,560 --> 00:43:22,240
+chances to have bugs
+
+1271
+00:43:22,240 --> 00:43:24,480
+so you know i think that's good and i
+
+1272
+00:43:24,480 --> 00:43:26,560
+think one of the biggest things is that
+
+1273
+00:43:26,560 --> 00:43:29,760
+it really enforces a good architecture
+
+1274
+00:43:29,760 --> 00:43:33,200
+on the endpoint security products it's a
+
+1275
+00:43:33,200 --> 00:43:35,119
+it's a pattern that apple has been using
+
+1276
+00:43:35,119 --> 00:43:37,440
+for a lot of years at this point uh you
+
+1277
+00:43:37,440 --> 00:43:39,440
+know trying to keep their kernel drivers
+
+1278
+00:43:39,440 --> 00:43:41,680
+as small as possible communicating to
+
+1279
+00:43:41,680 --> 00:43:43,280
+system daemons and putting that code
+
+1280
+00:43:43,280 --> 00:43:45,359
+into user space
+
+1281
+00:43:45,359 --> 00:43:46,720
+and
+
+1282
+00:43:46,720 --> 00:43:48,720
+for better or worse i'm willing to say i
+
+1283
+00:43:48,720 --> 00:43:50,400
+trust you apple to kind of do that
+
+1284
+00:43:50,400 --> 00:43:52,720
+kernel extension
+
+1285
+00:43:52,720 --> 00:43:54,720
+well and that communication between
+
+1286
+00:43:54,720 --> 00:43:56,880
+kernel and user space well
+
+1287
+00:43:56,880 --> 00:43:59,599
+you know i'll give up maybe a a tiny bit
+
+1288
+00:43:59,599 --> 00:44:01,680
+of performance
+
+1289
+00:44:01,680 --> 00:44:03,280
+it's not perfect though
+
+1290
+00:44:03,280 --> 00:44:05,119
+um
+
+1291
+00:44:05,119 --> 00:44:06,960
+i mentioned a couple minutes ago like it
+
+1292
+00:44:06,960 --> 00:44:08,880
+was very clear that apple
+
+1293
+00:44:08,880 --> 00:44:10,240
+even though they were releasing it with
+
+1294
+00:44:10,240 --> 00:44:11,520
+catalina
+
+1295
+00:44:11,520 --> 00:44:13,760
+that it's really kind of uh they're
+
+1296
+00:44:13,760 --> 00:44:14,800
+iterating
+
+1297
+00:44:14,800 --> 00:44:17,040
+quickly so i would definitely encourage
+
+1298
+00:44:17,040 --> 00:44:19,440
+anyone using this file bugs with apple
+
+1299
+00:44:19,440 --> 00:44:22,480
+send them feedback follow radars um i do
+
+1300
+00:44:22,480 --> 00:44:24,720
+truly believe uh you know that they want
+
+1301
+00:44:24,720 --> 00:44:26,880
+to make this successful this this
+
+1302
+00:44:26,880 --> 00:44:29,200
+framework endpoint security especially
+
+1303
+00:44:29,200 --> 00:44:30,400
+um
+
+1304
+00:44:30,400 --> 00:44:32,079
+you know i think uh
+
+1305
+00:44:32,079 --> 00:44:34,319
+anybody who does uh macro ios
+
+1306
+00:44:34,319 --> 00:44:36,960
+development you know has probably felt
+
+1307
+00:44:36,960 --> 00:44:38,880
+the pain of not feeling like
+
+1308
+00:44:38,880 --> 00:44:40,800
+their feedback goes anywhere this is a
+
+1309
+00:44:40,800 --> 00:44:43,520
+case where uh you know i've seen apple
+
+1310
+00:44:43,520 --> 00:44:46,720
+kind of following up and trying to
+
+1311
+00:44:46,720 --> 00:44:51,040
+get this framework right so
+
+1312
+00:44:51,040 --> 00:44:53,920
+and then just a couple links uh if you
+
+1313
+00:44:53,920 --> 00:44:56,160
+go to my github there's a cve repo you
+
+1314
+00:44:56,160 --> 00:44:59,359
+can download the proof of concept
+
+1315
+00:44:59,839 --> 00:45:01,839
+it
+
+1316
+00:45:01,839 --> 00:45:03,839
+is only going to do anything cool on 10
+
+1317
+00:45:03,839 --> 00:45:06,640
+15 0 so hopefully you saved you know all
+
+1318
+00:45:06,640 --> 00:45:08,640
+your installer images
+
+1319
+00:45:08,640 --> 00:45:10,640
+to get back to that version um and then
+
+1320
+00:45:10,640 --> 00:45:13,280
+i have a little skeleton app
+
+1321
+00:45:13,280 --> 00:45:15,520
+of of swift
+
+1322
+00:45:15,520 --> 00:45:19,839
+talking to endpoint uh
+
+1323
+00:45:19,839 --> 00:45:22,079
+system extension uh endpoint security
+
+1324
+00:45:22,079 --> 00:45:24,960
+system extension written in swift uh
+
+1325
+00:45:24,960 --> 00:45:27,040
+actually very similar to the
+
+1326
+00:45:27,040 --> 00:45:28,319
+um
+
+1327
+00:45:28,319 --> 00:45:29,760
+whatever the app that just came out this
+
+1328
+00:45:29,760 --> 00:45:31,599
+week uh from
+
+1329
+00:45:31,599 --> 00:45:34,160
+fireeye um and then if you want you know
+
+1330
+00:45:34,160 --> 00:45:35,520
+more details there's a couple posts i've
+
+1331
+00:45:35,520 --> 00:45:38,480
+had up on the blog uh as well as uh
+
+1332
+00:45:38,480 --> 00:45:40,720
+jonathan levin had a really nice uh
+
+1333
+00:45:40,720 --> 00:45:42,319
+write-up on some of the kernel space
+
+1334
+00:45:42,319 --> 00:45:43,839
+stuff
+
+1335
+00:45:43,839 --> 00:45:47,640
+and yeah that's it
+

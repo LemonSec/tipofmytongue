@@ -1,0 +1,1727 @@
+﻿1
+00:00:01,493 --> 00:00:04,080
+- Hello Defcon, thank you
+for tuning into my talk,
+
+2
+00:00:04,080 --> 00:00:06,690
+being broadcast in
+Raleigh, North Carolina.
+
+3
+00:00:06,690 --> 00:00:08,620
+My name is Austin Allshouse.
+
+4
+00:00:08,620 --> 00:00:11,420
+I'm a research scientist at BitSight.
+
+5
+00:00:11,420 --> 00:00:12,550
+And as part of my job,
+
+6
+00:00:12,550 --> 00:00:15,140
+I do a lot of surveys
+and studies of security
+
+7
+00:00:15,140 --> 00:00:17,490
+best practices across the internet.
+
+8
+00:00:17,490 --> 00:00:20,280
+And today I'm going to walk
+you through some of the low
+
+9
+00:00:20,280 --> 00:00:25,000
+level details of how to do
+one study that I did recently
+
+10
+00:00:25,000 --> 00:00:28,880
+involving compromising RSA
+keys through factorization.
+
+11
+00:00:31,040 --> 00:00:34,020
+While this talk is nominally
+about how to compromise a
+
+12
+00:00:34,020 --> 00:00:37,313
+specific subset of vulnerable RSA keys,
+
+13
+00:00:37,313 --> 00:00:41,530
+what it's really functionally
+about is a scalable method to
+
+14
+00:00:41,530 --> 00:00:45,610
+calculate shared factors across
+large batches of integers.
+
+15
+00:00:45,610 --> 00:00:48,190
+And that's because that is
+the mechanism by which we are
+
+16
+00:00:48,190 --> 00:00:49,063
+going to do it.
+
+17
+00:00:50,180 --> 00:00:52,930
+There has been a lot of
+past research on this topic,
+
+18
+00:00:52,930 --> 00:00:55,610
+and many of the researchers
+have sort of simply attested
+
+19
+00:00:55,610 --> 00:00:58,350
+that they built a custom scalable,
+
+20
+00:00:58,350 --> 00:01:01,990
+distributed batch GCD
+implementation to factor keys
+
+21
+00:01:01,990 --> 00:01:03,920
+collected from the internet,
+
+22
+00:01:03,920 --> 00:01:06,490
+but many of these studies
+have been fairly light on
+
+23
+00:01:06,490 --> 00:01:08,180
+implementation details.
+
+24
+00:01:08,180 --> 00:01:11,110
+So this talk is going to walk
+you through what distributed
+
+25
+00:01:11,110 --> 00:01:15,030
+batch GCD means and how to
+implement it yourself in order to
+
+26
+00:01:15,030 --> 00:01:16,733
+break some RSA keys.
+
+27
+00:01:19,570 --> 00:01:22,070
+I'm not going to give a whole RSA recap,
+
+28
+00:01:22,070 --> 00:01:25,390
+but there is one thing that
+you need to know in order to
+
+29
+00:01:25,390 --> 00:01:28,380
+understand the content of this talk.
+
+30
+00:01:28,380 --> 00:01:32,770
+The first step when producing
+an RSA key pair is to select
+
+31
+00:01:32,770 --> 00:01:36,650
+two random prime numbers and
+the product of those two prime
+
+32
+00:01:36,650 --> 00:01:40,720
+numbers is shared as the
+modulus of the public key.
+
+33
+00:01:40,720 --> 00:01:45,390
+The security of RSA is dependent
+upon the fact that given a
+
+34
+00:01:45,390 --> 00:01:47,360
+sufficiently large key size,
+
+35
+00:01:47,360 --> 00:01:51,740
+it is not tractable to factor
+that public modulus back into
+
+36
+00:01:51,740 --> 00:01:56,740
+those constituent primes and
+the secrecy of those primes is
+
+37
+00:01:57,070 --> 00:02:00,053
+critical to the security
+of the private key,
+
+38
+00:02:02,740 --> 00:02:06,570
+but while large integer
+factorization is a computationally
+
+39
+00:02:06,570 --> 00:02:08,100
+difficult problem,
+
+40
+00:02:08,100 --> 00:02:11,690
+fast and efficient methods
+do exist for calculating the
+
+41
+00:02:11,690 --> 00:02:14,830
+greatest common divisor of two integers.
+
+42
+00:02:14,830 --> 00:02:19,220
+This means that if any two RSA
+keys just happened to choose
+
+43
+00:02:19,220 --> 00:02:22,780
+one of the same primes
+when generating keys,
+
+44
+00:02:22,780 --> 00:02:26,440
+both of those keys can be easily
+compromised by calculating
+
+45
+00:02:26,440 --> 00:02:30,020
+the greatest common
+divisor of the two keys.
+
+46
+00:02:30,020 --> 00:02:30,853
+In theory,
+
+47
+00:02:30,853 --> 00:02:33,650
+this should never happen as
+the number of potential primes
+
+48
+00:02:33,650 --> 00:02:37,130
+to choose from is so mindbogglingly large,
+
+49
+00:02:37,130 --> 00:02:39,803
+that it would never
+actually happen by chance.
+
+50
+00:02:41,700 --> 00:02:44,760
+However back almost a decade ago,
+
+51
+00:02:44,760 --> 00:02:47,950
+two research teams actually
+found out that many RSA
+
+52
+00:02:47,950 --> 00:02:51,010
+certificates collected from
+the internet do in fact
+
+53
+00:02:51,010 --> 00:02:54,200
+share primes with other certificates,
+
+54
+00:02:54,200 --> 00:02:57,600
+this making them trivial to compromise,
+
+55
+00:02:57,600 --> 00:03:00,650
+and they were able to attribute
+this phenomenon to flawed
+
+56
+00:03:00,650 --> 00:03:04,280
+implementations in pseudo
+random number generators
+
+57
+00:03:04,280 --> 00:03:07,173
+seeding the key generation process.
+
+58
+00:03:08,130 --> 00:03:09,350
+Over the years,
+
+59
+00:03:09,350 --> 00:03:12,420
+this phenomenon has been
+revisited with researchers
+
+60
+00:03:12,420 --> 00:03:16,580
+collecting and evaluating larger
+and larger batches of keys,
+
+61
+00:03:16,580 --> 00:03:20,463
+necessitating various big data
+approaches to this problem.
+
+62
+00:03:21,550 --> 00:03:24,800
+This culminated somewhat in a
+really interesting talk back
+
+63
+00:03:24,800 --> 00:03:28,890
+at Defcon 26, in which some
+folks from Kudelski Security
+
+64
+00:03:28,890 --> 00:03:32,630
+really industrialized the
+key acquisition process and
+
+65
+00:03:32,630 --> 00:03:35,330
+evaluated hundreds of millions of keys
+
+66
+00:03:35,330 --> 00:03:37,860
+for a variety of weak implementations,
+
+67
+00:03:37,860 --> 00:03:41,220
+but including this shared
+prime factor vulnerability that
+
+68
+00:03:41,220 --> 00:03:42,533
+I'm discussing today.
+
+69
+00:03:43,750 --> 00:03:47,420
+So the question really sort
+of boils down to if some RSA
+
+70
+00:03:47,420 --> 00:03:51,760
+keys do share primes and they
+can be compromised by finding
+
+71
+00:03:51,760 --> 00:03:53,690
+share factors across them,
+
+72
+00:03:53,690 --> 00:03:56,690
+how do you calculate the
+greatest common divisor across
+
+73
+00:03:56,690 --> 00:03:58,783
+hundreds of millions of keys?
+
+74
+00:04:01,790 --> 00:04:02,940
+To answer that question,
+
+75
+00:04:02,940 --> 00:04:06,720
+we need to go back over 2000
+years to what is one of the
+
+76
+00:04:06,720 --> 00:04:10,620
+oldest known algorithms,
+the Euclidean algorithm,
+
+77
+00:04:10,620 --> 00:04:13,340
+which is used to calculate
+the greatest common divisor
+
+78
+00:04:13,340 --> 00:04:15,140
+of two numbers.
+
+79
+00:04:15,140 --> 00:04:18,420
+It works by recursively
+calculating remainders between two
+
+80
+00:04:18,420 --> 00:04:21,500
+numbers until the greatest
+common divisor of those two
+
+81
+00:04:21,500 --> 00:04:24,800
+numbers is reached,
+which it may just be one
+
+82
+00:04:24,800 --> 00:04:28,113
+if the two numbers don't actually
+share any common factors.
+
+83
+00:04:29,150 --> 00:04:32,800
+In this trivially small example
+on this slide comprised of
+
+84
+00:04:32,800 --> 00:04:37,540
+four products of prime numbers,
+by calculating the pairwise
+
+85
+00:04:37,540 --> 00:04:41,270
+greatest common divisor of
+each combination of numbers,
+
+86
+00:04:41,270 --> 00:04:44,870
+we can discover that one pair
+does in fact share a common
+
+87
+00:04:44,870 --> 00:04:46,050
+factor of seven,
+
+88
+00:04:46,050 --> 00:04:47,810
+because it has a greatest common divisor
+
+89
+00:04:47,810 --> 00:04:48,810
+of greater than one.
+
+90
+00:04:49,970 --> 00:04:52,160
+While this slide is using small integers,
+
+91
+00:04:52,160 --> 00:04:54,050
+just for illustrative purposes,
+
+92
+00:04:54,050 --> 00:04:57,765
+these integers could just as
+easily be real RSA moduli,
+
+93
+00:04:57,765 --> 00:05:00,840
+and this is a perfectly
+valid way to compromise keys
+
+94
+00:05:00,840 --> 00:05:03,970
+if there does happen to be a
+shared prime factor with any
+
+95
+00:05:03,970 --> 00:05:05,403
+small batch of keys.
+
+96
+00:05:06,800 --> 00:05:10,020
+The Euclidean algorithm
+is fast and efficient,
+
+97
+00:05:10,020 --> 00:05:13,400
+but because you have to do
+these pairwise combinations
+
+98
+00:05:13,400 --> 00:05:16,760
+attempting to calculate the
+greatest common divisor across
+
+99
+00:05:16,760 --> 00:05:19,710
+hundreds of millions of keys
+could potentially require
+
+100
+00:05:19,710 --> 00:05:23,006
+hundreds of quadrillions of
+iterations of this algorithm,
+
+101
+00:05:23,006 --> 00:05:24,720
+which means that it's really just not
+
+102
+00:05:24,720 --> 00:05:26,193
+scalable to that problem.
+
+103
+00:05:28,420 --> 00:05:32,130
+So skipping ahead over 2000 years again,
+
+104
+00:05:32,130 --> 00:05:34,930
+a cryptographer named Bernstein
+published an efficient
+
+105
+00:05:34,930 --> 00:05:38,110
+method for calculating the
+greatest common divisor across
+
+106
+00:05:38,110 --> 00:05:42,690
+batches of numbers, like many
+problems in computer science,
+
+107
+00:05:42,690 --> 00:05:46,670
+it uses an intermediate tree
+data structure to bypass the
+
+108
+00:05:46,670 --> 00:05:50,120
+requirement of having to
+calculate every pairwise
+
+109
+00:05:50,120 --> 00:05:52,320
+combination of numbers.
+
+110
+00:05:52,320 --> 00:05:53,650
+In simplest terms,
+
+111
+00:05:53,650 --> 00:05:58,020
+Bernstein's method builds a
+product tree by calculating the
+
+112
+00:05:58,020 --> 00:06:01,190
+products of pairs of numbers in the batch,
+
+113
+00:06:01,190 --> 00:06:04,470
+and then repeating this process
+up successive levels of the
+
+114
+00:06:04,470 --> 00:06:08,970
+tree until the root of the
+tree represents the cumulative
+
+115
+00:06:08,970 --> 00:06:11,543
+product of all numbers in the batch.
+
+116
+00:06:12,460 --> 00:06:17,460
+It then decomposes this product
+tree back into remainders by
+
+117
+00:06:17,690 --> 00:06:21,730
+calculating the remainder of
+each parent node with respect
+
+118
+00:06:21,730 --> 00:06:24,260
+to the square of its child node
+
+119
+00:06:24,260 --> 00:06:28,380
+until the leaves of the trees
+represent the remainders
+
+120
+00:06:28,380 --> 00:06:32,020
+of each integer in the batch
+with respect to the cumulative
+
+121
+00:06:32,020 --> 00:06:33,953
+product of the whole batch.
+
+122
+00:06:34,980 --> 00:06:37,610
+A final greatest common divisor step
+
+123
+00:06:37,610 --> 00:06:40,160
+is computed on each leaf remainder,
+
+124
+00:06:40,160 --> 00:06:43,770
+which will reveal if that
+particular manager shares a factor
+
+125
+00:06:43,770 --> 00:06:46,133
+with any other integer in the batch.
+
+126
+00:06:47,100 --> 00:06:51,050
+This is a very similar approach
+to the Euclidean algorithm
+
+127
+00:06:51,050 --> 00:06:54,710
+with the key distinction being
+that these shared factors are
+
+128
+00:06:54,710 --> 00:06:57,750
+being discovered with respect
+to the cumulative product of
+
+129
+00:06:57,750 --> 00:07:00,730
+the whole batch instead
+of the various pairwise
+
+130
+00:07:00,730 --> 00:07:03,223
+combinations of all integers in the batch.
+
+131
+00:07:04,220 --> 00:07:07,950
+This is a very effective
+approach specifically for the RSA
+
+132
+00:07:07,950 --> 00:07:11,040
+key factorization problem,
+because in general,
+
+133
+00:07:11,040 --> 00:07:14,870
+shared factors are relatively
+rare and therefore it's very
+
+134
+00:07:14,870 --> 00:07:18,650
+likely that any factor output
+by this method will be one of
+
+135
+00:07:18,650 --> 00:07:21,740
+the actual primes used in key generation.
+
+136
+00:07:21,740 --> 00:07:25,070
+And it's less likely to be
+some sort of composite value
+
+137
+00:07:25,070 --> 00:07:28,223
+representing multiple
+shared factors in the batch.
+
+138
+00:07:29,320 --> 00:07:32,850
+So I understand this may be
+very difficult to visualize just
+
+139
+00:07:32,850 --> 00:07:34,330
+from a verbal description.
+
+140
+00:07:34,330 --> 00:07:37,330
+So I'm going to walk you through
+an actual explicit example.
+
+141
+00:07:39,700 --> 00:07:41,030
+In this example,
+
+142
+00:07:41,030 --> 00:07:44,010
+we're using the same
+prime products as before,
+
+143
+00:07:44,010 --> 00:07:46,410
+which contain two products with
+
+144
+00:07:46,410 --> 00:07:47,933
+a shared factor of seven.
+
+145
+00:07:48,780 --> 00:07:52,300
+Building the product
+tree is merely a process
+
+146
+00:07:52,300 --> 00:07:53,870
+of pairing off the
+
+147
+00:07:53,870 --> 00:07:57,180
+integers and calculating
+their products at each level,
+
+148
+00:07:57,180 --> 00:08:00,470
+until we get the cumulative
+product of the batch,
+
+149
+00:08:00,470 --> 00:08:01,723
+represented in green.
+
+150
+00:08:04,830 --> 00:08:07,570
+After that product tree has been formed,
+
+151
+00:08:07,570 --> 00:08:11,070
+the remainder of each parent
+node is calculated with respect
+
+152
+00:08:11,070 --> 00:08:13,580
+to the square of its child node.
+
+153
+00:08:13,580 --> 00:08:16,010
+When the bottom of the tree is reached,
+
+154
+00:08:16,010 --> 00:08:18,750
+the greatest common divisor
+is calculated between the
+
+155
+00:08:18,750 --> 00:08:21,370
+resulting remainder and the modulates.
+
+156
+00:08:21,370 --> 00:08:23,320
+And if this value is not one,
+
+157
+00:08:23,320 --> 00:08:26,310
+it means it shares a factor
+with some other modulus
+
+158
+00:08:26,310 --> 00:08:27,393
+in the batch.
+
+159
+00:08:28,400 --> 00:08:31,980
+In the same example, the
+two shared factors of seven
+
+160
+00:08:31,980 --> 00:08:33,990
+are output just the same as using the
+
+161
+00:08:33,990 --> 00:08:37,253
+pairwise Euclidean
+implementation described earlier.
+
+162
+00:08:39,060 --> 00:08:41,200
+While this implementation is very fast,
+
+163
+00:08:41,200 --> 00:08:44,440
+it does raise a new challenge
+in that these product trees
+
+164
+00:08:44,440 --> 00:08:48,020
+can potentially get very, very large,
+
+165
+00:08:48,020 --> 00:08:53,020
+such a tree of 150 million,
+2048 bit RSA moduli
+
+166
+00:08:53,510 --> 00:08:55,920
+would be over a terabyte in size,
+
+167
+00:08:55,920 --> 00:08:57,950
+which can be very difficult to manage,
+
+168
+00:08:57,950 --> 00:08:59,973
+especially on a single machine.
+
+169
+00:09:02,870 --> 00:09:06,030
+So say you don't have a machine
+with a terabyte of memory.
+
+170
+00:09:06,030 --> 00:09:08,830
+There's actually a pretty
+straightforward way to make this
+
+171
+00:09:08,830 --> 00:09:11,580
+calculation much more manageable,
+
+172
+00:09:11,580 --> 00:09:14,610
+instead of making the one
+that very large product tree,
+
+173
+00:09:14,610 --> 00:09:18,880
+you can make a few smaller
+ones, breaking that 150 million
+
+174
+00:09:18,880 --> 00:09:22,360
+batch into five smaller batches
+will produce product trees
+
+175
+00:09:22,360 --> 00:09:25,580
+that are roughly 180 gigabytes in size,
+
+176
+00:09:25,580 --> 00:09:28,910
+which can be quite a bit more
+manageable and potentially
+
+177
+00:09:28,910 --> 00:09:30,923
+processable on just a single machine.
+
+178
+00:09:32,350 --> 00:09:34,130
+There is a major downside to breaking
+
+179
+00:09:34,130 --> 00:09:36,520
+the tree up into smaller batches, however,
+
+180
+00:09:36,520 --> 00:09:39,605
+and that is in order to get
+coverage of the shared factors
+
+181
+00:09:39,605 --> 00:09:42,370
+across these different batches,
+
+182
+00:09:42,370 --> 00:09:44,510
+the remainder trees must be calculated
+
+183
+00:09:44,510 --> 00:09:47,470
+with respect to each other tree,
+
+184
+00:09:47,470 --> 00:09:51,253
+which requires this permutation
+step of all the trees.
+
+185
+00:09:52,480 --> 00:09:54,860
+While is less efficient in practice,
+
+186
+00:09:54,860 --> 00:09:58,500
+it could actually be faster
+because all the arithmetic is
+
+187
+00:09:58,500 --> 00:10:00,960
+being done on much smaller numbers.
+
+188
+00:10:00,960 --> 00:10:04,000
+And there's no bottleneck
+where we're trying to calculate
+
+189
+00:10:04,000 --> 00:10:08,350
+arithmetic on really huge
+integers at the root of a massive
+
+190
+00:10:08,350 --> 00:10:10,153
+monolithic product tree.
+
+191
+00:10:13,630 --> 00:10:16,730
+So to walk you through
+another explicit example,
+
+192
+00:10:16,730 --> 00:10:19,850
+here we have two batches
+of prime products.
+
+193
+00:10:19,850 --> 00:10:23,730
+The first batch is the same one
+as we had before that shares
+
+194
+00:10:23,730 --> 00:10:25,900
+a prime factor of seven.
+
+195
+00:10:25,900 --> 00:10:30,190
+The second batch has
+a shared factor of 23,
+
+196
+00:10:30,190 --> 00:10:32,620
+and then across the two batches,
+
+197
+00:10:32,620 --> 00:10:34,803
+there is a shared factor of 17.
+
+198
+00:10:35,790 --> 00:10:38,790
+When calculating the
+remainders for each tree
+
+199
+00:10:38,790 --> 00:10:42,110
+against the cumulative
+product of both trees,
+
+200
+00:10:42,110 --> 00:10:43,970
+all of these shared factors end up
+
+201
+00:10:43,970 --> 00:10:45,513
+falling out at the bottom.
+
+202
+00:10:46,600 --> 00:10:49,680
+And the permutation of these
+trees is really important
+
+203
+00:10:49,680 --> 00:10:52,730
+because otherwise that 17 factor,
+
+204
+00:10:52,730 --> 00:10:56,060
+which is shared across both
+batches would not have been
+
+205
+00:10:56,060 --> 00:10:58,060
+discovered if we were only evaluating
+
+206
+00:10:58,060 --> 00:10:59,963
+the trees within each batch.
+
+207
+00:11:01,610 --> 00:11:03,280
+By calculating the product trees
+
+208
+00:11:03,280 --> 00:11:05,790
+and then permuting the
+remainder trees in this way,
+
+209
+00:11:05,790 --> 00:11:08,940
+the calculation of shared
+factors across a huge number of
+
+210
+00:11:08,940 --> 00:11:12,580
+integers can be broken down
+into batches and pair-analyzed
+
+211
+00:11:12,580 --> 00:11:17,280
+across any number of machines
+without any necessary
+
+212
+00:11:17,280 --> 00:11:19,910
+outrageous memory requirements.
+
+213
+00:11:19,910 --> 00:11:23,430
+The sizes of the trees and
+the number of the batches can
+
+214
+00:11:23,430 --> 00:11:25,620
+really be tailored to the compute
+
+215
+00:11:25,620 --> 00:11:27,483
+and memory resources available.
+
+216
+00:11:31,510 --> 00:11:34,490
+Here's an example architecture
+that I used to factor
+
+217
+00:11:34,490 --> 00:11:38,410
+86 million RSA keys using
+just commodity hardware
+
+218
+00:11:38,410 --> 00:11:40,343
+and no specialized software.
+
+219
+00:11:41,180 --> 00:11:43,920
+The factorization code
+was all written in Go.
+
+220
+00:11:43,920 --> 00:11:45,140
+And all that really is,
+
+221
+00:11:45,140 --> 00:11:48,460
+is implementing this product
+tree and remainder tree logic
+
+222
+00:11:48,460 --> 00:11:49,973
+that was covered earlier.
+
+223
+00:11:51,380 --> 00:11:53,150
+The arithmetic was calculated using
+
+224
+00:11:53,150 --> 00:11:56,670
+the native C-GNU multi-position
+library since allegedly
+
+225
+00:11:56,670 --> 00:11:57,880
+it is quite a bit more performant
+
+226
+00:11:57,880 --> 00:11:59,653
+than its Go counterpart.
+
+227
+00:12:00,661 --> 00:12:02,557
+RSA moduli were read from S3
+
+228
+00:12:02,557 --> 00:12:05,037
+and the product tree levels
+were restored to EBS,
+
+229
+00:12:06,420 --> 00:12:09,650
+and they were just
+serialized using Go's native
+
+230
+00:12:09,650 --> 00:12:11,223
+built-in Gob library.
+
+231
+00:12:12,110 --> 00:12:14,660
+Concurrency and calculating
+the various values
+
+232
+00:12:14,660 --> 00:12:18,980
+at each tree level was
+done just using Go routines
+
+233
+00:12:18,980 --> 00:12:20,350
+and orchestration of all the
+
+234
+00:12:20,350 --> 00:12:23,920
+tree permutations was just
+a simple shell script.
+
+235
+00:12:23,920 --> 00:12:26,543
+No specialized software
+NVIG data frameworks needed.
+
+236
+00:12:29,920 --> 00:12:34,500
+So I used that architecture to
+factor about 86 million keys
+
+237
+00:12:34,500 --> 00:12:37,650
+from certificates collected
+from the internet over about a
+
+238
+00:12:37,650 --> 00:12:41,900
+three month period and found
+some interesting results.
+
+239
+00:12:41,900 --> 00:12:46,310
+Less than 50,000 of those keys
+were able to be compromised
+
+240
+00:12:46,310 --> 00:12:48,343
+due to sharing a prime factor.
+
+241
+00:12:50,480 --> 00:12:52,920
+This is a much lower number
+than I was expecting,
+
+242
+00:12:52,920 --> 00:12:55,450
+and also a much lower number
+that had been reported
+
+243
+00:12:55,450 --> 00:12:56,693
+in prior years.
+
+244
+00:12:57,670 --> 00:12:59,060
+As a sanity check,
+
+245
+00:12:59,060 --> 00:13:02,300
+I went back and collected
+samples of keys dating back six
+
+246
+00:13:02,300 --> 00:13:05,040
+years and discovered that sure enough,
+
+247
+00:13:05,040 --> 00:13:08,530
+the prevalence of this type of
+vulnerable key has decreased
+
+248
+00:13:08,530 --> 00:13:10,683
+dramatically over the years.
+
+249
+00:13:11,540 --> 00:13:15,120
+The chart in the slide represents
+the number of keys that
+
+250
+00:13:15,120 --> 00:13:18,250
+can be factored from a random
+sample of a hundred million
+
+251
+00:13:18,250 --> 00:13:22,011
+keys collected in a given
+year based on sharing a prime
+
+252
+00:13:22,011 --> 00:13:24,700
+factor with some other key
+
+253
+00:13:24,700 --> 00:13:27,223
+in that same 10 million key sample.
+
+254
+00:13:28,800 --> 00:13:32,230
+I think the dramatic decline
+observed here is really a
+
+255
+00:13:32,230 --> 00:13:34,770
+testament to the impact of prior research,
+
+256
+00:13:34,770 --> 00:13:38,040
+as it appears to have made
+vendors address this problem as
+
+257
+00:13:38,040 --> 00:13:39,800
+it is far less prevalent today
+
+258
+00:13:39,800 --> 00:13:41,950
+than it was just a
+couple of years earlier.
+
+259
+00:13:45,510 --> 00:13:48,730
+Out of the keys that
+were still vulnerable,
+
+260
+00:13:48,730 --> 00:13:51,610
+almost exclusively appeared
+in networking devices
+
+261
+00:13:51,610 --> 00:13:53,420
+and embedded systems,
+
+262
+00:13:53,420 --> 00:13:55,750
+but I think the question still remains,
+
+263
+00:13:55,750 --> 00:13:57,980
+if this issue has largely been remediated,
+
+264
+00:13:57,980 --> 00:14:01,650
+and if it is trending
+downward pretty dramatically,
+
+265
+00:14:01,650 --> 00:14:04,840
+why are there still so many
+vulnerable keys on the internet?
+
+266
+00:14:04,840 --> 00:14:07,920
+Well reviewing the certificate
+validity lifetimes of the
+
+267
+00:14:07,920 --> 00:14:11,403
+vulnerable keys provides
+some insight into that.
+
+268
+00:14:14,810 --> 00:14:18,360
+The charts here show a
+histogram of validity dates of
+
+269
+00:14:18,360 --> 00:14:21,520
+vulnerable certificates
+compared to a random sample
+
+270
+00:14:21,520 --> 00:14:23,800
+of certificates from the internet,
+
+271
+00:14:23,800 --> 00:14:26,940
+the long tail of the
+not valid before dates
+
+272
+00:14:26,940 --> 00:14:30,330
+hint that perhaps the
+certificates are just really old
+
+273
+00:14:30,330 --> 00:14:34,750
+devices and the not valid
+after dates on the right show
+
+274
+00:14:34,750 --> 00:14:39,500
+that over 10% had expired
+over a decade ago.
+
+275
+00:14:39,500 --> 00:14:42,393
+And that helps really reinforce this fact.
+
+276
+00:14:43,610 --> 00:14:46,650
+Many of the vulnerable
+certificates likely just represent
+
+277
+00:14:46,650 --> 00:14:48,500
+really old networking equipment
+
+278
+00:14:48,500 --> 00:14:51,180
+that is probably lost
+in a closet somewhere.
+
+279
+00:14:51,180 --> 00:14:53,290
+And it's still connected to
+the internet and the owners and
+
+280
+00:14:53,290 --> 00:14:56,283
+operators just don't even
+realize that it's there online.
+
+281
+00:14:58,240 --> 00:15:02,240
+Out of the roughly 150
+million total keys analyzed,
+
+282
+00:15:02,240 --> 00:15:04,540
+only a single vulnerable key
+
+283
+00:15:04,540 --> 00:15:08,340
+was signed by a trusted third
+party certificate authority.
+
+284
+00:15:08,340 --> 00:15:12,460
+Every single other vulnerable
+key was either self signed or
+
+285
+00:15:12,460 --> 00:15:16,623
+signed by an internal CA
+that's not publicly trusted.
+
+286
+00:15:17,540 --> 00:15:21,290
+This suggests that the likely
+culprit of many of these keys
+
+287
+00:15:21,290 --> 00:15:24,640
+are devices that are automatically
+generating certificates.
+
+288
+00:15:24,640 --> 00:15:27,960
+And this is somewhat
+reinforced by the absurdly long
+
+289
+00:15:27,960 --> 00:15:32,000
+validity durations present in
+the second chart on the right.
+
+290
+00:15:32,000 --> 00:15:35,010
+And this was done likely as
+a convenience by vendors.
+
+291
+00:15:35,010 --> 00:15:35,843
+And of course,
+
+292
+00:15:35,843 --> 00:15:39,243
+this is not in line with best
+practices for certificates.
+
+293
+00:15:42,600 --> 00:15:46,510
+When reviewing the organizations
+that were actually hosting
+
+294
+00:15:46,510 --> 00:15:48,320
+these vulnerable devices,
+
+295
+00:15:48,320 --> 00:15:51,260
+the trends are generally
+what you would expect,
+
+296
+00:15:51,260 --> 00:15:54,790
+organizations and industries
+that typically have very mature
+
+297
+00:15:54,790 --> 00:15:58,990
+security programs that invest
+a lot in security industry,
+
+298
+00:15:58,990 --> 00:16:01,060
+such as financial services,
+
+299
+00:16:01,060 --> 00:16:04,700
+were the least likely to be
+hosting vulnerable devices
+
+300
+00:16:04,700 --> 00:16:06,480
+and industries that are more notorious
+
+301
+00:16:06,480 --> 00:16:09,530
+for perhaps lax practices,
+
+302
+00:16:09,530 --> 00:16:13,530
+such as utilities were more
+than 10 times as likely to be
+
+303
+00:16:13,530 --> 00:16:15,340
+hosting a vulnerable device
+
+304
+00:16:15,340 --> 00:16:17,900
+than their low risk industry counterparts
+
+305
+00:16:17,900 --> 00:16:20,853
+such as financial services,
+insurance and legal.
+
+306
+00:16:24,470 --> 00:16:25,303
+Finally,
+
+307
+00:16:25,303 --> 00:16:28,250
+I saved this chart for last
+because I think it is really the
+
+308
+00:16:28,250 --> 00:16:31,500
+most important chart of
+the whole presentation.
+
+309
+00:16:31,500 --> 00:16:35,430
+This chart represents the
+relationships between vulnerable
+
+310
+00:16:35,430 --> 00:16:39,930
+prime values where an edge
+exists between two primes
+
+311
+00:16:39,930 --> 00:16:43,440
+if they appeared in the same RSA modulus.
+
+312
+00:16:43,440 --> 00:16:46,750
+The coloring represents
+the product families
+
+313
+00:16:46,750 --> 00:16:48,620
+that the primes appeared in.
+
+314
+00:16:48,620 --> 00:16:51,940
+For example, one color is Huawei switches,
+
+315
+00:16:51,940 --> 00:16:54,563
+one is D-Link routers,
+et cetera, et cetera.
+
+316
+00:16:55,610 --> 00:16:58,440
+It becomes very obvious that
+the relationships between these
+
+317
+00:16:58,440 --> 00:17:03,350
+primes are mostly disjoint
+between different products.
+
+318
+00:17:03,350 --> 00:17:06,815
+This is really important
+because if they are disjoint,
+
+319
+00:17:06,815 --> 00:17:10,730
+attempting to find shared factors
+across product families is
+
+320
+00:17:10,730 --> 00:17:13,140
+somewhat of a fruitless exercise
+
+321
+00:17:13,140 --> 00:17:17,170
+as the vendor specific random
+number generation flaws appear
+
+322
+00:17:17,170 --> 00:17:19,400
+to only create prime collisions
+
+323
+00:17:19,400 --> 00:17:21,463
+within their given product family.
+
+324
+00:17:22,420 --> 00:17:26,120
+The implication of this is that
+you don't necessarily need a
+
+325
+00:17:26,120 --> 00:17:31,070
+big data approach of collecting
+some huge corpus of keys to
+
+326
+00:17:31,070 --> 00:17:33,460
+compromise keys via this method.
+
+327
+00:17:33,460 --> 00:17:36,000
+Small collections, the keys specific
+
+328
+00:17:36,000 --> 00:17:37,950
+to a given networking device or embedded
+
+329
+00:17:37,950 --> 00:17:42,110
+systems product is likely to
+be vulnerable as a massive
+
+330
+00:17:42,110 --> 00:17:44,420
+collection of random keys
+
+331
+00:17:44,420 --> 00:17:46,570
+that have been harvested
+from the internet.
+
+332
+00:17:48,020 --> 00:17:51,380
+Much of the analysis on
+these keys in the past has
+
+333
+00:17:51,380 --> 00:17:54,950
+focused on keys collected from
+the public facing internet.
+
+334
+00:17:54,950 --> 00:17:57,740
+But I think this chart really
+shows that there may be
+
+335
+00:17:57,740 --> 00:18:00,880
+opportunities to find additional
+vulnerable products in
+
+336
+00:18:00,880 --> 00:18:04,270
+devices that are not typically
+exposed directly from the
+
+337
+00:18:04,270 --> 00:18:08,020
+internet for anyone who is able
+to make product targeted key
+
+338
+00:18:08,020 --> 00:18:11,500
+collections behind an
+external firewall at a large
+
+339
+00:18:11,500 --> 00:18:15,883
+organization, or perhaps across
+many smaller organizations.
+
+340
+00:18:19,410 --> 00:18:21,480
+So to wrap things up,
+
+341
+00:18:21,480 --> 00:18:25,660
+almost a decade after the
+discovery of this phenomenon
+
+342
+00:18:25,660 --> 00:18:27,340
+of the prevalence of shared primes
+
+343
+00:18:27,340 --> 00:18:29,200
+in certificates on the internet,
+
+344
+00:18:29,200 --> 00:18:32,820
+there's still a fairly large
+number of devices that are
+
+345
+00:18:32,820 --> 00:18:35,970
+factorable due to these shared primes.
+
+346
+00:18:35,970 --> 00:18:38,730
+However this seems to
+be primarily the result
+
+347
+00:18:38,730 --> 00:18:40,920
+of really old devices
+
+348
+00:18:40,920 --> 00:18:45,810
+and not necessarily from
+new vulnerable products.
+
+349
+00:18:45,810 --> 00:18:48,920
+The culprits here seem to
+be primarily automatically
+
+350
+00:18:48,920 --> 00:18:51,790
+generated certificates
+from networking equipment.
+
+351
+00:18:51,790 --> 00:18:54,433
+So, you know, maybe don't
+trust those certificates.
+
+352
+00:18:55,658 --> 00:18:56,491
+And finally,
+
+353
+00:18:56,491 --> 00:18:59,010
+you don't really need specialized software
+
+354
+00:18:59,010 --> 00:19:00,830
+or a massive corpus of keys
+
+355
+00:19:02,140 --> 00:19:05,210
+in order to compromise keys in this way,
+
+356
+00:19:05,210 --> 00:19:08,330
+if you can get small targeted
+collections of keys from
+
+357
+00:19:08,330 --> 00:19:11,236
+specific networking equipment
+or embedded systems products,
+
+358
+00:19:11,236 --> 00:19:13,603
+that can potentially yield results.
+
+359
+00:19:14,960 --> 00:19:17,170
+And to end things up,
+
+360
+00:19:17,170 --> 00:19:20,110
+I published a reference
+implementation of the
+
+361
+00:19:20,110 --> 00:19:24,760
+distributable batch GCD
+method described in this talk
+
+362
+00:19:24,760 --> 00:19:26,530
+at the link on this slide,
+
+363
+00:19:26,530 --> 00:19:29,660
+it'll demonstrate the successful
+factorization of a small
+
+364
+00:19:29,660 --> 00:19:32,870
+batch of actual RSA moduli.
+
+365
+00:19:32,870 --> 00:19:34,650
+This implementation is really just
+
+366
+00:19:34,650 --> 00:19:36,400
+for illustrative purposes.
+
+367
+00:19:36,400 --> 00:19:37,990
+It was written in Python
+
+368
+00:19:37,990 --> 00:19:40,690
+in order to be very
+simple, clear, and concise,
+
+369
+00:19:40,690 --> 00:19:43,780
+but as a result, it's
+also very, very slow.
+
+370
+00:19:43,780 --> 00:19:45,410
+It will not scale.
+
+371
+00:19:45,410 --> 00:19:48,580
+If you want to do this on
+larger batches of moduli,
+
+372
+00:19:48,580 --> 00:19:51,260
+I highly recommend that you
+translate the code into your
+
+373
+00:19:51,260 --> 00:19:53,123
+favorite compiled language of choice.
+
+374
+00:19:54,370 --> 00:19:56,310
+And I will close things with that.
+
+375
+00:19:56,310 --> 00:19:57,420
+Thank you for tuning in,
+
+376
+00:19:57,420 --> 00:19:59,933
+and I hope you enjoy
+the rest of Defcon 29.
+

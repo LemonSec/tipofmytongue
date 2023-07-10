@@ -1,0 +1,2323 @@
+﻿00:00:00.133-->00:00:03.737
+>> This talk is going to be
+about a uh software platform
+that we wrote to enable fuzzing
+
+00:00:03.737-->00:00:09.076
+RF protocols. Uh my name is Matt
+Knight um I’m a senior security
+Engineer at Cruise Automation
+
+00:00:09.076-->00:00:14.081
+nation. Um we are hiring if
+you’re interested in uh working
+with us. Come find me after. Uh
+
+00:00:14.081-->00:00:18.852
+I also lead the RF practice at
+River Loop Security. Which is a
+um uh embedded uh embedded
+
+00:00:18.852-->00:00:22.556
+security uh consultancy. Uh if
+you go back far enough I got a
+bachelors in electrical
+
+00:00:22.556-->00:00:25.692
+engineering from Dartmouth and
+uh pretty much everything I’ve
+done since then has been all
+
+00:00:25.692-->00:00:30.797
+about embedded systems and
+software defined radio. Uh
+that’s me. >> And hi I’m Ryan
+
+00:00:30.797-->00:00:35.802
+Speers I’m the co-founder at
+River Loop security that as Matt
+said does embedded vulnerability
+
+00:00:35.802-->00:00:41.942
+and RF consulting. I also lead
+Research and Ionic Security I
+guess I’ll claim we are also all
+
+00:00:41.942-->00:00:46.647
+hiring. Um my backgrounds in
+computer science but my focus
+after that has been applied
+
+00:00:46.647-->00:00:53.520
+cryptography, embedded systems,
+special passion for I triple E
+802 15 4 or zigbee, uh doing
+
+00:00:53.520-->00:00:57.858
+automated firmware analysis. >>
+Cool. So we’re going to begin uh
+this talk a little big of a no
+
+00:00:57.858-->00:01:02.129
+traditional way, we’re actually
+going to kick this off with a uh
+a a demo and then we’re going to
+
+00:01:02.129-->00:01:07.134
+talk about what we’re watching
+here. Um throughout the rest of
+the talk. This will just take
+
+00:01:12.005-->00:01:17.010
+about 15 minutes. [laughter] So
+when when Ryan and I were uh
+were conceptualizing this
+
+00:01:19.279-->00:01:23.417
+research, we we were thinking
+what could be the most boring
+demo to possibly show on stage
+
+00:01:23.417-->00:01:27.554
+at DefCon. And we thought that
+live, it really can’t get much
+worse than live fuzzing. >> So
+
+00:01:27.554-->00:01:32.292
+>> But that’s what we’re going
+to be talking about. So we’re
+gonna come back to that. The um
+
+00:01:32.292-->00:01:36.229
+the background for this talk and
+I wanted to do that for like
+another 5 minutes, but he said
+
+00:01:36.229-->00:01:43.170
+no. Um so, the the background a
+few things that you might be
+interested in um the some of the
+
+00:01:43.170-->00:01:47.908
+research here built on research
+we did in making and breaking a
+wireless intrusion detection
+
+00:01:47.908-->00:01:53.280
+system uh which myself and
+Javier presented at Troopers as
+well as an ACM paper about
+
+00:01:53.280-->00:01:59.453
+speaking uh the local dialect
+which was about idiosyncras-
+idiosyncrasies in bilayer or
+
+00:01:59.453-->00:02:05.692
+layer 1 implementations of uh
+fuzzing. So today we’re gonna
+talk about how we can use these
+
+00:02:05.692-->00:02:11.898
+for not just use of fuzzing to
+do bug discovery uh but also to
+figure out differences about the
+
+00:02:11.898-->00:02:17.437
+physical layer uh finite state
+machine and then generating
+fingerprints to identify chips
+
+00:02:17.437-->00:02:22.576
+differently based on that. >>
+Cool. So we’re gonna kick off an
+overview of uh traditional
+
+00:02:22.576-->00:02:26.279
+fuzzing kind of fuzzing as I
+think most of us know it. Uh
+we’re also going to comment on
+
+00:02:26.279-->00:02:29.816
+how those don’t easily map to RF
+and kind of the motivations
+between writing the tool
+
+00:02:29.816-->00:02:34.421
+TumbleRF the tool we’ll talk
+about later on. Uh we’ll talk
+about some of the design
+
+00:02:34.421-->00:02:39.292
+principles that went into it and
+then finally we’ll uh, we’ll,
+we’ll uh come back to that
+
+00:02:39.292-->00:02:43.530
+example we showed, kind of show
+the significance of it uh and
+then we’re gonna wrap up
+
+00:02:43.530-->00:02:49.202
+ruminations of hardware and uh
+where we want to go with this
+research uh to enable fuzzing
+
+00:02:49.202-->00:02:53.240
+arbitrary wireless protocols. >>
+Sure, so going through and I
+think most people know uh or
+
+00:02:53.240-->00:02:57.911
+have some background in this, so
+we’ll go through relatively
+quickly. Uh fuzzing is applying
+
+00:02:57.911-->00:03:02.749
+pseudo random input into the
+system. The goal is to automate
+discovery of crashes, corner
+
+00:03:02.749-->00:03:08.588
+cases, bugs, et cetera. We’re
+feeding in unexpected input uh
+in trying to find out if we can
+
+00:03:08.588-->00:03:15.162
+get the system in an expected
+state. Overall people typically
+attach fuzzers to system
+
+00:03:15.162-->00:03:21.935
+interfaces, input, output,
+injecting into like uh to to
+feed into files, to see if a
+
+00:03:21.935-->00:03:27.507
+file format parser works
+correctly. To feed bad or
+malformed data into network
+
+00:03:27.507-->00:03:32.512
+interfaces. Uh or to play round
+with the memory state of uh a
+machine. Um and for software
+
+00:03:34.581-->00:03:39.619
+there’s a lot of really great
+tools out there. Right. Uh AFL,
+uh which is a pretty advanced
+
+00:03:39.619-->00:03:45.525
+tool that uses memory
+introspection to help uh advance
+its its uh state coverage. Peach
+
+00:03:45.525-->00:03:51.465
+Fuzzer which although is a
+legacy tool is still still used
+today. Uh and Scapy which is a
+
+00:03:51.465-->00:03:56.470
+network protocol generator but
+also has um uh basic fuzzing in
+it. Now what’s interesting with
+
+00:03:58.505-->00:04:04.444
+software is you can instrument
+and hook it at many levels. You
+can control typically when it
+
+00:04:04.444-->00:04:08.615
+starts execution, when it
+finished, monitor the state,
+monitor the state through hook
+
+00:04:08.615-->00:04:14.588
+or memory execution. But what
+else can one fuzz? >> Cool. So
+briefly we’re going to run
+
+00:04:14.588-->00:04:18.458
+through some other applications
+of fuzzing, um so fuzzing
+hardware is something that’s
+
+00:04:18.458-->00:04:23.163
+been done in a couple different
+um uh ca- uh through a couple
+different approaches. The
+
+00:04:23.163-->00:04:28.001
+challenges that uh hardware with
+hardware the interface is often
+a lot less trivial to monitor
+
+00:04:28.001-->00:04:32.305
+than it is in software, where
+you control execution. Where you
+have uh easy ability to kind of
+
+00:04:32.305-->00:04:37.344
+attach the interface. Uh so it
+may not be easy to get a harness
+that can hook into hardware and
+
+00:04:37.344-->00:04:42.449
+monitor its state. Uh but there
+are some pretty interesting uh
+uh approaches that have been
+
+00:04:42.449-->00:04:47.454
+made here. For instance AFL
+unicorn uh which um emulates
+firmware. Uh to fuzz [inaudible
+
+00:04:51.725-->00:04:55.495
+audio cuts in and out] pinouts
+to look for um data erased to
+find digital buses on hardware.
+
+00:04:55.495-->00:04:59.699
+And also jtagulator which is the
+same looking for unlocked Jtag.
+uh so those are kind of like
+
+00:04:59.699-->00:05:02.769
+fuzzing um like hardware
+interfaces to try to find
+pinouts and things like that.
+
+00:05:02.769-->00:05:06.740
+And there are some others too.
+When we talk about fuzzing RF um
+there are a couple different
+
+00:05:06.740-->00:05:12.312
+projects I want to comment on um
+just to kind of frame state of
+the art. Uh yfuzz is an open
+
+00:05:12.312-->00:05:17.918
+source project uh that’s a layer
+two focused 802 11 fuzzer. Uh
+again its just focused on on the
+
+00:05:17.918-->00:05:23.190
+mac layer and uh it doesn’t
+engage the fire really at all.
+Um its also built pretty
+
+00:05:23.190-->00:05:28.428
+specifically for 802 11, so to
+take that and move it over to uh
+or extend it to support another
+
+00:05:28.428-->00:05:32.566
+wireless protocol would be not
+trivial. Um additionally our our
+my former colleague Mark
+
+00:05:32.566-->00:05:38.538
+Newland, what’s up Mark, um when
+he was doing his mouse check
+research uh two years ago, um he
+
+00:05:38.538-->00:05:43.577
+used fuzzing as part of his
+methodology for um for uh
+injecting packets at these uh
+
+00:05:43.577-->00:05:49.382
+NRF 24 hid dongles to find
+different uh a packet injections
+in wires wireless based keyboard
+
+00:05:49.382-->00:05:54.654
+protocols. Um Mark uh chose not
+to open source his tools for
+that. Shame on you Mark. >>
+
+00:05:54.654-->00:05:59.826
+Shame. [laughter] >> Uh so we
+cannot cannot build on his great
+work. Um and additionally if we
+
+00:05:59.826-->00:06:05.098
+go back to Ryan’s original 802
+15 4 file layer fuzzing research
+he wrote the isotope framework
+
+00:06:05.098-->00:06:10.270
+which was uh 802 15 4 fuzzer.
+Again that was also fairly
+protocol specific and not easy
+
+00:06:10.270-->00:06:16.476
+to extend. >> Shame. >> Shame.
+So uh kind of to tie that up.
+Limitations in existing RF
+
+00:06:16.476-->00:06:20.580
+fuzzers is that they’re
+generally siloed and protocol
+specific. Um they might use a
+
+00:06:20.580-->00:06:26.987
+COTS radio chipset um that may
+or may not expose the file. Um
+they’re um ge- uh generally
+
+00:06:26.987-->00:06:31.524
+limited to like a single
+protocol. Um cause they’re built
+with certain features in mind.
+
+00:06:31.524-->00:06:35.495
+Additionally as with hardware RF
+state is pretty challenging
+instrument. You know it’s really
+
+00:06:35.495-->00:06:40.867
+hard to measure which
+constitutes a crash or some sort
+of weird behavior uh in in in a
+
+00:06:40.867-->00:06:45.005
+uh RF protocol whether its like
+you know a traditional like
+layer 2 approach. Or if you’re
+
+00:06:45.005-->00:06:50.377
+trying to identify behavior on
+the fly. Um additionally you
+know if we’re using a COTS radio
+
+00:06:50.377-->00:06:54.614
+chipset, we’re kind of forced to
+trust what its giving us. Um we
+don’t have a lot of uh
+
+00:06:54.614-->00:06:58.451
+disability into the execution,
+what’s actually happening on the
+PHYchip. So that’s part of what
+
+00:06:58.451-->00:07:03.023
+we’re trying to expo- expose
+with this research. Because uh
+there’s an interesting
+
+00:07:03.023-->00:07:08.628
+characteristic here um and
+that’s the not all PHY state
+machines are created equally. Um
+
+00:07:08.628-->00:07:12.666
+and i’m just gonna kind of share
+some ruminations on on standards
+and how they come to be briefly
+
+00:07:12.666-->00:07:17.537
+just to frame this. So if a
+industry group decides that they
+want a standard. Lets say uh
+
+00:07:17.537-->00:07:22.342
+your power company decides that
+802 14 4 is insufficient for
+doing wireless meter reading
+
+00:07:22.342-->00:07:25.812
+anymore and they want something
+new. They all get together in a
+room with a whole bunch of
+
+00:07:25.812-->00:07:29.316
+stakeholders um they spend years
+talking about it, they decide
+what they want to be in the
+
+00:07:29.316-->00:07:35.155
+standard and then they turn that
+into a nice uh easy to ready
+5-->000 page document. Um that may
+
+00:07:35.155-->00:07:39.993
+or may not be freely available.
+You may have to buy it. They
+might make it available, um but
+
+00:07:39.993-->00:07:43.863
+anyway, different manufacturers
+get this standard, they take it
+home and they have to interpret
+
+00:07:43.863-->00:07:47.967
+it. And turn those
+interpretations into uh into a
+chip. They have to take that and
+
+00:07:47.967-->00:07:52.539
+turn it into something that
+should work. And as you might
+imagine, even the most uh well
+
+00:07:52.539-->00:07:57.711
+formed, uh closed
+comprehensively defined standard
+is still going to leave room for
+
+00:07:57.711-->00:08:01.481
+interpretation and there's still
+going to be differences in these
+imple- implementations that we
+
+00:08:01.481-->00:08:06.786
+can uh that we can um monitor
+and begin to uh instrument off
+of. Uh some of these differences
+
+00:08:06.786-->00:08:11.091
+can be pretty profound and can
+be exploited. Um as the
+initially 211 research showed.
+
+00:08:11.091-->00:08:14.694
+Um so we’re gonna um show how
+these fuzzy- fuzzing
+methodologies can be applied
+
+00:08:14.694-->00:08:21.034
+into RFIs to uh expose different
+corner cases in in in these
+protocols. Before I do that, uh
+
+00:08:21.034-->00:08:24.471
+we’re just gonna share a brief
+primer on how radio frequency
+communications actually work.
+
+00:08:24.471-->00:08:29.576
+And this is going to be very
+very high level. So we’re
+talking about radios here. And
+
+00:08:29.576-->00:08:34.280
+radios are devices that take 1’s
+and 0’s and translate them into
+electromagnetic energy for the
+
+00:08:34.280-->00:08:38.418
+purpose of transmitting them
+over some distance. Some air gap
+distance. And they do the
+
+00:08:38.418-->00:08:43.089
+inverse to. So we’re talking
+about transmitting, we’re going
+from 1’s and 0’s into
+
+00:08:43.089-->00:08:47.861
+electromagnetic energy. We’re
+talking about receiving we’re
+taking uh electromagnetic energy
+
+00:08:47.861-->00:08:53.500
+and going back into 1’s and 0’s.
+And the hardest part with
+building a receiver has to do
+
+00:08:53.500-->00:08:59.506
+with sampling and synchronizing
+on uh the the the energy state
+that uh that represents a
+
+00:08:59.506-->00:09:04.744
+signal. So uh i have just a
+picture we’re going to talk
+about briefly. Does anybody in
+
+00:09:04.744-->00:09:11.051
+the audience know what this is?
+Uh I heard botline so um that’s
+the name of the tool, but this
+
+00:09:11.051-->00:09:15.588
+is a uh representation of a
+spectrogram. So what we have
+here is time in the x axis,
+
+00:09:15.588-->00:09:19.359
+frequency in the z axis and then
+power in the z axis, so we’re
+looking at the signal here. And
+
+00:09:19.359-->00:09:24.731
+uh we’re just gonna talk briefly
+about what’s here. Um we’ve got
+a uh periodic pattern that peaks
+
+00:09:24.731-->00:09:29.436
+in the beginning, its a preamble
+and that’s just an alternating
+uh uh sequence that tells the
+
+00:09:29.436-->00:09:33.706
+receiver, hey i’m about to
+receive a packet and also tells
+the receiver some information
+
+00:09:33.706-->00:09:37.710
+about the clock of the
+transmitters, that it can do
+some synchronization. At the end
+
+00:09:37.710-->00:09:42.916
+of the preamble uh there’s an
+element called a start a frame
+delimiter and what that is is
+
+00:09:42.916-->00:09:48.721
+that's a a discontinuity from
+the preamble um that is a magic
+number. So the receivers know to
+
+00:09:48.721-->00:09:53.059
+look for the starter frame
+delimiter and when it sees it
+it's going to say ok, i’m done
+
+00:09:53.059-->00:09:56.963
+receiving the preamble, i’m
+gonna lock onto this and just
+start reading out bits and that
+
+00:09:56.963-->00:10:00.500
+represents the rest of the rest
+of the data. So the preambles
+kind of the training sequence,
+
+00:10:00.500-->00:10:05.705
+the starter frame delimiter
+marks the end of it and then the
+data follows. So we can boil uh
+
+00:10:05.705-->00:10:09.209
+a rough abstraction of an RF
+state machine down to looks
+something like this. Um where
+
+00:10:09.209-->00:10:14.280
+when the radio chip that is in
+its idle state its looping over
+the seeking preamble state uh
+
+00:10:14.280-->00:10:19.786
+when it sees that its receiving
+a preamble It moves onto the uh
+seeking SFD state if it receives
+
+00:10:19.786-->00:10:26.392
+and SFD it basically starts
+reading out date for some some
+uh um some number of bits before
+
+00:10:26.392-->00:10:30.864
+presenting that up to uh the
+layer 2 uh layer 2 parser in
+some way. So we’re gonna dig
+
+00:10:30.864-->00:10:32.866
+into these two states and talk
+about uh kind of frame uh
+physical layer fuzzing. So the
+
+00:10:32.866-->00:10:39.072
+way these two states work is
+they essentially uh run a
+correlation operation across um
+
+00:10:39.072-->00:10:44.077
+the symbols that are being
+received from the from the
+demodulator. So this correlation
+
+00:10:47.914-->00:10:52.752
+is basically a shift register
+that’s clocking demodulated bits
+through at the symbol rate while
+
+00:10:52.752-->00:10:57.290
+its looking for a pattern, um so
+while we’re looking for the
+preamble, we’re looking for that
+
+00:10:57.290-->00:11:02.562
+alternating sequence of 0’s and
+1’s that 0 1 0 1 0 1 and when we
+get enough match then we can say
+
+00:11:02.562-->00:11:07.333
+with confidence, we’re we’ve
+received a preamb- preamble
+we’re about to receive a packet,
+
+00:11:07.333-->00:11:11.638
+lets go to the next state and
+start looking for the SFD and
+that’s a very similar operation
+
+00:11:11.638-->00:11:15.074
+although instead of looking for
+that 0 1 0 1, we’re looking for
+whatever the magic number of
+
+00:11:15.074-->00:11:19.512
+that protocol is. So just to
+kind of illustrate this briefly
+um we’ll talk about this this
+
+00:11:19.512-->00:11:25.318
+table here, um, so on top we
+have um RF symbol values that
+are going to be clock through
+
+00:11:25.318-->00:11:28.721
+the shift register and then
+beneath it in the preamble
+correlation value row is the
+
+00:11:28.721-->00:11:34.427
+magic number that our physical
+layer uh standard is looking for
+here. Uh a pretty standard um
+
+00:11:34.427-->00:11:38.631
+implementation here is just to
+have the alternating 0 1 0 1
+pattern. So what this correlator
+
+00:11:38.631-->00:11:42.535
+is going to do is its going to x
+score the current state, uh the
+current symbol value state
+
+00:11:42.535-->00:11:46.339
+against that that magic number
+that we’re looking for and then
+its going to compute the hamming
+
+00:11:46.339-->00:11:50.009
+distance of that result and the
+hamming distance is essentially
+the number of bits that are set
+
+00:11:50.009-->00:11:53.980
+and it rep- basically represents
+the number of bits that differ
+between the current state and
+
+00:11:53.980-->00:11:57.951
+the value that we’re looking
+for. So if we’re looking for
+things to naturally well, we’re
+
+00:11:57.951-->00:12:02.956
+looking for that hamming
+distance to be 0 or very very
+close to 0. So if say we had an
+
+00:12:02.956-->00:12:08.027
+arbitrary packet on the air and
+we’re clocking these values
+through, 0 1 0 1 0 1 , you can
+
+00:12:08.027-->00:12:12.899
+see the hamming distance
+changes, it goes up and down
+until finally we’ve loaded the
+
+00:12:12.899-->00:12:16.803
+preamble into the shift register
+and we can say with confidence,
+alright uh these two strings
+
+00:12:16.803-->00:12:21.708
+match or match below a certain
+threshold, we think we’re
+receiving um, uh a packet. We’re
+
+00:12:21.708-->00:12:26.913
+gonna move into the next state.
+Uh so we did the same thing with
+the SFD state machine. Don’t
+
+00:12:26.913-->00:12:30.416
+have to illustrate it, the only
+difference here is that rather
+than looking for 0 1 0 1, we’re
+
+00:12:30.416-->00:12:35.688
+looking for that magic number.
+Well it turns out as Ryan’s
+research uh a couple of years
+
+00:12:35.688-->00:12:41.894
+ago discovered um not all the
+sync words and preambles are
+implemented uh they’re not all
+
+00:12:41.894-->00:12:46.566
+implemented the same way across
+manufacturers. Uh so certain
+chipsets were found to correlate
+
+00:12:46.566-->00:12:51.471
+on different preambles and sync
+words a than others. So that’s
+really interesting because as
+
+00:12:51.471-->00:12:56.709
+attackers if we’re able to
+strategically malform or or
+leverage that, we can get ready
+
+00:12:56.709-->00:13:01.681
+to do really interesting things.
+So we can things like send short
+preambles, send different sync
+
+00:13:01.681-->00:13:07.587
+words and characterize how these
+different chip sets preform and
+we can uh automate the discovery
+
+00:13:07.587-->00:13:12.225
+of this process by applying
+fuzzing. So with that i’m going
+to hand it back over to Ryan and
+
+00:13:12.225-->00:13:17.163
+he’s going to talk through uh
+the design of an ideal RF
+fuzzer. >> Exactly. So what we
+
+00:13:17.163-->00:13:21.167
+set out to do is sort of think
+first about what were we not
+getting in existing techniques
+
+00:13:21.167-->00:13:26.039
+that either we were writing one
+off for client or for projects
+or for research and also what
+
+00:13:26.039-->00:13:30.743
+did we not find in some of the
+existing tools. Um so these are
+sort of the four things that we
+
+00:13:30.743-->00:13:35.315
+wanted to come out of it. First
+of all we wanted to be able to
+easily change out the RF
+
+00:13:35.315-->00:13:39.352
+interfaces, different use,
+different radios. This can be
+because we need to work on
+
+00:13:39.352-->00:13:44.824
+different frequency or because
+we want to work on a different
+protocol uh et cetera. Then we
+
+00:13:44.824-->00:13:50.463
+wanted to be have flexibility in
+how we generated the test cases.
+Um there’s a lot of great tools
+
+00:13:50.463-->00:13:54.534
+some of which we talked about
+earlier that can generate
+fuzzing test cases, some are
+
+00:13:54.534-->00:13:58.705
+generative, some are mutative,
+we wanted to be able to plug
+those different ones in in a
+
+00:13:58.705-->00:14:04.277
+flexible way. Uh and then
+reusable and I think this was a
+main one for us, we had done
+
+00:14:04.277-->00:14:10.349
+this research on 802 15 4 uh we
+want to do some of this import
+it over to other protocols,
+
+00:14:10.349-->00:14:16.856
+we’ll talk some more about that
+at the end. And then lastly the
+comprehensive alludes to the
+
+00:14:16.856-->00:14:22.028
+fact to we didn’t want to just
+fuzz layer 2 and above, the MAC
+layer and forward, we also
+
+00:14:22.028-->00:14:27.333
+wanted to expose the PHY layers
+that we could tweak it and fuzz
+that and that’s something that
+
+00:14:27.333-->00:14:34.140
+is sort of unusual in um a lot
+of fuzzers. So out of that came
+something that we are releasing
+
+00:14:34.140-->00:14:39.912
+and talking about called
+TumbleRF. TumbleRF is a software
+framework for fuzzing arbitrary
+
+00:14:39.912-->00:14:46.552
+RF protocols and there’s sort of
+three things that abstracts out.
+First of all the radio API,
+
+00:14:46.552-->00:14:51.524
+second how do we do the test
+case generation and lastly how
+do we uh what we call the
+
+00:14:51.524-->00:14:55.695
+harness which i’ll talk about
+more in a minute is how do we
+instrument the state and monitor
+
+00:14:55.695-->00:15:01.300
+the state of the target. And so
+if we draw this up in a fancy
+architecture diagram, it looks
+
+00:15:01.300-->00:15:05.338
+like this. Uh the sort of the
+middle of the test case
+management command line
+
+00:15:05.338-->00:15:10.009
+interface and results logging
+are the things that we didn’t
+want to keep rewriting everytime
+
+00:15:10.009-->00:15:14.347
+we did this. Uh then what we
+want to do is be able to change
+out the stuff at the top, the
+
+00:15:14.347-->00:15:20.086
+right or the bottom uh the test
+case generator, uh which creates
+sort of the byte patterns that
+
+00:15:20.086-->00:15:25.324
+we’re going to send out on the
+radio, the harness which
+measures the state um of the
+
+00:15:25.324-->00:15:30.329
+target and as the lightning bolt
+which we all know is how RF
+looks, is how we transmit, right
+
+00:15:32.498-->00:15:38.971
+from the bottom thing and so we
+send lightning bolts across from
+the transmitter to the receiver
+
+00:15:38.971-->00:15:43.776
+they wouldn’t allow us to do the
+demo onstage for obvious safety
+reasons. >> Uh I just want to
+
+00:15:43.776-->00:15:48.247
+say for the record, it does look
+like that if you short your PA
+out. >> Yeah, yeah, we, we have
+
+00:15:48.247-->00:15:53.953
+made lightning bolts at times.
+Not on purpose. Um so I’m gonna
+step through each of the
+
+00:15:53.953-->00:15:58.958
+interfaces and the reason that
+I’m sort of going to go into the
+depth more than we may typically
+
+00:15:58.958-->00:16:05.698
+do is because we want you to
+understand this is a simple, we
+hope, a easy, we hope, usable,
+
+00:16:05.698-->00:16:11.404
+we hope, interface that you can
+take, modify and extend. So if
+you want to add a new radio,
+
+00:16:11.404-->00:16:16.409
+what you need to do is implement
+the uh interface and to do this
+uh you basically inherit this
+
+00:16:18.444-->00:16:24.784
+class, this python, um and
+implement a few functions.
+Transmit, start receiving, stop
+
+00:16:24.784-->00:16:30.890
+receiving, you know, get radio
+frames. And then we have a few
+set and gets. And this is to
+
+00:16:30.890-->00:16:35.628
+change the channel, but also
+some of the stuff if you have
+the ability on the interface
+
+00:16:35.628-->00:16:41.167
+you’re working with uh to set
+the SFD or the preamble and that
+goes into some of the file layer
+
+00:16:41.167-->00:16:47.273
+fuzzing that we’ll be using
+today. The next is the
+generators. This is how do we
+
+00:16:47.273-->00:16:51.310
+generate the fuzz or you know
+the the fuzzing input into the
+system that we’re going to send
+
+00:16:51.310-->00:16:55.248
+out. Uh the goal of this is to
+integrate between either
+something that you write in
+
+00:16:55.248-->00:17:00.286
+custom for protocol or maybe
+you’re tying into one of the
+fuzzers like peach or scapy that
+
+00:17:00.286-->00:17:05.224
+we talked about earlier. You
+have to implement two functions.
+One’s the control case. It sends
+
+00:17:05.224-->00:17:11.063
+a fr- it should return a frame
+in that is typical standard,
+totally kosher as the st- you
+
+00:17:11.063-->00:17:16.602
+know as the standard specifies.
+And then the other is something
+that yields test cases. And this
+
+00:17:16.602-->00:17:22.208
+spits out the permuted input,
+the randomized input or whatever
+we’re going to use to try to
+
+00:17:22.208-->00:17:27.113
+cause a bad state. In uh what
+we’re showing today, we’re going
+to be using the preamble length
+
+00:17:27.113-->00:17:32.184
+generator, but we also
+implemented two others um we’ll
+show you the preamble length in
+
+00:17:32.184-->00:17:37.456
+a minute, more illustrated. The
+other one is to put in
+non-standard symbols in. so if
+
+00:17:37.456-->00:17:43.029
+the standard says this map
+pointed out earlier 0 1 0 1 0 1
+0 1, what if we start changing
+
+00:17:43.029-->00:17:49.936
+that. 1 1 0 0 1 1 0 0 and seeing
+what happens to the radius
+there. Um we also can put random
+
+00:17:49.936-->00:17:54.640
+payloads in the message as an
+example that this is not just
+applicable to file layer fuzzing
+
+00:17:54.640-->00:18:00.279
+like we’re focusing on today,
+but also fuzzing the macro
+applications layers. The last
+
+00:18:00.279-->00:18:05.084
+major of the classes that you
+can implement is the harness.
+The harnesses job is to evaluate
+
+00:18:05.084-->00:18:10.957
+the device under test. Uh see if
+its in a good state, bad state
+or because this is important in
+
+00:18:10.957-->00:18:16.562
+embedded uh fuzzing, to reset
+it, get it back into a good
+state when we cause it to uh go
+
+00:18:16.562-->00:18:21.000
+haywire. And so we have
+different ways to so this. Today
+uh for simplicity, we’ll be
+
+00:18:21.000-->00:18:25.237
+using the received frame check.
+Basically listening on a radio
+and saying did I get a frame,
+
+00:18:25.237-->00:18:30.509
+did I get a frame, did I get a
+frame. And that works really
+well for file layer fuzzing. Um
+
+00:18:30.509-->00:18:34.080
+because you can know its because
+of the file layer and not
+because of some upper layer
+
+00:18:34.080-->00:18:38.684
+because we can configure other
+things out of there. Uh but also
+if you’re working against a real
+
+00:18:38.684-->00:18:44.457
+target, you ah- uh often won’t
+be able to do that, you may
+launder its state by seeing if
+
+00:18:44.457-->00:18:49.929
+you get it ack- acknowledgment
+frame back. If it acts your uh
+frame. Or by monitoring
+
+00:18:49.929-->00:18:55.067
+processes to see if they crashed
+or looking at serial output to
+see if you have a serial console
+
+00:18:55.067-->00:18:59.872
+on your target. Which we all
+know they like to leave, um then
+you can see if you’re getting
+
+00:18:59.872-->00:19:06.245
+good output that um indicates a
+good or bad state. Lastly, we
+tie this all together by
+
+00:19:06.245-->00:19:10.449
+implementing a test case, so
+this is what coordinates the the
+generator, the interface and the
+
+00:19:10.449-->00:19:15.287
+harness, this is typically very
+light weight and we have some
+that are defaults and some that
+
+00:19:15.287-->00:19:20.659
+you can extend. Today we’ll be
+using the what we call the
+alternator case. Very
+
+00:19:20.659-->00:19:25.965
+straightforward. Send a good
+frame, see what happens. Send a
+fuzzing frame, see what happens.
+
+00:19:25.965-->00:19:30.202
+Good frame, fuzzing frame, et
+cetera. The purpose for that is
+to just alternate between
+
+00:19:30.202-->00:19:36.208
+knowing good states to see if
+we’re still operational. Uh
+after injecting. >> Cool. So uh
+
+00:19:36.208-->00:19:41.681
+we’re going to to show you uh a
+quick demo of uh TumbleRF in in
+action uh going after uh um some
+
+00:19:41.681-->00:19:48.287
+certain physical characteristics
+in the 802 15 4 preamble. Er 80
+15 4 protocol. Uh so this what
+
+00:19:48.287-->00:19:53.492
+the uh test set looks like. Uh
+we we’re gonna show recorded
+video demo at DefCons request um
+
+00:19:53.492-->00:19:58.764
+so here’s here’s a laptop that’s
+running the TumbleRF framework
+um just uh running it natively
+
+00:19:58.764-->00:20:04.403
+and uh hooked up to it are
+series of dat boards, so we have
+um three devices under tests
+
+00:20:04.403-->00:20:09.542
+that we looked at. They’re all
+802 15 4 boards uh from left to
+right we have this TI CC2420 uh
+
+00:20:09.542-->00:20:15.815
+which is mounted on an ApiMote
+which is a uh 802 15 4 test
+board that Ryan designed a
+
+00:20:15.815-->00:20:20.753
+couple years ago. Next to that
+we have a uh uh uh dat board
+from TI that contains a TI
+
+00:20:20.753-->00:20:27.393
+CC2531. Uh which is essentially
+the updated version of the
+CC2420. And then right next to
+
+00:20:27.393-->00:20:34.100
+it plugged into the laptop the
+uh small black dat boad is Atmel
+um uh RZ USB stick which has the
+
+00:20:34.100-->00:20:40.106
+AT86RF230 chip on there. It’s
+another 802 15 4 chip. And uh
+today to conduct this test I’m
+
+00:20:40.106-->00:20:45.778
+going to be injecting a stimulus
+signal from a USRP USRP B210.
+which is just a software defined
+
+00:20:45.778-->00:20:52.551
+radio. Um any software defined
+radio worked with this
+methodology. Um. So when we talk
+
+00:20:52.551-->00:20:56.689
+about our architecture here. Um
+the three dat boards on top are
+going to rep- are going to be
+
+00:20:56.689-->00:21:02.061
+tied into the framework via an
+RX Interface within the harness.
+And then the TX interface
+
+00:21:02.061-->00:21:07.066
+injecting uh into the uh
+injecting into the uh um into
+these devices is going to be
+
+00:21:07.066-->00:21:12.905
+URSP software defined radio. All
+we had to do is extend the uh
+test case generator to um
+
+00:21:12.905-->00:21:17.443
+numerate the uh preambles. And
+uh and and that’s all that we
+had to do on the the TumbleRF
+
+00:21:17.443-->00:21:23.816
+side to get this ready to go. So
+the case that we’re going to be
+looking at here um is uh the 802
+
+00:21:23.816-->00:21:30.055
+15 4 uh preamble. So the
+standard uh the 802 15 4
+standard um sipulates the PHY
+
+00:21:30.055-->00:21:36.896
+header uh is comprised of three
+elements. Uh the first is four
+octets of um hex zero value
+
+00:21:36.896-->00:21:42.768
+bytes. Um so we have um a four
+octets of zero that represents
+the preamble. Finally er after
+
+00:21:42.768-->00:21:48.174
+that sort of frame delimiter um
+is hex A 7 standard. That’s the
+magic number uh the magic number
+
+00:21:48.174-->00:21:51.844
+that the um that the receivers
+are all looking for to correlate
+against. And finally its
+
+00:21:51.844-->00:21:56.649
+followed by um one octet length.
+Uh it’s actually only seven
+bits, but, but there’s one
+
+00:21:56.649-->00:22:00.286
+unused bit in there. Um that
+falls if it’s in the standard.
+So what we’re going to do is
+
+00:22:00.286-->00:22:03.389
+we’re gonna um experiment with
+the preamble length. So we’re
+going to see what happens as we
+
+00:22:03.389-->00:22:08.627
+begin to take away preamble
+octets as we we send stimulus
+frames at these receivers to see
+
+00:22:08.627-->00:22:15.501
+what what we can reveal. Uh so
+to generate this data, um I’m
+actually using GNU Radio. Um
+
+00:22:15.501-->00:22:19.538
+since this is uh it’s a software
+defined radio. It’s actually
+blank canvas for us to do
+
+00:22:19.538-->00:22:25.511
+anything that we want um RF wise
+with it. Um we could use a
+hardware defined radio if we had
+
+00:22:25.511-->00:22:29.215
+access to low level registers
+that will allow us to configure
+the um, to configure PHY
+
+00:22:29.215-->00:22:34.353
+characteristics which the
+ApiMote does, but for simplicity
+and for um kind of mutability,
+
+00:22:34.353-->00:22:39.825
+software defined radio is a nice
+way to do this. Um so I’m using
+the GR I triple E 802 fi- 802 15
+
+00:22:39.825-->00:22:45.731
+4 out of tree module, which is
+written by a gentleman named
+Bastian. Um he did a really nice
+
+00:22:45.731-->00:22:50.736
+job architecting it. So to cut
+out the PHY header, all I had to
+do was bypass the axis prefix or
+
+00:22:50.736-->00:22:55.040
+block. Um so what that does,
+what that block normally does is
+it appends the the preamble
+
+00:22:55.040-->00:22:59.878
+store frame delimiter in the
+length um when you bypass that
+it doesn’t do that, which means
+
+00:22:59.878-->00:23:05.551
+that I can then go upstream into
+TumbleRF and implement uh those
+values in software on the host.
+
+00:23:05.551-->00:23:12.157
+So you can super super easy
+iterate over um in in it was was
+very easy to set this up. And
+
+00:23:12.157-->00:23:17.029
+then this is hooked into the
+radio API via TumbleRF. Using
+using your radio interface. So
+
+00:23:17.029-->00:23:21.900
+we’re gonna tap over and show a
+quick demo here. Uh we’ll pick
+up where we left off. Um. >>
+
+00:23:21.900-->00:23:26.171
+Give us a moment to take a drink
+of water. While we watch more
+thrilling live fuzzing.
+
+00:23:35.648-->00:23:39.385
+[applause] >>This was uh a super
+super brave of us to do a live
+video demo of us fuzzing at
+
+00:23:39.385-->00:23:44.390
+DefCon. [laughter] So thank you
+for, thank you for bearing with
+us hear. >> Yeah >> So should
+
+00:23:48.727-->00:23:52.131
+wrap up in just a minute here
+and we’ll be able to take a look
+at the results. So what’s
+
+00:23:52.131-->00:23:56.969
+happening here is Ryan mentions
+we’re running the alternator uh
+test case generator um er sorry
+
+00:23:56.969-->00:24:01.607
+the alternate- alt- um
+alternator case um uh test case
+here. So what this is doing is
+
+00:24:01.607-->00:24:07.546
+this is injecting a um a uh
+control case. Standard 802 4
+frame. Uh to make sure that the
+
+00:24:07.546-->00:24:12.384
+radio is in a known good state.
+Before injecting uh a test case
+and the reason why we always
+
+00:24:12.384-->00:24:17.289
+send a control case before test
+cases is if we want to run this
+thing and go to lunch and uh run
+
+00:24:17.289-->00:24:22.728
+it like 10-->000 times, if it
+crashes on the 300th iteration,
+we don’t want to have, you know
+
+00:24:22.728-->00:24:26.632
+9-->000 false positives following
+it. We want to make sure that
+the radio is in a known testable
+
+00:24:26.632-->00:24:32.137
+good state before we uh before
+we send data into it. So at the
+end at the end of it, we can
+
+00:24:32.137-->00:24:36.608
+jump over uh I use the parse
+results um script that we have
+to to print it out. Pretty print
+
+00:24:36.608-->00:24:40.813
+it and then we can talk about it
+in the next slide. So we’re
+gonna go back to the slide, but
+
+00:24:40.813-->00:24:46.952
+it will have the same content um
+if you remember test case 6 and
+8 have interesting uh switch
+
+00:24:46.952-->00:24:53.125
+from valid verse invalid verse
+the rest. So if we look at this
+um >> Do you want to drive? >>
+
+00:24:53.125-->00:24:58.797
+Do you want me to computer for
+you? >> Yes please. Cool. >> Um
+so now what the output of that
+
+00:24:58.797-->00:25:03.669
+is is in the upper right hand
+corner, um is actually from a
+different run,but it’s about the
+
+00:25:03.669-->00:25:09.575
+same results. Um we just ran
+over 50 iterations while
+actually doing this we run much
+
+00:25:09.575-->00:25:15.681
+longer. Um so one thing that I
+you know want you to take away
+from this, we added some color
+
+00:25:15.681-->00:25:19.785
+highlighting from the three
+different chips. Around here is
+that you have three tranceivers,
+
+00:25:19.785-->00:25:25.290
+three different chips made by
+two different manufacturers all
+implementing what should be is a
+
+00:25:25.290-->00:25:30.763
+single protocol. Uh but you have
+three behaviors coming out of
+that. Right and so if we look
+
+00:25:30.763-->00:25:35.768
+for example between the CC2420
+in the upper left, the one on
+the ApiMote and the Atmel 85RF
+
+00:25:37.903-->00:25:42.741
+uh that we just showed you the
+video uh thrilling video demo
+of, one thing that you’ll notice
+
+00:25:42.741-->00:25:47.746
+for example is that test case 2
+and 4 are received most of the
+time uh on the CC2420 but they
+
+00:25:50.282-->00:25:56.889
+are received none of the time on
+the Atmel. And even between the
+two chips by the same vendor, by
+
+00:25:56.889-->00:26:01.560
+Texas Instruments on the left
+hand side, you do see
+differences especially around
+
+00:26:01.560-->00:26:07.299
+test case 2 in the amount and
+and when we break this out to
+like thousands of iterations,
+
+00:26:07.299-->00:26:12.604
+you see this continue more
+clearly statistically. Um you
+see a difference in how those
+
+00:26:12.604-->00:26:17.643
+respond to those those cases. >>
+If we look back to the uh
+conversation about um how our
+
+00:26:17.643-->00:26:22.147
+physical layers actually
+implement this logic, you can
+kind of intuitively think about
+
+00:26:22.147-->00:26:26.919
+how this might work. So the
+Atmel 86RF either uses a longer
+uh shift register to correlate
+
+00:26:26.919-->00:26:31.690
+against or has a much stricter
+threshold uh for for that
+preamble to hit against, where
+
+00:26:31.690-->00:26:36.695
+as the the TI chips probably
+implement the more other a
+smaller shift register or a more
+
+00:26:36.695-->00:26:42.835
+len- uh a more lenient um thresh
+correlation threshold that is
+looking at. So why why should we
+
+00:26:42.835-->00:26:47.906
+care about this? Well, uh these
+results allow for us to do
+selective receiver targeting and
+
+00:26:47.906-->00:26:53.212
+intrusion detection system
+evasion. If uh if say for
+example we had an like some sort
+
+00:26:53.212-->00:26:58.217
+of a network coordinator or IDS
+or some sort of intelligent
+device in the network, that was
+
+00:26:58.217-->00:27:02.788
+doing orchestration and
+coordination that was built on
+an 86 RF chip uh and we were
+
+00:27:02.788-->00:27:07.759
+trying to attack a device that
+was built on a CC2420, we would
+be able to use a dialect that
+
+00:27:07.759-->00:27:12.865
+only used one or two preamble
+octets, uh the the device we
+were targeting can receive it,
+
+00:27:12.865-->00:27:16.335
+whereas the device monitoring
+activity on the network would
+have no idea that that traffic
+
+00:27:16.335-->00:27:21.039
+even occurred. Um so this really
+invalidates all of the all of
+the assumptions and precedent
+
+00:27:21.039-->00:27:26.478
+that that a uh security device
+built on that would have been
+designed with them. Uh so um
+
+00:27:26.478-->00:27:29.648
+that was uh a f- f- a finding
+that I have to attribute to Ryan
+back a couple of years ago when
+
+00:27:29.648-->00:27:33.185
+we initially did the research, I
+think this is really profound
+when we think about physical
+
+00:27:33.185-->00:27:38.590
+layers and the manner in which
+we trust them. So to kind of uh
+wrap this up I want to talk
+
+00:27:38.590-->00:27:42.594
+briefly about um RF interfaces
+and where we want to where we
+want to take this research and
+
+00:27:42.594-->00:27:47.799
+where we want to enable further
+further work here. So uh one of
+the challenges um as you just
+
+00:27:47.799-->00:27:52.671
+saw with presenting this demo is
+that developing arbitrary RF RF
+content, arbitrary physical
+
+00:27:52.671-->00:27:58.110
+layers to inject these receivers
+is no always easy to do. Um. And
+the reason why is because not
+
+00:27:58.110-->00:28:02.948
+all radios, not all COTS radios
+are able to generate things like
+arbitrary preambles are change
+
+00:28:02.948-->00:28:07.252
+the SFD value thats correlating
+against. Or even change the
+packet format modulation, things
+
+00:28:07.252-->00:28:12.190
+like that. Um in order to do
+that on the physical layer we
+either need to rely on software
+
+00:28:12.190-->00:28:16.194
+defined radio or get our hands
+on a transceiver chip set that
+enables us to configure these
+
+00:28:16.194-->00:28:22.467
+things. So software defined
+radio um is is really powerful.
+I just showed how 802 15 GR I
+
+00:28:22.467-->00:28:27.673
+triple E 802 15 4 can be radio
+can be used to do this. Um uh
+GRI triple E 802 15 4 was easy
+
+00:28:27.673-->00:28:32.477
+to get stuck with this because
+its very well designed, but SDR
+has a some drawbacks too. And I
+
+00:28:32.477-->00:28:37.516
+say that as a huge SDR fan boy.
+Um GNU radio is super super
+complicated and can be pretty
+
+00:28:37.516-->00:28:41.253
+hard to develop for especially
+if you if you don’t have a lot
+of domain knowledge or
+
+00:28:41.253-->00:28:45.557
+experience. Additionally SDR
+hardware is pretty expensive.
+You know its a couple hundred
+
+00:28:45.557-->00:28:50.429
+bucks to get your hands on a
+basic SDR that can transmit. Um
+so you know, not everyone has
+
+00:28:50.429-->00:28:54.299
+one of these things just kicking
+around. Uh additionally uh if
+you’re doing anything that’s
+
+00:28:54.299-->00:28:59.671
+timing sensitive. So if you’re
+trying trying um fuzz sequence
+of packets or anything very low
+
+00:28:59.671-->00:29:03.842
+level timing dependent uh if
+you’re using a USB based
+software defined radio and you
+
+00:29:03.842-->00:29:07.479
+have to go over that link
+between the device and the host
+uh that’s a very high latency
+
+00:29:07.479-->00:29:13.085
+operation. So uh a round trip
+USB I think is around a
+millisecond. Um well optimized.
+
+00:29:13.085-->00:29:17.856
+Um a millisecond is is a
+lifetime when we’re talking
+about um a symbols and RF over
+
+00:29:17.856-->00:29:21.760
+the year. Additionally software
+defined radio is pretty
+expensive, so it can be pretty
+
+00:29:21.760-->00:29:26.465
+hard to embed. Um when we talk
+about configurable transceivers
+that we might want to use. The
+
+00:29:26.465-->00:29:29.935
+issue that run into is that
+transceivers are generally
+purpose built and designed to do
+
+00:29:29.935-->00:29:36.141
+one protocol very well. Um uh
+they might be uh band limited in
+terms in terms of where like the
+
+00:29:36.141-->00:29:39.645
+frequencies at what they can
+tune to. So if you’re trying to
+experiment with like off setting
+
+00:29:39.645-->00:29:43.882
+a channel from the um the
+frequency that is stipulated by
+the standard. Uh you you might
+
+00:29:43.882-->00:29:46.952
+not be able to do that. Maybe
+you can’t specify like a
+floating point value to tune
+
+00:29:46.952-->00:29:51.623
+into. Maybe you can only give it
+like a channel index for
+instance. Um however some of the
+
+00:29:51.623-->00:29:55.694
+um benefits that you get is that
+they’re low power, they’re
+exposed, they’re generally
+
+00:29:55.694-->00:30:00.465
+exposed over serial APIs that
+are pretty pretty easy to work
+with. And some examples of these
+
+00:30:00.465-->00:30:04.703
+like in these powerful but
+inflexible transceivers are
+things like um LTE base bands
+
+00:30:04.703-->00:30:07.806
+that are used in cell phones
+like the two that we have on the
+right there. The NRF24 chip on
+
+00:30:07.806-->00:30:12.878
+the left um and then there’s an
+ESP for 802 11. These are good
+chips but they don’t really suit
+
+00:30:12.878-->00:30:17.082
+our purpose when it comes to
+fuzzing the physical layer.
+However, there’s a certain class
+
+00:30:17.082-->00:30:21.353
+of hardware defined transceivers
+that uh ut have a lot of
+flexibility with them and can be
+
+00:30:21.353-->00:30:24.589
+used in a manner that’s actually
+almost similar to software
+defined radio. They have some
+
+00:30:24.589-->00:30:29.227
+very STR like features built
+into them. Uh and the radios
+that I’m going to talk about er
+
+00:30:29.227-->00:30:33.365
+the first radio that I’m going
+to talk about um exposes uh PHY
+configuration via registers in a
+
+00:30:33.365-->00:30:38.870
+very powerful way. Um so we’re
+gonna uh take talk quickly about
+the ApiMote which is a board
+
+00:30:38.870-->00:30:44.543
+Ryan designed. Um >> Javier >>
+And Javier gets credit for works
+too. Um it was kind of the uh
+
+00:30:44.543-->00:30:50.582
+initial uh the tool that en- all
+this initial 802 15 4 research.
+And what this board did that was
+
+00:30:50.582-->00:30:55.821
+really unique was um through the
+Goodfat framework, it exposed uh
+PHY configuration registers that
+
+00:30:55.821-->00:31:01.093
+were hidden in the CC2420. Um,
+so with that they were able to
+do things like modify, do just
+
+00:31:01.093-->00:31:05.497
+what we showed with the preamble
+length and also modify the SFD
+value that is being looked for
+
+00:31:05.497-->00:31:11.503
+um and it also provided a um
+serial pin uh that could be
+pulled uh to basically get very
+
+00:31:11.503-->00:31:17.242
+very low uh low level insight uh
+real time insight into the state
+of the uh receivers finite state
+
+00:31:17.242-->00:31:22.114
+machine. So this was useful for
+doing um things like uh low
+latency injection, um getting
+
+00:31:22.114-->00:31:27.319
+around some of those timing
+timing limitations that uh that
+occur when you have a um serial
+
+00:31:27.319-->00:31:33.458
+like a USB B link and in line
+between between the hosts and
+the the device. However, as
+
+00:31:33.458-->00:31:38.897
+awesome as the ApiMote is, um
+its in need of an update and can
+use a little love. Uh the CC2420
+
+00:31:38.897-->00:31:44.102
+is end of life although we’ve we
+have an impressive stock pile of
+them and we’re good on that for
+
+00:31:44.102-->00:31:50.075
+awhile. Um, we are gonna have to
+contend with that eventually.
+Um. the uh the build materials
+
+00:31:50.075-->00:31:55.680
+for the ApiMote is also pretty
+expensive too. Um it has uh uh
+like a um >> Tactile switches,
+
+00:31:55.680-->00:32:00.652
+memory, all things designed so
+that you can do things like take
+it, throw it over a wall and
+
+00:32:00.652-->00:32:05.590
+leave it. Come back and pick it
+up after you’ve monitored your
+target, but when you’re doing
+
+00:32:05.590-->00:32:09.261
+research on a desktop, you don’t
+really always need those. >>
+Yes, we’d love to make that
+
+00:32:09.261-->00:32:13.765
+cheaper, additionally, in uh in
+in recent years, we’ve
+encountered some USB issues as
+
+00:32:13.765-->00:32:18.770
+uh as um as uh um as you know
+PYUSBs diverge come whatever
+configurations in our FDI chip.
+
+00:32:21.406-->00:32:26.945
+Um that’s on the board. Um the
+CC2431’s chip that we looked at
+to upgrade to um however it
+
+00:32:26.945-->00:32:31.683
+doesn’t expose PHY configuration
+registers in the same way that
+the CC2420 does. So we’re
+
+00:32:31.683-->00:32:35.320
+limited to a much stricter
+limitation of the PHY there. So
+I started looking at some other
+
+00:32:35.320-->00:32:40.559
+chip sets and uh some things
+that we could build on. That led
+me to the ADF7242 um which is a
+
+00:32:40.559-->00:32:46.198
+really interesting chip made by
+analog devices. It’s a 2.4
+gigahertz um um transceiver that
+
+00:32:46.198-->00:32:50.869
+supports a whole bunch of
+modulations including 802 15 4.
+Uh it also does you know
+
+00:32:50.869-->00:32:55.574
+arbitrary FSK, and I think does
+bluetooth and bluetooth too. Um
+it’s a super super powerful
+
+00:32:55.574-->00:33:00.946
+radio, however, the most
+interesting feature in my
+opinion is sport mode. So sport
+
+00:33:00.946-->00:33:06.151
+mode um I forget what it stands
+for um, some sort of an acronym.
+What is, so sport mode
+
+00:33:06.151-->00:33:11.356
+essentially does is it it uses
+the demodulator, but bypsses the
+decoder and all the framing
+
+00:33:11.356-->00:33:15.594
+logic thats implemented in the
+transceiver. So what it does is
+it allows you to stream raw
+
+00:33:15.594-->00:33:22.434
+symbols over a serial interface
+back to a host. So if we do that
+and we bypass that, we can then
+
+00:33:22.434-->00:33:27.439
+implement all those those low
+level physical air features that
+we’re interested in in software.
+
+00:33:27.439-->00:33:32.444
+Um, so that enables us to have
+full control over the physical
+layer um for for most 2 point 4
+
+00:33:32.444-->00:33:36.715
+gigahertz protocols. Um super
+super exciting. We’re really
+excited to build this out.
+
+00:33:36.715-->00:33:41.086
+ApiMote 2 point 0 is going to do
+a lot more than 802 15 4. Um
+hopefully without giving up any
+
+00:33:41.086-->00:33:45.257
+functionality. So with that, I’m
+going to briefly talk about this
+project I’ve been working on
+
+00:33:45.257-->00:33:50.028
+called Orthurs, It’s a a code
+name. Uh and the reason why it’s
+it’s called that, is because
+
+00:33:50.028-->00:33:56.167
+it’s named after a um a two
+headed dog from Greek mythology
+that that Hercules or Odysseus
+
+00:33:56.167-->00:34:00.438
+killed or something like that.
+So it’s the spiritual successor
+to the ApiMote. The reason why
+
+00:34:00.438-->00:34:06.611
+it’s name after a two headed dog
+is because uh it has two heads.
+It uses two um, it uses two um
+
+00:34:06.611-->00:34:12.984
+radio front ends, uh to do some
+really cool things. So it’s got
+a got a um arm host on board for
+
+00:34:12.984-->00:34:17.689
+impl- implementing a radio logic
+audit. Radio state machines. Uh
+that also enables host
+
+00:34:17.689-->00:34:22.594
+communication to USB, but it
+also enables us to implement the
+decoding logic that we’re gonna
+
+00:34:22.594-->00:34:26.364
+be uh processing data from sport
+mode within to do really cool
+low level thought level low
+
+00:34:26.364-->00:34:31.469
+level PHY stuff. Additionally as
+I mentioned we’re gonna be using
+two of these um ADF724 uh 72 4
+
+00:34:31.469-->00:34:37.943
+uh 42 radios on board. And the
+uh the initial read on for that
+is because the ADF7242 has a
+
+00:34:37.943-->00:34:42.447
+very slow tune time. So if we
+want to do any fast like
+frequency hopping stuff or any
+
+00:34:42.447-->00:34:47.319
+like timing dependent uh things
+like that uh that’s something we
+might run into. Uh so for
+
+00:34:47.319-->00:34:51.623
+instance bluetooth hops I think
+it’s like 1600 times a second uh
+that’s really really fast and
+
+00:34:51.623-->00:34:56.227
+this chip couldn’t keep up with
+it. Um additionally we can do
+things like um like very fast
+
+00:34:56.227-->00:35:00.699
+react jamming. Where we can have
+one radio sitting in receive
+mode looking for some like a
+
+00:35:00.699-->00:35:05.437
+packet to occur on the air or
+some state to arrive, while we
+have the other radio set, primed
+
+00:35:05.437-->00:35:08.607
+and ready to transmit. Sitting
+in transmit mode so that all we
+have to do is send out a command
+
+00:35:08.607-->00:35:13.311
+and it can it can fire very very
+quickly. So this will be able to
+enable um things like high speed
+
+00:35:13.311-->00:35:18.683
+responsive jamming. Which in the
+ApiMote require a lot of um like
+kind like finagaling like with
+
+00:35:18.683-->00:35:24.656
+serial lines and things like
+that. You guys ready to see the
+prototype. [audience] Check that
+
+00:35:24.656-->00:35:30.762
+sucker out. Um, haha. So it’s a
+teensy wire, teensy wired up to
+a def board um custom hardware
+
+00:35:30.762-->00:35:34.466
+is in progress. Um I would love
+to have some help working on
+this. I think it could be a lot
+
+00:35:34.466-->00:35:39.671
+of fun and uh some low level um
+low level physical layer stuff.
+Um so if you’re interested um,
+
+00:35:39.671-->00:35:45.143
+you know come talk to me after
+and we can we can we can get you
+on the GitHub and stuff. Um so
+
+00:35:45.143-->00:35:48.813
+uh kind of the initial uh things
+that we’d like to achieve is
+obviously implementing PHY
+
+00:35:48.813-->00:35:54.285
+decoders and firmware so we can
+start to play with them uh in a
+faceted way. Additionally
+
+00:35:54.285-->00:35:58.723
+extracting away uh front end
+manipulations. We can run them
+in a blue green fashion, um sort
+
+00:35:58.723-->00:36:02.761
+of how one might do production
+cl- cloud based software. Things
+like that. So that we can do
+
+00:36:02.761-->00:36:07.499
+fast routine channel hopping
+without having to to you know do
+things manually. Um something
+
+00:36:07.499-->00:36:11.236
+that i think is going to be
+really interesting, um beyond
+that though is extracting away
+
+00:36:11.236-->00:36:15.907
+the radio um state machine. So
+that rather than writing um
+event loops and firmware for
+
+00:36:15.907-->00:36:20.345
+every radio protocol we want to
+implement, we can instead write
+a generic um kind of framework
+
+00:36:20.345-->00:36:24.983
+for doing that and then pass PHY
+configurations to it via a
+configuration file. So that we
+
+00:36:24.983-->00:36:29.287
+can write a well done even loop
+once and then implement new
+radio protocols just by like
+
+00:36:29.287-->00:36:33.091
+writing like a file to finding
+what all those values look like
+and things like that. I think
+
+00:36:33.091-->00:36:37.295
+that could be really cool. Um so
+if that sounds interesting I’d
+love to chat with you afterward
+
+00:36:37.295-->00:36:42.333
+and we can we can make this
+thing awesome. >> So we are
+looking for help not just on
+
+00:36:42.333-->00:36:46.171
+that, but on TumbleRF in
+general. We are going to be
+adding some more protocols to
+
+00:36:46.171-->00:36:50.775
+this and doing some more of our
+own research off of it, uh
+however we are sharing this and
+
+00:36:50.775-->00:36:54.379
+then we’ll show you the GitHub
+link in a moment. Uh because we
+think it would be great for
+
+00:36:54.379-->00:36:59.184
+people to be able to add on
+whether that be adding a radio
+interface, uh defuzzing favorite
+
+00:36:59.184-->00:37:03.154
+protocol. Whether adding a
+generator or if you have an idea
+about a fuzzing state that
+
+00:37:03.154-->00:37:08.560
+you’re like, hey, could this get
+a radio into a strange state.
+Could add. Um or a harness to
+
+00:37:08.560-->00:37:13.431
+check the device state of a
+device you’re in- um
+instrumenting against. Um so uh
+
+00:37:13.431-->00:37:16.701
+in addition to what Matt
+mentioned on the Orthrus with
+firmware development and the
+
+00:37:16.701-->00:37:22.974
+state machines, we are open to
+collaborating with anyone who’s
+interested in it. That is the
+
+00:37:22.974-->00:37:28.113
+end of our our talk, although if
+you really want, we can go back
+and sho- show more uh live RF
+
+00:37:28.113-->00:37:33.485
+fuzzing. But uh
+[applause/laughter] But really
+there’s the Github link uh
+
+00:37:33.485-->00:37:38.890
+thanks to DefCon crew uh and the
+goons for helping us out. And to
+RiverLoop Security, Cruise
+
+00:37:38.890-->00:37:42.827
+Automation and Ionic Security
+for letting us do this instead
+of being at the office
+
+00:37:42.827-->00:37:49.467
+sometimes. Um there’s our
+contact information. You can
+tweet at us with complaints. Or
+
+00:37:49.467-->00:37:55.039
+compliments. Um or our e-mail
+addresses so feel free to reach
+out. We’d love to hear from you.
+
+00:37:55.039-->00:38:00.779
+We have I think 5 minutes left
+if anyone has questions. Um
+we’ll take 1 or 2. Otherwise
+
+00:38:00.779-->00:38:05.984
+after this, if you go out the
+doors in the back and go to your
+left, we will be there to answer
+
+00:38:05.984-->00:38:10.989
+questions so that we can keep
+DefCon moving on time. Anyone
+have a question or two? Can can
+
+00:38:13.892-->00:38:18.897
+our cheerleading crew stand up
+and show the audience why we’re
+being p****d at you? [applause]
+
+00:38:22.867-->00:38:29.374
+[audience inaudible] >> Ok, ok,
+so the the question, the
+question from the front row
+
+00:38:29.374-->00:38:33.511
+[audience inaudible] >> The
+question from the front row uh I
+believe Alex uh he’s a little
+
+00:38:33.511-->00:38:38.449
+slow sometimes asked us to go
+back to the beginning and start
+again. Um yeah let’s do that.
+
+00:38:38.449-->00:38:43.454
+Thanks Alex. Anyone else? >> So
+just one comment to wrap up. Um
+as we’ve kind of worked through
+
+00:38:47.091-->00:38:51.429
+this and done more and more work
+on this, um, we’ve focused on
+the 802 15 4, I think applying
+
+00:38:51.429-->00:38:55.300
+this methodology to other
+protocols is going to rain bugs.
+I think we’re going to find
+
+00:38:55.300-->00:38:59.470
+things across all sorts of
+different protocols so um we’re
+excited to work on this and we’d
+
+00:38:59.470-->00:39:03.908
+love to uh get you involved if
+you’re interested. So, I think
+we can wrap up, uh thanks very
+
+00:39:03.908-->00:39:06.711
+much. >> Thanks very much. >>
+Uh, we’ll be in the hallway on
+the left if you want to chat. So
+
+00:39:06.711-->00:39:09.314
+thank you. [applause]
+

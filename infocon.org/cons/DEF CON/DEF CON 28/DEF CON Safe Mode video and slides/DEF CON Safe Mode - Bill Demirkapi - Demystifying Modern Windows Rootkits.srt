@@ -1,0 +1,3723 @@
+﻿1
+00:00:00,540 --> 00:00:02,250
+- Hi there, My name is Bill,
+
+2
+00:00:02,250 --> 00:00:04,100
+and thanks for coming out to my talk.
+
+3
+00:00:05,430 --> 00:00:07,410
+So I'm 19 years old,
+
+4
+00:00:07,410 --> 00:00:08,830
+I'm a rising sophomore
+
+5
+00:00:08,830 --> 00:00:11,470
+at the Rochester Institute of Technology.
+
+6
+00:00:11,470 --> 00:00:13,510
+I love Windows Internals.
+
+7
+00:00:13,510 --> 00:00:16,200
+I'm mostly self-taught with some guidance
+
+8
+00:00:16,200 --> 00:00:17,990
+and I've a strong game hacking background,
+
+9
+00:00:17,990 --> 00:00:20,703
+which is why I'm so interested
+into Windows kernel.
+
+10
+00:00:21,560 --> 00:00:23,280
+So what is this talk about?
+
+11
+00:00:23,280 --> 00:00:27,203
+Well, in this talk will be
+going over loading a rootkit,
+
+12
+00:00:28,060 --> 00:00:30,710
+communicating with a rootkit,
+
+13
+00:00:30,710 --> 00:00:33,350
+abusing legitimate network communications
+
+14
+00:00:33,350 --> 00:00:35,860
+in order to communicate with our malware.
+
+15
+00:00:35,860 --> 00:00:39,293
+And example rootkit I made
+and design choices behind it.
+
+16
+00:00:40,440 --> 00:00:42,450
+Executing commands from kernel,
+
+17
+00:00:42,450 --> 00:00:45,693
+and tricks to coverup the file
+system trace of your rootkit.
+
+18
+00:00:47,280 --> 00:00:48,900
+So when you hear me say, "Rootkit"
+
+19
+00:00:48,900 --> 00:00:52,840
+I'm referring to kernel
+level rootkits for Windows.
+
+20
+00:00:52,840 --> 00:00:54,830
+So why would you wanna use a rootkit?
+
+21
+00:00:54,830 --> 00:00:56,840
+Well, there's a lot of reasons.
+
+22
+00:00:56,840 --> 00:01:00,020
+Kernel drivers have significant
+access to the machine.
+
+23
+00:01:00,020 --> 00:01:02,740
+Unlike in user mode, you
+pretty much have the same...
+
+24
+00:01:02,740 --> 00:01:05,090
+You have the access to
+anything and everything.
+
+25
+00:01:06,520 --> 00:01:08,600
+Kernel drivers have the
+same privilege level
+
+26
+00:01:08,600 --> 00:01:10,560
+as a typical kernel anti-virus.
+
+27
+00:01:10,560 --> 00:01:13,320
+Generally speaking, you
+share the same access
+
+28
+00:01:13,320 --> 00:01:14,623
+to the same resources.
+
+29
+00:01:15,530 --> 00:01:18,060
+There are less mitigations
+in security solutions
+
+30
+00:01:18,060 --> 00:01:19,710
+targeting kernel malware.
+
+31
+00:01:19,710 --> 00:01:21,290
+If you can load kernel code,
+
+32
+00:01:21,290 --> 00:01:23,740
+there's a lot you can do
+to cover up your tracks.
+
+33
+00:01:24,660 --> 00:01:27,890
+Antivirus often have less
+visibility into the operations
+
+34
+00:01:27,890 --> 00:01:29,900
+performed by kernel drivers.
+
+35
+00:01:29,900 --> 00:01:33,230
+This is because a lot of
+antivirus rely on user mode hooks
+
+36
+00:01:33,230 --> 00:01:34,770
+in order to gain visibility
+
+37
+00:01:34,770 --> 00:01:37,620
+into potentially suspicious operations.
+
+38
+00:01:37,620 --> 00:01:39,750
+In kernel, however you can't directly
+
+39
+00:01:39,750 --> 00:01:42,870
+hook the anti-IRPS kernel
+functions due to PatchGuard,
+
+40
+00:01:42,870 --> 00:01:47,010
+reducing the visibility
+antivirus IRPS significantly.
+
+41
+00:01:47,010 --> 00:01:49,300
+And finally, kernel drivers are treated
+
+42
+00:01:49,300 --> 00:01:52,790
+with a significant amount
+of trust by antivirus.
+
+43
+00:01:52,790 --> 00:01:54,790
+Let's take a look at an example of that.
+
+44
+00:01:56,030 --> 00:01:58,570
+So whether you're running
+a consumer antivirus
+
+45
+00:01:58,570 --> 00:02:02,320
+or a corporate EDR, chances
+are whatever solution you run,
+
+46
+00:02:02,320 --> 00:02:05,550
+treats kernel drivers with a
+significant amount of trust.
+
+47
+00:02:05,550 --> 00:02:08,780
+Here I have two examples from
+Malwarebytes in Carbon Black,
+
+48
+00:02:08,780 --> 00:02:12,820
+specifically they're preprocessed
+thread callback functions.
+
+49
+00:02:12,820 --> 00:02:16,020
+These functions that are called
+whenever a handle is created
+
+50
+00:02:16,020 --> 00:02:17,980
+to a process or a thread.
+
+51
+00:02:17,980 --> 00:02:20,580
+In the case of Malwarebytes,
+they check to see
+
+52
+00:02:20,580 --> 00:02:22,500
+if the process ID is less than eight,
+
+53
+00:02:22,500 --> 00:02:25,170
+and if the operation
+is for a kernel handle,
+
+54
+00:02:25,170 --> 00:02:29,140
+then it will not continue
+processing that handle creation.
+
+55
+00:02:29,140 --> 00:02:31,010
+In the case of Carbon Black,
+
+56
+00:02:31,010 --> 00:02:33,740
+if you handle is for a kernel handle,
+
+57
+00:02:33,740 --> 00:02:36,470
+or if the caller is not from user mode,
+
+58
+00:02:36,470 --> 00:02:39,163
+it will not process that
+handle being created.
+
+59
+00:02:40,460 --> 00:02:43,650
+Let's talk a little bit
+about loading a rootkit.
+
+60
+00:02:43,650 --> 00:02:44,860
+So the first option you have
+
+61
+00:02:44,860 --> 00:02:47,080
+is to abuse the legitimate drivers.
+
+62
+00:02:47,080 --> 00:02:51,210
+There are a lot of publicly
+available vulnerable drivers
+
+63
+00:02:51,210 --> 00:02:52,043
+out there.
+
+64
+00:02:52,043 --> 00:02:53,680
+And with some reversing knowledge,
+
+65
+00:02:53,680 --> 00:02:55,840
+finding your own zero day
+in one of these drivers
+
+66
+00:02:55,840 --> 00:02:56,713
+can be trivial.
+
+67
+00:02:57,580 --> 00:02:59,700
+Examples of vulnerable drivers include
+
+68
+00:02:59,700 --> 00:03:01,870
+Capcom's Anti-Cheat driver
+
+69
+00:03:01,870 --> 00:03:05,890
+Intel's NAL Driver and
+Microsoft themselves.
+
+70
+00:03:05,890 --> 00:03:09,160
+Now, the reason I put vulnerable
+and zero-day in quotes,
+
+71
+00:03:09,160 --> 00:03:11,520
+is because oftentimes these drivers
+
+72
+00:03:11,520 --> 00:03:13,340
+require administrative privileges
+
+73
+00:03:13,340 --> 00:03:14,860
+to communicate with them.
+
+74
+00:03:14,860 --> 00:03:18,290
+Following Microsoft standards
+ring thread administrator
+
+75
+00:03:18,290 --> 00:03:20,960
+to ring zero is not a security boundary.
+
+76
+00:03:20,960 --> 00:03:23,450
+So technically they're
+not vulnerabilities,
+
+77
+00:03:23,450 --> 00:03:25,603
+but that doesn't mean we can't abuse them.
+
+78
+00:03:27,590 --> 00:03:31,340
+Abusing legitimate drivers has
+quite a few benefits as well.
+
+79
+00:03:31,340 --> 00:03:34,670
+You only need a few primitives
+to escalate privileges.
+
+80
+00:03:34,670 --> 00:03:37,450
+Finding a vulnerable driver
+is relatively trivial,
+
+81
+00:03:37,450 --> 00:03:40,270
+a good place to start is OEM drivers.
+
+82
+00:03:40,270 --> 00:03:44,090
+And it's difficult to detect
+due to compatibility reasons.
+
+83
+00:03:44,090 --> 00:03:46,930
+For example, let's say a driver
+had a vulnerable component
+
+84
+00:03:46,930 --> 00:03:49,010
+that could potentially be exploited.
+
+85
+00:03:49,010 --> 00:03:51,590
+The problem antivirus face is that
+
+86
+00:03:51,590 --> 00:03:54,030
+if the legitimate application also uses
+
+87
+00:03:54,030 --> 00:03:55,700
+that vulnerable component,
+
+88
+00:03:55,700 --> 00:03:59,610
+how do you detect a
+malicious program requesting
+
+89
+00:04:00,850 --> 00:04:04,470
+this vulnerable component,
+versus the legitimate application
+
+90
+00:04:04,470 --> 00:04:06,200
+requesting that vulnerable component?
+
+91
+00:04:06,200 --> 00:04:07,700
+That becomes a tricky problem.
+
+92
+00:04:08,900 --> 00:04:11,700
+There are some drawbacks for
+this method as well though.
+
+93
+00:04:12,550 --> 00:04:14,930
+The biggest issue I've
+had with this method
+
+94
+00:04:14,930 --> 00:04:16,250
+is compatibility.
+
+95
+00:04:16,250 --> 00:04:19,220
+Oftentimes the primitives
+you get might not be a lot
+
+96
+00:04:19,220 --> 00:04:22,300
+and even then can have stability issues
+
+97
+00:04:22,300 --> 00:04:24,020
+such as race conditions.
+
+98
+00:04:24,020 --> 00:04:25,530
+Now, this is a significant threat
+
+99
+00:04:25,530 --> 00:04:28,410
+if you're writing red team tooling,
+
+100
+00:04:28,410 --> 00:04:30,150
+because you do not want your malware
+
+101
+00:04:30,150 --> 00:04:31,480
+to blue screen a victim,
+
+102
+00:04:31,480 --> 00:04:33,450
+that's probably the worst case scenario.
+
+103
+00:04:33,450 --> 00:04:35,900
+It would be a pretty big
+indicator of compromise
+
+104
+00:04:35,900 --> 00:04:37,660
+and you're probably gonna get caught.
+
+105
+00:04:37,660 --> 00:04:40,410
+And this is why I generally
+stay away from this method.
+
+106
+00:04:43,040 --> 00:04:44,710
+Now another method is to just
+
+107
+00:04:44,710 --> 00:04:46,650
+buy a code signing certificate.
+
+108
+00:04:46,650 --> 00:04:49,210
+This is completely valid
+for some red teams,
+
+109
+00:04:49,210 --> 00:04:51,200
+especially for targeted attacks.
+
+110
+00:04:51,200 --> 00:04:53,300
+And primarily because
+you're not gonna have
+
+111
+00:04:53,300 --> 00:04:54,700
+any stability issues,
+
+112
+00:04:54,700 --> 00:04:56,930
+it's the normal way of
+getting a driver's signed
+
+113
+00:04:56,930 --> 00:04:58,610
+is just to buy your own certificate
+
+114
+00:04:58,610 --> 00:05:00,123
+under your company's name.
+
+115
+00:05:01,120 --> 00:05:03,130
+But it will reveal your identity,
+
+116
+00:05:03,130 --> 00:05:05,470
+and also it can be blacklisted.
+
+117
+00:05:05,470 --> 00:05:09,000
+Now this blacklisting doesn't
+happen so much nowadays.
+
+118
+00:05:09,000 --> 00:05:11,010
+This is something that I
+know is being worked on
+
+119
+00:05:11,010 --> 00:05:13,943
+by antivirus vendors and
+even Microsoft themselves.
+
+120
+00:05:14,830 --> 00:05:16,620
+It's not widely spread there yet,
+
+121
+00:05:16,620 --> 00:05:17,830
+so you're probably not gonna see
+
+122
+00:05:17,830 --> 00:05:19,903
+too much blacklisting happening nowadays.
+
+123
+00:05:21,620 --> 00:05:24,930
+Another option is just to use
+someone else's certificate.
+
+124
+00:05:24,930 --> 00:05:27,270
+You'd be surprised at the
+number of publicly available
+
+125
+00:05:27,270 --> 00:05:29,430
+leak certificates online.
+
+126
+00:05:29,430 --> 00:05:31,570
+A good place to start if
+you're looking for one
+
+127
+00:05:31,570 --> 00:05:33,560
+is game hacking forums.
+
+128
+00:05:33,560 --> 00:05:36,580
+Now at leak certificates have
+almost all of the benefits
+
+129
+00:05:36,580 --> 00:05:38,400
+of just buying your own certificate
+
+130
+00:05:38,400 --> 00:05:39,600
+without deanonymization.
+
+131
+00:05:41,330 --> 00:05:44,900
+But the leak certificate
+you use can be blacklisted
+
+132
+00:05:44,900 --> 00:05:46,340
+in the future.
+
+133
+00:05:46,340 --> 00:05:47,540
+It goes back to the same point
+
+134
+00:05:47,540 --> 00:05:49,590
+about buying your own certificate.
+
+135
+00:05:49,590 --> 00:05:54,470
+And if the certificate was
+issued after July 29th, 2015,
+
+136
+00:05:54,470 --> 00:05:58,800
+you can't use it on secure boot machines,
+
+137
+00:05:58,800 --> 00:06:01,083
+running Windows 10, 16 or seven or higher,
+
+138
+00:06:01,940 --> 00:06:03,820
+unless it is an EV certificate,
+
+139
+00:06:03,820 --> 00:06:05,570
+which is probably not gonna happen.
+
+140
+00:06:07,540 --> 00:06:09,700
+In most cases, Windows doesn't even care
+
+141
+00:06:09,700 --> 00:06:13,970
+if the certificate appears to
+be expired or even revoked.
+
+142
+00:06:13,970 --> 00:06:16,770
+This is because what you see
+in a digital signature section
+
+143
+00:06:16,770 --> 00:06:19,970
+of a driver is not what the kernel checks,
+
+144
+00:06:19,970 --> 00:06:22,610
+when determining whether
+or not to load a driver.
+
+145
+00:06:22,610 --> 00:06:25,520
+So this view you see here
+when it says certificate
+
+146
+00:06:25,520 --> 00:06:27,110
+was explicitly revoked,
+
+147
+00:06:27,110 --> 00:06:29,450
+that's when Warfare thrusters returning
+
+148
+00:06:29,450 --> 00:06:32,300
+not necessarily what
+the kernel cares about.
+
+149
+00:06:32,300 --> 00:06:35,140
+So if you do come across a
+certificate that's expired
+
+150
+00:06:35,140 --> 00:06:37,250
+or revoked, chances are,
+you can still use it
+
+151
+00:06:37,250 --> 00:06:38,393
+for signing a driver.
+
+152
+00:06:40,320 --> 00:06:41,870
+Now, if you don't wanna use one
+
+153
+00:06:41,870 --> 00:06:44,180
+of the publicly available
+certificates out there,
+
+154
+00:06:44,180 --> 00:06:45,960
+you can also try to find your own.
+
+155
+00:06:45,960 --> 00:06:47,890
+One method I found interesting was to use
+
+156
+00:06:47,890 --> 00:06:51,360
+open s3 buckets to
+search for private keys.
+
+157
+00:06:51,360 --> 00:06:53,220
+I used a site called Grayhat Warfare
+
+158
+00:06:53,220 --> 00:06:55,530
+which searches these open s3 buckets,
+
+159
+00:06:55,530 --> 00:06:58,950
+and I was able to find over 6,000 results
+
+160
+00:06:58,950 --> 00:07:01,530
+for the PFX and P12 extensions,
+
+161
+00:07:01,530 --> 00:07:03,530
+which is definitely a place to look at
+
+162
+00:07:03,530 --> 00:07:05,780
+if you're trying to get
+your own certificate.
+
+163
+00:07:07,000 --> 00:07:09,160
+And the best part about
+this method is that
+
+164
+00:07:09,160 --> 00:07:11,640
+it's undetected by the bulk of antivirus.
+
+165
+00:07:11,640 --> 00:07:14,650
+Now, I don't understand if
+antivirus had trouble detecting
+
+166
+00:07:14,650 --> 00:07:17,410
+a certificate that was
+released a month ago
+
+167
+00:07:17,410 --> 00:07:18,600
+because that's recent,
+
+168
+00:07:18,600 --> 00:07:21,610
+but some of these certificates
+have been out there for years
+
+169
+00:07:21,610 --> 00:07:25,730
+and yet even the most next
+generation cutting edge solutions
+
+170
+00:07:25,730 --> 00:07:27,743
+fail to detect this basic threat.
+
+171
+00:07:29,370 --> 00:07:32,160
+Let's talk about
+communicating with a rootkit.
+
+172
+00:07:32,160 --> 00:07:34,790
+A tried and true method of
+communicating with your malware
+
+173
+00:07:34,790 --> 00:07:37,370
+is to just call home to C2.
+
+174
+00:07:37,370 --> 00:07:40,790
+Now firewalls can block
+or flag these requests
+
+175
+00:07:40,790 --> 00:07:43,510
+that go to suspicious IPs or ports,
+
+176
+00:07:43,510 --> 00:07:48,510
+and even for more complex
+methods, such as DNS exfiltration.
+
+177
+00:07:48,810 --> 00:07:50,760
+There are some solutions being developed,
+
+178
+00:07:50,760 --> 00:07:52,720
+such as an Advanced Network Inspection
+
+179
+00:07:52,720 --> 00:07:54,820
+that can try to catch in these methods
+
+180
+00:07:54,820 --> 00:07:56,973
+that attempt to blend in with the noise.
+
+181
+00:07:59,520 --> 00:08:02,180
+Some malware takes route
+that the C2 connects
+
+182
+00:08:02,180 --> 00:08:04,710
+to the victim directly to control it.
+
+183
+00:08:04,710 --> 00:08:08,880
+Now, this is extremely easy to
+set up, but at the same time,
+
+184
+00:08:08,880 --> 00:08:12,480
+it's extremely easy for
+a firewall to block this.
+
+185
+00:08:12,480 --> 00:08:14,640
+And it's very difficult to
+blend in with the noise,
+
+186
+00:08:14,640 --> 00:08:16,873
+given that you're using
+one port exclusive.
+
+187
+00:08:19,280 --> 00:08:21,810
+A more advanced method
+I've seen is to hook
+
+188
+00:08:21,810 --> 00:08:25,040
+into an applications network
+communications directly.
+
+189
+00:08:25,040 --> 00:08:27,540
+Now, this is a very hard to detect,
+
+190
+00:08:27,540 --> 00:08:30,670
+especially if you're mimicking
+a legitimate protocol,
+
+191
+00:08:30,670 --> 00:08:34,670
+but it's not very flexible
+because in a lot of environments,
+
+192
+00:08:34,670 --> 00:08:36,040
+you're gonna have different ports exposed,
+
+193
+00:08:36,040 --> 00:08:37,250
+different services running.
+
+194
+00:08:37,250 --> 00:08:40,020
+And so if that one port
+or service isn't exposed,
+
+195
+00:08:40,020 --> 00:08:42,070
+you can't use that line of communication,
+
+196
+00:08:42,070 --> 00:08:43,583
+which isn't very reliable.
+
+197
+00:08:45,270 --> 00:08:48,460
+So what I wanted when choosing
+a communication method
+
+198
+00:08:48,460 --> 00:08:51,480
+was limited detection vectors,
+
+199
+00:08:51,480 --> 00:08:54,640
+flexibility for a variety of environments,
+
+200
+00:08:54,640 --> 00:08:59,200
+while the assumptions that
+some services will be exposed,
+
+201
+00:08:59,200 --> 00:09:01,510
+which is especially true
+in corporate environments
+
+202
+00:09:01,510 --> 00:09:04,600
+that have active domain services running.
+
+203
+00:09:04,600 --> 00:09:07,340
+But inbound and outbound
+access may be monitored.
+
+204
+00:09:07,340 --> 00:09:09,270
+So it's gonna have to be a method
+
+205
+00:09:09,270 --> 00:09:13,580
+that has a low detection,
+vector opportunity.
+
+206
+00:09:13,580 --> 00:09:18,400
+Now application specific hooking
+was perfect for my needs,
+
+207
+00:09:18,400 --> 00:09:20,590
+except for the flexibility.
+
+208
+00:09:20,590 --> 00:09:21,980
+Is there any way we could change
+
+209
+00:09:21,980 --> 00:09:25,380
+application specific hooking
+to where it isn't dependent
+
+210
+00:09:25,380 --> 00:09:27,690
+on any single application?
+
+211
+00:09:27,690 --> 00:09:30,550
+Well, it turns out there might be away.
+
+212
+00:09:30,550 --> 00:09:34,400
+So what if instead of hooking
+one application directly,
+
+213
+00:09:34,400 --> 00:09:36,400
+we hooked network communication,
+
+214
+00:09:36,400 --> 00:09:38,540
+similar to tools such as Wireshark.
+
+215
+00:09:38,540 --> 00:09:40,780
+So this means that we
+would hook every packet
+
+216
+00:09:40,780 --> 00:09:43,140
+that reaches any port on the system
+
+217
+00:09:43,140 --> 00:09:45,480
+and we're able to inspect it.
+
+218
+00:09:45,480 --> 00:09:47,520
+And then what we did is on our C2,
+
+219
+00:09:47,520 --> 00:09:51,860
+we created a custom packet that
+had a magic constant value.
+
+220
+00:09:51,860 --> 00:09:54,040
+And right after that magic constant,
+
+221
+00:09:54,040 --> 00:09:57,500
+there was information we
+wanna pass to our malware.
+
+222
+00:09:57,500 --> 00:10:00,400
+So what we could do is we could
+send this malicious packet
+
+223
+00:10:00,400 --> 00:10:02,840
+to any port on the victim machine.
+
+224
+00:10:02,840 --> 00:10:05,720
+And then the victim
+machine running our malware
+
+225
+00:10:05,720 --> 00:10:08,180
+would check every packet incoming
+
+226
+00:10:08,180 --> 00:10:10,960
+and see, "Hey, there's a
+packet with a magic constant."
+
+227
+00:10:10,960 --> 00:10:14,320
+And we'll be able to use it as
+a reference point to extract
+
+228
+00:10:14,320 --> 00:10:16,630
+information from our C2.
+
+229
+00:10:16,630 --> 00:10:19,330
+So using this method, we could communicate
+
+230
+00:10:19,330 --> 00:10:23,690
+from our C2 to our malware by
+abusing any legitimate port
+
+231
+00:10:23,690 --> 00:10:25,700
+on the victim machine.
+
+232
+00:10:25,700 --> 00:10:27,810
+Let's talk about how we
+would actually do this
+
+233
+00:10:27,810 --> 00:10:31,210
+and specifically hooking
+to user mode network stack.
+
+234
+00:10:31,210 --> 00:10:34,880
+So a signal inefficient
+amount of services on Windows
+
+235
+00:10:34,880 --> 00:10:36,470
+lie in user mode.
+
+236
+00:10:36,470 --> 00:10:39,840
+And how can we globally
+intercept this traffic?
+
+237
+00:10:39,840 --> 00:10:43,130
+Well, networking relating
+to WinSock is handled
+
+238
+00:10:43,130 --> 00:10:47,650
+by afd.sys otherwise known as
+the Ancillary Function Driver
+
+239
+00:10:47,650 --> 00:10:49,060
+for WinSock.
+
+240
+00:10:49,060 --> 00:10:53,250
+Reversing a few functions
+inside of mswsock.dll
+
+241
+00:10:53,250 --> 00:10:55,700
+revealed that a bulk of the
+communication was performed
+
+242
+00:10:55,700 --> 00:10:57,190
+through IOCTLS.
+
+243
+00:10:57,190 --> 00:11:00,040
+If we could somehow
+intercept these IOCTLS,
+
+244
+00:11:00,040 --> 00:11:03,090
+we could snoop in on
+the data being received.
+
+245
+00:11:03,090 --> 00:11:06,300
+So how do apps know where to go?
+
+246
+00:11:06,300 --> 00:11:09,750
+So how does a kernel determine
+what function to call
+
+247
+00:11:09,750 --> 00:11:11,140
+of what driver?
+
+248
+00:11:11,140 --> 00:11:14,510
+Well, first it'll obtain the device object
+
+249
+00:11:14,510 --> 00:11:16,930
+associated with a file object by calling
+
+250
+00:11:16,930 --> 00:11:18,180
+IoGetRelatedDeviceObject.
+
+251
+00:11:19,430 --> 00:11:21,140
+Now for our purposes,
+
+252
+00:11:21,140 --> 00:11:23,640
+this will just be retrieving
+the device object member
+
+253
+00:11:23,640 --> 00:11:26,220
+of the file object structure.
+
+254
+00:11:26,220 --> 00:11:29,640
+If the driver associated with
+the device supports fast IO,
+
+255
+00:11:29,640 --> 00:11:33,630
+it'll dispatch the request using
+the fast IO dispatch table,
+
+256
+00:11:33,630 --> 00:11:36,100
+part of the driver object structure.
+
+257
+00:11:36,100 --> 00:11:38,930
+If the driver does not support fast IO,
+
+258
+00:11:38,930 --> 00:11:41,410
+then it'll allocate and fill out an IRP
+
+259
+00:11:41,410 --> 00:11:43,300
+and forward that IRP to the driver
+
+260
+00:11:43,300 --> 00:11:45,077
+by calling IOCallDriver.
+
+261
+00:11:47,500 --> 00:11:51,860
+Now there's a few standard
+methods of intercepting IRPS.
+
+262
+00:11:51,860 --> 00:11:54,660
+And the first method to replace
+
+263
+00:11:54,660 --> 00:11:57,850
+the major functions table array,
+
+264
+00:11:57,850 --> 00:12:00,620
+that is part of the
+driver object structure.
+
+265
+00:12:00,620 --> 00:12:03,900
+Now this major function
+array contains pointers
+
+266
+00:12:03,900 --> 00:12:07,240
+to dispatch functions and
+to index for this array
+
+267
+00:12:07,240 --> 00:12:10,523
+directly corresponds to
+the major function code,
+
+268
+00:12:11,420 --> 00:12:14,270
+which is relevant for
+that dispatch function.
+
+269
+00:12:14,270 --> 00:12:17,280
+So for example, what we can
+do is if we wanted to hook
+
+270
+00:12:17,280 --> 00:12:19,290
+a certain major function code,
+
+271
+00:12:19,290 --> 00:12:21,630
+we could replace that index in the array
+
+272
+00:12:21,630 --> 00:12:23,690
+with a pointer to our own function,
+
+273
+00:12:23,690 --> 00:12:27,090
+which would redirect IRPS
+for that major function
+
+274
+00:12:27,090 --> 00:12:29,300
+to our driver instead.
+
+275
+00:12:29,300 --> 00:12:32,160
+Another option is just to
+perform a code hook directly
+
+276
+00:12:32,160 --> 00:12:34,083
+on the dispatch function itself.
+
+277
+00:12:35,580 --> 00:12:37,050
+So when picking a method,
+
+278
+00:12:37,050 --> 00:12:39,380
+there's few questions
+you wanna ask yourself.
+
+279
+00:12:39,380 --> 00:12:42,110
+How many detection
+vectors am I exposed to?
+
+280
+00:12:42,110 --> 00:12:43,930
+How usable is the method,
+
+281
+00:12:43,930 --> 00:12:47,720
+both from a compatibility
+and stability perspective?
+
+282
+00:12:47,720 --> 00:12:51,690
+And how expensive would it
+be to detect the method?
+
+283
+00:12:51,690 --> 00:12:54,800
+Well for hooking a
+driver object in memory,
+
+284
+00:12:54,800 --> 00:12:57,345
+you're gonna be exposing
+yourself to memory artifacts.
+
+285
+00:12:57,345 --> 00:12:59,890
+And from a usability perspective,
+
+286
+00:12:59,890 --> 00:13:01,480
+you're gonna be quite stable mostly
+
+287
+00:13:01,480 --> 00:13:04,403
+because driver objects
+are well-documented.
+
+288
+00:13:05,290 --> 00:13:07,420
+And from a detection perspective, though,
+
+289
+00:13:07,420 --> 00:13:11,410
+it wouldn't be crazy difficult
+for a antivirus to detect
+
+290
+00:13:11,410 --> 00:13:14,570
+because there's only gonna be
+a handful of driver objects
+
+291
+00:13:14,570 --> 00:13:16,610
+out there because there's
+only a handful of drivers
+
+292
+00:13:16,610 --> 00:13:18,000
+loaded at once.
+
+293
+00:13:18,000 --> 00:13:20,970
+And all in antivirus
+need to do is enumerate
+
+294
+00:13:20,970 --> 00:13:24,220
+these driver objects and check
+the major functions array
+
+295
+00:13:24,220 --> 00:13:27,330
+for signs that the dispatch
+function is outside
+
+296
+00:13:27,330 --> 00:13:29,183
+of the drivers bounds,
+
+297
+00:13:31,190 --> 00:13:33,740
+Broking a drivers
+dispatch function directly
+
+298
+00:13:33,740 --> 00:13:36,160
+with a code hook, you're
+gonna be exposing yourself
+
+299
+00:13:36,160 --> 00:13:37,930
+to memory artifacts,
+
+300
+00:13:37,930 --> 00:13:39,770
+but unless the function is exported,
+
+301
+00:13:39,770 --> 00:13:41,740
+you're gonna need to find a yourself,
+
+302
+00:13:41,740 --> 00:13:42,573
+which the...
+
+303
+00:13:42,573 --> 00:13:43,950
+And there's a couple of ways to do this,
+
+304
+00:13:43,950 --> 00:13:46,200
+but it's just something
+to especially consider
+
+305
+00:13:46,200 --> 00:13:48,540
+if the underlying driver file might change
+
+306
+00:13:48,540 --> 00:13:50,980
+between Windows Operating System versions,
+
+307
+00:13:50,980 --> 00:13:53,170
+which afd.sys does.
+
+308
+00:13:53,170 --> 00:13:55,400
+And also not all drivers
+are gonna be compatible
+
+309
+00:13:55,400 --> 00:13:56,880
+with this method due to PatchGuard,
+
+310
+00:13:56,880 --> 00:14:00,333
+and this is also HVCI incompatible.
+
+311
+00:14:01,210 --> 00:14:03,170
+Now, how expensive would it be to detect?
+
+312
+00:14:03,170 --> 00:14:05,030
+Well, that can vary.
+
+313
+00:14:05,030 --> 00:14:07,320
+So there's quite simple
+ways of detecting hooking
+
+314
+00:14:07,320 --> 00:14:08,990
+that are varying inexpensive
+
+315
+00:14:08,990 --> 00:14:12,480
+and there's other methods
+that can get pretty expensive.
+
+316
+00:14:12,480 --> 00:14:15,050
+Now one inexpensive method could be,
+
+317
+00:14:15,050 --> 00:14:17,290
+if they know that you're
+hooking this one function
+
+318
+00:14:17,290 --> 00:14:18,530
+in this one driver,
+
+319
+00:14:18,530 --> 00:14:21,023
+they could check the bytes
+of that driver function
+
+320
+00:14:21,023 --> 00:14:22,740
+then check for tampering.
+
+321
+00:14:22,740 --> 00:14:24,620
+That's pretty inexpensive.
+
+322
+00:14:24,620 --> 00:14:29,600
+But another method is if
+the antivirus can enumerate
+
+323
+00:14:29,600 --> 00:14:32,040
+every driver loaded and specifically
+
+324
+00:14:32,040 --> 00:14:35,650
+the executable sections
+of that driver module
+
+325
+00:14:35,650 --> 00:14:38,570
+to check for differences
+between what's on disc
+
+326
+00:14:38,570 --> 00:14:41,050
+and what is on the actual...
+
+327
+00:14:41,050 --> 00:14:42,107
+What's in memory.
+
+328
+00:14:45,020 --> 00:14:48,420
+Now I wanted a method
+that was undocumented,
+
+329
+00:14:48,420 --> 00:14:52,860
+stable yet relatively expensive to detect.
+
+330
+00:14:52,860 --> 00:14:56,480
+So what if instead of hooking
+the original driver object,
+
+331
+00:14:56,480 --> 00:14:59,460
+we hooked the file
+logic structure instead?
+
+332
+00:14:59,460 --> 00:15:02,799
+Well, if you recall to one
+of our previous slides,
+
+333
+00:15:02,799 --> 00:15:04,950
+the way that the kernel determines
+
+334
+00:15:04,950 --> 00:15:08,120
+what device is associated
+with a file object
+
+335
+00:15:08,120 --> 00:15:10,303
+is by calling IoGetRelatedDeviceObject.
+
+336
+00:15:11,350 --> 00:15:15,020
+And for our purposes, this
+is the device object member
+
+337
+00:15:15,020 --> 00:15:17,090
+of the file object structure.
+
+338
+00:15:17,090 --> 00:15:19,070
+Now, what is stopping us from overriding
+
+339
+00:15:19,070 --> 00:15:22,220
+this device object pointer
+inside of the file object
+
+340
+00:15:22,220 --> 00:15:23,730
+with our own device?
+
+341
+00:15:23,730 --> 00:15:25,893
+Well, it turns out absolutely nothing.
+
+342
+00:15:26,790 --> 00:15:29,600
+So what we can do is we
+can create our own driver
+
+343
+00:15:29,600 --> 00:15:31,290
+and device objects,
+
+344
+00:15:31,290 --> 00:15:35,110
+patch our copy of the device
+object using a common method
+
+345
+00:15:35,110 --> 00:15:37,800
+such as replacing the
+major function table.
+
+346
+00:15:37,800 --> 00:15:40,930
+And then we can replace
+the DeviceObject pointer
+
+347
+00:15:40,930 --> 00:15:44,110
+inside of the file object
+with our own device.
+
+348
+00:15:44,110 --> 00:15:46,400
+So let's talk about how we would do this.
+
+349
+00:15:46,400 --> 00:15:49,110
+Well, first we need to find file objects
+
+350
+00:15:49,110 --> 00:15:52,650
+that are to the \Device\AFD device object,
+
+351
+00:15:52,650 --> 00:15:55,220
+but how can we actually
+find these objects?
+
+352
+00:15:55,220 --> 00:15:59,640
+Well, the Windows NT kernel
+exposes this great function
+
+353
+00:15:59,640 --> 00:16:02,000
+called ZwQuerySystemInformation,
+
+354
+00:16:02,000 --> 00:16:04,120
+which allows you to query a
+lot of different information
+
+355
+00:16:04,120 --> 00:16:05,350
+about the system.
+
+356
+00:16:05,350 --> 00:16:07,280
+And one of the classes you can query for
+
+357
+00:16:07,280 --> 00:16:09,480
+is called SystemHandleInformation,
+
+358
+00:16:09,480 --> 00:16:11,970
+which allows us to enumerate every handle
+
+359
+00:16:11,970 --> 00:16:13,380
+opened on the system,
+
+360
+00:16:13,380 --> 00:16:16,920
+including the process ID that
+the handle is associated with
+
+361
+00:16:16,920 --> 00:16:19,130
+and the pointer to the kernel object
+
+362
+00:16:19,130 --> 00:16:21,310
+associated with that handle.
+
+363
+00:16:21,310 --> 00:16:24,420
+Now, if we open the AFD device ourselves,
+
+364
+00:16:24,420 --> 00:16:25,963
+we can easily determine if a file object
+
+365
+00:16:25,963 --> 00:16:30,500
+is for the AFD device, by
+comparing the device object member
+
+366
+00:16:30,500 --> 00:16:33,490
+with the previously opened AFD device.
+
+367
+00:16:33,490 --> 00:16:36,520
+So then we can see, okay,
+this file object is associated
+
+368
+00:16:36,520 --> 00:16:38,340
+with the AFD device.
+
+369
+00:16:38,340 --> 00:16:41,400
+Now, before we can overwrite
+the DeviceObject member,
+
+370
+00:16:41,400 --> 00:16:42,960
+of the file object,
+
+371
+00:16:42,960 --> 00:16:44,980
+we need to do some preparation first
+
+372
+00:16:44,980 --> 00:16:48,140
+and specifically, we need
+to create our fake objects.
+
+373
+00:16:48,140 --> 00:16:51,710
+Fortunately, the kernel
+exports the function we can use
+
+374
+00:16:51,710 --> 00:16:53,223
+to create our own objects.
+
+375
+00:16:54,080 --> 00:16:56,490
+We can call ObCreateObject passing in
+
+376
+00:16:56,490 --> 00:17:00,310
+an IODriverObjectType and
+IODeviceObjectType respectively,
+
+377
+00:17:00,310 --> 00:17:03,500
+and then copy over the
+existing object data
+
+378
+00:17:03,500 --> 00:17:05,163
+using a function like memcpy.
+
+379
+00:17:06,680 --> 00:17:08,440
+Now with our fake objects created,
+
+380
+00:17:08,440 --> 00:17:10,900
+we're almost ready to set the DeviceObject
+
+381
+00:17:10,900 --> 00:17:11,970
+of the file object.
+
+382
+00:17:11,970 --> 00:17:15,230
+But first we need to
+hook our driver object.
+
+383
+00:17:15,230 --> 00:17:17,580
+And the way we can do this is by using
+
+384
+00:17:17,580 --> 00:17:19,900
+the standard major function Hook Method,
+
+385
+00:17:19,900 --> 00:17:22,810
+except remember, we're
+performing this on our own copy
+
+386
+00:17:22,810 --> 00:17:24,090
+of the driver object,
+
+387
+00:17:24,090 --> 00:17:26,780
+not what a normal
+antivirus could retrieve,
+
+388
+00:17:26,780 --> 00:17:28,443
+so it's actually relatively safe.
+
+389
+00:17:30,660 --> 00:17:33,450
+Now to prevent race conditions
+between our hook function
+
+390
+00:17:33,450 --> 00:17:36,370
+and the DeviceObject member,
+
+391
+00:17:36,370 --> 00:17:39,363
+we need to replace it using
+an interlock exchange.
+
+392
+00:17:40,400 --> 00:17:42,850
+Now, one thing to remember here is that
+
+393
+00:17:42,850 --> 00:17:45,980
+if when you replaced a file
+objects, device object,
+
+394
+00:17:45,980 --> 00:17:49,350
+you can have a try at normal,
+
+395
+00:17:49,350 --> 00:17:53,630
+the Windows kernel call that
+file object at any time.
+
+396
+00:17:53,630 --> 00:17:55,840
+So you're gonna wanna
+use an interlock exchange
+
+397
+00:17:55,840 --> 00:17:58,860
+in order to make sure
+the device object you use
+
+398
+00:17:58,860 --> 00:18:02,210
+in your hook, is sent at the
+same time to device object
+
+399
+00:18:02,210 --> 00:18:04,623
+is replaced inside of a file object.
+
+400
+00:18:06,070 --> 00:18:09,200
+So now that we've actually
+hooked the file object,
+
+401
+00:18:09,200 --> 00:18:11,130
+there's not much work left.
+
+402
+00:18:11,130 --> 00:18:13,050
+Inside of our dispatch hook,
+
+403
+00:18:13,050 --> 00:18:16,190
+we need to check to see
+if the major function code
+
+404
+00:18:16,190 --> 00:18:19,130
+being called is hooked,
+and if so, we need to pass
+
+405
+00:18:19,130 --> 00:18:20,970
+the original dispatch function,
+
+406
+00:18:20,970 --> 00:18:24,930
+the original device object and
+the IRP to our hook function.
+
+407
+00:18:24,930 --> 00:18:26,940
+Now, the trick here is also
+
+408
+00:18:26,940 --> 00:18:29,800
+if we received a major
+function code cleanup,
+
+409
+00:18:29,800 --> 00:18:32,370
+we need to replace the DeviceObject member
+
+410
+00:18:32,370 --> 00:18:36,250
+of the file object with
+the original DeviceObject.
+
+411
+00:18:36,250 --> 00:18:38,633
+This is to prevent
+issues during tear down.
+
+412
+00:18:40,190 --> 00:18:42,090
+So from a detection perspective,
+
+413
+00:18:42,090 --> 00:18:45,170
+we're gonna be exposing
+ourselves to memory artifacts
+
+414
+00:18:45,170 --> 00:18:47,440
+and from a usability perspective,
+
+415
+00:18:47,440 --> 00:18:49,830
+most of the functions we're
+gonna be using for this
+
+416
+00:18:49,830 --> 00:18:54,180
+is semi documented and unlikely
+to change significantly.
+
+417
+00:18:54,180 --> 00:18:57,680
+And finally, of how expensive
+is it to detect the method?
+
+418
+00:18:57,680 --> 00:19:00,780
+It's gonna be pretty
+expensive because an antivirus
+
+419
+00:19:00,780 --> 00:19:03,400
+would need to replicate
+our hooking procedure,
+
+420
+00:19:03,400 --> 00:19:06,110
+and so they would have to
+enumerate every file object
+
+421
+00:19:06,110 --> 00:19:09,970
+to detect if the device
+object has been tampered with,
+
+422
+00:19:09,970 --> 00:19:12,223
+which is also adds some complications.
+
+423
+00:19:13,220 --> 00:19:16,120
+So now let's talk about
+how to Spectre Rootkit,
+
+424
+00:19:16,120 --> 00:19:20,530
+the rootkit I wrote, abuses
+the user-mode network stack.
+
+425
+00:19:20,530 --> 00:19:23,270
+So now we're using our file object hook,
+
+426
+00:19:23,270 --> 00:19:26,250
+we can intercept IRPS to the AFD driver.
+
+427
+00:19:26,250 --> 00:19:29,550
+This will allow us to
+inspect all user-mode traffic
+
+428
+00:19:29,550 --> 00:19:33,170
+and send and receive our
+own data over any socket.
+
+429
+00:19:33,170 --> 00:19:34,760
+To review our existing plan,
+
+430
+00:19:34,760 --> 00:19:37,050
+we're gonna hook user-mode communication,
+
+431
+00:19:37,050 --> 00:19:38,800
+similar to tool such as Wireshark,
+
+432
+00:19:38,800 --> 00:19:43,740
+and then we're gonna use our
+C2 to place a special indicator
+
+433
+00:19:43,740 --> 00:19:46,520
+inside of a packet we sent to any port
+
+434
+00:19:46,520 --> 00:19:48,280
+on the victim machine.
+
+435
+00:19:48,280 --> 00:19:52,200
+And this way our C2 can then
+communicate with our malware
+
+436
+00:19:52,200 --> 00:19:56,263
+through any port, any
+service that is exposed.
+
+437
+00:19:57,260 --> 00:20:00,270
+Now, how can we actually
+retrieve the contents
+
+438
+00:20:00,270 --> 00:20:02,710
+of the packets that are received
+
+439
+00:20:02,710 --> 00:20:05,420
+when the WSA receive function is called?
+
+440
+00:20:05,420 --> 00:20:07,450
+Well, when you call that function,
+
+441
+00:20:07,450 --> 00:20:11,160
+it's going to send an IOCTL
+called IOCTL_AFD_RECV,
+
+442
+00:20:11,160 --> 00:20:14,620
+and specifically it'll pass
+the AFD receive info structure
+
+443
+00:20:14,620 --> 00:20:16,210
+in the input buffer.
+
+444
+00:20:16,210 --> 00:20:17,260
+Now this buff...
+
+445
+00:20:17,260 --> 00:20:19,740
+Now this structure contains some flags,
+
+446
+00:20:19,740 --> 00:20:22,553
+but what we really care
+about is the WSA buffers,
+
+447
+00:20:22,553 --> 00:20:25,175
+which is essentially an array of a race.
+
+448
+00:20:25,175 --> 00:20:28,960
+And these buffers
+actually contain the bytes
+
+449
+00:20:28,960 --> 00:20:30,940
+that are received from the packet,
+
+450
+00:20:30,940 --> 00:20:33,033
+which we can use then to look into.
+
+451
+00:20:34,000 --> 00:20:35,640
+So let's talk a little bit more about
+
+452
+00:20:35,640 --> 00:20:38,100
+how to Spectre Rootkit was designed.
+
+453
+00:20:38,100 --> 00:20:40,200
+Starting with our packet structure,
+
+454
+00:20:40,200 --> 00:20:42,750
+you can prepend any data you'd like,
+
+455
+00:20:42,750 --> 00:20:45,970
+as long as it doesn't
+contain the magic constant
+
+456
+00:20:45,970 --> 00:20:47,850
+at the start of your packet.
+
+457
+00:20:47,850 --> 00:20:50,860
+And after, any prepended data you'd like
+
+458
+00:20:50,860 --> 00:20:52,800
+you can place a magic constant,
+
+459
+00:20:52,800 --> 00:20:56,070
+which will act as a reference
+point for the malware.
+
+460
+00:20:56,070 --> 00:21:01,020
+And after magic constant you
+can add base packet structure,
+
+461
+00:21:01,020 --> 00:21:03,430
+which will have basic information.
+
+462
+00:21:03,430 --> 00:21:06,400
+As you can see on the right
+about the packet length
+
+463
+00:21:06,400 --> 00:21:09,530
+and the type of operation being requested.
+
+464
+00:21:09,530 --> 00:21:11,570
+After the base packet structure,
+
+465
+00:21:11,570 --> 00:21:13,920
+you have an optional custom structure.
+
+466
+00:21:13,920 --> 00:21:16,830
+Now this, again, custom
+structure is optional,
+
+467
+00:21:16,830 --> 00:21:18,810
+so it might not be there
+in the first place,
+
+468
+00:21:18,810 --> 00:21:21,470
+but this will vary
+depending on the operation
+
+469
+00:21:21,470 --> 00:21:22,930
+being requested.
+
+470
+00:21:22,930 --> 00:21:25,630
+And after this optional custom structure,
+
+471
+00:21:25,630 --> 00:21:27,950
+you can have any data you'd like.
+
+472
+00:21:27,950 --> 00:21:31,110
+Now this model allows for
+quite a bit of flexibility
+
+473
+00:21:31,110 --> 00:21:34,030
+because you can first send
+any packets you'd like
+
+474
+00:21:34,030 --> 00:21:36,150
+even one that doesn't contain the magic.
+
+475
+00:21:36,150 --> 00:21:38,420
+And then you can send a packet that has
+
+476
+00:21:38,420 --> 00:21:41,310
+any prepended data any pended data
+
+477
+00:21:41,310 --> 00:21:44,900
+with the magic content inside,
+malicious packet inside.
+
+478
+00:21:44,900 --> 00:21:47,080
+And then you can, after that packet,
+
+479
+00:21:47,080 --> 00:21:48,980
+send any packet you'd like.
+
+480
+00:21:48,980 --> 00:21:51,040
+So to key what I was trying to get at here
+
+481
+00:21:51,040 --> 00:21:53,750
+is that the Spectre Rootkit design allows
+
+482
+00:21:53,750 --> 00:21:55,370
+for quite a bit of flexibility
+
+483
+00:21:55,370 --> 00:21:57,233
+in how you structure your packets.
+
+484
+00:21:58,320 --> 00:22:01,660
+So what happens when the Specter
+Rootkit receives a packet?
+
+485
+00:22:01,660 --> 00:22:03,190
+Well, it's pretty simple.
+
+486
+00:22:03,190 --> 00:22:06,560
+First it'll search the buffers
+for the magic constant.
+
+487
+00:22:06,560 --> 00:22:08,100
+If the buffer contains the magic,
+
+488
+00:22:08,100 --> 00:22:11,320
+it'll go ahead into the processing stage.
+
+489
+00:22:11,320 --> 00:22:12,430
+And if demand...
+
+490
+00:22:12,430 --> 00:22:14,520
+If the buffer does not contain the magic,
+
+491
+00:22:14,520 --> 00:22:16,220
+then it'll just ignore the packet.
+
+492
+00:22:17,140 --> 00:22:19,000
+Now before dispatching the packet,
+
+493
+00:22:19,000 --> 00:22:21,550
+there's a few steps we need to take.
+
+494
+00:22:21,550 --> 00:22:23,840
+First, if we have enough bytes
+
+495
+00:22:23,840 --> 00:22:25,850
+to fill out a base packet structure,
+
+496
+00:22:25,850 --> 00:22:28,200
+we'll try to fill out a
+custom structure as well,
+
+497
+00:22:28,200 --> 00:22:30,400
+using the bytes we already received.
+
+498
+00:22:30,400 --> 00:22:32,990
+In any case, if we do
+not have enough bytes
+
+499
+00:22:32,990 --> 00:22:36,500
+for either to base packet or
+optional custom structure,
+
+500
+00:22:36,500 --> 00:22:37,990
+we'll receive the rest.
+
+501
+00:22:37,990 --> 00:22:39,953
+And finally, we'll dispatch to pack it.
+
+502
+00:22:42,690 --> 00:22:44,260
+Now, before we go any further,
+
+503
+00:22:44,260 --> 00:22:47,060
+let's talk about the
+concept of packet handlers
+
+504
+00:22:47,060 --> 00:22:49,400
+inside of the Spectre Rootkit.
+
+505
+00:22:49,400 --> 00:22:51,450
+So the Spectre Rootkit contains
+
+506
+00:22:51,450 --> 00:22:53,740
+this general packet handler class
+
+507
+00:22:53,740 --> 00:22:57,130
+that exposes a virtual
+process packet function.
+
+508
+00:22:57,130 --> 00:23:00,800
+Now this base packet handler
+class has a default constructor
+
+509
+00:23:00,800 --> 00:23:02,490
+that receives a pointer
+
+510
+00:23:02,490 --> 00:23:05,100
+to the current packet
+dispatcher incidents.
+
+511
+00:23:05,100 --> 00:23:08,370
+And the process packet
+function receives a pointer
+
+512
+00:23:08,370 --> 00:23:10,230
+to the packet itself.
+
+513
+00:23:10,230 --> 00:23:12,380
+We'll talk more about
+the dispatcher later.
+
+514
+00:23:13,680 --> 00:23:16,610
+Now, an example of a
+packet handler included
+
+515
+00:23:16,610 --> 00:23:20,790
+with the Spectre Rootkit
+is that PingPacketHandler.
+
+516
+00:23:20,790 --> 00:23:23,230
+This handler is quite
+simple. It is simple...
+
+517
+00:23:23,230 --> 00:23:26,640
+It is just used to
+determine if a port/machine
+
+518
+00:23:26,640 --> 00:23:28,110
+is infected.
+
+519
+00:23:28,110 --> 00:23:30,560
+All it is, is a bare bone magic
+
+520
+00:23:30,560 --> 00:23:32,580
+and then base packet structure.
+
+521
+00:23:32,580 --> 00:23:33,960
+And this base packet structure is,
+
+522
+00:23:33,960 --> 00:23:36,990
+has its type or operation Set the Ping.
+
+523
+00:23:36,990 --> 00:23:38,530
+And when the Spectre Rootkit
+
+524
+00:23:38,530 --> 00:23:42,670
+or specifically the PingPacketHandler
+receive as a packet,
+
+525
+00:23:42,670 --> 00:23:45,680
+all it will do is send
+back an empty base packet
+
+526
+00:23:45,680 --> 00:23:47,683
+with the operation Set the Ping.
+
+527
+00:23:50,030 --> 00:23:53,840
+Now, once a packet is
+completely populated,
+
+528
+00:23:53,840 --> 00:23:56,110
+the packet dispatcher will allocate
+
+529
+00:23:56,110 --> 00:23:59,900
+a packet handler depending
+on their requested operation.
+
+530
+00:23:59,900 --> 00:24:02,450
+Then it'll call that
+packet handlers process
+
+531
+00:24:02,450 --> 00:24:03,720
+packet function.
+
+532
+00:24:03,720 --> 00:24:07,420
+And finally, it'll packet handler.
+
+533
+00:24:07,420 --> 00:24:10,270
+Now the reason the packet
+dispatcher model is really nice
+
+534
+00:24:10,270 --> 00:24:14,060
+is because by passing a pointer to itself,
+
+535
+00:24:14,060 --> 00:24:16,250
+to any packet handler,
+
+536
+00:24:16,250 --> 00:24:19,910
+any packet handler can
+then recursively dispatch
+
+537
+00:24:19,910 --> 00:24:21,093
+a brand new packet.
+
+538
+00:24:21,980 --> 00:24:25,070
+Now, before we get into
+how this dispatching works
+
+539
+00:24:25,070 --> 00:24:28,030
+and recursively dispatching,
+
+540
+00:24:28,030 --> 00:24:32,170
+to give you an example of how
+the flow of a PingPacket goes
+
+541
+00:24:32,170 --> 00:24:35,180
+is first the Spectre Rootkit
+receives that packet,
+
+542
+00:24:35,180 --> 00:24:38,020
+it will recognize that there's
+a magic constant there,
+
+543
+00:24:38,020 --> 00:24:39,850
+it'll then fill out the base packet
+
+544
+00:24:39,850 --> 00:24:43,590
+and the optional custom
+structure for that packet.
+
+545
+00:24:43,590 --> 00:24:45,070
+Now, since it's a PingPacket,
+
+546
+00:24:45,070 --> 00:24:46,850
+there's no optional custom structure,
+
+547
+00:24:46,850 --> 00:24:49,440
+it'll only make sure to
+fill out the base packet.
+
+548
+00:24:49,440 --> 00:24:51,660
+Then during the dispatching phase,
+
+549
+00:24:51,660 --> 00:24:53,940
+it'll allocate the PingPacketHandler,
+
+550
+00:24:53,940 --> 00:24:56,603
+it'll call the PingPacketHandler,
+ProcessPacketunction,
+
+551
+00:24:57,583 --> 00:24:59,050
+and then it will free it.
+
+552
+00:24:59,050 --> 00:25:00,620
+Now the ProcessPacket function,
+
+553
+00:25:00,620 --> 00:25:03,860
+the PingPacketHandler will send back
+
+554
+00:25:03,860 --> 00:25:07,090
+just a simple base packet
+containing the ping operation,
+
+555
+00:25:07,090 --> 00:25:09,270
+which will indicate to the C2,
+
+556
+00:25:09,270 --> 00:25:12,963
+that this port is infected
+with this Spectre Rootkit.
+
+557
+00:25:13,897 --> 00:25:16,710
+So the best way I can
+explain the recursive nature
+
+558
+00:25:16,710 --> 00:25:19,750
+of the packet dispatcher,
+is through another example
+
+559
+00:25:19,750 --> 00:25:22,170
+called a XorPacketHandler.
+
+560
+00:25:22,170 --> 00:25:25,770
+Now XorPacketHandler takes in
+an optional custom structure
+
+561
+00:25:25,770 --> 00:25:27,800
+called XOR_PACKET structure.
+
+562
+00:25:27,800 --> 00:25:32,800
+And this XOR_PACKET has the
+XorKey and a XorContent array.
+
+563
+00:25:33,150 --> 00:25:36,930
+Now, what happens is that
+if the C2 wants to sent,
+
+564
+00:25:36,930 --> 00:25:38,800
+request a certain operation,
+
+565
+00:25:38,800 --> 00:25:41,410
+but it doesn't want to
+send the exact same packet
+
+566
+00:25:41,410 --> 00:25:44,840
+as it did previously,
+it can take the packet,
+
+567
+00:25:44,840 --> 00:25:47,230
+the base packet structure
+it wants to send over
+
+568
+00:25:47,230 --> 00:25:50,580
+and actually put it into XorContent array.
+
+569
+00:25:50,580 --> 00:25:53,360
+Then it'll generate a random byte key,
+
+570
+00:25:53,360 --> 00:25:56,650
+which we'll use to perform a
+XOR operation on every byte
+
+571
+00:25:56,650 --> 00:25:58,900
+of these XorContent array.
+
+572
+00:25:58,900 --> 00:26:02,023
+Then it'll send this
+XOR_PACKET to Spectre Rootkit.
+
+573
+00:26:04,380 --> 00:26:07,370
+When the XorPacketHandler
+receives this packet,
+
+574
+00:26:07,370 --> 00:26:09,630
+it'll use the XorKey in order
+
+575
+00:26:09,630 --> 00:26:13,310
+to deobfuscate the XorContent array.
+
+576
+00:26:13,310 --> 00:26:16,120
+And then it'll take that XorContent
+
+577
+00:26:16,120 --> 00:26:18,940
+and call to dispatch function recursively
+
+578
+00:26:18,940 --> 00:26:21,450
+to dispatch that brand new packet.
+
+579
+00:26:21,450 --> 00:26:24,960
+Essentially this model of the
+Spectre Rootkit allows you
+
+580
+00:26:24,960 --> 00:26:27,740
+to create infinite layers of encapsulation
+
+581
+00:26:27,740 --> 00:26:31,170
+or layers of obfuscation
+allowing you to create variants,
+
+582
+00:26:31,170 --> 00:26:33,350
+even if you're requesting
+the same operation
+
+583
+00:26:34,490 --> 00:26:37,243
+by applying a layer of XorFuscation.
+
+584
+00:26:40,010 --> 00:26:42,700
+So next let's talk about
+executing commands,
+
+585
+00:26:42,700 --> 00:26:45,823
+a common future seen in
+a ton of Windows malware.
+
+586
+00:26:46,770 --> 00:26:49,100
+And before we get into starting a process
+
+587
+00:26:49,100 --> 00:26:50,510
+from a kernel driver,
+
+588
+00:26:50,510 --> 00:26:53,010
+we need to understand how
+do you actually do that
+
+589
+00:26:53,010 --> 00:26:55,850
+from user mode in order
+to see what functions
+
+590
+00:26:55,850 --> 00:26:57,803
+we have to re-implement in the kernel.
+
+591
+00:26:59,160 --> 00:27:02,480
+So in user mode, the first
+thing we needed to do
+
+592
+00:27:02,480 --> 00:27:04,670
+is create an unnamed pipe.
+
+593
+00:27:04,670 --> 00:27:07,890
+We'll use this pipe in
+order to obtain the output
+
+594
+00:27:07,890 --> 00:27:09,820
+of our process.
+
+595
+00:27:09,820 --> 00:27:12,270
+Then we'll set the startup info structure
+
+596
+00:27:12,270 --> 00:27:15,980
+and specifically 3D standard
+out and standard air handles
+
+597
+00:27:15,980 --> 00:27:17,650
+to our names pipe.
+
+598
+00:27:17,650 --> 00:27:20,510
+And we'll say, here, we
+can also set window flags
+
+599
+00:27:20,510 --> 00:27:23,950
+such as hide the window so
+that the victim doesn't see
+
+600
+00:27:23,950 --> 00:27:26,070
+the process bringing created.
+
+601
+00:27:26,070 --> 00:27:29,510
+Next, after the startup
+info structure is populated,
+
+602
+00:27:29,510 --> 00:27:32,150
+we can forward this to create process,
+
+603
+00:27:32,150 --> 00:27:34,680
+to actually create the
+command prompt process.
+
+604
+00:27:34,680 --> 00:27:36,479
+And then we can wait for it to exit using
+
+605
+00:27:36,479 --> 00:27:37,890
+WaitForSingleObject.
+
+606
+00:27:37,890 --> 00:27:41,130
+And finally, we can read
+the output of the command
+
+607
+00:27:41,130 --> 00:27:43,180
+by simply calling read file
+
+608
+00:27:43,180 --> 00:27:45,463
+on the unnamed pipe we created before.
+
+609
+00:27:46,460 --> 00:27:49,700
+Now, let's talk about how we
+would do this from kernel mode.
+
+610
+00:27:49,700 --> 00:27:51,160
+Something important to remember is
+
+611
+00:27:51,160 --> 00:27:52,900
+inside of the kernel driver,
+
+612
+00:27:52,900 --> 00:27:55,130
+you don't have access to
+many of the same function
+
+613
+00:27:55,130 --> 00:27:56,910
+you have access to in user mode,
+
+614
+00:27:56,910 --> 00:28:00,550
+because the kernel32.dll
+doesn't exist in kernel mode.
+
+615
+00:28:00,550 --> 00:28:05,550
+Instead you have to call the
+NT or ZW variants of functions.
+
+616
+00:28:05,960 --> 00:28:08,680
+And kernel32.dLL inside of user mode
+
+617
+00:28:08,680 --> 00:28:10,330
+also calls these functions,
+
+618
+00:28:10,330 --> 00:28:12,663
+but it acts as a simplified layer.
+
+619
+00:28:13,870 --> 00:28:16,890
+So, first we need to
+actually create our pipe.
+
+620
+00:28:16,890 --> 00:28:19,190
+And the way we can do
+this is by replicating
+
+621
+00:28:19,190 --> 00:28:21,930
+what the Kernel32.dll does itself.
+
+622
+00:28:21,930 --> 00:28:25,290
+So what CreatPipe does is first it'll open
+
+623
+00:28:25,290 --> 00:28:28,790
+the name's pipe device, if
+it hasn't done it before.
+
+624
+00:28:28,790 --> 00:28:31,320
+Then it'll use the name pipe device
+
+625
+00:28:31,320 --> 00:28:36,080
+and set the root directory
+object attribute to the handle,
+
+626
+00:28:36,080 --> 00:28:37,950
+to the named pipe device.
+
+627
+00:28:37,950 --> 00:28:40,080
+Then it'll call anti-create name type file
+
+628
+00:28:40,080 --> 00:28:42,360
+to actually create that pipe.
+
+629
+00:28:42,360 --> 00:28:45,150
+And here it'll only create a read handle
+
+630
+00:28:45,150 --> 00:28:48,210
+to pass in as a handle
+strictly used for reading
+
+631
+00:28:48,210 --> 00:28:49,420
+from the pipe.
+
+632
+00:28:49,420 --> 00:28:52,820
+It'll then call NT open
+file on that read handle
+
+633
+00:28:52,820 --> 00:28:55,203
+in order to open a right handle as well.
+
+634
+00:28:57,390 --> 00:29:00,930
+So now that we've re implemented
+the CreatePipe function
+
+635
+00:29:00,930 --> 00:29:04,460
+in kernel mode, we need to
+create the actual process.
+
+636
+00:29:04,460 --> 00:29:08,070
+And we'll use the same
+function ZwCreateUserProcess
+
+637
+00:29:08,070 --> 00:29:10,273
+that kernel base uses itself.
+
+638
+00:29:11,210 --> 00:29:14,840
+Now we're gonna need to replicate
+the entire process of...
+
+639
+00:29:14,840 --> 00:29:18,220
+Entire process that
+kernel based does itself.
+
+640
+00:29:18,220 --> 00:29:21,190
+And so we'll need to first
+pass an attribute list.
+
+641
+00:29:21,190 --> 00:29:23,660
+And the only attribute
+we need to really pass,
+
+642
+00:29:23,660 --> 00:29:26,620
+is PsAttributeImageName attribute,
+
+643
+00:29:26,620 --> 00:29:29,993
+which will specify the image
+file name for the new process.
+
+644
+00:29:31,670 --> 00:29:33,290
+Next, we have to fill out
+
+645
+00:29:33,290 --> 00:29:36,940
+an RTL_USER_PROCESS_PARAMETER
+structure for the process.
+
+646
+00:29:36,940 --> 00:29:40,100
+In this structure we need
+to set our window flags
+
+647
+00:29:40,100 --> 00:29:42,140
+and the output handles to our pipes.
+
+648
+00:29:42,140 --> 00:29:43,570
+Similar to what we did with
+
+649
+00:29:43,570 --> 00:29:46,040
+the UserModeStartupInfo structure.
+
+650
+00:29:46,040 --> 00:29:49,780
+But we also need to specify
+the current directory,
+
+651
+00:29:49,780 --> 00:29:52,810
+the command line arguments,
+the process image path,
+
+652
+00:29:52,810 --> 00:29:54,593
+and a default desktop name.
+
+653
+00:29:55,570 --> 00:30:00,440
+From there, all it takes is
+a call to ZwCreateUserProcess
+
+654
+00:30:00,440 --> 00:30:03,090
+in order to start the
+command prompt process.
+
+655
+00:30:03,090 --> 00:30:04,780
+Once the process has exited,
+
+656
+00:30:04,780 --> 00:30:07,430
+we can easily read the
+output of the command
+
+657
+00:30:07,430 --> 00:30:10,790
+by calling ZwReadFile on
+to read handle we obtained
+
+658
+00:30:10,790 --> 00:30:11,623
+for the pipe.
+
+659
+00:30:13,180 --> 00:30:16,080
+Now let's talk about what you
+can do to hide your rootkit.
+
+660
+00:30:17,180 --> 00:30:18,930
+So Introduction to Mini-Filters.
+
+661
+00:30:18,930 --> 00:30:22,570
+So mini-filters driver allow
+you to attach to volumes
+
+662
+00:30:22,570 --> 00:30:25,440
+and intercept certain file operations.
+
+663
+00:30:25,440 --> 00:30:28,580
+This is performed by
+registering your mini-filter
+
+664
+00:30:28,580 --> 00:30:31,420
+with the Filter Manager driver.
+
+665
+00:30:31,420 --> 00:30:34,160
+So this reference from
+Microsoft documentation
+
+666
+00:30:34,160 --> 00:30:37,450
+shows an example of
+user requesting file IO.
+
+667
+00:30:37,450 --> 00:30:40,200
+First, the IO manager forwards the request
+
+668
+00:30:40,200 --> 00:30:42,010
+to the file system.
+
+669
+00:30:42,010 --> 00:30:44,280
+While this request is being forwarded,
+
+670
+00:30:44,280 --> 00:30:47,230
+the Filter Manager driver
+intercepts this request
+
+671
+00:30:47,230 --> 00:30:49,810
+and calls the registered mini-filters
+
+672
+00:30:49,810 --> 00:30:51,630
+that I've registered with it
+
+673
+00:30:51,630 --> 00:30:56,630
+in order to example, modify
+the request being performed
+
+674
+00:30:57,520 --> 00:31:00,330
+before being sent to
+the file system itself.
+
+675
+00:31:00,330 --> 00:31:01,980
+So mini-filters essentially allow you
+
+676
+00:31:01,980 --> 00:31:05,863
+to edit file operations
+before they actually happen.
+
+677
+00:31:07,320 --> 00:31:10,630
+And mini-filters can be
+used to mask the presence
+
+678
+00:31:10,630 --> 00:31:13,090
+of our rootkit onto file system.
+
+679
+00:31:13,090 --> 00:31:16,440
+For example, a mini-filter
+can redirect all access
+
+680
+00:31:16,440 --> 00:31:18,910
+to a certain file to another file.
+
+681
+00:31:18,910 --> 00:31:22,270
+We can use this to redirect
+access to our rootkit file
+
+682
+00:31:22,270 --> 00:31:24,740
+to another legitimate driver file.
+
+683
+00:31:24,740 --> 00:31:27,030
+Now, again, going back
+to picking a method,
+
+684
+00:31:27,030 --> 00:31:29,460
+there's a few questions
+you wanna ask yourself.
+
+685
+00:31:29,460 --> 00:31:32,150
+How many detection
+vectors am I exposed to?
+
+686
+00:31:32,150 --> 00:31:34,770
+How usable is the method
+from both a stability
+
+687
+00:31:34,770 --> 00:31:36,410
+and compatibility perspective?
+
+688
+00:31:36,410 --> 00:31:39,610
+And how expensive would it
+be to detect the method?
+
+689
+00:31:39,610 --> 00:31:42,760
+Well, the easiest way to
+abuse the functionality
+
+690
+00:31:42,760 --> 00:31:45,800
+of a mini-filter is to follow
+the documented procedure
+
+691
+00:31:45,800 --> 00:31:48,190
+and just become a mini-filter yourself.
+
+692
+00:31:48,190 --> 00:31:49,290
+So here are the requirements
+
+693
+00:31:49,290 --> 00:31:52,160
+for the function of a FtlRegisteFilter.
+
+694
+00:31:52,160 --> 00:31:55,570
+You're gonna need to create
+a instances registry key
+
+695
+00:31:55,570 --> 00:31:57,090
+under your service key.
+
+696
+00:31:57,090 --> 00:31:59,210
+And under that instance's key,
+
+697
+00:31:59,210 --> 00:32:01,500
+you need to create a instance name key,
+
+698
+00:32:01,500 --> 00:32:03,370
+which can be whatever name you'd like.
+
+699
+00:32:03,370 --> 00:32:06,780
+This is going to be the name
+for your filter instance.
+
+700
+00:32:06,780 --> 00:32:09,500
+Then under the instances key,
+
+701
+00:32:09,500 --> 00:32:12,330
+you need to add a default instance value,
+
+702
+00:32:12,330 --> 00:32:16,080
+which is a string and is
+set to the instance name
+
+703
+00:32:16,080 --> 00:32:18,100
+you created in step two.
+
+704
+00:32:18,100 --> 00:32:20,670
+Then under your instance name key,
+
+705
+00:32:20,670 --> 00:32:23,548
+you need to add the
+altitude and flags values
+
+706
+00:32:23,548 --> 00:32:27,500
+and the altitude is
+pretty much what your...
+
+707
+00:32:27,500 --> 00:32:30,480
+What the ordering is that
+mini-filters had called.
+
+708
+00:32:30,480 --> 00:32:35,480
+The higher your altitude is
+the more first in line you are
+
+709
+00:32:35,890 --> 00:32:37,640
+for your mini-filter to get called.
+
+710
+00:32:40,180 --> 00:32:42,700
+So how many detections
+directors are you exposed to?
+
+711
+00:32:42,700 --> 00:32:44,800
+You're gonna be exposing
+yourself to registry
+
+712
+00:32:44,800 --> 00:32:46,530
+and memory artifacts.
+
+713
+00:32:46,530 --> 00:32:47,820
+How usable is the method?
+
+714
+00:32:47,820 --> 00:32:49,610
+Well, you don't really have concerns
+
+715
+00:32:49,610 --> 00:32:51,780
+from a stability or usability perspective
+
+716
+00:32:51,780 --> 00:32:54,340
+because this is just
+how legitimate drivers
+
+717
+00:32:54,340 --> 00:32:56,330
+register as a mini-filter.
+
+718
+00:32:56,330 --> 00:32:57,730
+But at the same time,
+
+719
+00:32:57,730 --> 00:33:00,370
+it's pretty easy to detect this method
+
+720
+00:33:00,370 --> 00:33:04,210
+because besides the registry artifacts,
+
+721
+00:33:04,210 --> 00:33:07,210
+an antivirus could easily
+enumerate registered filters
+
+722
+00:33:07,210 --> 00:33:09,880
+and their instances through
+documented functions,
+
+723
+00:33:09,880 --> 00:33:12,463
+such as FltEnumerateFilters
+or FltEnumerateInstances.
+
+724
+00:33:16,200 --> 00:33:19,920
+So another option is to just a
+hook in existing mini-filter.
+
+725
+00:33:19,920 --> 00:33:22,140
+And there's a couple
+of routes you can take.
+
+726
+00:33:22,140 --> 00:33:24,710
+First, you can just do a basic code hook
+
+727
+00:33:24,710 --> 00:33:27,550
+on an existing mini-filters function.
+
+728
+00:33:27,550 --> 00:33:31,100
+You can overwrite the
+FLT_REGISTRATION structure,
+
+729
+00:33:31,100 --> 00:33:33,000
+which is passed into FltRegisterFilter
+
+730
+00:33:33,920 --> 00:33:36,560
+before the victim driver calls it.
+
+731
+00:33:36,560 --> 00:33:41,520
+Or you can edit a existing
+mini-filter instance,
+
+732
+00:33:41,520 --> 00:33:43,460
+through DKOM to replace a function
+
+733
+00:33:43,460 --> 00:33:45,143
+that gets called with your own.
+
+734
+00:33:46,360 --> 00:33:50,430
+Now, one of the easiest
+ways to intercept callbacks
+
+735
+00:33:50,430 --> 00:33:53,640
+to an existing mini-filter
+is just again, a code hook.
+
+736
+00:33:53,640 --> 00:33:55,870
+Now this can be as simple as a jump hook,
+
+737
+00:33:55,870 --> 00:33:57,910
+but it comes with quite a few drawbacks.
+
+738
+00:33:57,910 --> 00:34:00,460
+Similar to what we saw
+when we were talking about
+
+739
+00:34:00,460 --> 00:34:01,680
+intersecting IRPS.
+
+740
+00:34:02,730 --> 00:34:05,040
+You're gonna be exposing
+yourself to memory artifacts,
+
+741
+00:34:05,040 --> 00:34:06,760
+and unless the function is exported,
+
+742
+00:34:06,760 --> 00:34:08,240
+you're gonna need to find yourself,
+
+743
+00:34:08,240 --> 00:34:11,090
+which can be difficult
+if the underlying image
+
+744
+00:34:11,090 --> 00:34:14,320
+changes between operating system versions.
+
+745
+00:34:14,320 --> 00:34:16,970
+Not all drivers are
+compatible with this method
+
+746
+00:34:16,970 --> 00:34:18,310
+due to PatchGuard.
+
+747
+00:34:18,310 --> 00:34:21,900
+And finally, this is
+also HVCI incompatible.
+
+748
+00:34:21,900 --> 00:34:25,240
+Now, similar to what we
+saw with hooking IRPS,
+
+749
+00:34:25,240 --> 00:34:26,733
+it's gonna be potentially inexpensive.
+
+750
+00:34:26,733 --> 00:34:29,720
+Because of a antivirus
+knows you're hooking
+
+751
+00:34:29,720 --> 00:34:32,610
+a specific function in a driver,
+
+752
+00:34:32,610 --> 00:34:35,250
+it can easily check the
+bytes of that driver function
+
+753
+00:34:35,250 --> 00:34:37,973
+to determine if there's
+any patching performed.
+
+754
+00:34:40,410 --> 00:34:44,220
+Now, another way of obtaining
+access to a mini-filter,
+
+755
+00:34:44,220 --> 00:34:46,410
+existing mini-filters through DEKOM.
+
+756
+00:34:46,410 --> 00:34:48,320
+Now what we can do is
+you can enumerate filters
+
+757
+00:34:48,320 --> 00:34:50,120
+in instances as I mentioned before,
+
+758
+00:34:50,120 --> 00:34:52,370
+by calling the functions,
+FltEnumerateFilters
+
+759
+00:34:53,375 --> 00:34:55,520
+and FltEnumarateInstances.
+
+760
+00:34:55,520 --> 00:34:57,130
+Now the function that gets called
+
+761
+00:34:57,130 --> 00:35:00,930
+for a certain filtered
+operation for a mini-filter
+
+762
+00:35:00,930 --> 00:35:03,950
+is specified in an array
+called CallbackNodes,
+
+763
+00:35:03,950 --> 00:35:06,790
+which is part of the
+FilterInstance structure,
+
+764
+00:35:06,790 --> 00:35:08,470
+which you can find by using
+
+765
+00:35:08,470 --> 00:35:10,293
+the previously mentioned functions.
+
+766
+00:35:11,570 --> 00:35:14,779
+Now the CallBackNodes array
+index is directly associated
+
+767
+00:35:14,779 --> 00:35:18,100
+with the operation that is being filtered.
+
+768
+00:35:18,100 --> 00:35:20,740
+If you find a CallbackNode array entry
+
+769
+00:35:20,740 --> 00:35:22,870
+for the operation you want to target,
+
+770
+00:35:22,870 --> 00:35:24,760
+you can replace the pre-operation
+
+771
+00:35:24,760 --> 00:35:28,250
+and post-operation pointers
+to your own function.
+
+772
+00:35:28,250 --> 00:35:31,710
+Now, one note here is that
+you will also want to replace
+
+773
+00:35:31,710 --> 00:35:34,720
+the FltRegistration
+structure, that is part of
+
+774
+00:35:34,720 --> 00:35:37,460
+the FltFiltering structure.
+
+775
+00:35:37,460 --> 00:35:40,420
+Now this is because the
+FltRegistration structure
+
+776
+00:35:40,420 --> 00:35:44,090
+will contain the original
+function pointer.
+
+777
+00:35:44,090 --> 00:35:45,970
+And what antivirus could then do is
+
+778
+00:35:45,970 --> 00:35:48,200
+check to see if there's any discrepancies
+
+779
+00:35:48,200 --> 00:35:49,770
+between the CallbackNodes array
+
+780
+00:35:49,770 --> 00:35:52,110
+and the FLT registration structure part
+
+781
+00:35:52,110 --> 00:35:55,373
+of the filter instance,
+sorry, the filter itself.
+
+782
+00:35:56,620 --> 00:35:59,280
+Now from a detection vectors perspective,
+
+783
+00:35:59,280 --> 00:36:00,730
+you're gonna be exposing yourself
+
+784
+00:36:00,730 --> 00:36:02,960
+to primarily memory artifacts
+
+785
+00:36:02,960 --> 00:36:05,010
+and from a stability perspective,
+
+786
+00:36:05,010 --> 00:36:07,010
+the only concern you should have is that
+
+787
+00:36:07,010 --> 00:36:11,260
+the FLT_INSTANCE structure
+itself is undocumented.
+
+788
+00:36:11,260 --> 00:36:13,470
+Now finding an FLT_INSTANCE is easy
+
+789
+00:36:13,470 --> 00:36:15,000
+through document functions,
+
+790
+00:36:15,000 --> 00:36:18,020
+but the structure at the
+FLT_INSTANCE structure itself
+
+791
+00:36:18,020 --> 00:36:21,070
+may change across
+operating system versions.
+
+792
+00:36:21,070 --> 00:36:23,310
+Now, how expensive would
+it be to detect the method?
+
+793
+00:36:23,310 --> 00:36:25,010
+Well, it would be inexpensive.
+
+794
+00:36:25,010 --> 00:36:27,250
+Begin all an antivirus would need to do
+
+795
+00:36:27,250 --> 00:36:29,330
+is occasionally enumerate
+registered filters
+
+796
+00:36:29,330 --> 00:36:32,603
+and their instances, and
+the CallbackNodes array.
+
+797
+00:36:33,770 --> 00:36:36,470
+So let's say you wanna
+protect a certain file
+
+798
+00:36:36,470 --> 00:36:38,010
+such as our rootkit file,
+
+799
+00:36:38,010 --> 00:36:40,710
+what's an example of
+redirecting access to it?
+
+800
+00:36:40,710 --> 00:36:43,130
+Well, first I'm assuming that you hooked
+
+801
+00:36:43,130 --> 00:36:46,880
+a mini-filter's pre-create
+operation callback.
+
+802
+00:36:46,880 --> 00:36:50,860
+Inside of that precreate
+operation callback,
+
+803
+00:36:50,860 --> 00:36:54,010
+you can use
+FltGetFileNameInformation in order
+
+804
+00:36:54,010 --> 00:36:57,250
+to get a normalized path
+to file being accessed.
+
+805
+00:36:57,250 --> 00:37:00,110
+Then if the path contains
+a protective file,
+
+806
+00:37:00,110 --> 00:37:02,061
+such as the path to our rootkit,
+
+807
+00:37:02,061 --> 00:37:05,930
+you can replace the
+file path being accessed
+
+808
+00:37:05,930 --> 00:37:10,370
+by calling IO replaced file
+logic name on that file object.
+
+809
+00:37:10,370 --> 00:37:13,510
+Then you need to set the
+status being returned
+
+810
+00:37:13,510 --> 00:37:17,030
+to StatusReparse and return
+a FltPreoperationComplete
+
+811
+00:37:18,400 --> 00:37:22,450
+so that the file system
+will then redirect access
+
+812
+00:37:22,450 --> 00:37:26,580
+to the legitimate driver file.
+
+813
+00:37:26,580 --> 00:37:30,210
+So for example, you could use
+this to change a file access
+
+814
+00:37:30,210 --> 00:37:33,150
+to your rootkit file to
+another legitimate driver
+
+815
+00:37:33,150 --> 00:37:34,760
+that might be in the same directory,
+
+816
+00:37:34,760 --> 00:37:37,900
+so that when a user of
+a program inspects it,
+
+817
+00:37:37,900 --> 00:37:39,670
+it'll actually be looking at the contents
+
+818
+00:37:39,670 --> 00:37:41,293
+of a completely different file.
+
+819
+00:37:43,420 --> 00:37:45,090
+Okay. Wrapping up.
+
+820
+00:37:45,090 --> 00:37:47,420
+I'd like to give, thanks to Alex Ionescu
+
+821
+00:37:47,420 --> 00:37:50,060
+a longtime mentor who is very experienced
+
+822
+00:37:50,060 --> 00:37:51,628
+with the Windows Internals.
+
+823
+00:37:51,628 --> 00:37:56,570
+The ReactOS is an amazing
+reference for Windows Internals,
+
+824
+00:37:56,570 --> 00:37:59,670
+especially for undocumented
+functions and structures.
+
+825
+00:37:59,670 --> 00:38:03,330
+And thanks to Nemanja
+Mulasmajic and Vlad Ionescu
+
+826
+00:38:03,330 --> 00:38:05,330
+for helping me review this presentation.
+
+827
+00:38:06,410 --> 00:38:07,940
+Thanks for sticking around.
+
+828
+00:38:07,940 --> 00:38:09,420
+You'll be able to ask questions
+
+829
+00:38:09,420 --> 00:38:14,400
+in my DEFCON Q&A session,
+which will be later today.
+
+830
+00:38:14,400 --> 00:38:17,550
+Make sure to follow me on
+Twitter and look at my blog
+
+831
+00:38:17,550 --> 00:38:19,480
+and you can check out the Spectra Rootkit
+
+832
+00:38:19,480 --> 00:38:23,253
+assuming everything went
+well at the URL below.
+
+833
+00:38:24,380 --> 00:38:27,230
+Thanks for coming out to my
+talk again, have a great one.
+

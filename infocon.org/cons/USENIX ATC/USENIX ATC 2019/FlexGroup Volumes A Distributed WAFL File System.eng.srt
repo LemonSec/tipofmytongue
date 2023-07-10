@@ -1,0 +1,1848 @@
+﻿1
+00:00:10,929 --> 00:00:15,969
+well welcome so this this talk is about
+
+2
+00:00:13,059 --> 00:00:18,640
+flex group volumes a distributed waffle
+
+3
+00:00:15,969 --> 00:00:20,560
+file system so this is a shipping
+
+4
+00:00:18,640 --> 00:00:25,720
+product and is a joint effort amongst
+
+5
+00:00:20,560 --> 00:00:27,279
+many many smart people from that up okay
+
+6
+00:00:25,720 --> 00:00:29,019
+so some of the some of the key takeaways
+
+7
+00:00:27,279 --> 00:00:31,810
+that we're gonna dive in more into
+
+8
+00:00:29,019 --> 00:00:33,400
+detail we wanted a distributed file
+
+9
+00:00:31,810 --> 00:00:35,830
+system that could automatically balance
+
+10
+00:00:33,400 --> 00:00:37,720
+load across a cluster and be easy for
+
+11
+00:00:35,830 --> 00:00:39,100
+clients and admins while maintaining the
+
+12
+00:00:37,720 --> 00:00:42,070
+performance and reliability of our
+
+13
+00:00:39,100 --> 00:00:43,750
+existing technologies while doing this
+
+14
+00:00:42,070 --> 00:00:45,970
+we wanted to capitalize on the many
+
+15
+00:00:43,750 --> 00:00:47,890
+years of engineering effort and battle
+
+16
+00:00:45,970 --> 00:00:49,839
+and battle-hardened experience of these
+
+17
+00:00:47,890 --> 00:00:52,299
+existing technologies like the waffle
+
+18
+00:00:49,839 --> 00:00:54,430
+file system and on top clusters which
+
+19
+00:00:52,299 --> 00:00:56,680
+could do this in a manual way at the
+
+20
+00:00:54,430 --> 00:00:58,330
+time one thing that's different about
+
+21
+00:00:56,680 --> 00:01:01,269
+this effort from other distributed file
+
+22
+00:00:58,330 --> 00:01:04,119
+systems is that we have a relatively
+
+23
+00:01:01,269 --> 00:01:06,220
+small fast clusters of highly reliable
+
+24
+00:01:04,119 --> 00:01:10,240
+nodes and this changes the assumptions
+
+25
+00:01:06,220 --> 00:01:13,860
+about how transient nodes can be so flex
+
+26
+00:01:10,240 --> 00:01:15,729
+groups is our solution so we created a
+
+27
+00:01:13,860 --> 00:01:19,360
+distributed file system out of local
+
+28
+00:01:15,730 --> 00:01:21,550
+while local waffle file systems so at
+
+29
+00:01:19,360 --> 00:01:23,200
+the right is a is an illustration of
+
+30
+00:01:21,550 --> 00:01:24,910
+these ideas each blue cylinder
+
+31
+00:01:23,200 --> 00:01:27,940
+represents a waffle volume from a
+
+32
+00:01:24,910 --> 00:01:29,740
+different node black black objects are
+
+33
+00:01:27,940 --> 00:01:31,720
+files and directories and red objects
+
+34
+00:01:29,740 --> 00:01:33,850
+are remote links that are used to for
+
+35
+00:01:31,720 --> 00:01:35,170
+load balancing created or in the
+
+36
+00:01:33,850 --> 00:01:40,300
+heuristics think they're neat they're
+
+37
+00:01:35,170 --> 00:01:41,530
+needed to keep the cluster balanced so
+
+38
+00:01:40,300 --> 00:01:43,630
+just to let you know where we're heading
+
+39
+00:01:41,530 --> 00:01:44,740
+so in the introduction we're going to
+
+40
+00:01:43,630 --> 00:01:47,080
+talk a little bit about the net up
+
+41
+00:01:44,740 --> 00:01:49,449
+history and what led us to flex groups
+
+42
+00:01:47,080 --> 00:01:50,920
+we'll talk about some of the the
+
+43
+00:01:49,450 --> 00:01:53,080
+problems we wanted to solve and the
+
+44
+00:01:50,920 --> 00:01:54,880
+requirements on the solution well talk
+
+45
+00:01:53,080 --> 00:01:56,798
+we'll go into the design and then in the
+
+46
+00:01:54,880 --> 00:02:00,780
+evaluation we have a really exciting
+
+47
+00:01:56,799 --> 00:02:00,780
+part which includes customer experiences
+
+48
+00:02:04,100 --> 00:02:11,250
+okay so just a brief history that for
+
+49
+00:02:07,799 --> 00:02:13,560
+how net up got here so 20 years ago we
+
+50
+00:02:11,250 --> 00:02:16,140
+had a single filer appliance to manage
+
+51
+00:02:13,560 --> 00:02:17,940
+client data in a simple way it used on
+
+52
+00:02:16,140 --> 00:02:21,000
+tap as our customized operating system
+
+53
+00:02:17,940 --> 00:02:24,000
+and it used a waffle as our local file
+
+54
+00:02:21,000 --> 00:02:26,280
+system clients accessed it over using an
+
+55
+00:02:24,000 --> 00:02:28,920
+over a network protocol like NFS or SMB
+
+56
+00:02:26,280 --> 00:02:33,090
+the original system had a single point
+
+57
+00:02:28,920 --> 00:02:35,040
+of failure though the filer itself to
+
+58
+00:02:33,090 --> 00:02:38,130
+address that NetApp introduced redundant
+
+59
+00:02:35,040 --> 00:02:40,109
+filers or an H a pair where each node is
+
+60
+00:02:38,130 --> 00:02:41,760
+responsible for a bunch of volumes but
+
+61
+00:02:40,110 --> 00:02:44,069
+its partner can take over in case of
+
+62
+00:02:41,760 --> 00:02:46,170
+failure so using this we can achieve
+
+63
+00:02:44,069 --> 00:02:48,630
+really high reliability like six nines
+
+64
+00:02:46,170 --> 00:02:54,119
+due to redundant hardware analytics and
+
+65
+00:02:48,630 --> 00:02:56,069
+other things so on tap clusters linked
+
+66
+00:02:54,120 --> 00:02:58,500
+nodes together so that clients could
+
+67
+00:02:56,069 --> 00:03:01,530
+access any volume from any node over a
+
+68
+00:02:58,500 --> 00:03:03,870
+fast cluster interconnect so clusters
+
+69
+00:03:01,530 --> 00:03:05,940
+also introduced junctions which allowed
+
+70
+00:03:03,870 --> 00:03:08,430
+an administrator to manually stitch
+
+71
+00:03:05,940 --> 00:03:14,130
+together multiple waffle volumes into a
+
+72
+00:03:08,430 --> 00:03:15,780
+single client visible volume so the
+
+73
+00:03:14,130 --> 00:03:19,319
+issue with junctions is that they had to
+
+74
+00:03:15,780 --> 00:03:20,850
+be managed manually so what we wanted
+
+75
+00:03:19,319 --> 00:03:22,980
+was something that could get rid of the
+
+76
+00:03:20,850 --> 00:03:25,560
+administrator intervention by automating
+
+77
+00:03:22,980 --> 00:03:27,569
+the process of data placement we wanted
+
+78
+00:03:25,560 --> 00:03:29,790
+to keep the ability for a client to
+
+79
+00:03:27,569 --> 00:03:31,920
+connect to any cluster node to access
+
+80
+00:03:29,790 --> 00:03:33,989
+any file with the fast cluster
+
+81
+00:03:31,920 --> 00:03:35,608
+interconnect and as mentioned earlier we
+
+82
+00:03:33,989 --> 00:03:37,200
+wanted to do this using our existing
+
+83
+00:03:35,609 --> 00:03:41,940
+technologies that have a lot of customer
+
+84
+00:03:37,200 --> 00:03:44,608
+experience baked in okay so this led to
+
+85
+00:03:41,940 --> 00:03:46,739
+a few requirements the first one is that
+
+86
+00:03:44,609 --> 00:03:49,549
+we needed dynamic load-balancing to
+
+87
+00:03:46,739 --> 00:03:52,160
+spread both the space and the CPU load
+
+88
+00:03:49,549 --> 00:03:55,230
+among all the members of the cluster
+
+89
+00:03:52,160 --> 00:03:57,000
+second we wanted to require minimal
+
+90
+00:03:55,230 --> 00:03:59,730
+involvement from the administrator on an
+
+91
+00:03:57,000 --> 00:04:01,079
+ongoing basis so this is why customers
+
+92
+00:03:59,730 --> 00:04:03,950
+pay us is to make things simpler for
+
+93
+00:04:01,079 --> 00:04:06,540
+them and we needed to maintain that
+
+94
+00:04:03,950 --> 00:04:08,850
+third we wanted to maintain low latency
+
+95
+00:04:06,540 --> 00:04:10,530
+access to the data and finally we need a
+
+96
+00:04:08,850 --> 00:04:16,019
+metadata that would scale with the
+
+97
+00:04:10,530 --> 00:04:17,930
+cluster size so this is how we came to
+
+98
+00:04:16,019 --> 00:04:20,418
+flex groups
+
+99
+00:04:17,930 --> 00:04:22,970
+we evolved on tap cluster to stitch
+
+100
+00:04:20,418 --> 00:04:26,630
+together waffle volumes automatically to
+
+101
+00:04:22,970 --> 00:04:28,729
+make things simple for admins who then
+
+102
+00:04:26,630 --> 00:04:30,620
+could through automatic placement that
+
+103
+00:04:28,729 --> 00:04:32,630
+balances the cluster as well as making
+
+104
+00:04:30,620 --> 00:04:34,669
+it simple for clients who can still see
+
+105
+00:04:32,630 --> 00:04:37,490
+a single mount point that can be mounted
+
+106
+00:04:34,669 --> 00:04:39,229
+from any cluster member like before
+
+107
+00:04:37,490 --> 00:04:41,900
+requests can still come in to any node
+
+108
+00:04:39,229 --> 00:04:43,818
+and be routed every request will either
+
+109
+00:04:41,900 --> 00:04:47,179
+be satisfied by the local node or node
+
+110
+00:04:43,819 --> 00:04:48,800
+one hop away so doing this required two
+
+111
+00:04:47,180 --> 00:04:51,229
+mechanisms that we're going to dive into
+
+112
+00:04:48,800 --> 00:04:52,880
+a little while the first one is remote
+
+113
+00:04:51,229 --> 00:04:54,919
+links that allow us to spread the usage
+
+114
+00:04:52,880 --> 00:04:57,320
+across the volumes of the cluster and
+
+115
+00:04:54,919 --> 00:04:58,639
+the second one is we use heuristics to
+
+116
+00:04:57,320 --> 00:05:00,409
+guide when a remote link should be
+
+117
+00:04:58,639 --> 00:05:02,840
+created and if it is where it should
+
+118
+00:05:00,410 --> 00:05:08,750
+lead to now we'll talk about how that
+
+119
+00:05:02,840 --> 00:05:10,780
+happens okay so to give an overview take
+
+120
+00:05:08,750 --> 00:05:14,389
+an example of a simplified cluster with
+
+121
+00:05:10,780 --> 00:05:15,979
+with one volume per node in this example
+
+122
+00:05:14,389 --> 00:05:21,080
+we have four volumes on four different
+
+123
+00:05:15,979 --> 00:05:23,389
+nodes and and so the red the red nodes
+
+124
+00:05:21,080 --> 00:05:25,580
+are remote links and the black ones are
+
+125
+00:05:23,389 --> 00:05:27,560
+local like before so even though this
+
+126
+00:05:25,580 --> 00:05:30,169
+example looks like a tree any remote
+
+127
+00:05:27,560 --> 00:05:32,210
+link can point to any volume as we see
+
+128
+00:05:30,169 --> 00:05:33,590
+the data coming in heuristics are used
+
+129
+00:05:32,210 --> 00:05:35,330
+to determine whether the data should be
+
+130
+00:05:33,590 --> 00:05:37,820
+allocated remotely and if so it uses a
+
+131
+00:05:35,330 --> 00:05:39,590
+remote link to place the file or
+
+132
+00:05:37,820 --> 00:05:41,150
+directory' there so now we'll talk about
+
+133
+00:05:39,590 --> 00:05:44,299
+these remote links and the remote access
+
+134
+00:05:41,150 --> 00:05:49,250
+layer or Rao to ensure consistency for
+
+135
+00:05:44,300 --> 00:05:50,780
+updates across the nodes okay so a big
+
+136
+00:05:49,250 --> 00:05:52,610
+question is how do you coordinate
+
+137
+00:05:50,780 --> 00:05:54,948
+operations across multiple nodes so that
+
+138
+00:05:52,610 --> 00:05:56,389
+they happen correctly the way we did
+
+139
+00:05:54,949 --> 00:05:57,979
+this was to make it everything look
+
+140
+00:05:56,389 --> 00:05:59,930
+local similar to how things looked
+
+141
+00:05:57,979 --> 00:06:03,139
+before so we do that by using
+
+142
+00:05:59,930 --> 00:06:05,120
+delegations which cache everything on
+
+143
+00:06:03,139 --> 00:06:07,580
+one node persistently this is
+
+144
+00:06:05,120 --> 00:06:09,259
+facilitated with the route cache where
+
+145
+00:06:07,580 --> 00:06:10,820
+remote eye nodes that are being accessed
+
+146
+00:06:09,259 --> 00:06:12,770
+or changed for instance during file
+
+147
+00:06:10,820 --> 00:06:15,139
+creation or deletion within a remote
+
+148
+00:06:12,770 --> 00:06:17,270
+link directory are cached in a local
+
+149
+00:06:15,139 --> 00:06:19,130
+node we can do this since local
+
+150
+00:06:17,270 --> 00:06:20,690
+operations are considered reliable and
+
+151
+00:06:19,130 --> 00:06:22,580
+persistent with things like the waffle
+
+152
+00:06:20,690 --> 00:06:27,050
+filesystem and replicated non-volatile
+
+153
+00:06:22,580 --> 00:06:29,240
+of RAM the cache is managed using
+
+154
+00:06:27,050 --> 00:06:31,070
+delegations from the remote volume which
+
+155
+00:06:29,240 --> 00:06:33,560
+can either be exclusive for redock
+
+156
+00:06:31,070 --> 00:06:35,620
+operations like create or sheared for me
+
+157
+00:06:33,560 --> 00:06:37,340
+to read only operations like lookup the
+
+158
+00:06:35,620 --> 00:06:39,620
+delegation can be released either
+
+159
+00:06:37,340 --> 00:06:41,539
+proactively by the caching node after
+
+160
+00:06:39,620 --> 00:06:44,900
+it's done with it or the origin volume
+
+161
+00:06:41,540 --> 00:06:46,460
+can revoke caches remote caches all of
+
+162
+00:06:44,900 --> 00:06:48,620
+this is enabled by having a durable
+
+163
+00:06:46,460 --> 00:06:49,789
+local file system so that cache state
+
+164
+00:06:48,620 --> 00:06:51,290
+will be maintained in the event of a
+
+165
+00:06:49,790 --> 00:06:56,360
+crash and eventually made available when
+
+166
+00:06:51,290 --> 00:06:57,800
+the volume returns okay so now we're
+
+167
+00:06:56,360 --> 00:06:59,870
+just going to go for a through a very
+
+168
+00:06:57,800 --> 00:07:01,970
+simplified example of how the route
+
+169
+00:06:59,870 --> 00:07:05,090
+cache works so you can see the root
+
+170
+00:07:01,970 --> 00:07:08,150
+directory in on volume a I an inode one
+
+171
+00:07:05,090 --> 00:07:10,429
+and within that root directory we have a
+
+172
+00:07:08,150 --> 00:07:11,810
+file called file one that has some local
+
+173
+00:07:10,430 --> 00:07:14,000
+data and within that same volume and
+
+174
+00:07:11,810 --> 00:07:19,120
+then there's Derwin which is a remote
+
+175
+00:07:14,000 --> 00:07:21,860
+link over to volume B and so on volume B
+
+176
+00:07:19,120 --> 00:07:25,070
+under the directory I for I know to
+
+177
+00:07:21,860 --> 00:07:26,600
+which is called Derwin we let's say that
+
+178
+00:07:25,070 --> 00:07:27,800
+we want to create a new directory and
+
+179
+00:07:26,600 --> 00:07:30,530
+the heuristics tell us it's a remote
+
+180
+00:07:27,800 --> 00:07:33,520
+link so the first thing we do is we
+
+181
+00:07:30,530 --> 00:07:35,450
+create the directory inode on volume C
+
+182
+00:07:33,520 --> 00:07:39,080
+because that's where the heuristics said
+
+183
+00:07:35,450 --> 00:07:40,880
+to go but then since we need to modify
+
+184
+00:07:39,080 --> 00:07:45,469
+it to do the initial creation stuff we
+
+185
+00:07:40,880 --> 00:07:47,390
+have to cache that in a local inode on
+
+186
+00:07:45,470 --> 00:07:50,330
+volume B so this is assuming that the
+
+187
+00:07:47,390 --> 00:07:53,330
+request is coming through node two so we
+
+188
+00:07:50,330 --> 00:07:54,530
+cache inode three and in order to do
+
+189
+00:07:53,330 --> 00:07:58,159
+this we have to create a couple of
+
+190
+00:07:54,530 --> 00:08:00,130
+mappings so on volume C it needs to know
+
+191
+00:07:58,160 --> 00:08:03,260
+that I know three has now been delegated
+
+192
+00:08:00,130 --> 00:08:04,850
+to volume B and so this l2r it means
+
+193
+00:08:03,260 --> 00:08:06,349
+local to remote and it maintains that
+
+194
+00:08:04,850 --> 00:08:08,720
+mapping in case it needs to revoke it
+
+195
+00:08:06,350 --> 00:08:09,740
+later on volume B we need to introduce
+
+196
+00:08:08,720 --> 00:08:12,170
+two mappings
+
+197
+00:08:09,740 --> 00:08:14,390
+one because if we when we look at I know
+
+198
+00:08:12,170 --> 00:08:16,790
+25 we need to remember that it's a
+
+199
+00:08:14,390 --> 00:08:18,409
+delegated inode and the other one is
+
+200
+00:08:16,790 --> 00:08:21,170
+that in case we have to look up inode 3
+
+201
+00:08:18,410 --> 00:08:24,260
+again we know that we already have it
+
+202
+00:08:21,170 --> 00:08:28,400
+and so we do so we do all of our file
+
+203
+00:08:24,260 --> 00:08:31,700
+creation stuff then we create the the
+
+204
+00:08:28,400 --> 00:08:32,840
+remote link on volume B and then finally
+
+205
+00:08:31,700 --> 00:08:36,770
+when when everything is done through
+
+206
+00:08:32,840 --> 00:08:39,260
+that cached inode we we write out the
+
+207
+00:08:36,770 --> 00:08:40,699
+dirty buffers and so that makes this
+
+208
+00:08:39,260 --> 00:08:43,030
+date permanent and we get rid of all the
+
+209
+00:08:40,700 --> 00:08:43,030
+caches
+
+210
+00:08:43,710 --> 00:08:48,510
+okay so so this brings up the questions
+
+211
+00:08:46,230 --> 00:08:52,140
+is when do we allocate remote and if so
+
+212
+00:08:48,510 --> 00:08:53,610
+where do we allocate it to the answer is
+
+213
+00:08:52,140 --> 00:08:56,100
+because remote links have incurred
+
+214
+00:08:53,610 --> 00:08:58,440
+overhead we want to we want just enough
+
+215
+00:08:56,100 --> 00:08:59,760
+remote links to stay balanced the
+
+216
+00:08:58,440 --> 00:09:01,500
+default is to keep files with their
+
+217
+00:08:59,760 --> 00:09:03,390
+parent directories because local files
+
+218
+00:09:01,500 --> 00:09:06,180
+and directories don't incur the route
+
+219
+00:09:03,390 --> 00:09:08,100
+overhead these heuristics are calculated
+
+220
+00:09:06,180 --> 00:09:11,279
+on block and inode usage and a moving
+
+221
+00:09:08,100 --> 00:09:13,830
+average system look so heuristics are
+
+222
+00:09:11,279 --> 00:09:16,649
+currently only applied at ingest for our
+
+223
+00:09:13,830 --> 00:09:18,390
+customers balancing an ingest time meets
+
+224
+00:09:16,649 --> 00:09:19,890
+most of their needs vs. rebalancing
+
+225
+00:09:18,390 --> 00:09:21,779
+later and we're going to show you some
+
+226
+00:09:19,890 --> 00:09:23,939
+evidence from the from our customers in
+
+227
+00:09:21,779 --> 00:09:28,439
+a few slides to show you that that that
+
+228
+00:09:23,940 --> 00:09:30,060
+assumption is true these these
+
+229
+00:09:28,440 --> 00:09:32,640
+heuristics are also done independently
+
+230
+00:09:30,060 --> 00:09:34,619
+so there's a amongst the nodes so there
+
+231
+00:09:32,640 --> 00:09:36,600
+is a gossip protocol where the nodes
+
+232
+00:09:34,620 --> 00:09:38,970
+periodically let the other nodes know
+
+233
+00:09:36,600 --> 00:09:43,589
+how much space they have and how much
+
+234
+00:09:38,970 --> 00:09:45,000
+CPU they have and so and so and so then
+
+235
+00:09:43,589 --> 00:09:48,180
+nodes can make these choices on their
+
+236
+00:09:45,000 --> 00:09:49,680
+own if the volumes are mostly empty it's
+
+237
+00:09:48,180 --> 00:09:52,109
+not as important to balance and so we
+
+238
+00:09:49,680 --> 00:09:53,609
+don't try as hard in contrast when
+
+239
+00:09:52,110 --> 00:09:55,740
+volumes fills up there are more there's
+
+240
+00:09:53,610 --> 00:09:56,730
+more urgency and if you're interested in
+
+241
+00:09:55,740 --> 00:10:02,010
+learning more about this we have a lot
+
+242
+00:09:56,730 --> 00:10:04,170
+more in the paper ok so this is just a
+
+243
+00:10:02,010 --> 00:10:06,750
+quick another simplified example to show
+
+244
+00:10:04,170 --> 00:10:08,250
+how we choose where to send a remote
+
+245
+00:10:06,750 --> 00:10:10,110
+allocation once we decided that we need
+
+246
+00:10:08,250 --> 00:10:11,610
+it so you can see that we have several
+
+247
+00:10:10,110 --> 00:10:15,750
+volumes here that have different amounts
+
+248
+00:10:11,610 --> 00:10:17,790
+of free space the one of the one of them
+
+249
+00:10:15,750 --> 00:10:20,580
+one of the nodes or one of the nodes has
+
+250
+00:10:17,790 --> 00:10:22,740
+4 terabytes free and another one at the
+
+251
+00:10:20,580 --> 00:10:23,790
+other end has 9 terabytes free so you
+
+252
+00:10:22,740 --> 00:10:25,650
+would expect there to be more
+
+253
+00:10:23,790 --> 00:10:29,189
+allocations to the 9 terabyte than the 4
+
+254
+00:10:25,650 --> 00:10:32,459
+terabyte and so and so we calculate
+
+255
+00:10:29,190 --> 00:10:34,709
+likelihoods that are used and so the
+
+256
+00:10:32,459 --> 00:10:36,689
+likelihoods reflect that the 9 terabyte
+
+257
+00:10:34,709 --> 00:10:38,790
+would be roughly twice as likely to get
+
+258
+00:10:36,690 --> 00:10:44,130
+an allocation as the poor terabyte free
+
+259
+00:10:38,790 --> 00:10:47,010
+volume ok so now we're gonna dive into
+
+260
+00:10:44,130 --> 00:10:49,709
+the evaluation so our evaluation had two
+
+261
+00:10:47,010 --> 00:10:51,060
+goals the first one was to look at the
+
+262
+00:10:49,709 --> 00:10:53,459
+penalty incurred by the remote access
+
+263
+00:10:51,060 --> 00:10:54,869
+layer for metadata operations and see
+
+264
+00:10:53,459 --> 00:10:55,619
+how they affected the workloads we care
+
+265
+00:10:54,870 --> 00:10:57,660
+about the most
+
+266
+00:10:55,620 --> 00:10:59,310
+the second goal was to see
+
+267
+00:10:57,660 --> 00:11:00,660
+if the her exes heuristics actually
+
+268
+00:10:59,310 --> 00:11:05,069
+achieved load balancing across the
+
+269
+00:11:00,660 --> 00:11:08,790
+cluster so all of the all of the numbers
+
+270
+00:11:05,070 --> 00:11:10,740
+we report here are relative so so
+
+271
+00:11:08,790 --> 00:11:14,910
+they're first the so our first my micro
+
+272
+00:11:10,740 --> 00:11:19,080
+benchmarks used MD test over NFS to look
+
+273
+00:11:14,910 --> 00:11:21,300
+at how to look at the latency for for
+
+274
+00:11:19,080 --> 00:11:23,550
+certain NFS operations so along the
+
+275
+00:11:21,300 --> 00:11:26,790
+x-axis you can see the NFS operations
+
+276
+00:11:23,550 --> 00:11:29,099
+themselves and then the bars report and
+
+277
+00:11:26,790 --> 00:11:30,300
+then the bars within those within those
+
+278
+00:11:29,100 --> 00:11:33,000
+operations represent three different
+
+279
+00:11:30,300 --> 00:11:35,790
+configurations so the left one or the
+
+280
+00:11:33,000 --> 00:11:38,070
+red one represents a local configuration
+
+281
+00:11:35,790 --> 00:11:41,610
+where we use the predecessor to flex
+
+282
+00:11:38,070 --> 00:11:43,440
+groups to ensure that all of the all of
+
+283
+00:11:41,610 --> 00:11:46,740
+the NFS operations operate on storage
+
+284
+00:11:43,440 --> 00:11:49,500
+that is local to that node the one on
+
+285
+00:11:46,740 --> 00:11:52,470
+the right or the gray bars represent a
+
+286
+00:11:49,500 --> 00:11:54,890
+in a pedantic case which is a remote
+
+287
+00:11:52,470 --> 00:11:57,270
+allocation so all of the storage is
+
+288
+00:11:54,890 --> 00:11:58,230
+actually located on a different node so
+
+289
+00:11:57,270 --> 00:12:00,900
+it always has to go over the
+
+290
+00:11:58,230 --> 00:12:04,410
+interconnect and the and so we created
+
+291
+00:12:00,900 --> 00:12:08,300
+these to give two extremes an ideal case
+
+292
+00:12:04,410 --> 00:12:10,980
+in our in a worst case scenario so so
+
+293
+00:12:08,300 --> 00:12:13,680
+keep in mind that neither local nor the
+
+294
+00:12:10,980 --> 00:12:15,090
+remote have a heavy remote access layer
+
+295
+00:12:13,680 --> 00:12:16,439
+so this actually helps us to see what
+
+296
+00:12:15,090 --> 00:12:19,200
+the overhead for the remote access layer
+
+297
+00:12:16,440 --> 00:12:21,840
+is the y-axis is a normalized latency
+
+298
+00:12:19,200 --> 00:12:28,650
+and so no and so lower numbers are
+
+299
+00:12:21,840 --> 00:12:30,390
+better so let's see so we have so for
+
+300
+00:12:28,650 --> 00:12:32,100
+the for the left sides we have Norrell
+
+301
+00:12:30,390 --> 00:12:33,810
+and so what you can see is that the Flex
+
+302
+00:12:32,100 --> 00:12:35,130
+group numbers the flux couple agencies
+
+303
+00:12:33,810 --> 00:12:36,540
+are exactly where you'd think they'd be
+
+304
+00:12:35,130 --> 00:12:38,490
+there right between the local and the
+
+305
+00:12:36,540 --> 00:12:40,290
+remote and that makes sense because flex
+
+306
+00:12:38,490 --> 00:12:42,390
+groups try to distribute the data it's
+
+307
+00:12:40,290 --> 00:12:43,860
+neither gonna be always always local nor
+
+308
+00:12:42,390 --> 00:12:46,740
+it nor is it always going to be a remote
+
+309
+00:12:43,860 --> 00:12:49,470
+so it's right in the middle on the other
+
+310
+00:12:46,740 --> 00:12:51,390
+hand we have these other the the things
+
+311
+00:12:49,470 --> 00:12:52,860
+that use the route cache and you can see
+
+312
+00:12:51,390 --> 00:12:54,180
+that the flux groups do take more time
+
+313
+00:12:52,860 --> 00:12:56,220
+and that's because these are micro
+
+314
+00:12:54,180 --> 00:12:58,469
+benchmarks that are designed to stress
+
+315
+00:12:56,220 --> 00:13:01,140
+the metadata and therefore create more
+
+316
+00:12:58,470 --> 00:13:02,790
+overhead what's also interesting here is
+
+317
+00:13:01,140 --> 00:13:04,730
+the thing that so lookup which only
+
+318
+00:13:02,790 --> 00:13:09,630
+needs to take a read-only delegation
+
+319
+00:13:04,730 --> 00:13:11,329
+there's there has a has a lower overhead
+
+320
+00:13:09,630 --> 00:13:13,009
+compared to the remote
+
+321
+00:13:11,329 --> 00:13:19,128
+than the other ones and that kind of
+
+322
+00:13:13,009 --> 00:13:20,509
+makes sense okay so we wanted to see the
+
+323
+00:13:19,129 --> 00:13:22,759
+performance for some of the workloads
+
+324
+00:13:20,509 --> 00:13:25,339
+were interested in to do that we used
+
+325
+00:13:22,759 --> 00:13:29,509
+the s FS benchmark which is an industry
+
+326
+00:13:25,339 --> 00:13:31,189
+industry standard workload simulator so
+
+327
+00:13:29,509 --> 00:13:33,049
+in this case the x-axis are different
+
+328
+00:13:31,189 --> 00:13:35,868
+workloads so the the two that were the
+
+329
+00:13:33,049 --> 00:13:38,179
+most important are the software build
+
+330
+00:13:35,869 --> 00:13:40,660
+which is a simulates a metadata heavy
+
+331
+00:13:38,179 --> 00:13:43,549
+workload similar to a kernel make and
+
+332
+00:13:40,660 --> 00:13:45,769
+vda which simulates a deadiy a data
+
+333
+00:13:43,549 --> 00:13:48,199
+heavy but not a data heavy workload
+
+334
+00:13:45,769 --> 00:13:50,299
+without much made a data and which
+
+335
+00:13:48,199 --> 00:13:51,709
+simulates streaming video so we picked
+
+336
+00:13:50,299 --> 00:13:53,749
+these because these are two extremes a
+
+337
+00:13:51,709 --> 00:13:56,748
+very metadata heavy one in a very data
+
+338
+00:13:53,749 --> 00:13:58,160
+heavy one so the the bars are the same
+
+339
+00:13:56,749 --> 00:14:00,079
+as the benchmarks which represent the
+
+340
+00:13:58,160 --> 00:14:01,999
+local and remote and the y-axis in this
+
+341
+00:14:00,079 --> 00:14:06,229
+case is a normalized operations per
+
+342
+00:14:01,999 --> 00:14:09,049
+second so higher is better so relatively
+
+343
+00:14:06,230 --> 00:14:10,790
+speaking the performance is better in
+
+344
+00:14:09,049 --> 00:14:12,619
+the on the left side if we if we take a
+
+345
+00:14:10,790 --> 00:14:15,230
+look at the outputs relatively speaking
+
+346
+00:14:12,619 --> 00:14:17,569
+the flex group's performance is better
+
+347
+00:14:15,230 --> 00:14:20,869
+for the for the benchmark that has more
+
+348
+00:14:17,569 --> 00:14:22,488
+data than metadata whereas on the left
+
+349
+00:14:20,869 --> 00:14:25,639
+side with the software build the
+
+350
+00:14:22,489 --> 00:14:27,980
+metadata centric the the metadata
+
+351
+00:14:25,639 --> 00:14:31,999
+centric software build is very is much
+
+352
+00:14:27,980 --> 00:14:34,399
+closer to the always remote case on the
+
+353
+00:14:31,999 --> 00:14:38,869
+right side we have some we have cluster
+
+354
+00:14:34,399 --> 00:14:40,879
+scaling so this is to look at how howdy
+
+355
+00:14:38,869 --> 00:14:43,249
+flex groups scale as you introduce more
+
+356
+00:14:40,879 --> 00:14:46,929
+nodes and for the metadata heavy one it
+
+357
+00:14:43,249 --> 00:14:48,919
+it the scalability is less than the
+
+358
+00:14:46,929 --> 00:14:54,529
+scalability for the data heavy one which
+
+359
+00:14:48,919 --> 00:14:56,179
+is what we expected okay so these tests
+
+360
+00:14:54,529 --> 00:14:57,559
+are nice well it's more even more
+
+361
+00:14:56,179 --> 00:14:59,689
+exciting is to see how well flex groups
+
+362
+00:14:57,559 --> 00:15:01,549
+balance in the real world so we were
+
+363
+00:14:59,689 --> 00:15:03,529
+able to gather some data using our auto
+
+364
+00:15:01,549 --> 00:15:05,540
+support program which is an optional
+
+365
+00:15:03,529 --> 00:15:06,860
+program where customers can provide
+
+366
+00:15:05,540 --> 00:15:09,889
+telemetry feedback about their
+
+367
+00:15:06,860 --> 00:15:12,110
+production systems so this data set had
+
+368
+00:15:09,889 --> 00:15:15,769
+thousands of flex groups managing
+
+369
+00:15:12,110 --> 00:15:17,959
+hundreds of petabytes we we measure this
+
+370
+00:15:15,769 --> 00:15:19,789
+by taking the standard deviation of the
+
+371
+00:15:17,959 --> 00:15:23,479
+bytes used in every volume within each
+
+372
+00:15:19,789 --> 00:15:25,910
+each customer flex group but the issue
+
+373
+00:15:23,480 --> 00:15:27,980
+with that though is that each
+
+374
+00:15:25,910 --> 00:15:29,360
+is that each flex group is going to be a
+
+375
+00:15:27,980 --> 00:15:33,800
+different size so the question is how do
+
+376
+00:15:29,360 --> 00:15:36,530
+you measure how how dispersed it is and
+
+377
+00:15:33,800 --> 00:15:38,689
+so so even though the standard deviation
+
+378
+00:15:36,530 --> 00:15:40,790
+is a measure of dispersion we needed a
+
+379
+00:15:38,690 --> 00:15:42,290
+way to normalize this across customers
+
+380
+00:15:40,790 --> 00:15:44,089
+and so to do that we used what's called
+
+381
+00:15:42,290 --> 00:15:45,709
+the coefficient of variation which
+
+382
+00:15:44,090 --> 00:15:48,080
+divides the standard deviation by the
+
+383
+00:15:45,710 --> 00:15:53,450
+mean to give you a relative size for the
+
+384
+00:15:48,080 --> 00:15:56,180
+standard deviation so and so what what's
+
+385
+00:15:53,450 --> 00:15:58,040
+interesting here is that over half of
+
+386
+00:15:56,180 --> 00:16:01,069
+our over half of the customer volumes
+
+387
+00:15:58,040 --> 00:16:02,510
+that we we had data about had a had a
+
+388
+00:16:01,070 --> 00:16:07,400
+coefficient of variation of less than
+
+389
+00:16:02,510 --> 00:16:09,140
+one percent also seventy-eight percent
+
+390
+00:16:07,400 --> 00:16:10,880
+of the of the customer volumes had a
+
+391
+00:16:09,140 --> 00:16:13,460
+coefficient of variation of less than
+
+392
+00:16:10,880 --> 00:16:17,240
+five percent what's interesting here is
+
+393
+00:16:13,460 --> 00:16:19,280
+that was that the there is a twenty two
+
+394
+00:16:17,240 --> 00:16:20,930
+percent that are greater than five that
+
+395
+00:16:19,280 --> 00:16:22,760
+have a greater than five percent
+
+396
+00:16:20,930 --> 00:16:23,870
+coefficient of variation and so we we
+
+397
+00:16:22,760 --> 00:16:26,180
+looked into these a little more deeply
+
+398
+00:16:23,870 --> 00:16:30,170
+and we discovered two patterns the first
+
+399
+00:16:26,180 --> 00:16:31,670
+pattern was that was that there were a
+
+400
+00:16:30,170 --> 00:16:32,900
+lot of customers who were starting to
+
+401
+00:16:31,670 --> 00:16:35,199
+run out of space in their flux groups
+
+402
+00:16:32,900 --> 00:16:38,600
+and then they added volumes later and
+
+403
+00:16:35,200 --> 00:16:40,370
+interestingly originally we would be
+
+404
+00:16:38,600 --> 00:16:41,750
+much more aggressive about trying to
+
+405
+00:16:40,370 --> 00:16:43,730
+fill those but what we discovered was
+
+406
+00:16:41,750 --> 00:16:47,240
+that actually can cause runtime load
+
+407
+00:16:43,730 --> 00:16:49,940
+load issues and so we actually do that a
+
+408
+00:16:47,240 --> 00:16:53,690
+little more slowly now the second issue
+
+409
+00:16:49,940 --> 00:16:55,040
+the second group of that can that
+
+410
+00:16:53,690 --> 00:16:57,350
+comprise this where flex groups where
+
+411
+00:16:55,040 --> 00:16:59,750
+they had a small number of very large
+
+412
+00:16:57,350 --> 00:17:02,030
+files and this is because flex groups
+
+413
+00:16:59,750 --> 00:17:04,010
+managed at a granularity of files or
+
+414
+00:17:02,030 --> 00:17:09,740
+directories and so we can't split up
+
+415
+00:17:04,010 --> 00:17:10,849
+files okay so in conclusion flex groups
+
+416
+00:17:09,740 --> 00:17:13,040
+showed that it's possible to take a
+
+417
+00:17:10,849 --> 00:17:14,599
+local file system and make it into a
+
+418
+00:17:13,040 --> 00:17:16,069
+distributed one with a couple of
+
+419
+00:17:14,599 --> 00:17:18,020
+mechanisms like remote links and
+
+420
+00:17:16,069 --> 00:17:20,930
+placement heuristics well might be
+
+421
+00:17:18,020 --> 00:17:22,400
+different than other circumstances when
+
+422
+00:17:20,930 --> 00:17:23,569
+building a distributed file system is
+
+423
+00:17:22,400 --> 00:17:26,150
+that we'd already had a high
+
+424
+00:17:23,569 --> 00:17:27,560
+availability mechanism to our in our
+
+425
+00:17:26,150 --> 00:17:29,810
+local file system which meant that we
+
+426
+00:17:27,560 --> 00:17:31,280
+could create a distributed file system
+
+427
+00:17:29,810 --> 00:17:33,889
+without adding a lot of overhead for
+
+428
+00:17:31,280 --> 00:17:36,320
+management if you like this we have
+
+429
+00:17:33,890 --> 00:17:38,300
+about 15 to 20 more published papers on
+
+430
+00:17:36,320 --> 00:17:39,090
+on tap and waffle and you can access
+
+431
+00:17:38,300 --> 00:17:41,549
+those at the
+
+432
+00:17:39,090 --> 00:17:50,250
+well there and with that I would love to
+
+433
+00:17:41,549 --> 00:17:56,190
+take any questions yeah come down to the
+
+434
+00:17:50,250 --> 00:17:57,840
+microphone if you have questions yeah so
+
+435
+00:17:56,190 --> 00:17:59,640
+I actually had a question as somebody
+
+436
+00:17:57,840 --> 00:18:00,750
+who worked in another big storage
+
+437
+00:17:59,640 --> 00:18:03,150
+company for a long time
+
+438
+00:18:00,750 --> 00:18:05,640
+EMC the that old one who competed with a
+
+439
+00:18:03,150 --> 00:18:07,200
+lot of times in your building on
+
+440
+00:18:05,640 --> 00:18:08,370
+existing systems you have a lot of
+
+441
+00:18:07,200 --> 00:18:11,789
+challenges you don't have an academic
+
+442
+00:18:08,370 --> 00:18:13,199
+world how did how were you how would you
+
+443
+00:18:11,789 --> 00:18:14,460
+have done things differently if you
+
+444
+00:18:13,200 --> 00:18:17,159
+didn't have your existing system was
+
+445
+00:18:14,460 --> 00:18:20,159
+there anything you would have changed so
+
+446
+00:18:17,159 --> 00:18:22,970
+I'm going to call on Ram Kasavin who has
+
+447
+00:18:20,159 --> 00:18:29,179
+actually was a key part of designing
+
+448
+00:18:22,970 --> 00:18:29,179
+flex groups that's a great question I
+
+449
+00:18:29,750 --> 00:18:32,789
+work at Google now have forgotten
+
+450
+00:18:31,710 --> 00:18:35,669
+everything about nat up at this point
+
+451
+00:18:32,789 --> 00:18:37,010
+but yeah I think we would've gone about
+
+452
+00:18:35,669 --> 00:18:39,240
+it very differently of course because
+
+453
+00:18:37,010 --> 00:18:41,908
+the fact that we had waffle sitting
+
+454
+00:18:39,240 --> 00:18:43,919
+there with like 20 years of you know
+
+455
+00:18:41,909 --> 00:18:45,360
+solid stuff in it we clearly built it on
+
+456
+00:18:43,919 --> 00:18:46,890
+top of that because we already got great
+
+457
+00:18:45,360 --> 00:18:48,479
+performance great reliability great
+
+458
+00:18:46,890 --> 00:18:50,220
+everything so it definitely would have
+
+459
+00:18:48,480 --> 00:18:56,730
+done it very differently than if we
+
+460
+00:18:50,220 --> 00:18:58,390
+didn't have any other questions let's
+
+461
+00:18:56,730 --> 00:19:03,229
+thank our speaker
+
+462
+00:18:58,390 --> 00:19:03,229
+[Applause]
+

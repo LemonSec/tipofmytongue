@@ -1,0 +1,2024 @@
+﻿1
+00:00:05,040 --> 00:00:09,120
+hello everyone welcome to our next talk
+
+2
+00:00:07,040 --> 00:00:11,759
+in security the room and fosdem
+
+3
+00:00:09,120 --> 00:00:12,799
+and our next speaker is florian revest
+
+4
+00:00:11,759 --> 00:00:15,360
+and his talk
+
+5
+00:00:12,799 --> 00:00:16,960
+his uh speech about kernel run diamond
+
+6
+00:00:15,360 --> 00:00:31,840
+security instrumentation
+
+7
+00:00:16,960 --> 00:00:31,840
+let's welcome florin
+
+8
+00:00:32,960 --> 00:00:38,160
+good can you hear me great
+
+9
+00:00:36,640 --> 00:00:40,079
+thanks for uploading maybe you shouldn't
+
+10
+00:00:38,160 --> 00:00:42,480
+maybe the talk is bad so wait wait until
+
+11
+00:00:40,079 --> 00:00:44,719
+the end and then you can upload
+
+12
+00:00:42,480 --> 00:00:47,120
+so yeah my name is florence west i'm a
+
+13
+00:00:44,719 --> 00:00:48,559
+software engineer i work for google
+
+14
+00:00:47,120 --> 00:00:50,320
+which is a company you might have heard
+
+15
+00:00:48,559 --> 00:00:52,000
+of i
+
+16
+00:00:50,320 --> 00:00:53,680
+work in a security team on a project
+
+17
+00:00:52,000 --> 00:00:55,440
+called kernel runtime security
+
+18
+00:00:53,680 --> 00:00:56,960
+instrumentation
+
+19
+00:00:55,440 --> 00:00:58,640
+but as you know engineers like to use
+
+20
+00:00:56,960 --> 00:00:59,680
+acronyms to sound more intelligent than
+
+21
+00:00:58,640 --> 00:01:02,960
+they actually are
+
+22
+00:00:59,680 --> 00:01:04,559
+so we like to call it krsi and for even
+
+23
+00:01:02,960 --> 00:01:07,920
+more acronyms we even say
+
+24
+00:01:04,559 --> 00:01:10,080
+bpf plus lsm equals krsi
+
+25
+00:01:07,920 --> 00:01:11,119
+but by the end of this talk we will
+
+26
+00:01:10,080 --> 00:01:14,960
+understand what that means
+
+27
+00:01:11,119 --> 00:01:18,159
+hopefully uh motivation so
+
+28
+00:01:14,960 --> 00:01:20,000
+how did we come up with this thing um
+
+29
+00:01:18,159 --> 00:01:23,200
+so as i said i work for google and we
+
+30
+00:01:20,000 --> 00:01:25,520
+have a huge fleet of linux machines
+
+31
+00:01:23,200 --> 00:01:27,119
+i want to stress that those are the
+
+32
+00:01:25,520 --> 00:01:30,000
+corporate computers that the engineers
+
+33
+00:01:27,119 --> 00:01:33,759
+use the laptops the workstations
+
+34
+00:01:30,000 --> 00:01:33,759
+and not for consumer products
+
+35
+00:01:33,840 --> 00:01:37,520
+we happen to care about the security of
+
+36
+00:01:35,200 --> 00:01:39,840
+those machines and
+
+37
+00:01:37,520 --> 00:01:41,439
+we have teams dedicated to working on um
+
+38
+00:01:39,840 --> 00:01:42,159
+to monitoring the security of those
+
+39
+00:01:41,439 --> 00:01:43,919
+machines
+
+40
+00:01:42,159 --> 00:01:45,280
+and we basically do two things one thing
+
+41
+00:01:43,920 --> 00:01:46,159
+is we monitor what happens on those
+
+42
+00:01:45,280 --> 00:01:47,840
+machines
+
+43
+00:01:46,159 --> 00:01:49,600
+and the second thing is we want to
+
+44
+00:01:47,840 --> 00:01:50,320
+enforce policies when we detect
+
+45
+00:01:49,600 --> 00:01:53,600
+something
+
+46
+00:01:50,320 --> 00:01:54,798
+wrong happening on fleet then we want to
+
+47
+00:01:53,600 --> 00:01:56,798
+easily deploy a rule
+
+48
+00:01:54,799 --> 00:01:58,479
+to all the machines that makes it so
+
+49
+00:01:56,799 --> 00:02:01,520
+that that prevents
+
+50
+00:01:58,479 --> 00:02:05,280
+this action to happen again
+
+51
+00:02:01,520 --> 00:02:08,239
+and since the fleet is so big it's about
+
+52
+00:02:05,280 --> 00:02:09,598
+around 200 000 there are some strong
+
+53
+00:02:08,239 --> 00:02:11,120
+scalability requirements you
+
+54
+00:02:09,598 --> 00:02:12,799
+can't require heavy engineers to resolve
+
+55
+00:02:11,120 --> 00:02:16,319
+the machine and
+
+56
+00:02:12,800 --> 00:02:19,760
+and so on um
+
+57
+00:02:16,319 --> 00:02:22,000
+so on one side we want to gather signals
+
+58
+00:02:19,760 --> 00:02:23,440
+those are pieces of information
+
+59
+00:02:22,000 --> 00:02:26,720
+something fishy is going on
+
+60
+00:02:23,440 --> 00:02:28,239
+on a machine i just wrote some example
+
+61
+00:02:26,720 --> 00:02:30,640
+of signals here
+
+62
+00:02:28,239 --> 00:02:32,080
+an example could be a process tries to
+
+63
+00:02:30,640 --> 00:02:33,119
+delete its own executable doesn't mean
+
+64
+00:02:32,080 --> 00:02:34,560
+it's bad but it's
+
+65
+00:02:33,120 --> 00:02:36,959
+usually a bad sign so you want to catch
+
+66
+00:02:34,560 --> 00:02:40,800
+that you want some detection rules that
+
+67
+00:02:36,959 --> 00:02:41,599
+raise a flag other examples you have a
+
+68
+00:02:40,800 --> 00:02:43,760
+kernel module
+
+69
+00:02:41,599 --> 00:02:45,359
+it gets loaded and then it removes
+
+70
+00:02:43,760 --> 00:02:48,720
+itself from the modules list
+
+71
+00:02:45,360 --> 00:02:49,680
+so that it doesn't appear in ls mode
+
+72
+00:02:48,720 --> 00:02:51,519
+anymore
+
+73
+00:02:49,680 --> 00:02:53,519
+doesn't mean it's bad but it's it's
+
+74
+00:02:51,519 --> 00:02:55,280
+fishy
+
+75
+00:02:53,519 --> 00:02:56,800
+yeah if you have suspicious environment
+
+76
+00:02:55,280 --> 00:02:58,879
+variables if someone is doing
+
+77
+00:02:56,800 --> 00:02:59,920
+something will be very preload you want
+
+78
+00:02:58,879 --> 00:03:02,799
+to know about it
+
+79
+00:02:59,920 --> 00:03:04,480
+and so on and so on on the other side
+
+80
+00:03:02,800 --> 00:03:07,120
+you have mitigations so
+
+81
+00:03:04,480 --> 00:03:08,640
+once you detected a behavior that you
+
+82
+00:03:07,120 --> 00:03:12,560
+want to prevent
+
+83
+00:03:08,640 --> 00:03:15,518
+you have lots of different ways to
+
+84
+00:03:12,560 --> 00:03:17,760
+prevent it for example you could prevent
+
+85
+00:03:15,519 --> 00:03:20,159
+known vulnerable binaries from running
+
+86
+00:03:17,760 --> 00:03:20,959
+with blacklist that's just an example
+
+87
+00:03:20,159 --> 00:03:22,959
+you could also
+
+88
+00:03:20,959 --> 00:03:25,440
+have a white list of kernel modules
+
+89
+00:03:22,959 --> 00:03:25,440
+whatever
+
+90
+00:03:25,519 --> 00:03:29,519
+you could change signals and then based
+
+91
+00:03:28,560 --> 00:03:31,760
+on that
+
+92
+00:03:29,519 --> 00:03:31,760
+write
+
+93
+00:03:33,519 --> 00:03:37,280
+the way you you have to do that
+
+94
+00:03:35,760 --> 00:03:39,920
+currently in the linux kernel is you
+
+95
+00:03:37,280 --> 00:03:43,760
+need to go through
+
+96
+00:03:39,920 --> 00:03:45,760
+a lot of security subsystems
+
+97
+00:03:43,760 --> 00:03:48,159
+on one side you have the signaling part
+
+98
+00:03:45,760 --> 00:03:51,359
+with subsystems such as audit and perf
+
+99
+00:03:48,159 --> 00:03:54,319
+where the kernel lets you know about
+
+100
+00:03:51,360 --> 00:03:55,439
+events happening in your machine and on
+
+101
+00:03:54,319 --> 00:03:59,040
+the other side
+
+102
+00:03:55,439 --> 00:03:59,680
+you have mitigation subsystems like ac
+
+103
+00:03:59,040 --> 00:04:02,560
+linux of
+
+104
+00:03:59,680 --> 00:04:03,439
+armor and we'll come back to them later
+
+105
+00:04:02,560 --> 00:04:06,560
+or we you
+
+106
+00:04:03,439 --> 00:04:09,599
+you heard about seccomp and that's all
+
+107
+00:04:06,560 --> 00:04:11,439
+but the problem is that uh the
+
+108
+00:04:09,599 --> 00:04:12,840
+the place where you get the data from uh
+
+109
+00:04:11,439 --> 00:04:15,840
+in the this
+
+110
+00:04:12,840 --> 00:04:17,680
+auditing subsystem is not the same as
+
+111
+00:04:15,840 --> 00:04:19,600
+the place where you enforce the policy
+
+112
+00:04:17,680 --> 00:04:21,519
+and also the language is not the same so
+
+113
+00:04:19,600 --> 00:04:24,800
+when you when you
+
+114
+00:04:21,519 --> 00:04:26,560
+get data from audits um you get
+
+115
+00:04:24,800 --> 00:04:28,160
+get them from a certain place in a
+
+116
+00:04:26,560 --> 00:04:29,759
+certain format and when you want to
+
+117
+00:04:28,160 --> 00:04:31,360
+prevent the action from messing with
+
+118
+00:04:29,759 --> 00:04:35,120
+you you need to do that in a different
+
+119
+00:04:31,360 --> 00:04:35,120
+place with a different file format
+
+120
+00:04:35,440 --> 00:04:39,120
+for example if you want to add a
+
+121
+00:04:37,680 --> 00:04:41,040
+detection policy for
+
+122
+00:04:39,120 --> 00:04:43,919
+an environment variable you will need to
+
+123
+00:04:41,040 --> 00:04:46,639
+edit audit from the kernel space
+
+124
+00:04:43,919 --> 00:04:47,359
+also the user space program of audits
+
+125
+00:04:46,639 --> 00:04:49,840
+and then
+
+126
+00:04:47,360 --> 00:04:50,560
+once you detect something happening on
+
+127
+00:04:49,840 --> 00:04:53,520
+your fleet
+
+128
+00:04:50,560 --> 00:04:55,120
+and you want to deploy your mitigation
+
+129
+00:04:53,520 --> 00:04:56,080
+you need to write a policy in another
+
+130
+00:04:55,120 --> 00:05:00,320
+language for
+
+131
+00:04:56,080 --> 00:05:02,719
+example for ic linux etc
+
+132
+00:05:00,320 --> 00:05:03,520
+so what we wanted to do is to bridge
+
+133
+00:05:02,720 --> 00:05:05,120
+those two worlds
+
+134
+00:05:03,520 --> 00:05:07,120
+reach the signaling world and the
+
+135
+00:05:05,120 --> 00:05:08,840
+mitigation world
+
+136
+00:05:07,120 --> 00:05:11,680
+and that's how we came up with
+
+137
+00:05:08,840 --> 00:05:14,638
+clearances so there are two things i
+
+138
+00:05:11,680 --> 00:05:16,320
+want to talk about the first thing is
+
+139
+00:05:14,639 --> 00:05:18,880
+lsms
+
+140
+00:05:16,320 --> 00:05:20,800
+lsm stands for linux security module and
+
+141
+00:05:18,880 --> 00:05:23,440
+it's a kernel subsystem
+
+142
+00:05:20,800 --> 00:05:24,720
+that is the basis of selinux and
+
+143
+00:05:23,440 --> 00:05:27,440
+apartment
+
+144
+00:05:24,720 --> 00:05:29,280
+so when you have those uh when you use
+
+145
+00:05:27,440 --> 00:05:32,240
+sc linux
+
+146
+00:05:29,280 --> 00:05:33,919
+the way it's implemented um every time
+
+147
+00:05:32,240 --> 00:05:35,280
+there is a security behave an important
+
+148
+00:05:33,919 --> 00:05:36,560
+security behavior happening in the
+
+149
+00:05:35,280 --> 00:05:39,599
+kernel
+
+150
+00:05:36,560 --> 00:05:40,240
+the there is a security hook uh an lsm
+
+151
+00:05:39,600 --> 00:05:42,320
+book
+
+152
+00:05:40,240 --> 00:05:43,919
+that will be called and all those lsms
+
+153
+00:05:42,320 --> 00:05:46,000
+will um
+
+154
+00:05:43,919 --> 00:05:47,440
+have a say on whether the action is
+
+155
+00:05:46,000 --> 00:05:49,840
+allowed or denied
+
+156
+00:05:47,440 --> 00:05:50,840
+so let's say there is an execution event
+
+157
+00:05:49,840 --> 00:05:54,000
+um
+
+158
+00:05:50,840 --> 00:05:54,320
+the all lsms will be notified of it and
+
+159
+00:05:54,000 --> 00:05:58,240
+then
+
+160
+00:05:54,320 --> 00:06:00,960
+they can uh allow or deny the operation
+
+161
+00:05:58,240 --> 00:06:02,639
+um i want to stress that lsm's work on a
+
+162
+00:06:00,960 --> 00:06:04,000
+different level than cisco's we heard a
+
+163
+00:06:02,639 --> 00:06:05,600
+bunch of things about
+
+164
+00:06:04,000 --> 00:06:07,600
+several talks about cisco's today with
+
+165
+00:06:05,600 --> 00:06:10,080
+falco for instance
+
+166
+00:06:07,600 --> 00:06:11,440
+um lsm work at i would say a higher
+
+167
+00:06:10,080 --> 00:06:13,680
+level of abstraction
+
+168
+00:06:11,440 --> 00:06:15,919
+where you for example you work on the
+
+169
+00:06:13,680 --> 00:06:16,800
+execution event not on the exactly c
+
+170
+00:06:15,919 --> 00:06:19,599
+score
+
+171
+00:06:16,800 --> 00:06:21,360
+we used to work with cisco's before and
+
+172
+00:06:19,600 --> 00:06:25,919
+for example we missed the exact v
+
+173
+00:06:21,360 --> 00:06:25,919
+at cisco which was unfortunate
+
+174
+00:06:26,400 --> 00:06:30,638
+um yeah so those lsm hooks are
+
+175
+00:06:29,759 --> 00:06:34,400
+implemented in
+
+176
+00:06:30,639 --> 00:06:36,960
+sm and the return value of the function
+
+177
+00:06:34,400 --> 00:06:37,599
+whether the operation is allowed or
+
+178
+00:06:36,960 --> 00:06:39,599
+denied
+
+179
+00:06:37,600 --> 00:06:41,919
+and with that you can implement a mac
+
+180
+00:06:39,600 --> 00:06:43,680
+mandatory access control
+
+181
+00:06:41,919 --> 00:06:45,440
+now for something completely different i
+
+182
+00:06:43,680 --> 00:06:47,120
+want to talk about bpf
+
+183
+00:06:45,440 --> 00:06:50,160
+so it's the third talk today that talks
+
+184
+00:06:47,120 --> 00:06:50,160
+about bpf i'm sorry
+
+185
+00:06:50,800 --> 00:06:54,160
+but i will try to quickly introduce bpf
+
+186
+00:06:52,960 --> 00:06:57,120
+for those of you who don't know
+
+187
+00:06:54,160 --> 00:06:59,759
+who don't know about it essentially at
+
+188
+00:06:57,120 --> 00:07:03,280
+its core what bpf is
+
+189
+00:06:59,759 --> 00:07:04,479
+is it's a bytecode that can be edited
+
+190
+00:07:03,280 --> 00:07:07,919
+inside the kernel
+
+191
+00:07:04,479 --> 00:07:10,880
+executable executable pages and
+
+192
+00:07:07,919 --> 00:07:12,560
+what happens is you from from the from
+
+193
+00:07:10,880 --> 00:07:13,520
+the user space you can write programs in
+
+194
+00:07:12,560 --> 00:07:15,199
+c
+
+195
+00:07:13,520 --> 00:07:16,960
+you can also write assembly that's your
+
+196
+00:07:15,199 --> 00:07:19,039
+thing but uh usually what you will do
+
+197
+00:07:16,960 --> 00:07:20,960
+you will write them in c you can compile
+
+198
+00:07:19,039 --> 00:07:23,280
+them in with a lvm for instance
+
+199
+00:07:20,960 --> 00:07:24,080
+then you get an object file and the
+
+200
+00:07:23,280 --> 00:07:25,758
+subject file
+
+201
+00:07:24,080 --> 00:07:30,159
+can be loaded in the kernel and attached
+
+202
+00:07:25,759 --> 00:07:32,080
+to hooks um
+
+203
+00:07:30,160 --> 00:07:34,080
+the nice thing about bpf is that when
+
+204
+00:07:32,080 --> 00:07:35,840
+you load the program to the camera the
+
+205
+00:07:34,080 --> 00:07:36,880
+kernel does static analysis on your
+
+206
+00:07:35,840 --> 00:07:39,679
+bytecode
+
+207
+00:07:36,880 --> 00:07:40,479
+so for example the kernel can verify
+
+208
+00:07:39,680 --> 00:07:44,960
+that
+
+209
+00:07:40,479 --> 00:07:47,520
+you only have read only access to memory
+
+210
+00:07:44,960 --> 00:07:49,039
+or it can also verify the number of
+
+211
+00:07:47,520 --> 00:07:51,520
+instructions in your bpf program to make
+
+212
+00:07:49,039 --> 00:07:52,719
+sure it terminates
+
+213
+00:07:51,520 --> 00:07:55,919
+there are some restrictions that make
+
+214
+00:07:52,720 --> 00:07:58,960
+sure bpf programs dominate
+
+215
+00:07:55,919 --> 00:08:00,878
+and one last thing i would like to say
+
+216
+00:07:58,960 --> 00:08:01,758
+about vpf is you can exchange data with
+
+217
+00:08:00,879 --> 00:08:03,759
+user space
+
+218
+00:08:01,759 --> 00:08:06,479
+so there are several ways to do that one
+
+219
+00:08:03,759 --> 00:08:07,920
+of the ways to use the perf ring buffer
+
+220
+00:08:06,479 --> 00:08:09,599
+it's just a ring buffer that you can
+
+221
+00:08:07,920 --> 00:08:12,000
+[Music]
+
+222
+00:08:09,599 --> 00:08:12,878
+use to output big buffer so if you have
+
+223
+00:08:12,000 --> 00:08:15,440
+for example
+
+224
+00:08:12,879 --> 00:08:16,560
+if you have all the pages that you want
+
+225
+00:08:15,440 --> 00:08:17,759
+to send to the user space you will
+
+226
+00:08:16,560 --> 00:08:20,080
+typically send them on the
+
+227
+00:08:17,759 --> 00:08:22,720
+perfect buffer and then you also have
+
+228
+00:08:20,080 --> 00:08:25,919
+simpler mechanisms like maps
+
+229
+00:08:22,720 --> 00:08:27,360
+which are better for
+
+230
+00:08:25,919 --> 00:08:30,240
+structures that you want to share with
+
+231
+00:08:27,360 --> 00:08:30,240
+the user space program
+
+232
+00:08:30,560 --> 00:08:36,479
+and now maps are even encapsulated with
+
+233
+00:08:34,958 --> 00:08:37,838
+as global variables so from the vpf
+
+234
+00:08:36,479 --> 00:08:38,719
+program you can write into a global
+
+235
+00:08:37,839 --> 00:08:40,240
+variable
+
+236
+00:08:38,719 --> 00:08:42,959
+and then the user space can read it i
+
+237
+00:08:40,240 --> 00:08:45,680
+will show an example later
+
+238
+00:08:42,958 --> 00:08:46,319
+so what krsi is is the combination of
+
+239
+00:08:45,680 --> 00:08:49,680
+lsm
+
+240
+00:08:46,320 --> 00:08:52,240
+and bpf cursor is a new lsm similar to
+
+241
+00:08:49,680 --> 00:08:55,279
+west linux of and palmer
+
+242
+00:08:52,240 --> 00:08:58,640
+but the policy is implemented
+
+243
+00:08:55,279 --> 00:08:58,640
+as ebpf programs
+
+244
+00:08:59,040 --> 00:09:04,880
+so that the user can create
+
+245
+00:09:02,560 --> 00:09:04,880
+create
+
+246
+00:09:05,920 --> 00:09:10,640
+more flexible policies in sea um and the
+
+247
+00:09:08,880 --> 00:09:12,560
+nice thing about it is you can also
+
+248
+00:09:10,640 --> 00:09:14,640
+do auditing in the exact same place
+
+249
+00:09:12,560 --> 00:09:17,680
+where you um
+
+250
+00:09:14,640 --> 00:09:19,519
+write your own security policy all of
+
+251
+00:09:17,680 --> 00:09:22,479
+that in c
+
+252
+00:09:19,519 --> 00:09:24,160
+we heavily pushed this upstream so we
+
+253
+00:09:22,480 --> 00:09:27,040
+are now at the patch v3
+
+254
+00:09:24,160 --> 00:09:27,519
+on the linux kernel mailing list and we
+
+255
+00:09:27,040 --> 00:09:28,880
+are
+
+256
+00:09:27,519 --> 00:09:31,040
+quite optimistic about the future of the
+
+257
+00:09:28,880 --> 00:09:34,800
+patch set
+
+258
+00:09:31,040 --> 00:09:36,560
+um the reason i'm here today is because
+
+259
+00:09:34,800 --> 00:09:37,680
+we are really interested in finding new
+
+260
+00:09:36,560 --> 00:09:40,560
+user for it
+
+261
+00:09:37,680 --> 00:09:41,439
+um as i say we use it internally for our
+
+262
+00:09:40,560 --> 00:09:42,959
+corporate fleet
+
+263
+00:09:41,440 --> 00:09:44,480
+but it can be used in lots of different
+
+264
+00:09:42,959 --> 00:09:45,920
+contexts for example at
+
+265
+00:09:44,480 --> 00:09:47,519
+another conference we heard of an
+
+266
+00:09:45,920 --> 00:09:50,640
+automotive company
+
+267
+00:09:47,519 --> 00:09:52,160
+and they were interested in restricting
+
+268
+00:09:50,640 --> 00:09:55,279
+access to the canvas
+
+269
+00:09:52,160 --> 00:09:58,399
+with ebpf programs
+
+270
+00:09:55,279 --> 00:10:01,120
+so i will walk you through
+
+271
+00:09:58,399 --> 00:10:02,800
+a very simple dummy example just to give
+
+272
+00:10:01,120 --> 00:10:05,839
+you an idea of
+
+273
+00:10:02,800 --> 00:10:08,880
+what it takes to write ksi policy
+
+274
+00:10:05,839 --> 00:10:10,240
+and uh what you can do with it so let's
+
+275
+00:10:08,880 --> 00:10:14,480
+start with something simple
+
+276
+00:10:10,240 --> 00:10:16,800
+um verse code please concentrate
+
+277
+00:10:14,480 --> 00:10:18,399
+the first thing you want to know is what
+
+278
+00:10:16,800 --> 00:10:21,599
+do you want to monitor so let's say you
+
+279
+00:10:18,399 --> 00:10:24,000
+are interested in and protect
+
+280
+00:10:21,600 --> 00:10:24,880
+events in the kernel so you go to the
+
+281
+00:10:24,000 --> 00:10:28,000
+same framework
+
+282
+00:10:24,880 --> 00:10:31,120
+and you find lsm hook that
+
+283
+00:10:28,000 --> 00:10:34,480
+that corresponds to m protect operations
+
+284
+00:10:31,120 --> 00:10:34,480
+there is one called filem protect
+
+285
+00:10:35,279 --> 00:10:38,480
+then you open your text editor you
+
+286
+00:10:37,120 --> 00:10:41,440
+create a c file you
+
+287
+00:10:38,480 --> 00:10:42,320
+start writing your vpf policy you use
+
+288
+00:10:41,440 --> 00:10:44,800
+some macros
+
+289
+00:10:42,320 --> 00:10:45,440
+that define the section of the elf file
+
+290
+00:10:44,800 --> 00:10:48,560
+in the
+
+291
+00:10:45,440 --> 00:10:52,079
+evpf object file the section will tell
+
+292
+00:10:48,560 --> 00:10:52,079
+the kernel where to attach the program
+
+293
+00:10:52,160 --> 00:10:58,319
+and then you your ebpf program
+
+294
+00:10:55,279 --> 00:11:00,959
+gets the same parameter as the lsm
+
+295
+00:10:58,320 --> 00:11:02,720
+hook in the camera so the signature of
+
+296
+00:11:00,959 --> 00:11:06,399
+the lsm hook is exposed
+
+297
+00:11:02,720 --> 00:11:08,640
+uh they are ebpf so in this case you get
+
+298
+00:11:06,399 --> 00:11:11,360
+a pointer to a vm restrict whatever that
+
+299
+00:11:08,640 --> 00:11:13,600
+is and to run sign logs
+
+300
+00:11:11,360 --> 00:11:15,680
+and then you just have to return value
+
+301
+00:11:13,600 --> 00:11:17,760
+for now we return zero
+
+302
+00:11:15,680 --> 00:11:19,760
+okay so what can you do once you are
+
+303
+00:11:17,760 --> 00:11:22,480
+inside the bpf program one of the nice
+
+304
+00:11:19,760 --> 00:11:24,160
+things you can do is use ppf helpers
+
+305
+00:11:22,480 --> 00:11:26,399
+since cbpf is so restricted by the
+
+306
+00:11:24,160 --> 00:11:28,560
+verifier the operations that you cannot
+
+307
+00:11:26,399 --> 00:11:31,760
+do there are things you that are
+
+308
+00:11:28,560 --> 00:11:35,599
+not possible within vpf so for that
+
+309
+00:11:31,760 --> 00:11:36,800
+um there are functions that are expo
+
+310
+00:11:35,600 --> 00:11:38,720
+that are implemented in the kernel and
+
+311
+00:11:36,800 --> 00:11:40,240
+exposed to a ppf program and if you have
+
+312
+00:11:38,720 --> 00:11:43,120
+programs can just call them
+
+313
+00:11:40,240 --> 00:11:44,800
+to something interesting so for example
+
+314
+00:11:43,120 --> 00:11:47,079
+if you want to get the current pid
+
+315
+00:11:44,800 --> 00:11:48,399
+there is a bpf helper called
+
+316
+00:11:47,079 --> 00:11:51,199
+dpfgetcurrentptid
+
+317
+00:11:48,399 --> 00:11:52,880
+and this one returns you the pdg8k what
+
+318
+00:11:51,200 --> 00:11:55,200
+i want you to remember here is there is
+
+319
+00:11:52,880 --> 00:11:58,320
+a nice api that you can use to access
+
+320
+00:11:55,200 --> 00:11:59,839
+interesting information in the camera
+
+321
+00:11:58,320 --> 00:12:01,200
+but if you want to do more in-depth
+
+322
+00:11:59,839 --> 00:12:03,760
+introspection in the kernel and you
+
+323
+00:12:01,200 --> 00:12:08,720
+really want to access
+
+324
+00:12:03,760 --> 00:12:08,720
+fields that are relevant to you
+
+325
+00:12:09,120 --> 00:12:12,959
+helpers don't scale very well every time
+
+326
+00:12:11,200 --> 00:12:14,399
+you want to add a helper to the kernel
+
+327
+00:12:12,959 --> 00:12:16,399
+you need to create a new function it has
+
+328
+00:12:14,399 --> 00:12:18,240
+an up code and
+
+329
+00:12:16,399 --> 00:12:19,519
+it takes time any phone so there is a
+
+330
+00:12:18,240 --> 00:12:22,720
+new feature in
+
+331
+00:12:19,519 --> 00:12:25,680
+the bpf next tree called btf
+
+332
+00:12:22,720 --> 00:12:27,680
+i'm sorry about the acronyms again and
+
+333
+00:12:25,680 --> 00:12:28,800
+what btf allows you to do essentially is
+
+334
+00:12:27,680 --> 00:12:31,439
+to
+
+335
+00:12:28,800 --> 00:12:33,120
+access structure fields by their name
+
+336
+00:12:31,440 --> 00:12:36,320
+instead of their offset
+
+337
+00:12:33,120 --> 00:12:38,079
+so that if you
+
+338
+00:12:36,320 --> 00:12:39,360
+migrate your ebpf program to a newer
+
+339
+00:12:38,079 --> 00:12:42,319
+kernel where the
+
+340
+00:12:39,360 --> 00:12:44,639
+structure layout changed if it's a
+
+341
+00:12:42,320 --> 00:12:46,320
+different architecture or whatever
+
+342
+00:12:44,639 --> 00:12:48,240
+you haven't downloaded the offset of the
+
+343
+00:12:46,320 --> 00:12:48,639
+field in the structure you access it by
+
+344
+00:12:48,240 --> 00:12:50,959
+name
+
+345
+00:12:48,639 --> 00:12:52,320
+and then once you load the ebpf program
+
+346
+00:12:50,959 --> 00:12:53,920
+into the kernel using for instance the
+
+347
+00:12:52,320 --> 00:12:57,279
+bpf
+
+348
+00:12:53,920 --> 00:13:01,199
+the memory access gets relocated
+
+349
+00:12:57,279 --> 00:13:03,600
+based on btf debug information it's
+
+350
+00:13:01,200 --> 00:13:04,320
+similar to dwarf you have access to the
+
+351
+00:13:03,600 --> 00:13:07,600
+structural
+
+352
+00:13:04,320 --> 00:13:11,360
+fields and padding
+
+353
+00:13:07,600 --> 00:13:12,639
+and the way it works for the ebpf
+
+354
+00:13:11,360 --> 00:13:14,079
+program writer is
+
+355
+00:13:12,639 --> 00:13:15,600
+first of all you have to define the part
+
+356
+00:13:14,079 --> 00:13:18,000
+of the structure that you are interested
+
+357
+00:13:15,600 --> 00:13:20,160
+in so as if you were
+
+358
+00:13:18,000 --> 00:13:21,760
+actually defining the vmware abstract
+
+359
+00:13:20,160 --> 00:13:24,639
+that exists in the camera
+
+360
+00:13:21,760 --> 00:13:25,680
+but you only you only use the fields
+
+361
+00:13:24,639 --> 00:13:29,440
+that interest you
+
+362
+00:13:25,680 --> 00:13:30,800
+in that case vm start and then from the
+
+363
+00:13:29,440 --> 00:13:32,959
+vpn program you can just access this
+
+364
+00:13:30,800 --> 00:13:35,839
+track
+
+365
+00:13:32,959 --> 00:13:35,839
+as an instructor
+
+366
+00:13:36,079 --> 00:13:40,638
+um another thing i want to talk about is
+
+367
+00:13:38,880 --> 00:13:42,320
+how you exchange data with user space so
+
+368
+00:13:40,639 --> 00:13:44,320
+i say there were different mechanisms i
+
+369
+00:13:42,320 --> 00:13:46,480
+will show the simplest example
+
+370
+00:13:44,320 --> 00:13:48,480
+um again i don't i think it's still in
+
+371
+00:13:46,480 --> 00:13:49,040
+bpf next and maybe not in the mainline
+
+372
+00:13:48,480 --> 00:13:51,600
+tree
+
+373
+00:13:49,040 --> 00:13:53,439
+right now but it will land there soon
+
+374
+00:13:51,600 --> 00:13:55,760
+you can define global variables
+
+375
+00:13:53,440 --> 00:13:56,959
+that are actually shared between the ebp
+
+376
+00:13:55,760 --> 00:13:59,120
+program and the user space
+
+377
+00:13:56,959 --> 00:14:00,160
+so in this case let's say we have an m
+
+378
+00:13:59,120 --> 00:14:01,199
+protect count
+
+379
+00:14:00,160 --> 00:14:02,880
+and every time we go through this
+
+380
+00:14:01,199 --> 00:14:04,240
+function we just implement the function
+
+381
+00:14:02,880 --> 00:14:05,920
+and then from the user space
+
+382
+00:14:04,240 --> 00:14:08,880
+when when you load the program you can
+
+383
+00:14:05,920 --> 00:14:12,160
+um you can look up the symbol of that
+
+384
+00:14:08,880 --> 00:14:13,360
+um global variable and you can read the
+
+385
+00:14:12,160 --> 00:14:16,319
+m protect count
+
+386
+00:14:13,360 --> 00:14:17,360
+value um any time you want from the user
+
+387
+00:14:16,320 --> 00:14:18,480
+space
+
+388
+00:14:17,360 --> 00:14:20,800
+i believe that the way it's actually
+
+389
+00:14:18,480 --> 00:14:23,199
+implemented is via
+
+390
+00:14:20,800 --> 00:14:23,839
+vpf maps but i'm not really familiar
+
+391
+00:14:23,199 --> 00:14:27,680
+with
+
+392
+00:14:23,839 --> 00:14:29,680
+implementation and then the last thing
+
+393
+00:14:27,680 --> 00:14:31,519
+that is important is how you do mac you
+
+394
+00:14:29,680 --> 00:14:33,359
+just change the return value so it's a
+
+395
+00:14:31,519 --> 00:14:35,600
+really dummy example it does
+
+396
+00:14:33,360 --> 00:14:36,800
+it's quite stupid but let's say that you
+
+397
+00:14:35,600 --> 00:14:40,399
+want to deny
+
+398
+00:14:36,800 --> 00:14:43,439
+and protect after the 100
+
+399
+00:14:40,399 --> 00:14:44,959
+100 and protect call
+
+400
+00:14:43,440 --> 00:14:47,120
+then you can write a simple condition
+
+401
+00:14:44,959 --> 00:14:48,800
+like this and um
+
+402
+00:14:47,120 --> 00:14:50,800
+and you can deny the operation or allow
+
+403
+00:14:48,800 --> 00:14:53,680
+it
+
+404
+00:14:50,800 --> 00:14:55,359
+so thank you very much i am very eager
+
+405
+00:14:53,680 --> 00:14:56,319
+to learn what you will be interested in
+
+406
+00:14:55,360 --> 00:14:58,400
+building with
+
+407
+00:14:56,320 --> 00:15:06,639
+ksi and
+
+408
+00:14:58,400 --> 00:15:13,839
+[Applause]
+
+409
+00:15:06,639 --> 00:15:13,839
+so any questions
+
+410
+00:15:16,720 --> 00:15:21,040
+uh so what parts of those of those
+
+411
+00:15:19,920 --> 00:15:23,519
+functionalities are
+
+412
+00:15:21,040 --> 00:15:24,959
+already in the main line and which are
+
+413
+00:15:23,519 --> 00:15:27,440
+because you mentioned the patch
+
+414
+00:15:24,959 --> 00:15:29,758
+v3 but then you mentioned something
+
+415
+00:15:27,440 --> 00:15:32,880
+about bpf next
+
+416
+00:15:29,759 --> 00:15:33,680
+so what parts are already like accepted
+
+417
+00:15:32,880 --> 00:15:36,240
+and which are
+
+418
+00:15:33,680 --> 00:15:38,839
+under discussion okay so there are
+
+419
+00:15:36,240 --> 00:15:41,199
+things that um
+
+420
+00:15:38,839 --> 00:15:42,639
+um part of bpf features when i talked
+
+421
+00:15:41,199 --> 00:15:43,519
+about global variables that you can
+
+422
+00:15:42,639 --> 00:15:46,800
+access
+
+423
+00:15:43,519 --> 00:15:49,120
+uh this is part of bpf uh we don't work
+
+424
+00:15:46,800 --> 00:15:50,479
+we don't upstream those we only work on
+
+425
+00:15:49,120 --> 00:15:53,199
+the lsm itself
+
+426
+00:15:50,480 --> 00:15:55,360
+i do what i wanted to show you with this
+
+427
+00:15:53,199 --> 00:15:58,319
+talk is how you would use our lsm
+
+428
+00:15:55,360 --> 00:16:00,160
+what we upstream is the lsm itself uh
+
+429
+00:15:58,320 --> 00:16:02,079
+and
+
+430
+00:16:00,160 --> 00:16:03,600
+it's the patch f3 that is sent to make
+
+431
+00:16:02,079 --> 00:16:06,319
+the main list
+
+432
+00:16:03,600 --> 00:16:08,000
+okay but the the feature you mentioned
+
+433
+00:16:06,320 --> 00:16:10,560
+uh for accessing the
+
+434
+00:16:08,000 --> 00:16:12,720
+um structure the structure btf this is
+
+435
+00:16:10,560 --> 00:16:13,518
+in bpf next and it's written by the bpf
+
+436
+00:16:12,720 --> 00:16:16,320
+maintainers
+
+437
+00:16:13,519 --> 00:16:16,720
+we don't develop this ourselves it's uh
+
+438
+00:16:16,320 --> 00:16:19,920
+but
+
+439
+00:16:16,720 --> 00:16:22,800
+the kernel part of that i guess
+
+440
+00:16:19,920 --> 00:16:23,199
+must exist and it is already there or
+
+441
+00:16:22,800 --> 00:16:25,599
+that's
+
+442
+00:16:23,199 --> 00:16:26,560
+it is in vpf next with the branch that
+
+443
+00:16:25,600 --> 00:16:29,680
+will land in
+
+444
+00:16:26,560 --> 00:16:33,119
+mainland soon and
+
+445
+00:16:29,680 --> 00:16:36,880
+another question is um well that
+
+446
+00:16:33,120 --> 00:16:37,759
+seems quite un similar approach to what
+
+447
+00:16:36,880 --> 00:16:41,120
+k probes
+
+448
+00:16:37,759 --> 00:16:44,880
+could do were you trying to use that or
+
+449
+00:16:41,120 --> 00:16:47,279
+it was remo i mean you didn't even
+
+450
+00:16:44,880 --> 00:16:48,480
+want to use them because well they are
+
+451
+00:16:47,279 --> 00:16:50,880
+oh we
+
+452
+00:16:48,480 --> 00:16:52,880
+did look into k-pops but we thought that
+
+453
+00:16:50,880 --> 00:16:54,880
+the lsm
+
+454
+00:16:52,880 --> 00:16:56,160
+hooks really map very well to what we
+
+455
+00:16:54,880 --> 00:16:59,040
+are interested in
+
+456
+00:16:56,160 --> 00:17:00,240
+and also if you try to hook into lsm
+
+457
+00:16:59,040 --> 00:17:03,519
+hooks with k-props
+
+458
+00:17:00,240 --> 00:17:05,039
+then you wouldn't um so there are things
+
+459
+00:17:03,519 --> 00:17:07,679
+that i haven't talked about here but
+
+460
+00:17:05,039 --> 00:17:09,439
+lsm are a bit more than hooks they are
+
+461
+00:17:07,679 --> 00:17:12,160
+hooks and also security blobs
+
+462
+00:17:09,439 --> 00:17:13,679
+the sm itself can store data uh within
+
+463
+00:17:12,160 --> 00:17:15,520
+the important data structure so if you
+
+464
+00:17:13,679 --> 00:17:18,319
+want to store something in taskstract
+
+465
+00:17:15,520 --> 00:17:20,160
+um lsm has an infrastructure for that
+
+466
+00:17:18,319 --> 00:17:22,399
+and if you use kprobs you can't do those
+
+467
+00:17:20,160 --> 00:17:26,400
+things
+
+468
+00:17:22,400 --> 00:17:26,400
+as nicely suddenly and
+
+469
+00:17:26,480 --> 00:17:33,360
+also the way lsm are called
+
+470
+00:17:30,080 --> 00:17:34,879
+inside the lsm hook cannot be replicated
+
+471
+00:17:33,360 --> 00:17:38,719
+with k pros so in the end
+
+472
+00:17:34,880 --> 00:17:39,360
+we we landed on that design where lsm
+
+473
+00:17:38,720 --> 00:17:42,400
+was a
+
+474
+00:17:39,360 --> 00:17:42,399
+better decision we thought
+
+475
+00:17:42,880 --> 00:17:47,840
+so some other questions yeah
+
+476
+00:17:48,400 --> 00:17:52,400
+do you provide example policies of what
+
+477
+00:17:50,640 --> 00:17:54,080
+you managed to do with this new lsm
+
+478
+00:17:52,400 --> 00:17:56,000
+yeah there is an example that we send as
+
+479
+00:17:54,080 --> 00:17:59,439
+part of the the
+
+480
+00:17:56,000 --> 00:18:01,600
+patch set where we so it's it's also an
+
+481
+00:17:59,440 --> 00:18:03,600
+protect example uh but actually there's
+
+482
+00:18:01,600 --> 00:18:04,080
+something interesting i i i just made
+
+483
+00:18:03,600 --> 00:18:06,719
+the
+
+484
+00:18:04,080 --> 00:18:08,480
+the shortest code i could i could yeah i
+
+485
+00:18:06,720 --> 00:18:09,919
+guess yes that was a short version but
+
+486
+00:18:08,480 --> 00:18:11,120
+i'm more interested in knowing you know
+
+487
+00:18:09,919 --> 00:18:12,960
+if you have more policies
+
+488
+00:18:11,120 --> 00:18:14,479
+that could show uh we planned our tour
+
+489
+00:18:12,960 --> 00:18:16,720
+that could get yeah
+
+490
+00:18:14,480 --> 00:18:18,960
+but it's still still quite early in the
+
+491
+00:18:16,720 --> 00:18:22,880
+upstreaming process so we
+
+492
+00:18:18,960 --> 00:18:25,280
+we will we will publish example policies
+
+493
+00:18:22,880 --> 00:18:26,160
+after it gets upstream then everything
+
+494
+00:18:25,280 --> 00:18:29,840
+is
+
+495
+00:18:26,160 --> 00:18:32,480
+finalized and uh my other question is uh
+
+496
+00:18:29,840 --> 00:18:34,320
+is it stackable with uh ac linux or
+
+497
+00:18:32,480 --> 00:18:36,160
+apartment you can still use them if you
+
+498
+00:18:34,320 --> 00:18:37,360
+use this service um i think so yeah it
+
+499
+00:18:36,160 --> 00:18:40,480
+really can here all right
+
+500
+00:18:37,360 --> 00:18:44,000
+thank you i am
+
+501
+00:18:40,480 --> 00:18:46,640
+sure you can so any other questions
+
+502
+00:18:44,000 --> 00:18:46,640
+someone else
+
+503
+00:18:49,679 --> 00:18:53,919
+so if no i guess we can finish the talk
+
+504
+00:18:52,559 --> 00:18:57,840
+and if you've got some other questions
+
+505
+00:18:53,919 --> 00:18:57,840
+you can talk to rest after the talk
+
+506
+00:19:01,280 --> 00:19:09,280
+thank you
+

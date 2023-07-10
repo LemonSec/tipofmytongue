@@ -1,0 +1,2301 @@
+﻿1
+00:00:00,250 --> 00:00:05,125
+>> So we're going to get this
+all going. >> Okay, thank you
+very much. Today I am going to
+
+2
+00:00:05,125 --> 00:00:10,750
+be presenting my topic which is
+'Meddle: Framework for piggy-
+back fuzzing as well as it's
+
+3
+00:00:10,750 --> 00:00:17,792
+pretty useful for reverse
+engineering, tool development as
+well. This presentation is not
+
+4
+00:00:17,792 --> 00:00:22,958
+affiliated. First I'm going to
+go over a little bit of
+background, then I'm going to go
+
+5
+00:00:22,958 --> 00:00:27,375
+into the Meddle Framework itself
+then I'm going to go into a few
+examples of using the framework
+
+6
+00:00:27,375 --> 00:00:34,083
+for several different purposes.
+One is, the first demo is
+attacking the OpenSource XRDP
+
+7
+00:00:34,083 --> 00:00:41,750
+server and then afterwards we
+are going to go into go into
+dumping the devise IO control
+
+8
+00:00:41,750 --> 00:00:47,125
+messages and I have written a
+parser to the capture into
+Windows Message Analyzer as well
+
+9
+00:00:47,125 --> 00:00:50,458
+and if we have time we're
+going to
+
+10
+00:00:50,458 --> 00:00:52,667
+>>[Audience] Can I
+interrupt momentarily? What's
+
+11
+00:00:52,667 --> 00:00:59,667
+the initiation with first time
+speakers? >> That thing that I
+said wasn't going to happen, is
+
+12
+00:00:59,667 --> 00:01:05,667
+happening. (Laughter) >.Speaker
+Okay, sorry about that guys. So
+first about myself, I'm visiting
+
+13
+00:01:30,125 --> 00:01:36,500
+from Vancouver, Canada. I
+currently work at Microsoft, the
+presentation is not affiliated.
+
+14
+00:01:36,500 --> 00:01:43,333
+I originally got interested in
+re-engineering from game
+hacking, if anyone cares -
+
+15
+00:01:43,333 --> 00:01:47,417
+probably not. So first I'm going
+to go over a little bit of
+background. There are several
+
+16
+00:01:47,417 --> 00:01:52,458
+different types of Fuzzing‚..and
+some of these overlap with one
+another. They aren't exactly
+
+17
+00:01:52,458 --> 00:01:57,625
+distinct. Like for example, File
+Format Fuzzing can be PDF for
+Microsoft Word meanwhile
+
+18
+00:01:57,625 --> 00:02:03,583
+protocol Fuzzing could be things
+like RDP; Application Fuzzing
+could be COM objects or API
+
+19
+00:02:03,583 --> 00:02:09,167
+calls and some of those cases
+you might be looking to say,
+escape a browser sandbox or it
+
+20
+00:02:09,167 --> 00:02:13,375
+could be for elevation of
+privilege on the local machine.
+And web application Fuzzing is
+
+21
+00:02:13,375 --> 00:02:19,583
+kind of a different story, it
+could be Joomia or web
+applications or looking for SQL
+
+22
+00:02:19,583 --> 00:02:24,708
+injections. There's quite an
+array of existing Fuzzing tools
+out there right now. A couple of
+
+23
+00:02:24,708 --> 00:02:30,667
+these worth particular mention
+is I would say is SPIKE from
+Immunity is a very popular
+
+24
+00:02:30,667 --> 00:02:37,250
+commercial one from my
+experience. Another couple worth
+mentioning is SAGE from
+
+25
+00:02:37,250 --> 00:02:41,333
+Microsoft that is a really
+fascinating one that I'm going
+to go to go into a touch of
+
+26
+00:02:41,333 --> 00:02:46,917
+detail on. The IOCtrlFuzzer from
+eSage Lab here is also really
+cool. It's actually running in
+
+27
+00:02:46,917 --> 00:02:51,708
+the Windows driver mode and it
+Fuzzes all the driver
+communication coming from the
+
+28
+00:02:51,708 --> 00:02:55,625
+driver itself. It's going to be
+related to one of our later
+examples where we're doing a
+
+29
+00:02:55,625 --> 00:03:01,458
+similar thing from user mode.
+There are quite a few different
+Fuzzing algorithms, these are
+
+30
+00:03:01,458 --> 00:03:08,625
+only a couple of the particular
+ones that I say are worth really
+good mentions. First, Naive
+
+31
+00:03:08,625 --> 00:03:13,750
+protocol fuzzing, basically you
+don't understand anything about
+the file protocol itself. You
+
+32
+00:03:13,750 --> 00:03:18,000
+would just basically randomly
+modify the data yourself and
+then load that data and
+
+33
+00:03:18,000 --> 00:03:21,417
+application itself and hope that
+it would crash. So you don't
+know anything about the file and
+
+34
+00:03:21,417 --> 00:03:25,708
+format, you don't know anything
+about the protocol. Protocol
+aware fuzzing is where you
+
+35
+00:03:25,708 --> 00:03:30,833
+understand certain thing about
+the, you might know a certain
+blob of blob of data represents
+
+36
+00:03:30,833 --> 00:03:35,750
+a unicode string for example,
+maybe a length followed by
+unicode string and then you
+
+37
+00:03:35,750 --> 00:03:40,083
+might try some specifically
+string related fuzzing attacks.
+You might try a format string,
+
+38
+00:03:40,083 --> 00:03:44,792
+you might try, might try
+increasing the length of the
+string to be extremely large as
+
+39
+00:03:44,792 --> 00:03:48,917
+well. So that's more protocol
+aware fuzzing where you have
+some underlying understanding of
+
+40
+00:03:48,917 --> 00:03:53,667
+the protocol. There's some real
+cool examples of more Advanced
+algorithms, Auto Fuzz
+
+41
+00:03:53,667 --> 00:03:59,958
+implemented a really cool
+protocol learning approach. You
+can give it multiple recordings
+
+42
+00:03:59,958 --> 00:04:07,333
+of say client to server
+communications and then it
+builds a model of what it thinks
+
+43
+00:04:07,333 --> 00:04:12,542
+that protocol is and then it
+starts fuzzing. So in that case
+it might recognize that this is
+
+44
+00:04:12,542 --> 00:04:17,792
+a string, this is a looks to be
+the command and this state leads
+to that state and then it might
+
+45
+00:04:17,792 --> 00:04:24,583
+try some protocol specific
+attacks. Feedback driven fuzzing
+is a really interesting approach
+
+46
+00:04:24,583 --> 00:04:30,000
+when ran by quite a few people
+and it's used by Sage for
+example. It's where you actually
+
+47
+00:04:30,000 --> 00:04:35,083
+do run time tracing of the
+application you are fuzzing and
+then you basically do
+
+48
+00:04:35,083 --> 00:04:39,917
+controlling of the fuzzed input
+and then you see how it affects
+execution of the application you
+
+49
+00:04:39,917 --> 00:04:43,833
+are fuzzing and then you can
+drive certain branches and
+conditions to be taken and
+
+50
+00:04:43,833 --> 00:04:50,917
+explore deeper non accessible
+code so that's a really cool
+approach. Google, well the code
+
+51
+00:04:50,917 --> 00:04:57,000
+coverage fuzzing was proven very
+effective by Google. Google had
+a big fuzzier project where they
+
+52
+00:04:57,000 --> 00:05:00,708
+fuzzed Adobe Flash, they built a
+collection of terabytes of Adobe
+Flash files, then they rendered
+
+53
+00:05:00,708 --> 00:05:06,708
+each one of the those Adobe
+Flash files in an instrumented
+version of Flash Finery, and
+
+54
+00:05:09,958 --> 00:05:15,208
+they recorded which code was
+executed with everyone of those
+flash files and then they
+
+55
+00:05:15,208 --> 00:05:19,500
+reduced, they did a reduction
+then, they reduced the set of
+flash files to the minimum
+
+56
+00:05:19,500 --> 00:05:24,667
+amount of flash that gets
+complete code coverage within
+the Adobe flash library. So that
+
+57
+00:05:24,667 --> 00:05:30,083
+way they know what they are now
+working with a set of Adobe
+flash files which gets code
+
+58
+00:05:30,083 --> 00:05:35,250
+coverage as they can get using a
+small set of files. Then they
+began using the fuzzing and that
+
+59
+00:05:35,250 --> 00:05:40,083
+was a really affective approach.
+I think they discovered over 200
+vulnerabilities that were
+
+60
+00:05:40,083 --> 00:05:46,292
+reported to Adobe. A very
+effective, very effective
+approach. So I'm going to give a
+
+61
+00:05:46,292 --> 00:05:51,458
+quick introduction to a few of
+the more basic fuzzing
+algorithms. This is an example
+
+62
+00:05:51,458 --> 00:05:56,667
+of file format fuzzing. True
+type fonts have been the target
+of attack. I've seen quite a few
+
+63
+00:05:56,667 --> 00:06:02,208
+cases where, the dokoo
+vulnerability, the dokoo
+government, well the dokoo apt,
+
+64
+00:06:06,875 --> 00:06:11,625
+it exported vulnerability in
+their true type library because
+you can actually embed them say
+
+65
+00:06:11,625 --> 00:06:16,000
+in a Word document and it will
+be installed when you render the
+Word document. And it's
+
+66
+00:06:16,000 --> 00:06:20,917
+actually, the true type fonts
+are actually rendered in the
+driver, in the kernel mode so
+
+67
+00:06:20,917 --> 00:06:26,167
+they are rendered by 132k.sis,
+so if you open that document it
+gets remote code execution at
+
+68
+00:06:26,167 --> 00:06:32,167
+the kernel level so it's already
+really screwed you. So, for a
+basic approach for fuzzing true
+
+69
+00:06:34,333 --> 00:06:41,000
+type font, you would actually
+take an existing true type font
+and modify some of the data
+
+70
+00:06:41,000 --> 00:06:45,333
+randomly creating thousands of
+variance in that true type font.
+And then you would install each
+
+71
+00:06:45,333 --> 00:06:49,375
+of those fonts, render each font
+and then you would be hoping for
+the blue screen of death crashed
+
+72
+00:06:49,375 --> 00:06:53,625
+report. As a really simple
+approach to it. But the true
+type font is actually really
+
+73
+00:06:53,625 --> 00:06:57,792
+complicated because it's got
+it's own virtual machine
+language built in there, which
+
+74
+00:06:57,792 --> 00:07:04,917
+they actually use for
+exploitive, which was rather
+impressive. So, another example
+
+75
+00:07:04,917 --> 00:07:10,917
+of simple protocol fuzzing could
+be RDP, RDP client connecting up
+to an RDP server and you're just
+
+76
+00:07:13,500 --> 00:07:16,958
+intercepting that network
+traffic that is being sent and
+received and you're just
+
+77
+00:07:16,958 --> 00:07:21,833
+modifying some of that data in
+transit hoping for either the
+client or server to crash to
+
+78
+00:07:21,833 --> 00:07:27,333
+indicate a vulnerability. So
+you'd queue up many of the RDP
+clients connecting up to the
+
+79
+00:07:27,333 --> 00:07:34,208
+server constantly modifying the
+data hoping for, hoping to
+reveal a problem. But the
+
+80
+00:07:34,208 --> 00:07:40,917
+problem here is that the later
+messages in the RDP protocol are
+actually encrypted messages, so
+
+81
+00:07:40,917 --> 00:07:46,000
+it might not have quite the
+desired affect that you'd like
+unless you, unless you, unless
+
+82
+00:07:46,000 --> 00:07:53,417
+you do the fuzzing before the
+encryption, internally within
+the RDP protocol. So an example.
+
+83
+00:07:53,417 --> 00:07:59,458
+How you can target the encrypted
+messages is you could do a
+client logic where you actually
+
+84
+00:07:59,458 --> 00:08:05,458
+implement the fuzzing logic
+before the encrypting logic. Or
+you can actually take files
+
+85
+00:08:09,792 --> 00:08:15,875
+approach starting the protocol
+as well for example. Lieu Wii
+gee and Romeo (indiscernible)
+
+86
+00:08:15,875 --> 00:08:22,250
+had everyone really worried back
+in early 2012. And when he
+posted his concept for an the
+
+87
+00:08:22,250 --> 00:08:28,250
+Microsoft RD[P] vulnerability,
+his proof of concept was
+(indiscernible) the server and
+
+88
+00:08:31,542 --> 00:08:37,792
+pipe in this binary provided. Do
+this many times and you're going
+to see the RD[P] vulnerability.
+
+89
+00:08:37,792 --> 00:08:44,042
+There was a lot of worries
+surrounding this vulnerability,
+because it was hugely
+
+90
+00:08:44,042 --> 00:08:48,042
+exploitable. A lot of people are
+(indiscernible)ing internet. And
+had a reliable (indiscernible)
+
+91
+00:08:48,042 --> 00:08:54,042
+promote for this. But lucky for
+us, it was a really hard
+vulnerability. And there's still
+
+92
+00:08:56,625 --> 00:09:02,625
+no publicly known exploitation
+really. I'm just going to skip
+over it quickly, because I don't
+
+93
+00:09:06,583 --> 00:09:12,708
+think we have enough time for
+that one. Now I'm going to go
+into metal. It's open source
+
+94
+00:09:12,708 --> 00:09:19,917
+frame work for vulnerability
+fuzzing. You're going to be
+writing most of the plug ins in
+
+95
+00:09:19,917 --> 00:09:25,083
+iron type font. Which is
+basically the same as python for
+most purposes. You can include
+
+96
+00:09:25,083 --> 00:09:32,875
+(indiscernible) as far as I can
+tell, it's mostly the same. The
+frame work itself is written in
+
+97
+00:09:32,875 --> 00:09:38,458
+(indiscernible). But you don't
+need to touch that. You want to
+add functionality at the higher
+
+98
+00:09:38,458 --> 00:09:44,458
+level. I put a lot of work into
+making it support both 32 and
+64bit process, so most
+
+99
+00:09:46,708 --> 00:09:52,375
+everything you do is independent
+64bit process. And
+unfortunately, it's Windows
+
+100
+00:09:52,375 --> 00:09:58,375
+only. I haven't.. I've only
+been running this on a 64bit
+O[S] myself. So I know it only
+
+101
+00:10:00,458 --> 00:10:03,542
+works on 64 bit or 32 against
+64bit processes. It still
+needs to be tested on a 32‚bit
+
+102
+00:10:03,542 --> 00:10:09,542
+O[S]. But hopefully there
+shouldn't be any problems there
+. So the goal really is to bring
+
+103
+00:10:15,542 --> 00:10:22,375
+real simplistic environment in
+order to write some fuzzing
+attacks. And to be extendable,
+
+104
+00:10:22,375 --> 00:10:28,000
+reproducible of course, because
+you want to know what caused the
+application crash to occur. So
+
+105
+00:10:28,000 --> 00:10:33,500
+the original goal is to go after
+piggy back fuzzing. So you
+already have an RD[P] already
+
+106
+00:10:33,500 --> 00:10:36,583
+for example. So the idea is to
+automate many of those RD[P]
+clients mucking up the RD[P]
+
+107
+00:10:36,583 --> 00:10:41,542
+server to implement the protocol
+for you. So the frame works
+consists of... you only have
+
+108
+00:10:41,542 --> 00:10:47,542
+to worry about the iron python
+stuff on the right. It has one
+controller which is controlling
+
+109
+00:10:54,333 --> 00:11:00,792
+the attack or measurement. And
+each controller can have
+multiple processes. Like you
+
+110
+00:11:00,792 --> 00:11:06,292
+might be running 20 RD[P]
+clients in parallel all
+connecting to an RD[P] server.
+
+111
+00:11:06,292 --> 00:11:13,500
+And each process implemented
+multiple target. Each target
+implements a set of hooks. So
+
+112
+00:11:13,500 --> 00:11:18,875
+you might have one target with
+win soft ten and one target for
+win soft receive. And you might
+
+113
+00:11:18,875 --> 00:11:24,125
+have a target that handle
+information to the process for
+example as well coordinating
+
+114
+00:11:24,125 --> 00:11:32,083
+resolution. How generally how
+the controller, how you set up
+the controllers is it's... the
+
+115
+00:11:32,083 --> 00:11:37,833
+default controller have it
+running right now does a
+measurement baseline, first of
+
+116
+00:11:37,833 --> 00:11:43,208
+all. So it'll connect... it'll
+create, say, an RD[P] client
+connecting up to the RD[P]
+
+117
+00:11:43,208 --> 00:11:51,208
+server. And in that process,
+it'll record say 100 messages
+sent to the server and three
+
+118
+00:11:51,208 --> 00:11:57,167
+messages received. So that's
+instrumented as the baseline,
+first of all. So you might...
+
+119
+00:11:57,167 --> 00:12:01,458
+in that process, it creates an
+RDP client, connects to the
+server, it'll probably wait
+
+120
+00:12:01,458 --> 00:12:04,750
+about five or ten seconds and
+then it'll terminate the
+process. And you have the
+
+121
+00:12:04,750 --> 00:12:08,042
+measurement for baseline.
+Currently it's not the most
+intelligent way of doing it,
+
+122
+00:12:08,042 --> 00:12:15,125
+Once it begins carrying out the
+attack, it creates, it sets up a
+work or two of processes. So
+
+123
+00:12:15,125 --> 00:12:22,000
+it'll be running 20 RD[P]
+clients in parallel. You say
+those RD[P] clients is set up
+
+124
+00:12:22,000 --> 00:12:27,875
+being ordered to attack a
+specific occurrence of specific
+events. So the first process
+
+125
+00:12:27,875 --> 00:12:34,250
+that's cued up, its goal is to
+attach the first message of the
+sent data. The second process
+
+126
+00:12:34,250 --> 00:12:39,042
+that's cued up is to attach the
+first mess OJ of the received
+data. The second and third one
+
+127
+00:12:39,042 --> 00:12:44,333
+is.. second message of
+the sent. So in this way, you're
+fuzzying all the (indiscernible)
+
+128
+00:12:44,333 --> 00:12:50,875
+messages... the early
+messages from the protocol. So
+it's just making sure your
+
+129
+00:12:50,875 --> 00:12:57,250
+fuzzing the really deep messages
+in this case. And similarly,
+you're spending equal amount of
+
+130
+00:12:57,250 --> 00:13:04,375
+time fuzzying the event type. If
+you have an event that happens a
+thousand times vs. a up coL, you
+
+131
+00:13:04,375 --> 00:13:09,833
+want to spent an equal amount of
+time, even though one occurs
+much more frequently than the
+
+132
+00:13:09,833 --> 00:13:15,833
+other. So I'm going to go really
+quickly through what target
+looks like. Everything is
+
+133
+00:13:18,000 --> 00:13:24,833
+designed to be really quite
+simple. So there isn't much code
+actually here. So for the
+
+134
+00:13:24,833 --> 00:13:29,500
+target, all you have to do is to
+implement the initialized
+(indiscernible) for whenever
+
+135
+00:13:29,500 --> 00:13:35,542
+grade point is hit. In the
+initialize, you just want to
+copy the stuff that's there. And
+
+136
+00:13:35,542 --> 00:13:40,583
+you want to modify these
+parameters in which functions
+and libraries will be
+
+137
+00:13:40,583 --> 00:13:48,208
+considered. The hook X words and
+symbols... library will
+be considered for hooking. And
+
+138
+00:13:48,208 --> 00:13:53,208
+the symbols, if you enable the
+symbols library from the store,
+and hook in @ symbols that are
+
+139
+00:13:53,208 --> 00:13:59,208
+loaded as well. The libraries
+just specify the libraries that
+will be considered. You can
+
+140
+00:14:01,917 --> 00:14:09,000
+specify them
+implicitly... soft is
+being targeted. Or you could
+
+141
+00:14:09,000 --> 00:14:14,250
+specify it by a (indiscernible)
+statement. Similarly for
+functions. You specify either
+
+142
+00:14:14,250 --> 00:14:22,208
+the function names explicitly
+considered, or you specify red
+jacks which is an includes for
+
+143
+00:14:22,208 --> 00:14:27,875
+the functions to be considered.
+So all this for initialize. And
+great point hit is a bit more
+
+144
+00:14:27,875 --> 00:14:33,917
+complicated. For the parameters,
+first you specify the
+parameters, which is basically
+
+145
+00:14:33,917 --> 00:14:39,375
+the arguments that are coming in
+at the great point location. And
+enyou have to give it a calling
+
+146
+00:14:39,375 --> 00:14:44,917
+convention and according to the
+processes it's attached to. So,
+this case, it's a pascal naming
+
+147
+00:14:44,917 --> 00:14:48,875
+convention.... it needs
+to be transformed according to
+the process because it may be a
+
+148
+00:14:48,875 --> 00:14:54,000
+32 or a 64 process which
+influences the calling
+convention. And then it
+
+149
+00:14:54,000 --> 00:15:00,167
+transforms it into a registries
+specifications as well as a
+stack specification. So it's
+
+150
+00:15:00,167 --> 00:15:04,458
+going to make a sense in a
+second. But it basically gives
+you an argument structure which
+
+151
+00:15:04,458 --> 00:15:10,375
+has the parsed arguments. And
+then you can access the
+verticals naturally. So this is
+
+152
+00:15:10,375 --> 00:15:13,708
+what the parameters
+specification looks like. This
+in this case we're hooking win
+
+153
+00:15:13,708 --> 00:15:19,708
+soft send. This does support
+complex structures is a fairly
+simple structure type. So we
+
+154
+00:15:22,083 --> 00:15:27,125
+have, this is ordered, so make
+sure to put the arguments in
+order here. And here's...
+
+155
+00:15:27,125 --> 00:15:33,000
+here's the buffer. If you look
+at the type of the buffer, that
+means it's a pointer. Because
+
+156
+00:15:33,000 --> 00:15:38,708
+it's... the type of it is not
+numb. In this case it's pointing
+to a method that knows how to
+
+157
+00:15:38,708 --> 00:15:44,167
+parse this specific types. In
+this case, it's parsed the
+buffer. And that buffer is going
+
+158
+00:15:44,167 --> 00:15:48,125
+to be a thick sized buffer,
+which is according to the
+argument (indiscernible). So if
+
+159
+00:15:48,125 --> 00:15:54,333
+the size variable is ten, you
+want it to only have .2 buffer
+size of ten. So that's handed in
+
+160
+00:15:54,333 --> 00:16:01,792
+through the type art for the
+reference to the argument. And
+the fuzz, the fuzz variable you
+
+161
+00:16:01,792 --> 00:16:06,667
+have for each of the variable
+it's what the default action is
+you do with the w that
+
+162
+00:16:06,667 --> 00:16:12,375
+parameter. In this case, it's no
+fuzz for all of them. We only
+want to fuzz the contents of the
+
+163
+00:16:12,375 --> 00:16:15,958
+buffer. We don't want to be
+fuzzing the contents of the
+buffer for example, in this
+
+164
+00:16:15,958 --> 00:16:21,958
+case. This is what the parse
+buffer looks like. If it
+returns just the same format.
+
+165
+00:16:26,208 --> 00:16:33,542
+Can be an array of parameters.
+But in this case, it just
+returns... it just searches
+
+166
+00:16:33,542 --> 00:16:38,542
+upwards for the already resolved
+argument. It needs to look up
+the size, what size of this,
+
+167
+00:16:38,542 --> 00:16:44,542
+this buffer is and then it just
+adds it as a field called
+capital buffer. So, it... so
+
+168
+00:16:46,792 --> 00:16:53,167
+here, once you have the parse
+arguments, you can just do two
+string. And it's going to print
+
+169
+00:16:53,167 --> 00:16:59,417
+all of them. So here you can see
+the buffer is stored in RDX. And
+the contents of the buffer is
+
+170
+00:16:59,417 --> 00:17:05,875
+stored at that address. And you
+can see the contents of the
+buffer, it's dumped hex 13 bytes
+
+171
+00:17:05,875 --> 00:17:11,375
+of the buffer there. You can
+reference these fields
+naturally. So you can do the
+
+172
+00:17:11,375 --> 00:17:16,875
+argument for the buffer. That is
+referring to the pointer of the
+buffer at that 2 string. And now
+
+173
+00:17:16,875 --> 00:17:21,583
+it's printing out the pointer as
+well as the contents of the
+buffer. Or you could go right
+
+174
+00:17:21,583 --> 00:17:27,292
+ahead right to the argument
+itself. You can do arguments to
+the buffer and then dereference
+
+175
+00:17:27,292 --> 00:17:32,333
+the pointer to the buffer two
+strings. So in the line above
+there, you see, it does
+
+176
+00:17:32,333 --> 00:17:37,083
+arguments, dot size dot
+two inch. So when you
+reference a parameter like this
+
+177
+00:17:37,083 --> 00:17:41,042
+you need to convert it to a
+type. So, in a case like this
+this, you're converting the size
+
+178
+00:17:41,042 --> 00:17:45,250
+to integer, because otherwise it
+doesn't know how you want to
+access that underline type
+
+179
+00:17:45,250 --> 00:17:52,917
+example. So you can access them
+naturally once you have it
+parsed properly like that. The
+
+180
+00:17:52,917 --> 00:17:58,083
+process is much simpler, which
+is great. The only thing you
+have to change here is in the
+
+181
+00:17:58,083 --> 00:18:03,458
+initialize, just specify the
+path to EXE as well as the
+command line. You can attach to
+
+182
+00:18:03,458 --> 00:18:08,708
+an existing running process if
+you include a pit instead. In
+which case it'll ignore the
+
+183
+00:18:08,708 --> 00:18:14,333
+arguments and attach the already
+running process if you include a
+pid as well, and it will ignore
+
+184
+00:18:14,333 --> 00:18:17,333
+those 2 arguments directly
+attached to a already running
+process instead. On the debugger
+
+185
+00:18:17,333 --> 00:18:21,917
+attach, use the exact template
+in the examples except all you
+do is specify the targets
+
+186
+00:18:21,917 --> 00:18:26,708
+that'll be added. You can add
+multiple targets, but here is
+only adding the windsock_send to
+
+187
+00:18:26,708 --> 00:18:32,917
+the target in this case. So the
+controller, the controller is
+the brains of it. It runs the
+
+188
+00:18:32,917 --> 00:18:38,208
+measurements operates. As well
+as the workers queue processes,
+which are running the attacks.
+
+189
+00:18:38,208 --> 00:18:45,208
+The... here's an example of
+how you do the measurement in
+the process. The measurement
+
+190
+00:18:45,208 --> 00:18:50,375
+phase. You need to create a
+break point handler which the
+break point handler decides what
+
+191
+00:18:50,375 --> 00:18:56,875
+to do with the fuzz information.
+In this case, we just want to
+measure the fuzz blocks, for
+
+192
+00:18:56,875 --> 00:19:02,125
+example, so you just create a
+break point measurement. You
+create that process rdp and when
+
+193
+00:19:02,125 --> 00:19:08,000
+you tell the controller engine
+to attach to it, the rdp process
+is already running with all the
+
+194
+00:19:08,000 --> 00:19:12,792
+instrumentation. So just wait
+five second nd copy the measure
+out and stop it. Now you're
+
+195
+00:19:12,792 --> 00:19:19,542
+finish your baseline. So you
+took your rdp client, you hook
+the windsock 32 function as it
+
+196
+00:19:19,542 --> 00:19:24,250
+was loaded. And connected to the
+server recorded all the
+communication, waiting five
+
+197
+00:19:24,250 --> 00:19:31,042
+seconds and then terminate. The
+target brake point measurement
+just calls the target brake
+
+198
+00:19:31,042 --> 00:19:38,542
+point handler recording a
+result. So now we finish the
+measurement part of it for the
+
+199
+00:19:38,542 --> 00:19:44,792
+attack part of it. You just
+implement a brake point attack
+instead of brake point
+
+200
+00:19:44,792 --> 00:19:50,208
+measurement. The brake point
+attack you tell it which event
+name as well as the number, the
+
+201
+00:19:50,208 --> 00:19:54,417
+event number you would like to
+attach. But you don't need to
+change any of this normally. You
+
+202
+00:19:54,417 --> 00:19:58,292
+can just use the existing
+template that's there for
+controller. So normally, you
+
+203
+00:19:58,292 --> 00:20:05,375
+just want to change the target
+and process implementation. So
+now I'm going to jump into the
+
+204
+00:20:05,375 --> 00:20:11,333
+the first example of
+fuzzing... the xrdp server. So
+it's rdp server. I've got it
+
+205
+00:20:11,333 --> 00:20:17,333
+running on the VM right here. So
+this is the example of the
+target implementation here. So
+
+206
+00:20:23,250 --> 00:20:27,667
+it's actually... this one is
+very... what we've been going
+through in an example so far
+
+207
+00:20:27,667 --> 00:20:33,583
+targeting windsock 32 just a
+send example. So here we're only
+hooking export to the library.
+
+208
+00:20:55,417 --> 00:21:02,042
+So here I'm running it with a
+verbose flag so it connected up
+to the rdp server. So it's just
+
+209
+00:21:02,042 --> 00:21:08,458
+printing the buffers that are
+sent to the rdp server. You can
+see these later messages here.
+
+210
+00:21:08,458 --> 00:21:12,958
+You don't see any clear text
+here because they're actually
+encrypted blogs in the later
+
+211
+00:21:12,958 --> 00:21:19,667
+communication. But if I go up to
+the earlier communication, you
+can see clearly in some of the
+
+212
+00:21:19,667 --> 00:21:25,167
+first messages, you see some
+clear ASCII. It's connected to
+the server. That's my computer
+
+213
+00:21:25,167 --> 00:21:32,417
+name here for example. In this
+case it's, I just thought I'd
+show you what it looks like
+
+214
+00:21:32,417 --> 00:21:39,125
+printing the buffers before I
+carry out the attack. Now I'm
+running attack mode. And the
+
+215
+00:21:39,125 --> 00:21:45,625
+first thing it does is a
+measurement, a process
+measurement right now. So it's
+
+216
+00:21:45,625 --> 00:21:51,000
+recording the baseline. So it's
+printed out that there were 20
+messages involved with
+
+217
+00:21:51,000 --> 00:21:58,958
+connecting unto that rod server.
+And involved with 257 blocks.
+All the possible data is
+
+218
+00:21:58,958 --> 00:22:05,500
+decomposed into eight byte
+chunks, blocks of fuzzable
+block. Each one is considered a
+
+219
+00:22:05,500 --> 00:22:11,500
+fuzz block, call add fuzz block
+with some logic. I I've got it
+set up to run 25 of the rdp
+
+220
+00:22:13,583 --> 00:22:20,417
+clients in parallel right now.
+Let many go to control options.
+I'm running 25 of them parallel
+
+221
+00:22:20,417 --> 00:22:26,292
+right now. And they're going to
+each time out at five seconds
+and keep 20 of them running
+
+222
+00:22:26,292 --> 00:22:32,292
+continuously. It usually only
+takes a matter of probably about
+one minute or so in order to
+
+223
+00:22:34,583 --> 00:22:39,458
+crash the rdp server right now.
+Right now I'm running the old
+version which is vulnerable to
+
+224
+00:22:39,458 --> 00:22:45,375
+vulnerability disclosures. So
+you can see here, they're
+attacking all the different
+
+225
+00:22:45,375 --> 00:22:51,375
+events of it right now. Some of
+the message blocks are coming up
+because it's failing to connect
+
+226
+00:22:51,375 --> 00:22:55,208
+because it's buzzing with some
+of the early messages and
+causing it to lose connection.
+
+227
+00:22:55,208 --> 00:23:01,208
+If I give it a few seconds, I'm
+hoping we're going to crash it.
+And then I'll show you what the
+
+228
+00:23:04,750 --> 00:23:10,750
+crash dump looks like. Come on.
+Last time we ran it, it only
+took about 15 seconds or so.
+
+229
+00:23:14,542 --> 00:23:20,542
+I'm hoping this is going to
+crash in a second. It seems to
+be taking a little bit longer
+
+230
+00:23:29,833 --> 00:23:35,833
+here than last time. That's
+okay. We're going to show
+another example in a second
+
+231
+00:23:42,208 --> 00:23:47,583
+which is going to speed it up a
+little bit. So back to the
+example, it still isn't ideal
+
+232
+00:23:47,583 --> 00:23:52,583
+because you see the encrypted
+messages there deeper in the
+communication. Although we are
+
+233
+00:23:52,583 --> 00:23:56,750
+fuzzing that data, we're not
+fuzzing it properly, we don't
+know what type of encryption is
+
+234
+00:23:56,750 --> 00:24:01,083
+applied to it, maybe there's
+some check, some checks assigned
+to it as well as for example.
+
+235
+00:24:05,250 --> 00:24:11,458
+So, the problem is, now we have
+to figure out, we want to hook
+it before encryption as well.
+
+236
+00:24:11,458 --> 00:24:19,000
+So, we may not know necessarily
+what the encryption protocols
+involved there so, I'm just
+
+237
+00:24:19,000 --> 00:24:25,000
+going to be including target,
+which also paints the symbols
+along with the data. That is
+
+238
+00:24:28,375 --> 00:24:34,375
+this one right oh here. It's
+explicitly specifying the
+mstscax. That's the library
+
+239
+00:24:37,250 --> 00:24:43,250
+responsible for the rdp within
+the client. And for the
+functions include statement, it
+
+240
+00:24:45,833 --> 00:24:51,125
+included everything. So
+everything internal symbol is
+hooked in this case. And it's
+
+241
+00:24:51,125 --> 00:24:55,792
+only hooking this symbols
+instead of the exports. And the
+brake point hit event with
+
+242
+00:24:55,792 --> 00:25:02,458
+handler only prints the event
+name. So then we get an internal
+view of what it looks like. I
+
+243
+00:25:02,458 --> 00:25:08,458
+have to add that already. So now
+this is printing all the
+internal symbols but it's also
+
+244
+00:25:16,958 --> 00:25:22,750
+printing the sent data at the
+same time. So we have a frame of
+reference. I'm just going to
+
+245
+00:25:22,750 --> 00:25:28,750
+wait until it connects here.
+What I'm going to look at is
+what's happening right before
+
+246
+00:25:31,292 --> 00:25:37,292
+it's sends one of those
+encrypted messages internally.
+Sorry guys. So this one here is
+
+247
+00:26:01,917 --> 00:26:07,125
+encrypted blobs that's being
+sent right here. And you see
+just before it, it's calling all
+
+248
+00:26:07,125 --> 00:26:11,458
+these send buffer functions. I
+originally went ahead and looked
+and thought let's have a look at
+
+249
+00:26:11,458 --> 00:26:18,750
+what the parameters are for
+these send buffers before
+encryption. See here, the
+
+250
+00:26:18,750 --> 00:26:24,792
+encryption function is this RC4
+which is being called shortly
+before the function is called.
+
+251
+00:26:24,792 --> 00:26:32,708
+So these send buffer functions,
+I found actually had really
+complex definitions that I
+
+252
+00:26:32,708 --> 00:26:38,292
+wasn't able to easily reverse
+it. But for the RC4 all you have
+to do is print, say define four
+
+253
+00:26:38,292 --> 00:26:44,458
+arguments and all those pointers
+to buffers and just do print and
+you can clearly see what, based
+
+254
+00:26:44,458 --> 00:26:47,958
+on the contents of that, it's
+clear to see which is which.
+Which argument is which. So that
+
+255
+00:26:47,958 --> 00:26:53,958
+RC4 is the easiest one to hook.
+So now, in this case, now this
+last target is attacking just
+
+256
+00:26:58,833 --> 00:27:04,833
+that RC4 encrypted data. So
+here's it's just attacking the
+mstscax DLL. RC4, which this one
+
+257
+00:27:10,958 --> 00:27:17,333
+is a really simle definition,
+just key size buffer. So now I'm
+going to go ahead and carry that
+
+258
+00:27:17,333 --> 00:27:23,333
+out for the buffer. Now you can
+see the data here is looking
+much better now. You can see
+
+259
+00:27:26,875 --> 00:27:34,292
+msptc.exe there. And here you
+can see my local machine time
+zone as well as my local IP
+
+260
+00:27:34,292 --> 00:27:39,500
+address as well. So now the
+data's looking much better, it's
+looking not encrypted which is
+
+261
+00:27:39,500 --> 00:27:46,000
+great. Now I'm going to carry
+out that attack. Which fuzzing
+the rdp buffer, instead of
+
+262
+00:27:46,000 --> 00:27:51,542
+attacking the windsock messages.
+So again it does the measure
+operation right there. And it's
+
+263
+00:27:51,542 --> 00:27:57,125
+found that there were 19 calls
+to RC4. And of course
+150 blocks of fuzzed data. So I
+
+264
+00:27:57,125 --> 00:28:03,125
+was carrying out the same
+process here. And if you look
+closely at the screen you
+
+265
+00:28:05,833 --> 00:28:10,625
+might... actually, I already
+passed it. All right, that one's
+successful. Now connect to the
+
+266
+00:28:10,625 --> 00:28:16,417
+server because it's no longer
+there. I'm going to pull up the
+crash dump to show you what that
+
+267
+00:28:16,417 --> 00:28:22,708
+looks like. Although it's a
+fixed vulnerability now which
+could be one of a few. This one
+
+268
+00:28:22,708 --> 00:28:28,708
+is the xrdp bit map compare with
+the CRC. It had a fixed size
+array of the bit, in their bit
+
+269
+00:28:32,792 --> 00:28:38,167
+map cashing. And it's over
+flown, it's passed the ends of
+the bounds of the array. Here
+
+270
+00:28:38,167 --> 00:28:43,625
+you can see the self-pointer
+is clearly incorrect, it's just
+a four by value, bf 5f. And it
+
+271
+00:28:43,625 --> 00:28:47,958
+tried to dereference a variable
+off it. Which caused it to
+crash. This vulnerability has
+
+272
+00:28:47,958 --> 00:28:53,958
+fixed now, which is great.
+(Applause.) That's it for the
+rdp example. I'd be really
+
+273
+00:29:09,167 --> 00:29:15,167
+careful about using open source
+software for stuff. Which might
+often be connected to the
+
+274
+00:29:19,583 --> 00:29:26,125
+internet. In this case, the rdp
+code, there were quite a lot of
+pretty bad vulnerabilities in it
+
+275
+00:29:26,125 --> 00:29:29,708
+that can be exploited from
+remote execution even before
+authentication. Even before
+
+276
+00:29:29,708 --> 00:29:34,417
+authentication. You should be
+careful about what code you have
+in your computers which is
+
+277
+00:29:34,417 --> 00:29:41,250
+listening. Especially if it's
+connected to the internet. So
+this right here is one of the
+
+278
+00:29:41,250 --> 00:29:46,625
+other vulnerabilities where it
+creates a buffer, just 8KB for
+example, it doesn't even check
+
+279
+00:29:46,625 --> 00:29:51,917
+when it copies data into it. So
+if the client says, oh, the size
+of the the field is actually
+
+280
+00:29:51,917 --> 00:29:56,542
+bigger than that, it'll actually
+over flow that then. That's
+another dangerous one. So now
+
+281
+00:29:56,542 --> 00:30:04,333
+the second part of the
+presentation, I'm going to do a
+quick demonstration of hooking
+
+282
+00:30:04,333 --> 00:30:10,583
+device control messages. So
+device IO control messages are
+for low level communication firm
+
+283
+00:30:10,583 --> 00:30:16,458
+from user mode up to drivers.
+Drivers run in the kernel mode.
+They can be used for things such
+
+284
+00:30:16,458 --> 00:30:22,333
+as low level disk reading and
+writing as an example. But it's
+used for all sorts of devices
+
+285
+00:30:22,333 --> 00:30:27,375
+and drivers. So you might wonder
+what kind of devices are
+communicated with a normal
+
+286
+00:30:27,375 --> 00:30:35,083
+basis. This is a list of devices
+that are connected to notepad.
+So if you start with notepad,
+
+287
+00:30:35,083 --> 00:30:42,167
+you just do file save as, and
+browse the file save as dialogue
+that comes up, browse the
+
+288
+00:30:42,167 --> 00:30:47,250
+network locations. This is the
+list of the devices that are
+communicated with. Like for
+
+289
+00:30:47,250 --> 00:30:52,792
+example, I don't know what most
+of these are to be honest. NSI,
+point manager, lanmandatagram,
+
+290
+00:30:52,792 --> 00:30:59,708
+et cetera. These ones here you
+see with the... these are
+actually just file system
+
+291
+00:30:59,708 --> 00:31:04,083
+accesses directly here. But in
+the add min divide NAD, in video
+add min device for example..
+
+292
+00:31:04,083 --> 00:31:06,500
+so here's a quick example
+of.. I'm not going to
+actually be attacking the device
+
+293
+00:31:06,500 --> 00:31:12,500
+IO messages in this case. You
+want to be careful if you do as
+well. For example, we're a disk
+
+294
+00:31:20,375 --> 00:31:26,375
+write operation, you could be
+corrupting stuff for your disk
+as well. So this is... here,
+
+295
+00:31:42,250 --> 00:31:49,042
+is actually going to be hooking
+ntdll hooking device profile.
+Even though it says file in the
+
+296
+00:31:49,042 --> 00:31:53,375
+same, that's actually the...
+that's actually the lower level
+device IO control function.
+
+297
+00:31:53,375 --> 00:31:59,625
+Device IO control file. And for
+when the break point hits, it's
+got more of a complex type here.
+
+298
+00:31:59,625 --> 00:32:05,917
+But again, this isn't a good
+example for complex type
+structures. None of these are
+
+299
+00:32:05,917 --> 00:32:11,042
+really complex structures in the
+case. input buffer, output
+buffer - both of them are fix
+
+300
+00:32:11,042 --> 00:32:16,792
+length buffers. So it's rather
+simple calling convention. And
+when this is hit, it's actually
+
+301
+00:32:16,792 --> 00:32:24,792
+just logging it to a... to
+basically csv file, which with
+the database 64 encoded. Which
+
+302
+00:32:24,792 --> 00:32:30,792
+then we're going to load into a
+windows message analyzer using a
+parser. So this is just printing
+
+303
+00:32:36,958 --> 00:32:44,250
+the data again. I've got it set
+upright now to often you might
+want to increase the surface
+
+304
+00:32:44,250 --> 00:32:50,417
+it's testing by pairing it say
+with an autoscript. In this
+case, using an autoscript for
+
+305
+00:32:50,417 --> 00:32:56,417
+each process it attaches to to
+bring the style as well. To
+(indiscernible). Server. Here's
+
+306
+00:33:00,917 --> 00:33:06,083
+what some of the log looks like
+in terms of who it's
+communicating with. At the ver
+
+307
+00:33:06,083 --> 00:33:09,750
+start it initializes within the
+admin device, ADVM. I'm not sure
+what any of this communication
+
+308
+00:33:09,750 --> 00:33:15,750
+is. It's sending to the ADVM
+admin device, but also recording
+the output buffers as well. So
+
+309
+00:33:24,250 --> 00:33:31,167
+when I ran that there, it was
+actually saving the data to
+capture that log there. It's
+
+310
+00:33:31,167 --> 00:33:38,208
+basically just a csv file. And
+I've written and included
+window's message analyzer parser
+
+311
+00:33:38,208 --> 00:33:43,125
+for it. This is kind of what the
+parser looks like. It's rather
+really simple. It's, the only
+
+312
+00:33:43,125 --> 00:33:49,292
+tricky part is the base 64
+coding . And I'm just going to
+load up that capture file right
+
+313
+00:33:49,292 --> 00:33:55,292
+now. So right now, it's... the
+UI's been designed for multiple
+processes. So you can capture
+
+314
+00:34:00,333 --> 00:34:07,958
+with multiple processes. But in
+this case, we only have notepad,
+you could say expand this and
+
+315
+00:34:07,958 --> 00:34:15,125
+it's grouped by the device it's
+communicating with. And each of
+these, I've separated the input
+
+316
+00:34:15,125 --> 00:34:20,125
+and out put buffers into two
+different messages currently.
+And they decoded datas right
+
+317
+00:34:20,125 --> 00:34:25,875
+here for example. So the idea
+is, with Windows... for those
+of you who aren't familiar with
+
+318
+00:34:25,875 --> 00:34:31,458
+Windows message analyzer, I
+think it was released in the
+last year by Microsoft. It's a
+
+319
+00:34:31,458 --> 00:34:37,458
+replacement to the Microsoft
+network monitor tool. The
+message analyzer is made to
+
+320
+00:34:37,458 --> 00:34:42,458
+capture more generic messages.
+So it capture and analyze
+network traffic for example. But
+
+321
+00:34:42,458 --> 00:34:48,625
+it's more designed for all types
+of Windows messages, so it could
+capture, it could process log
+
+322
+00:34:48,625 --> 00:34:53,875
+files and event logs et cetera.
+It's much more generic then just
+network for all sorts of
+
+323
+00:34:53,875 --> 00:35:00,833
+window's messages. And if,
+although I haven't expanded on
+it, you can actually extend this
+
+324
+00:35:00,833 --> 00:35:08,417
+as capture, this parser to parse
+the protocol for each of the
+individual devices you are
+
+325
+00:35:08,417 --> 00:35:13,542
+communicating with. You can
+write a parser for an admin
+device you start reverse
+
+326
+00:35:13,542 --> 00:35:19,542
+engineering protocol for how
+it's communicating. Okay, and
+I've just got one last simple
+
+327
+00:35:28,458 --> 00:35:34,458
+account with you. So one last
+example here is say you're
+writing a sandbox using the
+
+328
+00:35:39,458 --> 00:35:46,583
+frame work. Right now it does
+support things like process
+forking. But to be honest I've
+
+329
+00:35:46,583 --> 00:35:50,708
+found a performance isn't quite
+what I wanted for currently for
+a sandbox. You're going to find
+
+330
+00:35:50,708 --> 00:35:56,708
+it's a little bit slower
+unfortunately. So in this case,
+I've written targets that handle
+
+331
+00:36:03,708 --> 00:36:10,875
+several different things. Like
+it's adding handle target, which
+is a resolver for a handle
+
+332
+00:36:10,875 --> 00:36:17,250
+identifier for names as well as
+it's adding a target to find
+what the clean modules are in
+
+333
+00:36:17,250 --> 00:36:22,792
+the application. So by default,
+it's currently not a really
+intelligent way of doing it.
+
+334
+00:36:22,792 --> 00:36:28,875
+It's assumes the first is module
+loaded is malicious and any
+module loaded afterwards is
+
+335
+00:36:28,875 --> 00:36:34,458
+considered clean. But say if
+they create (indiscernible)
+inject into it, that is also
+
+336
+00:36:34,458 --> 00:36:40,458
+considered malicious, so only
+properly loaded modules is
+considered clean afterwards. And
+
+337
+00:36:40,458 --> 00:36:46,458
+it's logging registry. And this
+log on trusted as logging, the
+exports of all dll's only if
+
+338
+00:36:48,958 --> 00:36:53,583
+they're only logging at the
+function called incurred if it's
+coming from untrusted code.
+
+339
+00:36:53,583 --> 00:36:58,792
+Because you don't want to see
+every internal function that's
+called. You want to see only if
+
+340
+00:36:58,792 --> 00:37:05,208
+it's coming from untrusted code
+for example. And targets fork,
+is hooking the only the great
+
+341
+00:37:05,208 --> 00:37:10,500
+process function. So when it
+does create a process function,
+it will fork and attach on to
+
+342
+00:37:10,500 --> 00:37:16,458
+the other process that's being
+created as well. But the
+performance isn't quite what I
+
+343
+00:37:16,458 --> 00:37:22,458
+wanted unfortunately. But I'm
+working on improvement s for
+that. So here we're running
+
+344
+00:37:33,542 --> 00:37:39,542
+notepad audi XE as a quick,
+simple example. Now I'm just
+going to bring up the
+
+345
+00:37:41,792 --> 00:37:46,833
+(indiscernible) dialogue, that
+will cause some registry
+changes. But as you can see,
+
+346
+00:37:46,833 --> 00:37:52,833
+it's not the fastest,
+unfortunately. Give it a second,
+sorry. It should be almost
+
+347
+00:38:10,250 --> 00:38:16,250
+there. I'm working on some..
+I started working on a code in
+order to upgrade it right now
+
+348
+00:38:19,167 --> 00:38:25,167
+using a native debugger engine.
+And in in the future, I'd like
+to upgrade that to be not...
+
+349
+00:38:27,542 --> 00:38:33,542
+to actually attaching it to a
+debugger. I want it to be more
+native based. Not debugger based
+
+350
+00:38:36,083 --> 00:38:43,292
+to improve the performance. So
+I'm just going to close that
+now. Like I said, embarrassing
+
+351
+00:38:43,292 --> 00:38:49,292
+slow. >>	Sorry? >>	(Inaudible -
+off mic). >>	You're right. That
+is coming from each of the
+
+352
+00:39:12,458 --> 00:39:17,542
+targets individually decides
+whether they want to hook the
+DLL. So each of the targets want
+
+353
+00:39:17,542 --> 00:39:22,042
+to hook each of the DLLs. One of
+decides they want to hook 0. One
+of them decides it wants to hook
+
+354
+00:39:22,042 --> 00:39:28,042
+three of the exports. Those are
+from two different targets, why
+you are seeing duplicate there.
+
+355
+00:39:31,333 --> 00:39:37,875
+Yup. So now that's actually
+created the log that, this
+events dot log here. Which is
+
+356
+00:39:37,875 --> 00:39:45,750
+the log file that recorded for
+that notepad run. So if the
+registry handler is recording
+
+357
+00:39:45,750 --> 00:39:51,750
+the query values, which is all
+of those. So this is where
+notepad itself is starting up.
+
+358
+00:39:55,833 --> 00:40:01,667
+It's recording all the
+export.. well whenever an
+export of any library is called
+
+359
+00:40:01,667 --> 00:40:06,208
+from untrusted code, it's
+printing it out here. So you can
+see what it's doing internally.
+
+360
+00:40:09,708 --> 00:40:14,250
+And you should only be seeing
+what malicious code is calling
+in. Like if kernel 32 calls NTD
+
+361
+00:40:14,250 --> 00:40:20,250
+function is automatically
+filtered out here. Yeah right
+now, it's automatically
+
+362
+00:40:37,292 --> 00:40:43,292
+dereferencing strings at low
+level. So this right here comes
+common control dialogue 32
+
+363
+00:40:45,333 --> 00:40:51,000
+choose font W. That's when I
+clicked on change the font. So
+it's been recorded here. And
+
+364
+00:40:51,000 --> 00:40:58,333
+you'll see shortly after, it's
+going to set the values...
+yeah, so now it's setting all
+
+365
+00:40:58,333 --> 00:41:06,167
+the registry values as I hit
+okay, for example. This is
+changing all the font settings.
+
+366
+00:41:06,167 --> 00:41:13,000
+And here, for example, it's
+changing it to the Times New
+Roman default font for notepad.
+
+367
+00:41:13,000 --> 00:41:19,000
+And then you basically quits.
+One other thing is that I forgot
+to mention with the
+
+368
+00:41:23,750 --> 00:41:30,417
+vulnerability fuzzing, each time
+it's creating a process, each
+process is logging into a file
+
+369
+00:41:30,417 --> 00:41:34,792
+what changes it's made in the
+connection process. And it's
+located in this log files
+
+370
+00:41:34,792 --> 00:41:40,042
+folder. So when you have that
+rdp crash, for example, at the
+end of my last example, you can
+
+371
+00:41:40,042 --> 00:41:46,000
+go ahead and refer to this log
+files folder and see how to
+reproduce the crash for example.
+
+372
+00:41:46,000 --> 00:41:52,167
+So it's going up sequentially.
+So the last ones which
+communicated with it, were these
+
+373
+00:41:52,167 --> 00:41:58,167
+bottom ones. So in these log
+files, you have this one didn't
+quite reach there. So these last
+
+374
+00:42:07,875 --> 00:42:12,125
+processes I think were created
+but weren't able to connect to
+the server, that's why we're not
+
+375
+00:42:12,125 --> 00:42:18,125
+seeing any fuzzing. Normally
+you'd see something like this
+where you'd see the brake point
+
+376
+00:42:28,083 --> 00:42:33,167
+handler. You see the arguments
+are passed in. So you want...
+if you want to reproduce this
+
+377
+00:42:33,167 --> 00:42:37,833
+attack, you have to create a
+brake point attack sequentially
+use this seed number to
+
+378
+00:42:37,833 --> 00:42:43,833
+reproduce the fuzzing decision.
+And that tells you.. now
+it's buzzing block three from
+
+379
+00:42:45,917 --> 00:42:51,875
+that from value of this to value
+of that for example. So it uses
+several different algorithms
+
+380
+00:42:51,875 --> 00:42:58,542
+because of the changing of
+keyword value. So in this case,
+it'll either flip a few random
+
+381
+00:42:58,542 --> 00:43:04,542
+bits or modify a random byte in
+that keyword or modify a random
+word or D word in that section.
+
+382
+00:43:07,750 --> 00:43:14,875
+So, I think that about wraps up
+my presentation here. Thanks
+very much for attending
+
+383
+00:43:14,875 --> 00:43:21,250
+everyone. (Applause.) Any
+questions? I just realized I'll
+take... okay yeah sure.
+
+384
+00:43:21,250 --> 00:43:25,667
+>>	(Inaudible). >>	Yup. Thank
+you. Okay, thank you. 
+

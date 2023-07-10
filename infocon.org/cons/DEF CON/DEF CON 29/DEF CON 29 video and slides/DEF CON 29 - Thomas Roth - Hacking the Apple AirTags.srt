@@ -1,0 +1,3488 @@
+﻿1
+00:00:00,730 --> 00:00:04,603
+- Hey, welcome to my talk,
+Hacking the Apple AirTags.
+
+2
+00:00:04,603 --> 00:00:05,770
+My name is Thomas Roth.
+
+3
+00:00:05,770 --> 00:00:08,300
+I'm a security researcher from Germany,
+
+4
+00:00:08,300 --> 00:00:11,610
+and I also run a YouTube channel
+called stacksmashing where
+
+5
+00:00:11,610 --> 00:00:13,330
+I talk about reverse engineering,
+
+6
+00:00:13,330 --> 00:00:16,100
+hardware hacking and
+all that kind of stuff.
+
+7
+00:00:16,100 --> 00:00:17,070
+If you wanna contact me,
+
+8
+00:00:17,070 --> 00:00:20,750
+you can find me on Twitter
+at ghidraninja and hope you
+
+9
+00:00:20,750 --> 00:00:22,083
+enjoy this presentation.
+
+10
+00:00:23,270 --> 00:00:25,130
+Now, before we start,
+
+11
+00:00:25,130 --> 00:00:28,940
+let's quickly talk about what
+I will talk about in the next
+
+12
+00:00:28,940 --> 00:00:30,180
+few minutes.
+
+13
+00:00:30,180 --> 00:00:31,120
+So first of all,
+
+14
+00:00:31,120 --> 00:00:33,850
+the texts that you will see
+are local attacks and they all
+
+15
+00:00:33,850 --> 00:00:35,110
+require hardware access.
+
+16
+00:00:35,110 --> 00:00:39,040
+And so I will not show any
+drive by exploits or anything
+
+17
+00:00:39,040 --> 00:00:41,263
+that can be exploited
+over Bluetooth or so.
+
+18
+00:00:42,660 --> 00:00:43,530
+Second of all,
+
+19
+00:00:43,530 --> 00:00:46,350
+a lot of the info in this
+talk is based on reverse
+
+20
+00:00:46,350 --> 00:00:49,340
+engineering, and so there
+might be minor mistakes.
+
+21
+00:00:49,340 --> 00:00:52,160
+I maybe get something small wrong or so.
+
+22
+00:00:52,160 --> 00:00:55,220
+And so the devil is always in
+the details and SI don't have
+
+23
+00:00:55,220 --> 00:00:56,770
+access to the source.
+
+24
+00:00:56,770 --> 00:00:59,800
+Everything is really based
+on reverse engineering
+
+25
+00:00:59,800 --> 00:01:01,260
+and this one.
+
+26
+00:01:01,260 --> 00:01:04,820
+And my real goal with this
+is to just have some fun with
+
+27
+00:01:04,820 --> 00:01:07,563
+hardware hacking and explore
+a device in a fun way.
+
+28
+00:01:09,350 --> 00:01:11,690
+Now, as always,
+
+29
+00:01:11,690 --> 00:01:14,440
+this kind of work is not
+possible without a lot of other
+
+30
+00:01:14,440 --> 00:01:15,273
+people.
+
+31
+00:01:15,273 --> 00:01:17,830
+And so there are a couple of
+people that I wanna thank.
+
+32
+00:01:17,830 --> 00:01:19,300
+First off, Colin O'Flynn,
+
+33
+00:01:19,300 --> 00:01:22,270
+who's one of the persons that
+nuts sniped me with the out
+
+34
+00:01:22,270 --> 00:01:23,810
+texts in the first place.
+
+35
+00:01:23,810 --> 00:01:27,660
+Second of all, Lennart Wouters and Plonk,
+
+36
+00:01:27,660 --> 00:01:31,430
+who I did a lot of reverse
+engineering with and who I did a
+
+37
+00:01:31,430 --> 00:01:34,890
+lot of experiments with
+and so on, Jiska Classen,
+
+38
+00:01:34,890 --> 00:01:38,230
+who gave me a lot of information
+on the Apple U1 Chip.
+
+39
+00:01:38,230 --> 00:01:42,330
+And helped me build with
+some articles details,
+
+40
+00:01:42,330 --> 00:01:43,373
+David Hulton,
+
+41
+00:01:44,600 --> 00:01:49,600
+who provided very in-depth
+images of chips and provided the
+
+42
+00:01:50,940 --> 00:01:53,170
+layering of the PCB and so on,
+
+43
+00:01:53,170 --> 00:01:55,250
+and also limited results with how
+
+44
+00:01:55,250 --> 00:01:57,960
+to a lot of the work you're
+about to see would not be
+
+45
+00:01:57,960 --> 00:02:01,660
+possible because he found the
+actual vulnerability Indiana
+
+46
+00:02:01,660 --> 00:02:03,653
+52 last year.
+
+47
+00:02:05,950 --> 00:02:10,210
+Now, before we jump in, let's
+talk about the AirTags itself.
+
+48
+00:02:10,210 --> 00:02:13,590
+Now the AirTag is a Bluetooth key finder,
+
+49
+00:02:13,590 --> 00:02:15,810
+so really nothing too special,
+
+50
+00:02:15,810 --> 00:02:18,063
+at least I thought so when I first saw it,
+
+51
+00:02:18,940 --> 00:02:22,690
+but what's unique about the
+AirTag is that it contains
+
+52
+00:02:22,690 --> 00:02:25,813
+Ultra-Wideband, that if we
+are the so-called U1 Chip.
+
+53
+00:02:26,750 --> 00:02:30,483
+Ultra-Wideband is a technology
+that can allow, for example,
+
+54
+00:02:30,483 --> 00:02:34,210
+iPhones that have Ultra-Wideband
+to very precisely locate
+
+55
+00:02:34,210 --> 00:02:37,340
+the Air-Tag, and we're talking
+like centimeter precise,
+
+56
+00:02:37,340 --> 00:02:40,350
+including direction
+finding and so on here.
+
+57
+00:02:40,350 --> 00:02:43,250
+So this is something really
+neat and Ultra-Wideband works
+
+58
+00:02:43,250 --> 00:02:46,220
+in like, I think the five
+to six gigahertz range.
+
+59
+00:02:46,220 --> 00:02:49,470
+And so it's really high
+frequency and very difficult to
+
+60
+00:02:49,470 --> 00:02:52,060
+analyze using cheap equipment.
+
+61
+00:02:52,060 --> 00:02:55,250
+And so you really need
+very high end SDR sensor to
+
+62
+00:02:55,250 --> 00:02:56,360
+analyze it.
+
+63
+00:02:56,360 --> 00:02:59,360
+But now we have a very
+cheap device that contains
+
+64
+00:02:59,360 --> 00:03:03,010
+this U1 Chip that we can
+potentially use for research
+
+65
+00:03:03,010 --> 00:03:04,253
+on Ultra-Wideband.
+
+66
+00:03:05,980 --> 00:03:08,660
+The second cool feature
+is the "Find My" Network.
+
+67
+00:03:08,660 --> 00:03:12,400
+And so basically when
+you use the Apple AirTag,
+
+68
+00:03:12,400 --> 00:03:15,780
+any iPhone that carries into
+the Bluetooth range of it will
+
+69
+00:03:15,780 --> 00:03:19,770
+report the location of your
+AirTag to Apple servers.
+
+70
+00:03:19,770 --> 00:03:22,540
+And this is all done with privacy in mind.
+
+71
+00:03:22,540 --> 00:03:24,510
+I don't really know too much about it,
+
+72
+00:03:24,510 --> 00:03:27,530
+but it's a really cool feature
+because if you, let's say,
+
+73
+00:03:27,530 --> 00:03:29,920
+lose your AirTag in France,
+
+74
+00:03:29,920 --> 00:03:32,670
+you'd be able to locate it
+from Germany as long as any
+
+75
+00:03:32,670 --> 00:03:35,370
+iPhone walks past.
+
+76
+00:03:35,370 --> 00:03:38,740
+I also think it's funny cause
+we can PDSS that it's a key
+
+77
+00:03:38,740 --> 00:03:39,660
+finder, but you know,
+
+78
+00:03:39,660 --> 00:03:43,587
+it doesn't actually attach
+to a key without a separate
+
+79
+00:03:43,587 --> 00:03:44,523
+accessories.
+
+80
+00:03:46,510 --> 00:03:48,060
+Now, given all this,
+
+81
+00:03:48,060 --> 00:03:52,370
+I was pretty on interested in
+the AirTags and I didn't buy
+
+82
+00:03:52,370 --> 00:03:55,630
+any and so on, and I really
+had zero interest in them.
+
+83
+00:03:55,630 --> 00:03:59,450
+That is until one morning, I
+wake up and I get a message,
+
+84
+00:03:59,450 --> 00:04:03,290
+hey, here are the flash
+contents of the AirTags
+
+85
+00:04:03,290 --> 00:04:07,070
+and attached to that message
+was a dump of the SPI-Flash
+
+86
+00:04:07,070 --> 00:04:08,780
+of the AirTags.
+
+87
+00:04:08,780 --> 00:04:10,700
+Now, being a hardware hacker,
+
+88
+00:04:10,700 --> 00:04:14,300
+I obviously at least had to
+peek inside of this dump.
+
+89
+00:04:14,300 --> 00:04:19,300
+And so I ran hex dump on it
+and I immediately saw this.
+
+90
+00:04:19,320 --> 00:04:22,660
+And so you might see those
+strings on the right side here.
+
+91
+00:04:22,660 --> 00:04:26,030
+And if you read them backwards,
+you might see that they are,
+
+92
+00:04:26,030 --> 00:04:29,440
+they basically spell out things such as,
+
+93
+00:04:29,440 --> 00:04:32,400
+firm root or NVRAM root,
+
+94
+00:04:32,400 --> 00:04:35,750
+CILG root and so on and so forth.
+
+95
+00:04:35,750 --> 00:04:38,770
+And if you've worked with
+Apple embedded devices,
+
+96
+00:04:38,770 --> 00:04:43,600
+you might immediately recognize
+this as being the F-Type
+
+97
+00:04:43,600 --> 00:04:45,320
+of an RTKit firmware.
+
+98
+00:04:45,320 --> 00:04:48,520
+RTKit is the embedded operating
+system that Apple uses
+
+99
+00:04:48,520 --> 00:04:52,840
+in a lot of very small
+devices, such as the AirPods.
+
+100
+00:04:52,840 --> 00:04:55,410
+And if you ever see such a
+firmware and you wanna extract
+
+101
+00:04:55,410 --> 00:04:58,110
+it, you can use a tool called ftab-dump,
+
+102
+00:04:58,110 --> 00:04:59,860
+which makes it really, really easy.
+
+103
+00:05:01,250 --> 00:05:05,940
+Now, knowing that this runs
+RTKit already made it slightly
+
+104
+00:05:05,940 --> 00:05:07,300
+more interesting to me,
+
+105
+00:05:07,300 --> 00:05:09,800
+but after digging into this for a bit,
+
+106
+00:05:09,800 --> 00:05:13,900
+it turns out that this firmware
+is actually the U1 firmware,
+
+107
+00:05:13,900 --> 00:05:15,603
+and so that's pretty interesting.
+
+108
+00:05:16,720 --> 00:05:18,570
+Then scrolling further
+through the hex dump,
+
+109
+00:05:18,570 --> 00:05:21,130
+I also discovered a couple
+of function names such
+
+110
+00:05:21,130 --> 00:05:25,423
+as
+nrf_fstorage_init.nrf_storage_write.nrf_storage_
+
+111
+00:05:26,290 --> 00:05:31,290
+erase, and so on and so
+forth, And that is nRF52 code.
+
+112
+00:05:31,430 --> 00:05:34,260
+Now, nRF52 is a very common
+microcontroller family that
+
+113
+00:05:34,260 --> 00:05:38,410
+you can basically find in any,
+almost any key finder device.
+
+114
+00:05:38,410 --> 00:05:40,550
+And so I'm very familiar with this chip.
+
+115
+00:05:40,550 --> 00:05:43,170
+And so I thought that
+was kind of interesting.
+
+116
+00:05:43,170 --> 00:05:46,170
+And so after realizing that
+maybe the AirTags are a good
+
+117
+00:05:46,170 --> 00:05:49,130
+platform to, you know, analyze the U1,
+
+118
+00:05:49,130 --> 00:05:51,010
+play with U1 firmware.
+
+119
+00:05:51,010 --> 00:05:53,253
+I have a look at the
+nRF firmware and so on.
+
+120
+00:05:54,500 --> 00:05:57,723
+I was nerd sniped, and I knew
+that I need to buy AirTag.
+
+121
+00:05:59,110 --> 00:06:02,750
+So I went to the Apple store
+and I grabbed a couple of
+
+122
+00:06:02,750 --> 00:06:03,860
+AirTags.
+
+123
+00:06:03,860 --> 00:06:06,430
+And I tried to open one
+up by, you know, prying
+
+124
+00:06:06,430 --> 00:06:10,030
+open the backside, and
+I immediately broke it.
+
+125
+00:06:10,030 --> 00:06:13,120
+Like I somehow ripped off this
+inductor, because the AirTags
+
+126
+00:06:13,120 --> 00:06:15,910
+are really, really sensitive
+when you try to open them,
+
+127
+00:06:15,910 --> 00:06:17,880
+they have a very thin PCB.
+
+128
+00:06:17,880 --> 00:06:20,640
+And if you notch on the wrong side of it,
+
+129
+00:06:20,640 --> 00:06:22,500
+you will destroy it.
+
+130
+00:06:22,500 --> 00:06:25,540
+So if you try to open
+up an AirTag at home,
+
+131
+00:06:25,540 --> 00:06:28,390
+always try to use these three points.
+
+132
+00:06:28,390 --> 00:06:31,160
+It's basically where the battery
+compartment screws into the
+
+133
+00:06:31,160 --> 00:06:33,020
+backside of the device.
+
+134
+00:06:33,020 --> 00:06:36,543
+And there, it's relatively
+safe to open up the AirTags.
+
+135
+00:06:37,530 --> 00:06:41,330
+And so after destroying my
+first AirTag in literally the
+
+136
+00:06:41,330 --> 00:06:44,450
+first minute that I unpacked
+it, I managed to open a second
+
+137
+00:06:44,450 --> 00:06:47,053
+one, and this is basically what you see.
+
+138
+00:06:47,960 --> 00:06:50,930
+You have a device with a ton
+of test points and so on,
+
+139
+00:06:50,930 --> 00:06:53,420
+a couple of passives, such as capacitors,
+
+140
+00:06:53,420 --> 00:06:56,270
+the battery contacts and the
+big coil in the middle of which
+
+141
+00:06:56,270 --> 00:07:00,020
+is actually the speaker of
+the AirTag and nothing really
+
+142
+00:07:00,020 --> 00:07:03,650
+interesting except the small
+chip on the bottom right here.
+
+143
+00:07:03,650 --> 00:07:05,180
+This is the accelerometer.
+
+144
+00:07:05,180 --> 00:07:08,033
+And we will have some fun
+with that one later on,
+
+145
+00:07:09,400 --> 00:07:11,310
+if you remove the PCB,
+
+146
+00:07:11,310 --> 00:07:14,210
+which is really annoying because
+you basically have to pry
+
+147
+00:07:14,210 --> 00:07:17,523
+it out, cause it's all glued
+very tightly into the AirTags.
+
+148
+00:07:18,410 --> 00:07:20,520
+You will get to see this.
+
+149
+00:07:20,520 --> 00:07:23,460
+And this is the interesting
+side because this is where all
+
+150
+00:07:23,460 --> 00:07:27,420
+the, you know, integrated
+circuits, controllers and so on
+
+151
+00:07:27,420 --> 00:07:30,180
+are, let's start with the biggest one.
+
+152
+00:07:30,180 --> 00:07:33,130
+This big silver chip here
+is the Apple U1 chip,
+
+153
+00:07:33,130 --> 00:07:35,240
+the Ultra-Whiteband chip.
+
+154
+00:07:35,240 --> 00:07:36,970
+And if you look next to it,
+
+155
+00:07:36,970 --> 00:07:40,130
+we have the nice antenna connector.
+
+156
+00:07:40,130 --> 00:07:42,900
+Now what's interesting about
+the U1 chip is that so far,
+
+157
+00:07:42,900 --> 00:07:45,610
+it was only available in
+very expensive devices,
+
+158
+00:07:45,610 --> 00:07:48,290
+such as the iPhone or
+the Apple Watch also.
+
+159
+00:07:48,290 --> 00:07:50,170
+Not really in a price
+range where, you know,
+
+160
+00:07:50,170 --> 00:07:54,070
+you can buy 10 sold out of the
+U1 then experiment with it.
+
+161
+00:07:54,070 --> 00:07:55,570
+But now with the AirTags,
+
+162
+00:07:55,570 --> 00:07:59,660
+we have a new U1 available
+for like 30 or 40 bucks.
+
+163
+00:07:59,660 --> 00:08:02,700
+And so this is I think, really
+going to be interesting.
+
+164
+00:08:02,700 --> 00:08:05,700
+And I think we will see
+a lot of research with U1
+
+165
+00:08:05,700 --> 00:08:07,390
+chip from the Apple AirTags.
+
+166
+00:08:08,750 --> 00:08:12,020
+To the left off the U1
+chip, we have the SPI-Flash,
+
+167
+00:08:12,020 --> 00:08:15,380
+and this is the SPI-Flash that
+I got the dump to that next
+
+168
+00:08:15,380 --> 00:08:18,040
+slide me towards the
+AirTags in the first place.
+
+169
+00:08:18,040 --> 00:08:19,290
+To the left of the SPI-Flash,
+
+170
+00:08:19,290 --> 00:08:23,620
+we have the nRF 52 aquatics
+and microcontroller.
+
+171
+00:08:23,620 --> 00:08:28,480
+Now, this microcontroller is
+super common in any IOT device
+
+172
+00:08:28,480 --> 00:08:29,313
+nowadays.
+
+173
+00:08:29,313 --> 00:08:31,850
+And so it was clear that
+this chip will tend to the
+
+174
+00:08:31,850 --> 00:08:35,470
+Bluetooth, most probably the
+iPhone communication, NFC,
+
+175
+00:08:36,470 --> 00:08:40,090
+and it's also known to be
+vulnerable to a fault-injection
+
+176
+00:08:40,090 --> 00:08:41,000
+attack.
+
+177
+00:08:41,000 --> 00:08:44,040
+And so basically, this chip
+can be locked down so you can
+
+178
+00:08:44,040 --> 00:08:46,480
+prevent people from debugging it,
+
+179
+00:08:46,480 --> 00:08:51,480
+but there's a known vulnerability
+found by limited results
+
+180
+00:08:53,270 --> 00:08:57,100
+that allows us to resurrect
+the debug interface using float
+
+181
+00:08:57,100 --> 00:08:59,350
+injection, as you will see in a bit.
+
+182
+00:08:59,350 --> 00:09:01,530
+And so at this point in time,
+
+183
+00:09:01,530 --> 00:09:04,570
+having the AirTag open
+and seeing the nRF52,
+
+184
+00:09:04,570 --> 00:09:06,920
+the plan for me at least was clear,
+
+185
+00:09:06,920 --> 00:09:11,030
+find the testpads and pins to
+connect an SWD programmer to
+
+186
+00:09:11,030 --> 00:09:14,390
+the device, unlocked the
+chip using fault-injection,
+
+187
+00:09:14,390 --> 00:09:17,220
+and then hopefully gain access
+to the firmware to be able to
+
+188
+00:09:17,220 --> 00:09:21,630
+analyze it and see how does the
+AirTag work is all the logic
+
+189
+00:09:21,630 --> 00:09:25,180
+in the nRF52 is all the
+logic may be done in the U1
+
+190
+00:09:25,180 --> 00:09:28,380
+and the nRF just acts as
+kind of a modem or so.
+
+191
+00:09:28,380 --> 00:09:31,670
+And so I was really curious
+at this point in time to see
+
+192
+00:09:31,670 --> 00:09:33,570
+what is actually running on the nRF52.
+
+193
+00:09:35,534 --> 00:09:40,534
+Now, normally when you open a new device,
+
+194
+00:09:42,350 --> 00:09:46,250
+you have to prove all those
+pins and so on and figure out
+
+195
+00:09:46,250 --> 00:09:49,360
+which one is actually the SWD interface.
+
+196
+00:09:49,360 --> 00:09:52,090
+And you have to solar of
+components because the nRF,
+
+197
+00:09:52,090 --> 00:09:54,650
+for example, doesn't really
+have any contacts you can probe
+
+198
+00:09:54,650 --> 00:09:55,510
+and so on.
+
+199
+00:09:55,510 --> 00:09:58,340
+But luckily for me, Colin O'Flyn
+
+200
+00:09:58,340 --> 00:10:02,020
+already did all that work,
+and so on his Twitter,
+
+201
+00:10:02,020 --> 00:10:05,070
+you can see that he created
+this nicely annotated version of
+
+202
+00:10:05,070 --> 00:10:06,150
+the AirTag.
+
+203
+00:10:06,150 --> 00:10:10,940
+And he also found out which
+testpads on the backside of the
+
+204
+00:10:10,940 --> 00:10:14,680
+AirTag are the paths that we
+need to connect our debugger
+
+205
+00:10:14,680 --> 00:10:15,513
+to.
+
+206
+00:10:15,513 --> 00:10:19,742
+And he also already tried to
+program the debugger and he
+
+207
+00:10:19,742 --> 00:10:24,742
+also already tried to program the
+
+208
+00:10:26,280 --> 00:10:31,270
+NRF 52 and found out that
+indeed, Apple had locked down the
+
+209
+00:10:31,270 --> 00:10:33,220
+debugging interface.
+
+210
+00:10:33,220 --> 00:10:34,053
+Now,
+
+211
+00:10:35,040 --> 00:10:39,440
+this numbering scheme that
+Collin created kind of became
+
+212
+00:10:39,440 --> 00:10:41,920
+standard in the AirTag hacking scene.
+
+213
+00:10:41,920 --> 00:10:46,080
+And so if you are looking
+for some info on the AirTags,
+
+214
+00:10:46,080 --> 00:10:48,730
+as you see like some pin
+numbers, also somewhere,
+
+215
+00:10:48,730 --> 00:10:51,330
+this is probably the numbering
+scheme that everyone is
+
+216
+00:10:51,330 --> 00:10:52,530
+referencing to.
+
+217
+00:10:52,530 --> 00:10:53,760
+And thanks to Colin,
+
+218
+00:10:53,760 --> 00:10:58,610
+we know that pin 35 and 36
+are the pins to which we can
+
+219
+00:10:58,610 --> 00:11:03,610
+connect an SWD program as such
+as a J-LINK or chip ST-LINK
+
+220
+00:11:03,720 --> 00:11:05,930
+or so, and via those pins,
+
+221
+00:11:05,930 --> 00:11:09,153
+we will be able to reprogram the Air-Tag.
+
+222
+00:11:12,510 --> 00:11:13,450
+Now as mentioned,
+
+223
+00:11:13,450 --> 00:11:15,790
+the debugging interface on
+the AirTag is unfortunately
+
+224
+00:11:15,790 --> 00:11:18,917
+locked down using a
+feature called APPROTECT.
+
+225
+00:11:19,810 --> 00:11:23,500
+And this one will basically
+lock down the control access
+
+226
+00:11:23,500 --> 00:11:26,930
+point for debugging, and you
+can still erase the chip,
+
+227
+00:11:26,930 --> 00:11:30,040
+which will re-enable debugging,
+and you can program it,
+
+228
+00:11:30,040 --> 00:11:33,480
+but then you lose the firmware,
+and so while we could,
+
+229
+00:11:33,480 --> 00:11:35,090
+you know, put our own firmware on it,
+
+230
+00:11:35,090 --> 00:11:37,140
+at this point in time was much
+
+231
+00:11:37,140 --> 00:11:41,380
+more interesting to dump the
+firmware than to put our own on
+
+232
+00:11:41,380 --> 00:11:42,213
+it.
+
+233
+00:11:42,213 --> 00:11:45,370
+And luckily, thanks to
+limited results, great work.
+
+234
+00:11:45,370 --> 00:11:48,350
+We can just use fault-injection
+to re-enable it.
+
+235
+00:11:48,350 --> 00:11:51,942
+Now, what is fault-injection,
+basically when you take the
+
+236
+00:11:51,942 --> 00:11:55,920
+power supply to a chip and
+you drop the power for a very,
+
+237
+00:11:55,920 --> 00:11:57,550
+very short amount of time,
+
+238
+00:11:57,550 --> 00:12:00,910
+you can cause a kind of
+memory corruption in the chip.
+
+239
+00:12:00,910 --> 00:12:04,640
+And sometimes this will allow
+you to skip over instructions.
+
+240
+00:12:04,640 --> 00:12:07,840
+Sometimes it will allow you
+to corrupt memory reads and so
+
+241
+00:12:07,840 --> 00:12:08,673
+on.
+
+242
+00:12:08,673 --> 00:12:13,450
+And so it's kind of difficult
+to understand really what it
+
+243
+00:12:13,450 --> 00:12:14,283
+does in the chip,
+
+244
+00:12:14,283 --> 00:12:17,900
+because you can't really look
+into it while you drop the
+
+245
+00:12:17,900 --> 00:12:20,040
+power for a couple of nanoseconds,
+
+246
+00:12:20,040 --> 00:12:23,470
+but you can get a relatively
+stable attack using this kind
+
+247
+00:12:23,470 --> 00:12:24,460
+of approach.
+
+248
+00:12:24,460 --> 00:12:27,360
+And so the basic idea would be
+that during the start of the
+
+249
+00:12:27,360 --> 00:12:29,590
+processor, at some point in time,
+
+250
+00:12:29,590 --> 00:12:33,660
+the processor will check whether
+the debugging is disabled.
+
+251
+00:12:33,660 --> 00:12:34,493
+And if so,
+
+252
+00:12:34,493 --> 00:12:38,010
+it will skip the step of
+enabling the debug_hardware.
+
+253
+00:12:38,010 --> 00:12:41,630
+Now, if we manage to perform
+a fault-injection attack,
+
+254
+00:12:41,630 --> 00:12:43,940
+adjust this moment in time,
+
+255
+00:12:43,940 --> 00:12:47,970
+we might be able to trick the
+chip so that the chip will
+
+256
+00:12:47,970 --> 00:12:50,550
+enable the debug_hardware,
+because we skipped,
+
+257
+00:12:50,550 --> 00:12:52,843
+for example, where the check instruction.
+
+258
+00:12:54,790 --> 00:12:57,403
+Now, how do we do this on the nRF52?
+
+259
+00:12:58,610 --> 00:13:02,740
+In general, most microcontrollers
+have an external power
+
+260
+00:13:02,740 --> 00:13:06,590
+supply and then an internal
+power supply that is derived
+
+261
+00:13:06,590 --> 00:13:07,910
+from that external supply.
+
+262
+00:13:07,910 --> 00:13:11,040
+And so, for example, in
+the case of the nRF52,
+
+263
+00:13:11,040 --> 00:13:13,600
+the chip normally runs at 1.8 volts,
+
+264
+00:13:13,600 --> 00:13:16,020
+but then on the inside of the chip,
+
+265
+00:13:16,020 --> 00:13:19,210
+those 1.8 volts are converted
+to different voltages for
+
+266
+00:13:19,210 --> 00:13:20,230
+different peripherals.
+
+267
+00:13:20,230 --> 00:13:21,277
+And so for example,
+
+268
+00:13:21,277 --> 00:13:26,150
+the CPU core might run at .9
+volts or Bluetooth might run
+
+269
+00:13:26,150 --> 00:13:28,550
+at 1.2 volts.
+
+270
+00:13:28,550 --> 00:13:32,680
+And the problem is we only
+really wanna attack the CPU
+
+271
+00:13:32,680 --> 00:13:37,300
+core, we only wanna attack
+the actual instruction.
+
+272
+00:13:37,300 --> 00:13:39,650
+We don't really care
+about Bluetooth and so on.
+
+273
+00:13:39,650 --> 00:13:42,930
+And we wanna be careful to
+not disrupt other parts of the
+
+274
+00:13:42,930 --> 00:13:43,763
+chip too much,
+
+275
+00:13:43,763 --> 00:13:46,520
+because then it might happen
+that something else fails and
+
+276
+00:13:46,520 --> 00:13:48,300
+resets the chip and so on.
+
+277
+00:13:48,300 --> 00:13:51,693
+And so we wanna target only
+the CPU core if possible.
+
+278
+00:13:52,570 --> 00:13:55,550
+Now these regulators
+tend to be quite noisy.
+
+279
+00:13:55,550 --> 00:13:58,640
+And so to reduce noise often,
+
+280
+00:13:58,640 --> 00:14:01,460
+the chip has an external
+connection for what's called
+
+281
+00:14:01,460 --> 00:14:03,220
+a bypass capacitor.
+
+282
+00:14:03,220 --> 00:14:07,440
+And bypass capacitor is a small
+capacitor that is directly
+
+283
+00:14:07,440 --> 00:14:10,900
+connected to this internal
+voltage rail to stabilize the
+
+284
+00:14:10,900 --> 00:14:13,240
+voltage towards the CPU core.
+
+285
+00:14:13,240 --> 00:14:15,170
+And you might not really notice,
+
+286
+00:14:15,170 --> 00:14:19,700
+but one side of the capacitor
+gives us direct access to the
+
+287
+00:14:19,700 --> 00:14:22,740
+voltage supply of the CPU core.
+
+288
+00:14:22,740 --> 00:14:24,570
+Now, if we attach, for example,
+
+289
+00:14:24,570 --> 00:14:28,120
+a switch towards ground width
+and we press that switch,
+
+290
+00:14:28,120 --> 00:14:31,880
+we will create a short
+circuit that will disable the
+
+291
+00:14:31,880 --> 00:14:32,713
+regulator.
+
+292
+00:14:32,713 --> 00:14:36,250
+We basically suck all
+power out of the regulator.
+
+293
+00:14:36,250 --> 00:14:38,660
+And by that, we can interrupt
+the power supply towards the
+
+294
+00:14:38,660 --> 00:14:40,210
+CPU core.
+
+295
+00:14:40,210 --> 00:14:42,580
+Then we, if we open the switch again,
+
+296
+00:14:42,580 --> 00:14:44,040
+we re-enable the power.
+
+297
+00:14:44,040 --> 00:14:45,990
+Now obviously with a manual switch,
+
+298
+00:14:45,990 --> 00:14:48,840
+we can't get the precision and
+the timing that we required
+
+299
+00:14:48,840 --> 00:14:51,340
+to hit just the right instruction.
+
+300
+00:14:51,340 --> 00:14:53,560
+If we however connect a MOSFET to it,
+
+301
+00:14:53,560 --> 00:14:56,390
+which is just an electronic
+switch, basically,
+
+302
+00:14:56,390 --> 00:15:01,390
+we can digitally control
+the CPU core power supply.
+
+303
+00:15:01,700 --> 00:15:03,420
+And now we can use, you know,
+
+304
+00:15:03,420 --> 00:15:05,300
+something like an FPJ to
+
+305
+00:15:05,300 --> 00:15:09,173
+control the power supply
+and time it very precisely.
+
+306
+00:15:10,620 --> 00:15:14,770
+Now I like to go cheap on these
+kinds of attacks and always
+
+307
+00:15:14,770 --> 00:15:18,240
+show like just how easy for
+example, fault-injection is.
+
+308
+00:15:18,240 --> 00:15:22,640
+And so I decided to use a
+Raspberry Pi Pico to perform
+
+309
+00:15:22,640 --> 00:15:23,550
+this glitching attack.
+
+310
+00:15:23,550 --> 00:15:25,700
+And so basically, I
+connected the MOSFET to
+
+311
+00:15:26,610 --> 00:15:27,640
+Raspberry Pi Pico.
+
+312
+00:15:27,640 --> 00:15:31,500
+And now if the Raspberry Pi
+Pico enables one of its iOS,
+
+313
+00:15:31,500 --> 00:15:34,077
+it will interrupt the power
+supply to the CPU core.
+
+314
+00:15:34,077 --> 00:15:36,020
+And then if you turn it off again,
+
+315
+00:15:36,020 --> 00:15:38,373
+the CPU core will start again.
+
+316
+00:15:39,330 --> 00:15:42,740
+And so if we hook this up to the AirTag,
+
+317
+00:15:42,740 --> 00:15:46,150
+we basically first need to
+find that bypass capacitor.
+
+318
+00:15:46,150 --> 00:15:49,140
+Now, Apple was nice enough
+to put that capacitor on the
+
+319
+00:15:49,140 --> 00:15:49,973
+backside.
+
+320
+00:15:49,973 --> 00:15:54,100
+And so the easily accessible
+side of the AirTag and even
+
+321
+00:15:54,100 --> 00:15:55,450
+better, they made,
+
+322
+00:15:55,450 --> 00:15:59,070
+they even put a testpad right
+on that core power supply
+
+323
+00:15:59,070 --> 00:15:59,903
+pin.
+
+324
+00:15:59,903 --> 00:16:02,410
+And so we can just
+solder on a cable there,
+
+325
+00:16:02,410 --> 00:16:05,690
+connect our MOSFET to it, and
+we are almost ready to go.
+
+326
+00:16:05,690 --> 00:16:08,790
+Now, fault-injection in most
+cases is not something that you
+
+327
+00:16:08,790 --> 00:16:10,830
+just try once and are successful,
+
+328
+00:16:10,830 --> 00:16:13,750
+but in most cases you wanna
+try a ton of times and
+
+329
+00:16:13,750 --> 00:16:15,600
+eventually you are successful.
+
+330
+00:16:15,600 --> 00:16:17,620
+And because each attempt is really short,
+
+331
+00:16:17,620 --> 00:16:19,920
+like let's say 100 milliseconds,
+
+332
+00:16:19,920 --> 00:16:22,150
+we can try 10 times per second.
+
+333
+00:16:22,150 --> 00:16:24,860
+And so even though we try it
+a hundred times or a thousand
+
+334
+00:16:24,860 --> 00:16:29,730
+times, we still get our
+desired results pretty quickly.
+
+335
+00:16:29,730 --> 00:16:34,080
+Now, to be able to restart
+the attack and to also get a
+
+336
+00:16:34,080 --> 00:16:37,010
+signal when the AirTag is actually booted.
+
+337
+00:16:37,010 --> 00:16:40,920
+We also wanna connect the
+nRF52 power supply towards the
+
+338
+00:16:40,920 --> 00:16:45,410
+Pico, because basically the
+AirTag runs at three volts from
+
+339
+00:16:45,410 --> 00:16:46,380
+a battery,
+
+340
+00:16:46,380 --> 00:16:50,380
+and it takes a couple of
+milliseconds for the power supply
+
+341
+00:16:50,380 --> 00:16:52,770
+to reach the nRF52.
+
+342
+00:16:52,770 --> 00:16:56,580
+And so we wanna make sure
+that we get a signal on our
+
+343
+00:16:56,580 --> 00:17:00,190
+Raspberry Pi Pico once the
+chip starts booting so that we
+
+344
+00:17:00,190 --> 00:17:03,460
+can time our fault-injection
+attack, just right.
+
+345
+00:17:03,460 --> 00:17:04,293
+To do this,
+
+346
+00:17:04,293 --> 00:17:07,870
+we basically use a level
+shifter to convert the 1.8 volts
+
+347
+00:17:07,870 --> 00:17:12,040
+from the nRF52 to the 3.3 volts
+that the Raspberry Pi Pico
+
+348
+00:17:12,040 --> 00:17:13,850
+expects on input.
+
+349
+00:17:13,850 --> 00:17:18,430
+And then all we have to do
+now is power up the AirTag.
+
+350
+00:17:18,430 --> 00:17:22,430
+And you can do that by just
+connecting an IO directly to the
+
+351
+00:17:22,430 --> 00:17:24,150
+battery contexts of the AirTag.
+
+352
+00:17:24,150 --> 00:17:27,250
+And so what we can do now is
+we can turn on the AirTag from
+
+353
+00:17:27,250 --> 00:17:28,573
+the Raspberry Pi Pico.
+
+354
+00:17:29,760 --> 00:17:33,810
+Then we wait until the power
+supply to the nRF52 is enabled,
+
+355
+00:17:33,810 --> 00:17:37,180
+which is basically the point
+in time at which the nRF52
+
+356
+00:17:37,180 --> 00:17:38,170
+boots.
+
+357
+00:17:38,170 --> 00:17:42,150
+And then we can perform our
+fault-injection attack using the
+
+358
+00:17:42,150 --> 00:17:44,380
+MOSFET connected to an IO.
+
+359
+00:17:44,380 --> 00:17:48,360
+Now, all we need to do is
+also connect an SWD programmer
+
+360
+00:17:48,360 --> 00:17:51,860
+that we will then use to check
+if our attack was successful.
+
+361
+00:17:51,860 --> 00:17:56,080
+And so basically, we start by
+just turning everything off.
+
+362
+00:17:56,080 --> 00:18:00,170
+Then we turn on the power
+supply towards the nRF52.
+
+363
+00:18:00,170 --> 00:18:05,170
+We wait for the signal from
+the nRF52 power supply,
+
+364
+00:18:05,440 --> 00:18:08,060
+and then we wait a short amount of time.
+
+365
+00:18:08,060 --> 00:18:09,930
+And then we enable the MOSFET,
+
+366
+00:18:09,930 --> 00:18:14,000
+which will drop the CPU core
+power for very short amount of
+
+367
+00:18:14,000 --> 00:18:16,360
+time, and then we re-enable it.
+
+368
+00:18:16,360 --> 00:18:19,170
+And then we use our SWD
+programmer to check whether
+
+369
+00:18:19,170 --> 00:18:20,970
+we are successful.
+
+370
+00:18:20,970 --> 00:18:25,550
+Now, this sounds like a lot of
+complexity and a lot of work,
+
+371
+00:18:25,550 --> 00:18:26,840
+but it's really, really easy.
+
+372
+00:18:26,840 --> 00:18:27,730
+And so for example,
+
+373
+00:18:27,730 --> 00:18:32,590
+the code on the Raspberry Pi
+Pico is just these couple of
+
+374
+00:18:32,590 --> 00:18:33,423
+lines.
+
+375
+00:18:33,423 --> 00:18:36,040
+Basically, we power cycle the target,
+
+376
+00:18:36,040 --> 00:18:39,763
+and we wait for the nRF power to boot up.
+
+377
+00:18:40,790 --> 00:18:44,467
+Then we wait for a configurable
+amount of time and then we
+
+378
+00:18:44,467 --> 00:18:47,183
+can watch for a
+configurable amount of time.
+
+379
+00:18:48,630 --> 00:18:51,700
+And if you set this up on a real AirTag,
+
+380
+00:18:51,700 --> 00:18:53,440
+it will look something like this.
+
+381
+00:18:53,440 --> 00:18:57,850
+And so we have our AirTag in
+this case in kind of a breakout
+
+382
+00:18:57,850 --> 00:19:00,203
+state to make life a bit easier.
+
+383
+00:19:01,130 --> 00:19:03,050
+Then we have a debugger,
+
+384
+00:19:03,050 --> 00:19:05,410
+which is basically the
+programmer that we use to check
+
+385
+00:19:05,410 --> 00:19:07,540
+whether our glitch was successful.
+
+386
+00:19:07,540 --> 00:19:11,680
+And then we have this breakout
+board that I designed,
+
+387
+00:19:11,680 --> 00:19:15,110
+which is really just a Raspberry
+Pi Pico with a couple of
+
+388
+00:19:15,110 --> 00:19:18,360
+lever shifters and so
+on to make life easier.
+
+389
+00:19:18,360 --> 00:19:21,053
+And also with the glitcher on board.
+
+390
+00:19:22,900 --> 00:19:26,760
+Now, as you can imagine,
+the boot of the nRF52
+
+391
+00:19:26,760 --> 00:19:28,390
+takes quite a long time.
+
+392
+00:19:28,390 --> 00:19:32,830
+And so finding just the right
+spot and time where we dropped
+
+393
+00:19:32,830 --> 00:19:36,720
+the power to attack it
+is pretty difficult.
+
+394
+00:19:36,720 --> 00:19:41,720
+Luckily for us, LimitedResults
+documented pretty well the,
+
+395
+00:19:41,860 --> 00:19:43,400
+with a power trace,
+
+396
+00:19:43,400 --> 00:19:45,880
+at which point in time
+of the boot of the chip,
+
+397
+00:19:45,880 --> 00:19:46,840
+we need to glitch.
+
+398
+00:19:46,840 --> 00:19:49,930
+And so in his block posts
+that you should check out
+
+399
+00:19:49,930 --> 00:19:51,490
+on limitedresult.com,
+
+400
+00:19:51,490 --> 00:19:54,140
+he precisely describes
+at which point in time,
+
+401
+00:19:54,140 --> 00:19:57,220
+you need to drop the power for
+a very short amount of time
+
+402
+00:19:57,220 --> 00:20:00,300
+to re enable the debugging interface.
+
+403
+00:20:00,300 --> 00:20:04,770
+And after setting this all up
+and using a glitch with that I
+
+404
+00:20:04,770 --> 00:20:08,500
+knew is successful from the
+past, we are ready to go.
+
+405
+00:20:08,500 --> 00:20:10,340
+Now, if we look at this on our silo scope,
+
+406
+00:20:10,340 --> 00:20:13,120
+you can see that our glitch
+is not really precise.
+
+407
+00:20:13,120 --> 00:20:16,780
+This is because the code that
+I'm using to glitch it is very
+
+408
+00:20:16,780 --> 00:20:21,150
+unprecise, but as it
+turns out, this is enough.
+
+409
+00:20:21,150 --> 00:20:24,160
+You will get lucky eventually,
+just because, you know,
+
+410
+00:20:24,160 --> 00:20:26,160
+the likelihood is that
+if you try often enough,
+
+411
+00:20:26,160 --> 00:20:28,500
+you will hit the right point in time.
+
+412
+00:20:28,500 --> 00:20:31,650
+To control the glitcher, I
+wrote a simple jupiter-script
+
+413
+00:20:31,650 --> 00:20:34,290
+that basically just sensed the delay
+
+414
+00:20:34,290 --> 00:20:36,350
+and trace a range of delays,
+
+415
+00:20:36,350 --> 00:20:39,850
+trace the range of pulse
+with basically for the glitch
+
+416
+00:20:39,850 --> 00:20:42,330
+and then just checks
+whether J-Tech is enabled.
+
+417
+00:20:42,330 --> 00:20:46,850
+And so I let this run for a
+bit and after like a couple of
+
+418
+00:20:46,850 --> 00:20:50,680
+minutes, I got lucky
+and I got this success.
+
+419
+00:20:50,680 --> 00:20:52,290
+And success means that
+
+420
+00:20:52,290 --> 00:20:54,341
+basically J-Tech was really enabled.
+
+421
+00:20:54,341 --> 00:20:59,341
+The test J-Tech functions in
+the Jupiter notebook tests,
+
+422
+00:20:59,820 --> 00:21:02,610
+whether it can connect
+via SWD to the chip.
+
+423
+00:21:02,610 --> 00:21:05,390
+And in this case that was successful.
+
+424
+00:21:05,390 --> 00:21:09,270
+And suddenly on my hard
+drive, I found this,
+
+425
+00:21:09,270 --> 00:21:12,500
+my script automatically dumped
+all the interesting areas of
+
+426
+00:21:12,500 --> 00:21:17,250
+the chip, and so we had the
+flash dump, the BPROT rangers,
+
+427
+00:21:17,250 --> 00:21:19,490
+FICR, UICR and so on,
+
+428
+00:21:19,490 --> 00:21:22,560
+all the interesting
+ranges that are in a chip.
+
+429
+00:21:22,560 --> 00:21:25,710
+And so I started analyzing
+the AirTag firmware.
+
+430
+00:21:25,710 --> 00:21:28,620
+I started by just running
+strings on the firmware,
+
+431
+00:21:28,620 --> 00:21:32,430
+and I immediately recognized
+these strings here.
+
+432
+00:21:32,430 --> 00:21:35,190
+This is an indication that
+they actually run corecrypto,
+
+433
+00:21:35,190 --> 00:21:38,260
+which is Apple's crypto
+library on the AirTags.
+
+434
+00:21:39,150 --> 00:21:43,200
+And the next thing that jumped
+to my eye was this URL found
+
+435
+00:21:43,200 --> 00:21:44,293
+at apple.com/airtag.
+
+436
+00:21:45,520 --> 00:21:49,690
+This is the URL that you get
+when you NFC scan an AirTag,
+
+437
+00:21:49,690 --> 00:21:54,367
+it will lead you to a URL with
+the PID and so on included in
+
+438
+00:21:54,367 --> 00:21:55,770
+the URL.
+
+439
+00:21:55,770 --> 00:21:59,310
+Now, I was really curious
+to see whether the firmware
+
+440
+00:21:59,310 --> 00:22:02,970
+had any additional validations
+that I didn't know about.
+
+441
+00:22:02,970 --> 00:22:07,970
+And so I try to modify the
+URL in hex editor and refresh
+
+442
+00:22:08,220 --> 00:22:09,620
+the firmware to the Air-Tag.
+
+443
+00:22:10,510 --> 00:22:12,303
+And then I got this.
+
+444
+00:22:14,126 --> 00:22:17,030
+And what do you do when you, you know,
+
+445
+00:22:17,030 --> 00:22:19,923
+can change the URL of
+something to whatever you like.
+
+446
+00:22:23,892 --> 00:22:27,059
+(upbeat lively music)
+
+447
+00:22:36,880 --> 00:22:39,513
+Obviously you try to regrow
+people with an AirTag.
+
+448
+00:22:41,200 --> 00:22:42,520
+Now you might wonder, well,
+
+449
+00:22:42,520 --> 00:22:46,270
+why would you go through
+all of that effort to regrow
+
+450
+00:22:46,270 --> 00:22:47,103
+people?
+
+451
+00:22:47,103 --> 00:22:49,970
+And I had a ton of YouTube
+comments ask exactly that
+
+452
+00:22:49,970 --> 00:22:52,894
+question, hey, why aren't
+you just using an NFC sticker
+
+453
+00:22:52,894 --> 00:22:54,180
+and so on.
+
+454
+00:22:54,180 --> 00:22:56,790
+But the goal with this was
+really just to see whether the
+
+455
+00:22:56,790 --> 00:22:59,830
+firmware has any additional
+verification methods.
+
+456
+00:22:59,830 --> 00:23:02,210
+And this was the easiest way
+to check whether we can just
+
+457
+00:23:02,210 --> 00:23:05,140
+modify something, 'cause it's very visual.
+
+458
+00:23:05,140 --> 00:23:07,150
+You just tap it with
+your iPhone and you know,
+
+459
+00:23:07,150 --> 00:23:08,500
+whether you are successful,
+
+460
+00:23:09,590 --> 00:23:13,830
+but continuing analysis
+of the strings output.
+
+461
+00:23:13,830 --> 00:23:15,570
+I found this line here,
+
+462
+00:23:15,570 --> 00:23:20,450
+and I recognize these letters
+because in the iPhone,
+
+463
+00:23:20,450 --> 00:23:24,977
+this is exactly the serial
+number that I saw in the find my
+
+464
+00:23:24,977 --> 00:23:27,670
+application for this AirTag.
+
+465
+00:23:27,670 --> 00:23:31,050
+And so it turns out that we
+can also freely edit the serial
+
+466
+00:23:31,050 --> 00:23:34,510
+number of the AirTag, and
+so, for example, mine is now,
+
+467
+00:23:34,510 --> 00:23:35,393
+stacksmashing.
+
+468
+00:23:36,560 --> 00:23:40,350
+And this is pretty interesting
+because I personally expected
+
+469
+00:23:40,350 --> 00:23:43,550
+the configuration to be in
+the U1 or on the SPI-Flash
+
+470
+00:23:43,550 --> 00:23:47,957
+also, but apparently all the
+configuration details off the
+
+471
+00:23:47,957 --> 00:23:52,380
+AirTag assort in the nRF52 internal flash.
+
+472
+00:23:52,380 --> 00:23:55,840
+And that brought up a pretty
+interesting question because
+
+473
+00:23:55,840 --> 00:23:58,770
+after pairing, for example,
+you can also see your censored
+
+474
+00:23:58,770 --> 00:24:03,270
+email address and son on,
+all in the AirTag firmware,
+
+475
+00:24:03,270 --> 00:24:04,610
+basically.
+
+476
+00:24:04,610 --> 00:24:06,370
+And this product, the question,
+
+477
+00:24:06,370 --> 00:24:08,955
+will I not and meet whether
+we can actually clone an
+
+478
+00:24:08,955 --> 00:24:09,870
+AirTag?
+
+479
+00:24:09,870 --> 00:24:14,870
+And so our idea was that I
+would dump a configured AirTag,
+
+480
+00:24:14,870 --> 00:24:17,260
+sent the flash dump over to Lennart.
+
+481
+00:24:17,260 --> 00:24:20,940
+He would flash his AirTag
+and we would check whether,
+
+482
+00:24:20,940 --> 00:24:24,730
+you know, my AirTag would be
+discovered in bedroom where
+
+483
+00:24:24,730 --> 00:24:26,040
+then it lifts.
+
+484
+00:24:26,040 --> 00:24:27,410
+And so we set this all up.
+
+485
+00:24:27,410 --> 00:24:31,283
+I had my AirTag nicely
+set up at my home place.
+
+486
+00:24:32,250 --> 00:24:35,170
+I dumped the AirTag,
+I removed the battery.
+
+487
+00:24:35,170 --> 00:24:37,230
+I sent them over to Lennart.
+
+488
+00:24:37,230 --> 00:24:39,730
+And what do you know, a
+couple of minutes later,
+
+489
+00:24:39,730 --> 00:24:42,130
+my AirTag was suddenly in Belgium.
+
+490
+00:24:42,130 --> 00:24:45,330
+And so it somehow in a couple
+of minutes traveled a couple
+
+491
+00:24:45,330 --> 00:24:46,593
+of hundred kilometers.
+
+492
+00:24:48,080 --> 00:24:50,940
+And so it works, we can clone an AirTag,
+
+493
+00:24:50,940 --> 00:24:53,877
+all data that is required for
+cloning an Air Tag is in the
+
+494
+00:24:53,877 --> 00:24:55,800
+nRF52 flash.
+
+495
+00:24:55,800 --> 00:24:59,910
+And this is pretty interesting
+because this also means that
+
+496
+00:24:59,910 --> 00:25:04,400
+if you, for example, find an
+AirTag or steal an AirTag,
+
+497
+00:25:04,400 --> 00:25:08,580
+you can actually reset it and
+create and set it up with a
+
+498
+00:25:08,580 --> 00:25:09,520
+new serial number,
+
+499
+00:25:09,520 --> 00:25:12,720
+bypassing the lost function
+and so on and so forth.
+
+500
+00:25:12,720 --> 00:25:15,760
+And neither the SPI-Flash
+nor the U1 seem to be really
+
+501
+00:25:15,760 --> 00:25:17,903
+involved in the pairing of the AirTag.
+
+502
+00:25:19,550 --> 00:25:22,500
+And so that was pretty
+interesting, 'cause we all were
+
+503
+00:25:22,500 --> 00:25:25,650
+pretty sure that Apple would
+do some crazy stuff with the
+
+504
+00:25:25,650 --> 00:25:29,850
+U1 or so to make life of
+cloning and stealing and so on a
+
+505
+00:25:29,850 --> 00:25:30,970
+bit harder.
+
+506
+00:25:30,970 --> 00:25:34,140
+And I'm curious what this
+will mean for, for example,
+
+507
+00:25:34,140 --> 00:25:37,453
+bikes that have for the Find
+My technology integrated.
+
+508
+00:25:38,780 --> 00:25:40,960
+Now, with this information,
+
+509
+00:25:40,960 --> 00:25:43,740
+we also started comparing our two dumps.
+
+510
+00:25:43,740 --> 00:25:47,770
+And so we basically started
+comparing what is different
+
+511
+00:25:47,770 --> 00:25:50,350
+between different Air-Tags
+and what changes with the
+
+512
+00:25:50,350 --> 00:25:51,241
+pairing.
+
+513
+00:25:51,241 --> 00:25:53,730
+And for example, here in the hex dump,
+
+514
+00:25:53,730 --> 00:25:55,410
+you can see my email address,
+
+515
+00:25:55,410 --> 00:25:57,610
+the censored version
+that is shown when you,
+
+516
+00:25:58,590 --> 00:26:01,750
+find the attack and so on and overall,
+
+517
+00:26:01,750 --> 00:26:06,750
+the information that is part
+of the pairing is relatively
+
+518
+00:26:07,020 --> 00:26:07,853
+low.
+
+519
+00:26:07,853 --> 00:26:10,460
+And you still have a bit
+of room in the firmware to,
+
+520
+00:26:10,460 --> 00:26:11,293
+for example,
+
+521
+00:26:11,293 --> 00:26:16,210
+integrate your own custom
+payload into the AirTag.
+
+522
+00:26:16,210 --> 00:26:20,270
+And one thing that got a
+lot of buzz surrounding the
+
+523
+00:26:20,270 --> 00:26:22,733
+AirTags was it's privacy protections.
+
+524
+00:26:23,870 --> 00:26:27,400
+A lot of people were very afraid
+about getting tracked by an
+
+525
+00:26:27,400 --> 00:26:28,350
+AirTag.
+
+526
+00:26:28,350 --> 00:26:33,150
+Now, while I get the idea of
+
+527
+00:26:33,150 --> 00:26:34,290
+being tracked,
+
+528
+00:26:34,290 --> 00:26:37,080
+I personally think that the
+AirTag is a terrible tracking
+
+529
+00:26:37,080 --> 00:26:37,913
+device.
+
+530
+00:26:37,913 --> 00:26:41,010
+It doesn't have a microphone
+with a real microphone.
+
+531
+00:26:41,010 --> 00:26:44,113
+It doesn't have GPS, doesn't have a GSM.
+
+532
+00:26:45,120 --> 00:26:49,080
+The only thing that you have
+is the Bluetooth and the
+
+533
+00:26:49,080 --> 00:26:52,380
+location of an iPhone that walks by.
+
+534
+00:26:52,380 --> 00:26:54,890
+And even there are some limitations.
+
+535
+00:26:54,890 --> 00:26:59,500
+And I mean, if you go onto Alibaba also,
+
+536
+00:26:59,500 --> 00:27:02,520
+you can get a decent tracker
+with like all of these features
+
+537
+00:27:02,520 --> 00:27:06,480
+like GPS, GSM, microphone,
+and so on for $20.
+
+538
+00:27:06,480 --> 00:27:08,490
+So it's even cheaper than AirTag.
+
+539
+00:27:08,490 --> 00:27:11,990
+And it's not like an AirTag
+is particularly small or
+
+540
+00:27:11,990 --> 00:27:14,460
+particulary well to height.
+
+541
+00:27:14,460 --> 00:27:19,460
+And so what I'm about to show
+is I don't think it's really
+
+542
+00:27:20,310 --> 00:27:22,590
+an issue because I don't
+think the AirTags are great
+
+543
+00:27:22,590 --> 00:27:23,593
+tracking device,
+
+544
+00:27:24,440 --> 00:27:28,490
+but basically the AirTag has a
+couple of privacy protections
+
+545
+00:27:28,490 --> 00:27:30,720
+to prevent people from just, you know,
+
+546
+00:27:30,720 --> 00:27:33,260
+putting an AirTag in your
+backpack and being able to track
+
+547
+00:27:33,260 --> 00:27:34,360
+you.
+
+548
+00:27:34,360 --> 00:27:38,690
+If you have an iPhone and an
+AirTag moves with you for an
+
+549
+00:27:38,690 --> 00:27:41,840
+extended period of time, your
+iPhone will give you an alert.
+
+550
+00:27:41,840 --> 00:27:44,390
+And so you will get a popup saying, hey,
+
+551
+00:27:44,390 --> 00:27:46,100
+an AirTag has been following you.
+
+552
+00:27:46,100 --> 00:27:49,290
+And then you can get that
+AirTag to play a sound.
+
+553
+00:27:49,290 --> 00:27:51,790
+And from my research,
+
+554
+00:27:51,790 --> 00:27:54,720
+this seems to be based on the
+idea that is broadcasted by
+
+555
+00:27:54,720 --> 00:27:57,630
+the AirTag that changes regularly.
+
+556
+00:27:57,630 --> 00:28:02,540
+Now, knowing that this idea is
+generated in the nRF52 code.
+
+557
+00:28:02,540 --> 00:28:04,270
+And knowing that I can, you know,
+
+558
+00:28:04,270 --> 00:28:08,080
+modify the original phone where
+I wondered what if we make
+
+559
+00:28:08,080 --> 00:28:10,660
+our AirTag have multiple identities.
+
+560
+00:28:10,660 --> 00:28:13,630
+And so basically instead
+of having, you know,
+
+561
+00:28:13,630 --> 00:28:17,930
+one identity on my AirTag that
+would change its ID every,
+
+562
+00:28:17,930 --> 00:28:21,660
+I dunno, 24 hours, what if
+I have a lot of identities
+
+563
+00:28:21,660 --> 00:28:26,150
+and I would basically cycle
+through them relatively often,
+
+564
+00:28:26,150 --> 00:28:29,180
+and the iPhone would think
+every time that this is a
+
+565
+00:28:29,180 --> 00:28:30,013
+different AirTag,
+
+566
+00:28:30,013 --> 00:28:34,010
+and it wouldn't detect that
+the AirTag is following me
+
+567
+00:28:34,010 --> 00:28:35,590
+basically.
+
+568
+00:28:35,590 --> 00:28:37,870
+And so to implement this,
+
+569
+00:28:37,870 --> 00:28:41,910
+I needed to do some firmware
+modifications, but for that,
+
+570
+00:28:41,910 --> 00:28:45,040
+we first had to actually
+analyze the firmware.
+
+571
+00:28:45,040 --> 00:28:48,790
+And so I started loading the
+firmware into Ghidra and found
+
+572
+00:28:48,790 --> 00:28:51,160
+that it's really standard and nRF52 code.
+
+573
+00:28:51,160 --> 00:28:55,090
+It uses the normal nRF52 SDK functions.
+
+574
+00:28:55,090 --> 00:28:58,300
+And so that is pretty cool
+because it allows you to create
+
+575
+00:28:58,300 --> 00:29:02,360
+signatures from the original nRF52 SDK,
+
+576
+00:29:02,360 --> 00:29:05,300
+and then apply them to
+the AirTag firmware,
+
+577
+00:29:05,300 --> 00:29:06,670
+making your life much easier.
+
+578
+00:29:06,670 --> 00:29:09,920
+And you don't have to
+reverse engineer everything.
+
+579
+00:29:09,920 --> 00:29:12,430
+Also, what was interesting
+was that no runtime
+
+580
+00:29:12,430 --> 00:29:16,060
+mitigations or hardening was
+found, and so for example,
+
+581
+00:29:16,060 --> 00:29:18,060
+there are no stack canaries and so on.
+
+582
+00:29:18,060 --> 00:29:21,040
+And so if you find it something
+like a buffer overflow,
+
+583
+00:29:21,040 --> 00:29:24,033
+it's most, probably
+relatively easy to exploit,
+
+584
+00:29:26,020 --> 00:29:28,670
+but overall the firmware was
+relatively straightforward to
+
+585
+00:29:28,670 --> 00:29:30,220
+reverse engineer and so on.
+
+586
+00:29:30,220 --> 00:29:34,980
+And so the idea of building
+these privacy protection
+
+587
+00:29:34,980 --> 00:29:39,623
+bypasses was relatively
+easy, and unfortunately,
+
+588
+00:29:41,470 --> 00:29:43,270
+and so after a couple of experiments,
+
+589
+00:29:43,270 --> 00:29:45,090
+I have my custom firmware ready.
+
+590
+00:29:45,090 --> 00:29:48,530
+It did not trigger any privacy
+warnings in our testing on
+
+591
+00:29:48,530 --> 00:29:52,170
+iOS 14.5 tests were a couple
+of iPhones with a couple of
+
+592
+00:29:52,170 --> 00:29:54,170
+people walking around,
+
+593
+00:29:54,170 --> 00:29:57,550
+but it also has very limited
+usability because to manage
+
+594
+00:29:57,550 --> 00:30:01,327
+those identities is kind of
+difficult because, you know,
+
+595
+00:30:01,327 --> 00:30:05,100
+the Find My app only supports
+16 AirTags at once and so on
+
+596
+00:30:05,100 --> 00:30:06,390
+and so forth.
+
+597
+00:30:06,390 --> 00:30:10,440
+And I also decided to not
+publish the details on this
+
+598
+00:30:10,440 --> 00:30:14,680
+firmware yet until this is
+fixed one way or the other.
+
+599
+00:30:14,680 --> 00:30:16,230
+And the reason for that is that
+
+600
+00:30:17,830 --> 00:30:21,640
+after publishing my first YouTube
+video about the attacks on
+
+601
+00:30:21,640 --> 00:30:25,570
+the AirTag, I got a lot of
+emails like this asking me
+
+602
+00:30:26,420 --> 00:30:30,180
+whether it's possible to bypass
+the warnings and a lot of
+
+603
+00:30:30,180 --> 00:30:33,750
+people that actually offered
+me money to bypass those
+
+604
+00:30:33,750 --> 00:30:34,583
+protections.
+
+605
+00:30:34,583 --> 00:30:39,290
+And so given that there
+seems to, even though I, and
+
+606
+00:30:39,290 --> 00:30:42,200
+so you and I think the AirTag
+is not a great tracker.
+
+607
+00:30:42,200 --> 00:30:45,120
+I don't wanna be the person
+that enables people to track
+
+608
+00:30:45,120 --> 00:30:46,867
+others using the AirTag.
+
+609
+00:30:47,810 --> 00:30:50,890
+But another thing that a lot
+of people wanted was changing
+
+610
+00:30:50,890 --> 00:30:54,900
+the sound of the AirTag, that
+the AirTag makes when you
+
+611
+00:30:54,900 --> 00:30:55,733
+search for it.
+
+612
+00:30:57,010 --> 00:30:59,690
+Now, Sound Reverse Engineering
+is kind of fun because
+
+613
+00:30:59,690 --> 00:31:02,380
+normally when you reverse
+engineer something in a firmware,
+
+614
+00:31:02,380 --> 00:31:03,530
+you need to use, you know,
+
+615
+00:31:03,530 --> 00:31:08,223
+IDA Pro., Ghidra, Binary
+Ninja or Radare or so,
+
+616
+00:31:09,140 --> 00:31:10,110
+but for audio,
+
+617
+00:31:10,110 --> 00:31:14,090
+it's really nice to just load
+it into Audacity because in
+
+618
+00:31:14,090 --> 00:31:15,200
+most cases,
+
+619
+00:31:15,200 --> 00:31:18,400
+the firmware will have raw
+sound symbols contained in it.
+
+620
+00:31:18,400 --> 00:31:22,860
+And if you look into the Audacity menu,
+
+621
+00:31:23,960 --> 00:31:27,310
+you can find that it has this
+point called import raw data.
+
+622
+00:31:27,310 --> 00:31:30,290
+And then you can just experiment
+with different encodings
+
+623
+00:31:30,290 --> 00:31:33,290
+byte orders, channels,
+sample rates, and so on.
+
+624
+00:31:33,290 --> 00:31:36,960
+And eventually, you might
+see something like this.
+
+625
+00:31:36,960 --> 00:31:39,350
+And if you look at the center here,
+
+626
+00:31:39,350 --> 00:31:42,040
+that looks a lot like
+valid audio, and indeed,
+
+627
+00:31:42,040 --> 00:31:44,793
+if we play it back, just
+this part in the middle,
+
+628
+00:31:46,850 --> 00:31:49,517
+(playful music)
+
+629
+00:31:50,360 --> 00:31:53,580
+you can see that this sounds
+a lot like the noises that the
+
+630
+00:31:53,580 --> 00:31:57,947
+AirTag makes just the bit
+shuffled around and so on.
+
+631
+00:31:57,947 --> 00:32:01,873
+And it turns out that the audio
+player is kind of the small,
+
+632
+00:32:01,873 --> 00:32:05,490
+simple player where you have
+multiple samples that create
+
+633
+00:32:05,490 --> 00:32:07,540
+one sound and so on.
+
+634
+00:32:07,540 --> 00:32:11,320
+It was kind of a surprising
+amount of work to reverse
+
+635
+00:32:11,320 --> 00:32:15,390
+engineer it and get it working
+nicely, but after a while,
+
+636
+00:32:15,390 --> 00:32:17,730
+I had this sweet set up ready.
+
+637
+00:32:17,730 --> 00:32:19,760
+And by the way, at this point again,
+
+638
+00:32:19,760 --> 00:32:23,950
+thank you to Colin O'Flynn
+and Lennart who did a ton of
+
+639
+00:32:23,950 --> 00:32:26,820
+reverse engineering on this, and again,
+
+640
+00:32:26,820 --> 00:32:30,180
+without whom this would
+not have been possible.
+
+641
+00:32:30,180 --> 00:32:33,725
+And so this is the regular
+song that the AirTag makes
+
+642
+00:32:33,725 --> 00:32:37,220
+(playful music)
+
+643
+00:32:37,220 --> 00:32:39,413
+And here is my AirTag.
+
+644
+00:32:40,498 --> 00:32:43,665
+(upbeat lively music)
+
+645
+00:32:44,970 --> 00:32:47,926
+Now, you might be surprised by
+the sudden stop of the sound
+
+646
+00:32:47,926 --> 00:32:48,759
+here.
+
+647
+00:32:48,759 --> 00:32:50,770
+This is not just because I clicked stop,
+
+648
+00:32:50,770 --> 00:32:54,260
+but also because the AirTag
+just crashes at this point in
+
+649
+00:32:54,260 --> 00:32:56,500
+time, I'm not entirely sure why,
+
+650
+00:32:56,500 --> 00:32:59,870
+but probably the reverse
+engineering of the sampler was not
+
+651
+00:32:59,870 --> 00:33:02,020
+yet good enough, but hey,
+
+652
+00:33:02,020 --> 00:33:04,660
+we now have an Apple branded
+Rick rolling device that you
+
+653
+00:33:04,660 --> 00:33:07,810
+can put in somebody's
+pocket and Rick rolled them.
+
+654
+00:33:07,810 --> 00:33:11,460
+And so I hope to release
+some tools for modifying the
+
+655
+00:33:11,460 --> 00:33:13,653
+firmware to do that soon-ish.
+
+656
+00:33:15,750 --> 00:33:19,040
+Now, another question that a
+lot of people had towards me is
+
+657
+00:33:19,040 --> 00:33:21,473
+can we use the AirTag as a bug?
+
+658
+00:33:22,710 --> 00:33:26,430
+And the main idea of a lot
+of people was that, hey,
+
+659
+00:33:26,430 --> 00:33:28,480
+it has a speaker, right?
+
+660
+00:33:28,480 --> 00:33:32,370
+And a speaker is always also a microphone.
+
+661
+00:33:32,370 --> 00:33:34,980
+Well on the AirTag, unfortunately
+
+662
+00:33:36,300 --> 00:33:37,440
+or, well, not unfortunately,
+
+663
+00:33:37,440 --> 00:33:40,860
+but luckily, basically, between
+the microcontroller and the
+
+664
+00:33:40,860 --> 00:33:43,120
+actual speaker, that's an amplifier.
+
+665
+00:33:43,120 --> 00:33:46,620
+And that amplifier has no way
+to provide feedback to the
+
+666
+00:33:46,620 --> 00:33:47,453
+CPU.
+
+667
+00:33:47,453 --> 00:33:50,020
+And so we can't really measure
+anything that goes on in the
+
+668
+00:33:50,020 --> 00:33:50,853
+speaker.
+
+669
+00:33:52,560 --> 00:33:56,670
+However, what we do have is
+another tiny device over here,
+
+670
+00:33:56,670 --> 00:34:01,470
+which seems to be a Bosch
+accelerometer and an accelerometer
+
+671
+00:34:01,470 --> 00:34:05,370
+can measure vibrations,
+and I mean, what is sound,
+
+672
+00:34:05,370 --> 00:34:08,330
+if not just, you know, vibrations?
+
+673
+00:34:08,330 --> 00:34:11,920
+And this is something that is
+very well known to be possible
+
+674
+00:34:11,920 --> 00:34:15,770
+with accelerometers,
+but I had never done it.
+
+675
+00:34:15,770 --> 00:34:19,820
+And so I thought this will be
+a fun experiment to try to use
+
+676
+00:34:19,820 --> 00:34:22,860
+the accelerometer as a
+microphone on the AirTags.
+
+677
+00:34:24,610 --> 00:34:28,340
+Now, unfortunately I could
+not really get a high speed
+
+678
+00:34:28,340 --> 00:34:30,280
+signal, like not, I don't know,
+
+679
+00:34:30,280 --> 00:34:34,050
+12 kilohertz accelerometer
+signal from the accelerometer.
+
+680
+00:34:34,050 --> 00:34:35,910
+And it's also a custom part,
+
+681
+00:34:35,910 --> 00:34:38,723
+like a lot of websites
+claim that it's a BMA280,
+
+682
+00:34:39,730 --> 00:34:42,980
+but I don't think it's a
+100% match, so for example,
+
+683
+00:34:42,980 --> 00:34:44,740
+the footprint is different and so on,
+
+684
+00:34:44,740 --> 00:34:47,790
+it seems to be a different,
+it seems to be a custom chip,
+
+685
+00:34:47,790 --> 00:34:50,110
+which wouldn't be the first
+time that Bosch has created a
+
+686
+00:34:50,110 --> 00:34:52,053
+custom accelerometer for Apple.
+
+687
+00:34:53,340 --> 00:34:56,930
+Now, the problem is the
+accelerometer is not really
+
+688
+00:34:56,930 --> 00:35:01,310
+sensitive to sound, and so
+even if you yell against it,
+
+689
+00:35:01,310 --> 00:35:04,650
+you will only get very slight signals.
+
+690
+00:35:04,650 --> 00:35:08,850
+And so I built a very specialized
+audio chamber for audio
+
+691
+00:35:08,850 --> 00:35:09,800
+testing the AirTag.
+
+692
+00:35:10,870 --> 00:35:12,840
+And so this device,
+
+693
+00:35:12,840 --> 00:35:15,500
+which is totally not
+irregular Pringles can,
+
+694
+00:35:15,500 --> 00:35:18,880
+is my very sophisticated
+audio chamber for testing the
+
+695
+00:35:18,880 --> 00:35:23,280
+AirTag and using it as a microphone.
+
+696
+00:35:23,280 --> 00:35:26,260
+And so you basically put the
+AirTag on the bottom of the
+
+697
+00:35:26,260 --> 00:35:28,060
+chamber because that's where,
+
+698
+00:35:28,060 --> 00:35:32,220
+especially the deep
+vibrations will be very,
+
+699
+00:35:32,220 --> 00:35:37,220
+very significant and that's
+needed because we have such a
+
+700
+00:35:38,120 --> 00:35:42,640
+low sampler rate that we only
+can get the low end of the
+
+701
+00:35:42,640 --> 00:35:44,430
+spectrum basically.
+
+702
+00:35:44,430 --> 00:35:49,090
+And after a couple of
+tries at ton of, you know,
+
+703
+00:35:49,090 --> 00:35:51,120
+post-processing all the signal,
+
+704
+00:35:51,120 --> 00:35:53,720
+this is the sound that I
+got out of the AirTags.
+
+705
+00:35:53,720 --> 00:35:56,470
+(mumbling music)
+
+706
+00:35:58,510 --> 00:36:00,990
+I don't know if you wanna
+call that a success.
+
+707
+00:36:00,990 --> 00:36:03,930
+So I personally think
+that the Apple AirTags
+
+708
+00:36:03,930 --> 00:36:05,970
+are not really a great microphone,
+
+709
+00:36:05,970 --> 00:36:08,910
+but I can tell you that I had
+a ton of fun trying to get
+
+710
+00:36:08,910 --> 00:36:12,290
+this working and trying
+to use the AirTags and its
+
+711
+00:36:12,290 --> 00:36:14,350
+accelerometer as a mic.
+
+712
+00:36:14,350 --> 00:36:17,690
+Now, last but not least,
+let's talk about the U1.
+
+713
+00:36:17,690 --> 00:36:19,970
+Now as mentioned, the U1 so far
+
+714
+00:36:19,970 --> 00:36:22,080
+was only available on higher end devices,
+
+715
+00:36:22,080 --> 00:36:24,380
+such as the Apple watch and the iPhone,
+
+716
+00:36:24,380 --> 00:36:27,830
+but now it's available for
+really cheap price or well
+
+717
+00:36:27,830 --> 00:36:29,410
+cheap-ish price.
+
+718
+00:36:29,410 --> 00:36:31,520
+And it seems that during pairing,
+
+719
+00:36:31,520 --> 00:36:32,660
+the firmware is transferred
+
+720
+00:36:32,660 --> 00:36:36,067
+from the iPhone towards the
+SPI-Flash of the AirTag,
+
+721
+00:36:37,110 --> 00:36:41,850
+and then the U1 firmware is
+loaded on demand towards it.
+
+722
+00:36:41,850 --> 00:36:45,790
+And what's really cool on
+the AirTag is that you can
+
+723
+00:36:45,790 --> 00:36:46,623
+downgrade it.
+
+724
+00:36:46,623 --> 00:36:48,520
+We have full code execution on the AirTag.
+
+725
+00:36:48,520 --> 00:36:50,780
+You don't need a jailbreak,
+you don't need to have,
+
+726
+00:36:50,780 --> 00:36:53,340
+you know, an up-to-date iPhone exploit.
+
+727
+00:36:53,340 --> 00:36:57,700
+No matter what updates
+are coming to the AirTag,
+
+728
+00:36:57,700 --> 00:37:01,150
+because the fault-injection
+attack is unfixable,
+
+729
+00:37:01,150 --> 00:37:04,470
+we will always be able to
+inspect what's going on with the
+
+730
+00:37:04,470 --> 00:37:08,640
+U1 on the AirTag and we can
+create breakout boards for it
+
+731
+00:37:08,640 --> 00:37:09,500
+and so on.
+
+732
+00:37:09,500 --> 00:37:12,700
+I'm really excited to
+finally have cheap U1
+
+733
+00:37:12,700 --> 00:37:16,920
+and Ultra-Wideband research
+for the Apple Ultra-Whiteband
+
+734
+00:37:16,920 --> 00:37:18,420
+ecosystem.
+
+735
+00:37:18,420 --> 00:37:21,170
+And if you wanna learn
+more about the U1, checkout
+
+736
+00:37:21,170 --> 00:37:24,480
+Jiska's and Alexander Heinrich's
+DEFCON talk this year,
+
+737
+00:37:24,480 --> 00:37:26,223
+we're talking about the U1.
+
+738
+00:37:27,920 --> 00:37:32,920
+Now we also were able to create
+a full diagram of the Apple
+
+739
+00:37:34,011 --> 00:37:34,844
+AirTag.
+
+740
+00:37:34,844 --> 00:37:38,790
+David Hulton polished each
+layer of the AirTag PCBs.
+
+741
+00:37:38,790 --> 00:37:42,420
+And then we reassembled it in
+an image processing software,
+
+742
+00:37:42,420 --> 00:37:45,200
+and now we have each layout of the PCB.
+
+743
+00:37:45,200 --> 00:37:47,670
+And so this makes it really
+easy to trace, for example,
+
+744
+00:37:47,670 --> 00:37:49,950
+the connections towards U1 and so on.
+
+745
+00:37:49,950 --> 00:37:53,250
+It makes life much easier
+when you just wanna, you know,
+
+746
+00:37:53,250 --> 00:37:55,573
+sniffer certain lines,
+and so on and so forth.
+
+747
+00:37:56,690 --> 00:38:00,420
+If you wanna learn more
+about all of these things,
+
+748
+00:38:00,420 --> 00:38:02,313
+the glitcher is open source on my github.
+
+749
+00:38:02,313 --> 00:38:06,060
+And the reverse engineering
+details from Colin are published
+
+750
+00:38:06,060 --> 00:38:07,290
+on his github.
+
+751
+00:38:07,290 --> 00:38:10,120
+And I also have a repository
+with all the hardware
+
+752
+00:38:10,120 --> 00:38:14,000
+pictures and the high resolution
+PCB pictures that allow you
+
+753
+00:38:14,000 --> 00:38:15,620
+to very easily, you know,
+
+754
+00:38:15,620 --> 00:38:18,510
+see what communicates with
+what and how does everything
+
+755
+00:38:18,510 --> 00:38:20,070
+work.
+
+756
+00:38:20,070 --> 00:38:22,500
+I hope you enjoyed this
+presentation and if you have any
+
+757
+00:38:22,500 --> 00:38:23,530
+questions or comments,
+
+758
+00:38:23,530 --> 00:38:27,490
+please don't hesitate to contact
+me on Twitter or via email
+
+759
+00:38:27,490 --> 00:38:29,980
+or whatever, and hope you enjoy DEFCON.
+
+760
+00:38:29,980 --> 00:38:30,813
+Thank you.
+

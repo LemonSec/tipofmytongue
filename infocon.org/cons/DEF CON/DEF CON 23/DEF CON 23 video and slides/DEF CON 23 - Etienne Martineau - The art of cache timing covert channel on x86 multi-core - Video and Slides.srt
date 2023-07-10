@@ -1,0 +1,1936 @@
+﻿00:00:00.000 --> 00:00:04.071
+Hi. Welcome Everybody. Thanks a
+lot for coming to my talk. What
+
+00:00:04.071 --> 00:00:07.174
+you are about to see here today
+is pretty cool stuff. I had lots
+
+00:00:07.174 --> 00:00:09.743
+of fun working on that project,
+so I hope you will find it cool
+
+00:00:09.743 --> 00:00:15.082
+too. So, in a nutshell, I am
+about to show you how to set up
+
+00:00:15.082 --> 00:00:19.119
+a cache timing cover channel so
+that two VMs co-located on the
+
+00:00:19.119 --> 00:00:24.658
+same physical box, same socket,
+can talk together without being
+
+00:00:24.658 --> 00:00:27.427
+detected. The without being
+detected is important here
+
+00:00:27.427 --> 00:00:31.098
+because this talk is all about
+practical implementation, not
+
+00:00:31.098 --> 00:00:37.104
+just some proof of concept or
+(?) stuff. Sorry. And so... just
+
+00:00:43.610 --> 00:00:49.616
+a second. Alright. So, before we
+being, usual disclaimer. So,
+
+00:00:53.887 --> 00:00:57.190
+this is a research project that
+was done on my own time, my own
+
+00:00:57.190 --> 00:01:00.427
+network. This talk reflects my
+own opinion and another one from
+
+00:01:00.427 --> 00:01:03.697
+my employer. Information and
+code provided here should be
+
+00:01:03.697 --> 00:01:09.069
+used for informational purposes
+only. Alright. Let me introduce
+
+00:01:09.069 --> 00:01:12.706
+myself and also give you guys
+some context around how I ended
+
+00:01:12.706 --> 00:01:15.909
+up working on that project in
+the first place. So my name is
+
+00:01:15.909 --> 00:01:20.213
+Etienne Martineau. I'm from
+Ottawa, Canada. I work currently
+
+00:01:20.213 --> 00:01:25.585
+for Cisco Systems where I do
+Linux Kernel and KDM stuff. As a
+
+00:01:25.585 --> 00:01:28.288
+kid I was fascinated by
+electronics and radio,
+
+00:01:28.288 --> 00:01:31.925
+especially the concept of
+modulation. It was just much
+
+00:01:31.925 --> 00:01:35.062
+later during my studying at
+Laval University that I finally
+
+00:01:35.062 --> 00:01:39.299
+realized what was going on. That
+was cool. But then I got a job
+
+00:01:39.299 --> 00:01:43.203
+and ended up spending up several
+years on Linux Kernel and as you
+
+00:01:43.203 --> 00:01:47.140
+may have imagined, I forgot all
+about modulation, up until
+
+00:01:47.140 --> 00:01:53.981
+recently. Where part of my work
+doing some low level analysis on
+
+00:01:53.981 --> 00:01:58.652
+KDM, I noticed something
+strange. Basically I observed
+
+00:01:58.652 --> 00:02:02.756
+some sort of cross talk going on
+between two virtual machines.
+
+00:02:02.756 --> 00:02:06.526
+Obviously the cross talk was
+very subtle, but the tool I was
+
+00:02:06.526 --> 00:02:12.532
+using was smart enough to detect
+it. So doing more investigation
+
+00:02:15.402 --> 00:02:18.605
+I realized that the two VMs were
+being assigned to the same
+
+00:02:18.605 --> 00:02:22.242
+physical core, but different
+threads of execution. So this
+
+00:02:22.242 --> 00:02:26.613
+threads of execution concept is
+typically known as SMT or
+
+00:02:26.613 --> 00:02:31.251
+hyperthreading of Intel. There
+is more research and I found a
+
+00:02:31.251 --> 00:02:35.455
+nice picture from Intel. So here
+we can clearly see that the two
+
+00:02:35.455 --> 00:02:38.792
+execution threads are actually
+sharing some common functional
+
+00:02:38.792 --> 00:02:43.063
+unit. And some operation have to
+be serialized one after the
+
+00:02:43.063 --> 00:02:47.234
+other. So that is tough to
+explain the result that I got.
+
+00:02:47.234 --> 00:02:53.507
+But then I had an idea. What if
+on one of the hyperthreaded
+
+00:02:53.507 --> 00:02:56.777
+sibling I modulate the
+contention pattern over the
+
+00:02:56.777 --> 00:03:01.314
+execution pipeline? Let's say a
+long instruction is a one. Let's
+
+00:03:01.314 --> 00:03:06.720
+say a short instruction is a
+zero. Then, what if on the other
+
+00:03:06.720 --> 00:03:10.457
+hyperthreaded sibling I tried to
+detect the amount of contention
+
+00:03:10.457 --> 00:03:14.194
+over the execution pipeline by
+executing an instruction and
+
+00:03:14.194 --> 00:03:17.531
+measuring the time it takes. If
+it's slow, then it's a one. If
+
+00:03:17.531 --> 00:03:23.737
+it's fast, then it's a zero.
+Then, I realized that with this
+
+00:03:23.737 --> 00:03:26.907
+technique I could do pretty cool
+stuff, such as sending
+
+00:03:26.907 --> 00:03:29.476
+information from one VM to
+another, assuming that the two
+
+00:03:29.476 --> 00:03:34.081
+VMs are being assigned to this
+hyperthreaded siblings. So, I
+
+00:03:34.081 --> 00:03:40.654
+ended up spending quite a bit of
+time on that project. And so,
+
+00:03:40.654 --> 00:03:43.590
+one of my goals was to see with
+my eyes the quality of the
+
+00:03:43.590 --> 00:03:49.196
+signal being-- the quality of
+the communication channel. So,
+
+00:03:49.196 --> 00:03:52.699
+naturally I decided to try to
+transmit an image so I could see
+
+00:03:52.699 --> 00:03:56.036
+the resulting output on the
+other side. Obviously, the very
+
+00:03:56.036 --> 00:03:59.172
+first image I used back then was
+not this one, it was a picture
+
+00:03:59.172 --> 00:04:02.242
+of my kids, which I am obviously
+not going to show around here.
+
+00:04:02.242 --> 00:04:07.714
+So, I used the Def Con logo.
+This has been reformatted at 640
+
+00:04:07.714 --> 00:04:12.085
+from #(Inaudible - 4:09). It's
+VGA quality, 1-bit per pixel.
+
+00:04:14.254 --> 00:04:20.393
+And this is what I got on the
+other side. So that was pretty
+
+00:04:20.393 --> 00:04:23.697
+cool. I was about to see all the
+#(Inaudible 4:21), but still I
+
+00:04:23.697 --> 00:04:28.335
+was about to get some
+information out of it. So then,
+
+00:04:28.335 --> 00:04:32.606
+it was at this time that I
+essentially realized that the
+
+00:04:32.606 --> 00:04:36.576
+problem related to security and
+I said to myself, there is a big
+
+00:04:36.576 --> 00:04:39.479
+issue with this kind of stuff.
+And this is basically why I am
+
+00:04:39.479 --> 00:04:46.086
+here today. And by the way,
+before we move on to the core of
+
+00:04:46.086 --> 00:04:49.589
+this talk, just for the fun of
+us here at Def Con, I have a
+
+00:04:49.589 --> 00:04:54.361
+recording that shows what
+happened in real time when we
+
+00:04:54.361 --> 00:04:58.698
+take that image and we send it
+over and over again at 15 frames
+
+00:04:58.698 --> 00:05:04.271
+per second. One thing I did in
+that recording is that I have my
+
+00:05:04.271 --> 00:05:08.441
+noise generator that I start and
+stop in the background, which is
+
+00:05:08.441 --> 00:05:11.611
+essentially a complication of
+the Linux Kernel. And then you
+
+00:05:11.611 --> 00:05:15.549
+will see the effect on the
+communication channel. One more
+
+00:05:15.549 --> 00:05:20.120
+thing is that I'm running the
+mp4 encoding software on the
+
+00:05:20.120 --> 00:05:23.056
+same machine where I am running
+this experiment, so on its own
+
+00:05:23.056 --> 00:05:31.064
+this thing is generating quite a
+bit of noise. Alright, let's
+
+00:05:31.064 --> 00:05:37.070
+take a look at the video here.
+We see that when the Linux
+
+00:05:52.219 --> 00:05:55.589
+Kernel compilation is running
+the channel is completely
+
+00:05:55.589 --> 00:05:59.226
+saturated by noise and that is
+expected because the pipeline is
+
+00:05:59.226 --> 00:06:01.328
+just running so many
+instructions at the same time,
+
+00:06:01.328 --> 00:06:04.364
+so many contact switch are
+coming, that nothing can go to
+
+00:06:04.364 --> 00:06:10.036
+the other side. Alright, let's
+take a step back here. My goal
+
+00:06:10.036 --> 00:06:12.339
+was to come with a practical
+implementation, not just some
+
+00:06:12.339 --> 00:06:15.742
+theory stuff. Why? Well, because
+I wanted to prove that this is a
+
+00:06:15.742 --> 00:06:19.546
+real issue and that we need to
+fix it. So now in this talk we
+
+00:06:19.546 --> 00:06:23.917
+are going to go over the design
+and what it takes to basically
+
+00:06:23.917 --> 00:06:28.321
+come with such a cache timing
+channel. So basically, we are
+
+00:06:28.321 --> 00:06:32.025
+going to go over the shared
+resources on 686 Multicore. I'm
+
+00:06:32.025 --> 00:06:35.695
+going to show you guys how to
+encode and decode data using
+
+00:06:35.695 --> 00:06:39.299
+cache line. And doing that, we
+will see the effect of the
+
+00:06:39.299 --> 00:06:42.602
+hardware (?) and I am going to
+show a trick we can do to get
+
+00:06:42.602 --> 00:06:46.873
+around it. Then, we will also
+see that the encoded data that
+
+00:06:46.873 --> 00:06:51.311
+we put in the cache line doesn't
+stay there for a very long time,
+
+00:06:51.311 --> 00:06:55.849
+especially with VMs, because
+with VMs there is lots of noise.
+
+00:06:55.849 --> 00:07:00.520
+Also, we will show you how to
+find cache lines that are shared
+
+00:07:00.520 --> 00:07:03.690
+across VMs. And at the end of it
+I will show you my
+
+00:07:03.690 --> 00:07:08.828
+implementation which essentially
+enable two processors running
+
+00:07:08.828 --> 00:07:14.067
+from different VM to synchronize
+together very, very precisely.
+
+00:07:14.067 --> 00:07:17.537
+Finally, we will do some
+detection and mitigation aspect,
+
+00:07:17.537 --> 00:07:22.876
+and also toward the end of this
+talk I will basically measure--
+
+00:07:22.876 --> 00:07:25.879
+do some sort of bandwidth
+measurement on this channel and
+
+00:07:25.879 --> 00:07:31.885
+we will also go over a reverse
+example. Alright. So, when you
+
+00:07:39.192 --> 00:07:42.762
+have hyperthreading enabled
+there is lots of possibility for
+
+00:07:42.762 --> 00:07:45.365
+inter-VM modulation assuming
+that the two VMs are being
+
+00:07:45.365 --> 00:07:48.501
+assigned to the different-- two
+hyperthreading siblings on the
+
+00:07:48.501 --> 00:07:51.805
+same core. You can do pipeline
+from tension. This is the first
+
+00:07:51.805 --> 00:07:55.575
+example I show you guys. But you
+can also do modulation in L1
+
+00:07:55.575 --> 00:08:02.282
+cache or you can do modulation
+in L2 cache. Now, if you have
+
+00:08:02.282 --> 00:08:08.288
+hyperthreading disabled-- Hi. >>
+(Cannot hear him/her.) Maybe
+
+00:08:24.637 --> 00:08:31.044
+this one? Alright. So, as you
+guys are all very familiar with
+
+00:08:31.044 --> 00:08:34.914
+by now, we have a fantastic
+tradition called "Shot The New".
+
+00:08:34.914 --> 00:08:37.450
+Has this guy been doing good?
+(Applause) Alright. That is
+
+00:08:37.450 --> 00:08:41.621
+exactly what I like to hear.
+Alright. We're not going to hold
+
+00:08:41.621 --> 00:08:45.291
+him up too much longer. To new
+speakers (cheers), to new
+
+00:08:45.291 --> 00:08:51.297
+attendees, and new to Def Con
+23. (Applause) >> Alright, as I
+
+00:08:57.370 --> 00:09:00.807
+was saying, now if we have our
+hyperthreading disabled, which
+
+00:09:00.807 --> 00:09:04.244
+is typically the case because
+this type of issue has been
+
+00:09:04.244 --> 00:09:08.415
+reported way back then in 2005,
+looking at the bottom of this
+
+00:09:08.415 --> 00:09:13.119
+page we can still do modulation,
+but this time in L3 cache. That
+
+00:09:13.119 --> 00:09:18.458
+is what this talk is all about.
+Obviously, if the VMs are being
+
+00:09:18.458 --> 00:09:21.828
+assigned to different sockets
+this cache timing modulation
+
+00:09:21.828 --> 00:09:24.964
+will not work because the cache
+are not shared across the
+
+00:09:24.964 --> 00:09:28.435
+sockets. But now you see there
+is that buses that connects all
+
+00:09:28.435 --> 00:09:31.905
+the caches together-- the
+co-event C-module that can
+
+00:09:31.905 --> 00:09:35.108
+potentially be used. So this is
+also interesting, but this is
+
+00:09:35.108 --> 00:09:39.979
+outside the scope of my talk
+today. Alright. Now it's time to
+
+00:09:39.979 --> 00:09:41.981
+understand how we encode data in
+the cache. A cache line
+
+00:09:41.981 --> 00:09:44.784
+typically holds 64 bits. So when
+you read a bit that is not in
+
+00:09:44.784 --> 00:09:50.423
+the cache, it's the whole cache
+line that is brought in from
+
+00:09:50.423 --> 00:09:55.128
+memory. So now the basic of this
+trick relies on the fact that we
+
+00:09:55.128 --> 00:09:58.665
+can measure very accurately the
+time it takes to read a bit from
+
+00:09:58.665 --> 00:10:03.970
+memory. When we get it from L1,
+it is very fast, L2 a bit
+
+00:10:03.970 --> 00:10:10.143
+slower, L3 even slower, and main
+memory it's very slow. So now
+
+00:10:10.143 --> 00:10:14.047
+the way we do for encoding a
+pattern in a cache line is we
+
+00:10:14.047 --> 00:10:17.817
+load our flush a particular
+cache line. Let's say when it's
+
+00:10:17.817 --> 00:10:23.056
+loaded it's a one, a flush is a
+zero. And for the decoding part,
+
+00:10:23.056 --> 00:10:27.293
+what we do is we measure the
+time it takes to read a bit that
+
+00:10:27.293 --> 00:10:31.631
+corresponds to this cache line.
+If it's fast it's a zero because
+
+00:10:31.631 --> 00:10:34.467
+that cache line was loaded. If
+it's slow then it's-- sorry, if
+
+00:10:34.467 --> 00:10:37.303
+it's fast it's a one, if it's
+slow it's a zero. Sound simple?
+
+00:10:37.303 --> 00:10:39.305
+Alright. Let's take a look at
+the practical example. So when I
+
+00:10:39.305 --> 00:10:45.311
+started that stuff I wrote a
+simple client and test program.
+
+00:10:48.248 --> 00:10:50.917
+There is no VM in the picture at
+this time. This thing is running
+
+00:10:50.917 --> 00:10:54.354
+just on Linux, on the host
+directly. And the cache lines
+
+00:10:54.354 --> 00:10:58.825
+are coming directly from shared
+memory. So here, the client is
+
+00:10:58.825 --> 00:11:01.594
+encoding a pattern. This is the
+graphic that you see at the
+
+00:11:01.594 --> 00:11:06.099
+bottom left here. And once the
+pattern is encoded in the cache,
+
+00:11:06.099 --> 00:11:08.101
+basically the client wakes up a
+single on the mutex and the
+
+00:11:08.101 --> 00:11:15.208
+server wakes up and do the
+decoding. So but now here there
+
+00:11:15.208 --> 00:11:19.779
+is something weird. This is what
+I got on the other side. So,
+
+00:11:19.779 --> 00:11:22.715
+there is clearly a pattern when
+you look at this. This is not
+
+00:11:22.715 --> 00:11:27.654
+pure noise. Alright. Then I
+decided to take a step back. I'm
+
+00:11:27.654 --> 00:11:30.156
+just going to write a simple
+test that flushes all the cache
+
+00:11:30.156 --> 00:11:32.859
+line from zero to one hundred
+and then after that I am going
+
+00:11:32.859 --> 00:11:35.862
+to measure the time it takes to
+load them back. And I'm
+
+00:11:35.862 --> 00:11:40.233
+expecting long latency for all
+of them. But there is obviously
+
+00:11:40.233 --> 00:11:44.404
+something else going on here.
+Some of the cache lines were
+
+00:11:44.404 --> 00:11:47.540
+exhibiting long latency, but
+lots some of them were very
+
+00:11:47.540 --> 00:11:51.611
+fast. What is going on? This is
+at the time I learned about
+
+00:11:51.611 --> 00:11:56.349
+refreshing. So refreshing means
+bringing data or instruction
+
+00:11:56.349 --> 00:11:59.419
+from memory to the cache before
+they are needed. So on the
+
+00:11:59.419 --> 00:12:02.722
+processor that I am using, which
+is a Xeon 5500, there is more
+
+00:12:02.722 --> 00:12:06.659
+than one refresher. There is a
+refresher for L1, a refresher
+
+00:12:06.659 --> 00:12:11.431
+for L2, and there is also
+#(Inaudible 12:06). But at the
+
+00:12:11.431 --> 00:12:15.068
+end of the day, this thing is
+trying to predict what address
+
+00:12:15.068 --> 00:12:19.539
+will be needed in the future.
+Alright. Before I move on,
+
+00:12:19.539 --> 00:12:23.476
+sorry, this hardware refresher
+stuff is one of those things you
+
+00:12:23.476 --> 00:12:26.579
+can control at the bios level
+directly and enable or disable
+
+00:12:26.579 --> 00:12:28.982
+that. This is obviously not what
+I am doing here because we don't
+
+00:12:28.982 --> 00:12:33.019
+have that type of access over
+the machine. So we have to work
+
+00:12:33.019 --> 00:12:37.423
+around it. So, I came up with
+the idea that I'm going to just
+
+00:12:37.423 --> 00:12:41.561
+randomize the cache line access.
+So I'm going to basically
+
+00:12:41.561 --> 00:12:43.930
+randomize the cache line access
+within the page. Fair enough.
+
+00:12:43.930 --> 00:12:50.169
+But it turns out that we also
+need to randomize the cache line
+
+00:12:50.169 --> 00:12:53.239
+access at the page level. In
+other words, you cannot just go
+
+00:12:53.239 --> 00:12:55.842
+with an incremental pattern at
+the page level because the other
+
+00:12:55.842 --> 00:12:58.344
+refresher will kick in and will
+detect that-- and will try
+
+00:12:58.344 --> 00:13:05.184
+basically to load your cache
+line in that (?). Doing all that
+
+00:13:05.184 --> 00:13:09.722
+apparently to manage the
+hardware refresher, at least on
+
+00:13:09.722 --> 00:13:17.530
+the machine I was running on.
+Then, I faced another problem.
+
+00:13:17.530 --> 00:13:21.167
+So, what-- basically, what
+happens if you end up waiting
+
+00:13:21.167 --> 00:13:23.803
+longer before doing the
+decoding? So right now I have a
+
+00:13:23.803 --> 00:13:27.140
+client. It basically (?),
+signals the server, the server
+
+00:13:27.140 --> 00:13:30.043
+wakes up and does the decoding.
+It's very fast. But let's say
+
+00:13:30.043 --> 00:13:36.215
+what happens if you wait, wait
+more, and wait even more. Well,
+
+00:13:36.215 --> 00:13:39.552
+we clearly see that the time
+from when you encode the data to
+
+00:13:39.552 --> 00:13:42.755
+the time from when you decode
+the data has to be very small,
+
+00:13:42.755 --> 00:13:46.059
+otherwise, the other stuff that
+is running on the system will
+
+00:13:46.059 --> 00:13:48.828
+kick in and start to pollute the
+cache and essentially erase your
+
+00:13:48.828 --> 00:13:52.999
+data. So in other words, the
+uncoded data in the cache
+
+00:13:52.999 --> 00:13:58.671
+evaporates pretty quickly. And
+this is even more true for us
+
+00:13:58.671 --> 00:14:01.407
+when we are running in the VM
+because with VMs there is lots
+
+00:14:01.407 --> 00:14:07.180
+of noise. So, talking of noise,
+so I have done a couple of
+
+00:14:07.180 --> 00:14:09.282
+experiments to try to
+characterize the noise and so
+
+00:14:09.282 --> 00:14:15.021
+on. So, I have a test program
+that basically, it's basically
+
+00:14:15.021 --> 00:14:18.424
+using a calibrated software loop
+that takes exactly two CPU
+
+00:14:18.424 --> 00:14:22.895
+cycles to execute. And I am
+running that loop 100 --> 000 times,
+
+00:14:22.895 --> 00:14:25.531
+so I am expecting that the
+execution time in cycle is going
+
+00:14:25.531 --> 00:14:31.904
+to be 200 --> 000 cycles. And I am
+repeating that test 1000 times.
+
+00:14:31.904 --> 00:14:35.508
+So when you are running on bare
+metal Kernel with all
+
+00:14:35.508 --> 00:14:39.712
+interruptions disabled, there is
+no noise, right? The loop is
+
+00:14:39.712 --> 00:14:44.751
+always taking 200 --> 000 cycle over
+and over again. But now, if you
+
+00:14:44.751 --> 00:14:48.588
+are running in user space,
+right? There is processors
+
+00:14:48.588 --> 00:14:52.291
+running and so on, well, there
+is some noise. Well, actually
+
+00:14:52.291 --> 00:14:54.327
+the noise is coming from the
+host of everything system that
+
+00:14:54.327 --> 00:14:59.098
+is doing inturruption handler
+and all that stuff. Alright. By
+
+00:14:59.098 --> 00:15:02.068
+the way, the smallest bit that
+we see there are the timer
+
+00:15:02.068 --> 00:15:08.674
+interruption on a per CPU basis.
+So this is a six core machine.
+
+00:15:08.674 --> 00:15:12.345
+The bigger spike is actually a
+network interruption that is
+
+00:15:12.345 --> 00:15:16.949
+running on CPU zero. Now, if you
+are running in the Kernel inside
+
+00:15:16.949 --> 00:15:19.952
+the virtual machine without all
+interruptions disabled, there is
+
+00:15:19.952 --> 00:15:23.122
+still quite a bit of noise down
+there because you know, the host
+
+00:15:23.122 --> 00:15:25.124
+Kernel is running, all the
+interruptions are running, and
+
+00:15:25.124 --> 00:15:29.929
+you have some noise because of
+the hypervisor layer. And
+
+00:15:29.929 --> 00:15:32.098
+finally, if you are running in
+VM user space, which is the
+
+00:15:32.098 --> 00:15:35.802
+case, when we will do that
+communication thing, there is
+
+00:15:35.802 --> 00:15:39.505
+quite a bit of noise. And that
+is because the Kernel you are
+
+00:15:39.505 --> 00:15:41.808
+running on has its own timer
+interruption and all the stuff
+
+00:15:41.808 --> 00:15:44.544
+is running there, the upper
+visor layer, and then on the
+
+00:15:44.544 --> 00:15:50.450
+host. By the way, it looks
+really bad here, but if you do
+
+00:15:50.450 --> 00:15:55.488
+the math, the degradation comes
+down to about 2%, which is about
+
+00:15:55.488 --> 00:15:58.224
+what we expect for a compute
+load when running on the VM.
+
+00:16:00.960 --> 00:16:06.432
+Alright. Now we understand the
+noise. We have a way to trick
+
+00:16:06.432 --> 00:16:10.603
+the hardware refresher. Now it's
+time to put the client in VM1
+
+00:16:10.603 --> 00:16:14.273
+and the server in VM2. Remember
+the first test we did, all that
+
+00:16:14.273 --> 00:16:16.943
+stuff was running on the host
+directly. So I put my server on
+
+00:16:16.943 --> 00:16:22.648
+VM1 and VM2. But then I realized
+there is another problem. The
+
+00:16:22.648 --> 00:16:26.185
+cache line that I was using
+initially are not developed
+
+00:16:26.185 --> 00:16:30.056
+anymore. Basically, the L2 and
+the L3 cache, those things are
+
+00:16:30.056 --> 00:16:33.793
+tagged by the physical address.
+But in the VM the physical
+
+00:16:33.793 --> 00:16:37.363
+address that you see has nothing
+to do with the real physical
+
+00:16:37.363 --> 00:16:42.034
+address that exists on the host
+that the cache is using. Why?
+
+00:16:42.034 --> 00:16:46.305
+Because there is that other
+translation layer, that other
+
+00:16:46.305 --> 00:16:51.110
+translation layer, sorry, and
+basically the VMs in the virtual
+
+00:16:51.110 --> 00:16:56.983
+machine do not have access to
+that information. It's a tricky
+
+00:16:56.983 --> 00:17:01.754
+problem to solve, but I don't
+think it's impossible. But
+
+00:17:01.754 --> 00:17:06.926
+fortunately for us we don't have
+to worry at all with this issue
+
+00:17:06.926 --> 00:17:10.863
+thanks to KSM, well, at least as
+long as KSM is enabled on those
+
+00:17:10.863 --> 00:17:15.535
+systems. What is KSM? KSM is a
+Kernel thread that runs on the
+
+00:17:15.535 --> 00:17:20.139
+host Kernel that basically scans
+the running processors and
+
+00:17:20.139 --> 00:17:25.811
+compares their memory. If it
+finds identical pages, KSM
+
+00:17:25.811 --> 00:17:32.084
+merges them into just one single
+page. So but obviously if one of
+
+00:17:32.084 --> 00:17:36.088
+those program wants to modify
+let's say those pages, KSM kicks
+
+00:17:36.088 --> 00:17:42.161
+in and basically do the
+unmerging. KSM is pretty useful
+
+00:17:42.161 --> 00:17:48.067
+because it saves a whole lot of
+memory with VMs. Especially when
+
+00:17:48.067 --> 00:17:54.240
+the guest of everything system
+in one VM can be shared with the
+
+00:17:54.240 --> 00:18:00.179
+other guest of everything system
+in the other VM. Alright. Coming
+
+00:18:02.448 --> 00:18:08.120
+back to that slide. The idea
+that I had was to create a
+
+00:18:08.120 --> 00:18:13.960
+unique pattern, a per page
+unique pattern in memory that is
+
+00:18:13.960 --> 00:18:19.966
+the same across the (?) and the
+server. So, the idea is that on
+
+00:18:19.966 --> 00:18:24.704
+host, KSM will look at those
+things, do the scan, and it will
+
+00:18:24.704 --> 00:18:30.676
+eventually do the page
+duplication for us. Note here
+
+00:18:30.676 --> 00:18:37.750
+that the per page is important.
+If different pages are identical
+
+00:18:37.750 --> 00:18:41.621
+in content, KSM will detect that
+and will merge them on top of
+
+00:18:41.621 --> 00:18:45.391
+each other. So you will end up
+overlapping your cache line
+
+00:18:45.391 --> 00:18:51.464
+which is obviously not what you
+wanted to do. A side comment--
+
+00:18:51.464 --> 00:18:56.969
+with KSM you can do pretty cool
+stuff such as identifying the
+
+00:18:56.969 --> 00:18:59.839
+operating system or the
+application that is running
+
+00:18:59.839 --> 00:19:06.078
+beside you. All you need to do
+for that is to load in your own
+
+00:19:06.078 --> 00:19:10.850
+memory the image of what you
+think is running beside you.
+
+00:19:10.850 --> 00:19:15.287
+Then, you wait a bit because KSM
+duplication process takes time.
+
+00:19:15.287 --> 00:19:19.959
+Then you write to some of those
+pages and then you measure the
+
+00:19:19.959 --> 00:19:23.796
+time it takes. So if the time it
+takes to do the write is much
+
+00:19:23.796 --> 00:19:26.832
+longer than the normal write
+inside your virtual machine, it
+
+00:19:26.832 --> 00:19:30.302
+means that you have KSM involved
+all the way down from the host,
+
+00:19:30.302 --> 00:19:35.474
+the page duplication is done for
+you and it means you have a
+
+00:19:35.474 --> 00:19:37.510
+match. You have basically
+identified what is running
+
+00:19:37.510 --> 00:19:43.516
+beside you. Alright. Coming back
+to that picture again. I
+
+00:19:46.385 --> 00:19:48.454
+realized there was another
+problem with my design.
+
+00:19:48.454 --> 00:19:52.958
+Basically there is no
+synchronization primitive across
+
+00:19:52.958 --> 00:19:56.729
+processors running on different
+VM. Remember when I was running
+
+00:19:56.729 --> 00:20:00.699
+directly on the host, the server
+was signaling a mutex, a client
+
+00:20:00.699 --> 00:20:02.835
+was signaling a mutex, the
+server was waking up and doing
+
+00:20:02.835 --> 00:20:06.739
+the decoding. But here there is
+no such thing. Well, in reality
+
+00:20:06.739 --> 00:20:12.278
+there are things to do that, for
+example, on Linux there is, and
+
+00:20:12.278 --> 00:20:17.349
+KDM, there is IVSHM where you
+can basically from one VM to
+
+00:20:17.349 --> 00:20:21.620
+another signal the #(Inaudible
+20:15), but that stuff is not
+
+00:20:21.620 --> 00:20:25.858
+enabled in production. We need
+something to replace the mutex.
+
+00:20:25.858 --> 00:20:31.464
+Why? Because we want the server
+to run right after the client so
+
+00:20:31.464 --> 00:20:35.234
+that it will pick up the signal,
+right? Remember what happens if
+
+00:20:35.234 --> 00:20:38.671
+we wait too long? All the data
+is gone, so we have to be fast.
+
+00:20:42.575 --> 00:20:45.144
+So then I ran a couple of
+options. I did not really know
+
+00:20:45.144 --> 00:20:48.447
+how to attack this thing. So one
+of the options I had was
+
+00:20:48.447 --> 00:20:50.883
+basically I'm just going to
+forget all about that
+
+00:20:50.883 --> 00:20:55.454
+synchronization aspect and kind
+of hope for the best. With some,
+
+00:20:55.454 --> 00:20:59.658
+with error correction, ECC, we
+can achieve some data
+
+00:20:59.658 --> 00:21:03.896
+transmission. There is space
+between the client and server
+
+00:21:03.896 --> 00:21:10.136
+and it's totally random. So this
+will give us very low bit rate,
+
+00:21:10.136 --> 00:21:14.640
+obviously, but the CPU
+consumption is low. And now,
+
+00:21:14.640 --> 00:21:18.144
+that is kind of cool because we
+need to be-- we don't want to
+
+00:21:18.144 --> 00:21:22.781
+burn CPU because everybody will
+detect us, right? So another
+
+00:21:22.781 --> 00:21:27.953
+option, it's basically I set it
+up such that there is a loop on
+
+00:21:27.953 --> 00:21:32.958
+each side and the client is set
+up to run a bit faster than the
+
+00:21:32.958 --> 00:21:37.830
+server. So at some point in
+time, there will be an overlap,
+
+00:21:37.830 --> 00:21:40.432
+and at that point the server
+will pick up the signal and the
+
+00:21:40.432 --> 00:21:44.170
+transmission will happen. So
+this is giving an okay bit rate,
+
+00:21:44.170 --> 00:21:47.606
+but the problem with that one is
+that the CPU consumption is very
+
+00:21:47.606 --> 00:21:54.046
+high. And this is no good for us
+because we want to remain
+
+00:21:54.046 --> 00:21:58.150
+undetected. Hopefully, we would
+like to be less than one person
+
+00:21:58.150 --> 00:22:04.924
+CPU usage. Option number three,
+so this is basically my loop
+
+00:22:04.924 --> 00:22:08.394
+implementation that I was
+talking in the beginning. Let's
+
+00:22:08.394 --> 00:22:12.498
+find a common period on the
+server and the client and let's
+
+00:22:12.498 --> 00:22:17.670
+have the client and the server
+lock into place. How I did that?
+
+00:22:17.670 --> 00:22:21.707
+Well, at the beginning of each
+period I have the server that is
+
+00:22:21.707 --> 00:22:27.279
+sending out the synced pattern.
+This synced pattern is very
+
+00:22:27.279 --> 00:22:30.482
+similar to what you found in
+those analog tv for the vertical
+
+00:22:30.482 --> 00:22:33.853
+sync, that is kind of the same
+concept. Then you have the
+
+00:22:33.853 --> 00:22:38.691
+client that is running a scan
+over that period and tries to
+
+00:22:38.691 --> 00:22:43.195
+detect that same pattern. Once
+it detects it, is basically
+
+00:22:43.195 --> 00:22:50.302
+locks on it. So once the sync is
+detected, the client is just
+
+00:22:50.302 --> 00:22:54.640
+shifting back the face and now
+we are ready for transmission.
+
+00:22:54.640 --> 00:22:59.245
+But there is a tricky problem
+for that to work. We need a
+
+00:22:59.245 --> 00:23:02.381
+monitronic pulse. We can in
+reality tolerate some jitter,
+
+00:23:02.381 --> 00:23:07.319
+but not too much because in VM
+there is lots of noise and the
+
+00:23:07.319 --> 00:23:11.590
+data operates off of the cache
+very quickly. So in practice all
+
+00:23:11.590 --> 00:23:15.461
+that stuff looks fine-- but in
+theory, all that stuff looks
+
+00:23:15.461 --> 00:23:20.065
+fine, but in practice it's a bit
+more tricky. How can we achieve
+
+00:23:20.065 --> 00:23:23.903
+a monotronic pulse? The first
+thing that comes into mind is to
+
+00:23:23.903 --> 00:23:27.539
+use a timer. Well, timers are
+good because anyway we need to
+
+00:23:27.539 --> 00:23:32.511
+sleep in order to have our
+detection. But, with timers
+
+00:23:32.511 --> 00:23:35.514
+there is a big problem. So this
+is a graphic that represents the
+
+00:23:35.514 --> 00:23:39.285
+latency in microseconds-- the
+latency distribution in
+
+00:23:39.285 --> 00:23:43.622
+microseconds of a timer that is
+running in the VM. This is a
+
+00:23:43.622 --> 00:23:48.661
+log-log scale. So we see that
+from that graph there is lots of
+
+00:23:48.661 --> 00:23:52.564
+jitter. It can range from all
+the way down to 20 microseconds
+
+00:23:52.564 --> 00:23:59.138
+all the way up to almost 200
+microseconds. And now, if you
+
+00:23:59.138 --> 00:24:02.675
+factor in the original design,
+this timer, this jitter from the
+
+00:24:02.675 --> 00:24:05.110
+timer is going to come from both
+VM at the same time because they
+
+00:24:05.110 --> 00:24:08.080
+have the same kind of
+distribution. So there was just
+
+00:24:08.080 --> 00:24:11.250
+too much jitter for that to
+work. The data will not persist
+
+00:24:11.250 --> 00:24:15.321
+and transmission will not happen
+for sure. Okay, so the idea I
+
+00:24:15.321 --> 00:24:20.659
+had was to basically compensate
+this timer in software to some
+
+00:24:20.659 --> 00:24:25.898
+value above the maximum jitter,
+so that in theory this should
+
+00:24:25.898 --> 00:24:30.002
+give us a nice monotronic
+signal. Well, here we need to be
+
+00:24:30.002 --> 00:24:32.738
+a bit careful because this
+compensation thing will be
+
+00:24:32.738 --> 00:24:36.575
+subject to noise. In other
+words, what I am trying to say
+
+00:24:36.575 --> 00:24:39.111
+here is that the more time you
+are trying to compensate
+
+00:24:39.111 --> 00:24:42.147
+something, more noise you end up
+accumulating from the underlying
+
+00:24:42.147 --> 00:24:48.387
+stuff that is running behind
+you, right? And the other thing
+
+00:24:48.387 --> 00:24:51.724
+that we need to be careful with
+is this compensation is burning
+
+00:24:51.724 --> 00:24:54.827
+CPU, but on that aspect it's not
+too bad because all we have to
+
+00:24:54.827 --> 00:24:57.830
+do is to stretch the timer
+period to some higher number and
+
+00:24:57.830 --> 00:25:02.334
+we will still stay under one
+person CPU usage. It's a tricky
+
+00:25:02.334 --> 00:25:05.904
+problem, but I believe in the
+end I got it right. The
+
+00:25:05.904 --> 00:25:09.274
+compensation thing I am using is
+basically a calibrated software
+
+00:25:09.274 --> 00:25:12.778
+loop that is kept in check with
+a TSC at every single point in
+
+00:25:12.778 --> 00:25:17.416
+time. And this is the result I
+got. So my machine is a 2.4 gig
+
+00:25:17.416 --> 00:25:21.487
+machine. And when I am running
+idol, this graphic represents
+
+00:25:21.487 --> 00:25:25.391
+the jitter that I have on my
+compensative timer and it's in
+
+00:25:25.391 --> 00:25:29.895
+cycle. So I have roughly I have
+50 cycles of jitter on my timer.
+
+00:25:29.895 --> 00:25:32.998
+It corresponds to 20
+nanoseconds. Even on a loaded
+
+00:25:32.998 --> 00:25:39.471
+system I've got roughly 300
+cycles. It's 120 nanoseconds.
+
+00:25:39.471 --> 00:25:42.808
+It's pretty fast, pretty
+accurate, sorry. If you compare
+
+00:25:42.808 --> 00:25:45.544
+that with the original timer, I
+mean there is obviously no
+
+00:25:45.544 --> 00:25:50.816
+comparison here. Even if we put
+the latency back into
+
+00:25:50.816 --> 00:25:53.719
+perspective with the original
+graph, it doesn't even-- the
+
+00:25:53.719 --> 00:25:57.656
+jitter doesn't even show up on
+that scale because the original
+
+00:25:57.656 --> 00:26:00.826
+timer was in microseconds scale
+and now I am working in
+
+00:26:00.826 --> 00:26:08.233
+nanoseconds scale. As you may
+have already understood, this
+
+00:26:08.233 --> 00:26:12.237
+synchronization aspect is the
+key of this design because it
+
+00:26:12.237 --> 00:26:16.975
+basically enables the
+communication to happen with
+
+00:26:16.975 --> 00:26:20.045
+very low noise because it's
+very, very precise with the
+
+00:26:20.045 --> 00:26:26.718
+process running and at the same
+time consumes low CPU. Okay.
+
+00:26:26.718 --> 00:26:30.088
+Let's recap what we have so far.
+We have an encoding and decoding
+
+00:26:30.088 --> 00:26:34.426
+scheme that is based on memory
+access time. Slow it's a one.
+
+00:26:34.426 --> 00:26:37.396
+Fast it's a zero. We managed to
+get rid of the hardware
+
+00:26:37.396 --> 00:26:42.501
+refresher without disabling it
+by the bios because we just
+
+00:26:42.501 --> 00:26:47.172
+randomized the cache line access
+at the page level and so on. We
+
+00:26:47.172 --> 00:26:52.711
+also found cache lines that are
+shared across VMs and that is
+
+00:26:52.711 --> 00:26:57.149
+thanks to KSM by the way. We
+managed to design a face lock
+
+00:26:57.149 --> 00:27:01.753
+loop that gives a very high
+precision across two processors
+
+00:27:01.753 --> 00:27:07.759
+running across two VM. Time for
+a demo now. Okay. So I basically
+
+00:27:10.095 --> 00:27:12.898
+with that technique-- I
+basically repeated the original
+
+00:27:12.898 --> 00:27:17.803
+experiment which consists of
+sending that Def Con logo from
+
+00:27:17.803 --> 00:27:23.675
+one VM to another. We can see
+that technique offers pretty
+
+00:27:23.675 --> 00:27:27.713
+high quality and kind of low
+noise communication channel at
+
+00:27:27.713 --> 00:27:31.550
+least if you compare that with
+the original pipeline contention
+
+00:27:31.550 --> 00:27:37.456
+example I showed you at the
+beginning, right? So there is no
+
+00:27:37.456 --> 00:27:40.058
+error correction that is running
+on the transmission channel.
+
+00:27:40.058 --> 00:27:43.028
+There is no retransmission.
+Nothing. But as you can see if
+
+00:27:43.028 --> 00:27:45.030
+you look carefully you will see
+in the picture there are a
+
+00:27:45.030 --> 00:27:48.133
+couple bits that are flipped
+here and there. That is
+
+00:27:48.133 --> 00:27:55.541
+expected, right? The channel is
+kind of noisy a bit. Alright.
+
+00:27:55.541 --> 00:27:58.644
+Down in that experiment, again,
+it's another recording, I
+
+00:27:58.644 --> 00:28:01.647
+repeated that exact same
+steaming experiment with my
+
+00:28:01.647 --> 00:28:05.851
+noise generator running on and
+off in the background. The first
+
+00:28:05.851 --> 00:28:10.656
+thing I want to mention, and
+that is kind of cool, is that
+
+00:28:10.656 --> 00:28:16.061
+when the transmitter is not
+running, the receiver is picking
+
+00:28:16.061 --> 00:28:22.367
+up the noise from whatever is
+running on the operating system.
+
+00:28:22.367 --> 00:28:27.472
+So to me, this could potentially
+be used to fingerprint the
+
+00:28:27.472 --> 00:28:32.544
+operating system that is running
+underneath. Also, when this
+
+00:28:32.544 --> 00:28:36.214
+recording here, same stuff as
+the previous one I had, the mp4
+
+00:28:36.214 --> 00:28:38.450
+encoding software that is
+running on the same machine and
+
+00:28:38.450 --> 00:28:41.219
+so on, so on its own, this thing
+is generating quite a bit of
+
+00:28:41.219 --> 00:28:47.025
+noise. But still, you will see
+the effect when let's say I move
+
+00:28:47.025 --> 00:28:50.629
+a window around for example. And
+of course you will also see the
+
+00:28:50.629 --> 00:28:54.232
+effect when I compile the Linus
+Kernel. You will see the noise
+
+00:28:54.232 --> 00:28:58.904
+going on and off and so on. One
+last thing, I may have mentioned
+
+00:28:58.904 --> 00:29:01.506
+it before, there is no
+compression, no retransmission,
+
+00:29:01.506 --> 00:29:05.444
+no protocol. What you see is
+essentially the raw capacity of
+
+00:29:05.444 --> 00:29:11.450
+that channel. Let's take a look
+at the video. That is the noise
+
+00:29:19.491 --> 00:29:25.497
+I was talking about. You see the
+compilation of the Linus Kernel
+
+00:29:38.110 --> 00:29:44.116
+totally saturates the channel.
+So on the left is the source and
+
+00:29:53.358 --> 00:29:59.364
+the right is obviously the
+destination of the (?).
+
+00:30:08.674 --> 00:30:14.680
+(Applause) Thank you. Alright.
+So now we will make it fast
+
+00:30:23.522 --> 00:30:27.259
+here. That video was transmitted
+at 60 frames per second,
+
+00:30:27.259 --> 00:30:33.131
+interlaced four times, 15 full
+frames per second, one frame was
+
+00:30:33.131 --> 00:30:38.570
+VGA quality, 640 x 480, 1 bit
+per pixel. It's, if you do the
+
+00:30:38.570 --> 00:30:42.641
+math it's roughly 4.5 megabit
+per second, and the CPU on both
+
+00:30:42.641 --> 00:30:47.212
+sides is 15% CPU utilization. Of
+course if you utilize more CPU
+
+00:30:47.212 --> 00:30:53.218
+you can crank up the bandwidth
+on this one. Alright. Now let's
+
+00:30:55.253 --> 00:30:58.724
+focus on something a bit more
+useful than trying to stream a
+
+00:30:58.724 --> 00:31:03.929
+picture from one VM to another.
+The first thing I'm doing here,
+
+00:31:03.929 --> 00:31:07.599
+and again, this is the same two
+VMs that I had originally, is
+
+00:31:07.599 --> 00:31:11.403
+that I'm running the client--
+I'm running the server in loop
+
+00:31:11.403 --> 00:31:15.841
+back mode which displays
+whatever was sent by the client.
+
+00:31:15.841 --> 00:31:18.643
+And the client in that mode is
+sending a bunch of these other #
+
+00:31:18.643 --> 00:31:22.814
+(Inaudible 31:18). And in the
+background I'm running on and
+
+00:31:22.814 --> 00:31:28.820
+off again my noise generator.
+You guys will see the effect.
+
+00:31:47.139 --> 00:31:49.241
+You will see that the
+synchronization will happen at
+
+00:31:49.241 --> 00:31:55.247
+some point. Alright. Now
+transmission is going on.
+
+00:32:04.089 --> 00:32:10.295
+Alright. I'm going to hit the
+pause button for a second here.
+
+00:32:10.295 --> 00:32:16.301
+In my program, the reversal
+stuff, I have a way to basically
+
+00:32:21.706 --> 00:32:23.742
+turn on ECC on the communication
+channel because as you can
+
+00:32:23.742 --> 00:32:25.777
+observe there are some bits here
+and there that are flipped,
+
+00:32:25.777 --> 00:32:28.213
+right? So now I'm just going to
+unpause and run the system with
+
+00:32:28.213 --> 00:32:34.219
+error correction turned on this
+time. Alright. Now we see that
+
+00:32:48.033 --> 00:32:53.805
+the output is clean, right?
+(Applause) Thank you. Obviously
+
+00:32:53.805 --> 00:33:00.579
+sometimes it will happen that
+there are more bits that are
+
+00:33:00.579 --> 00:33:04.583
+flipped than what ECC can
+support. And so my program is
+
+00:33:04.583 --> 00:33:07.719
+actually displaying a couple of
+stars right there, the server is
+
+00:33:07.719 --> 00:33:11.690
+displaying that. Obviously we
+can crank up the error
+
+00:33:11.690 --> 00:33:15.160
+correction and just using, I
+believe a 16 bit ECC over 240
+
+00:33:15.160 --> 00:33:19.998
+bit payload, so that can be
+increased easily. So now I'm
+
+00:33:19.998 --> 00:33:26.938
+going to basically remove the
+new back mode because I want to
+
+00:33:26.938 --> 00:33:34.179
+send command on the other VM.
+That's the reverse shell mode.
+
+00:33:34.179 --> 00:33:40.185
+Right? So that was just a test
+mode here. So I'm going to
+
+00:33:42.721 --> 00:33:47.692
+unpause that thing. So again,
+the lock was pretty fast. Right
+
+00:33:47.692 --> 00:33:53.131
+now the lock is when the face
+lock loop is synchronizing. So
+
+00:33:53.131 --> 00:33:58.436
+now I'm sending command to that
+other VM. Commands are coming
+
+00:33:58.436 --> 00:34:01.706
+back. This is the process that
+is running in the other VM. I'm
+
+00:34:01.706 --> 00:34:06.378
+just going to hit the pause
+button again. Well, to be
+
+00:34:06.378 --> 00:34:10.415
+imaginative here I named my
+stuff timing channels. The
+
+00:34:10.415 --> 00:34:12.951
+timing channel is the program
+that is running in the other VM.
+
+00:34:12.951 --> 00:34:16.554
+As you can see, the time this
+program has consumed is very
+
+00:34:16.554 --> 00:34:22.561
+minimal. This is the reversal.
+(Applause) Here I'm looking I
+
+00:34:30.635 --> 00:34:36.641
+believe at the source code of
+this program. Alright. So you
+
+00:34:41.513 --> 00:34:47.519
+see that you know the reversal
+is not superb responsive and
+
+00:34:47.519 --> 00:34:51.957
+that is because the server has
+been configured in a mode where
+
+00:34:51.957 --> 00:34:55.460
+I don't want the server to burn
+too much CPU on the other side.
+
+00:34:55.460 --> 00:35:00.065
+We can dynamically crank it up
+or crank it down. Right now I
+
+00:35:00.065 --> 00:35:04.636
+believe it's using half a
+percent of CPU in this demo. So
+
+00:35:04.636 --> 00:35:10.308
+you see the responsiveness
+level. So that's it for the
+
+00:35:10.308 --> 00:35:16.081
+demo. So what can we do to
+prevent that stuff? So the first
+
+00:35:16.081 --> 00:35:20.285
+thing is to disable that page
+duplication thing or to set it
+
+00:35:20.285 --> 00:35:26.224
+up on a per VM policy so that it
+doesn't cross the VM boundary.
+
+00:35:26.224 --> 00:35:31.029
+That's one thing you can do. It
+will take care of those inter-VM
+
+00:35:31.029 --> 00:35:34.699
+shared read only pages. It's
+going to move them out. So this
+
+00:35:34.699 --> 00:35:39.371
+flush and reload technique won't
+work essentially. And then it
+
+00:35:39.371 --> 00:35:44.943
+will take care of that side VM
+and application fingerprinting
+
+00:35:44.943 --> 00:35:48.647
+thing I was mentioning earlier.
+Obviously this is at the cost of
+
+00:35:48.647 --> 00:35:53.284
+a higher memory. One of the
+other things that can be done is
+
+00:35:53.284 --> 00:35:59.290
+on the X86 today, this CL flush
+instruction is not privilege. So
+
+00:36:01.292 --> 00:36:04.462
+maybe Intel could make it
+privilege or something. I don't
+
+00:36:04.462 --> 00:36:09.367
+know if it's a microcode update.
+Obviously you have to revisit
+
+00:36:09.367 --> 00:36:16.041
+your colocation policy. What are
+you putting on the core? What do
+
+00:36:16.041 --> 00:36:21.046
+you put on a socket? What do you
+put on a box basis? Personally
+
+00:36:21.046 --> 00:36:25.183
+I'm more of a fan of trying to
+detect this kind of
+
+00:36:25.183 --> 00:36:30.088
+communication. And for that to
+happen there is many, let's say,
+
+00:36:30.088 --> 00:36:33.224
+ways we can do. One of them is
+there is a bunch of hardware
+
+00:36:33.224 --> 00:36:37.262
+counter that is available for
+different reasons on the chips.
+
+00:36:37.262 --> 00:36:40.865
+So one could do some sort of
+pattern and noise analysis to
+
+00:36:40.865 --> 00:36:48.073
+try to detect some spike and
+some very precise noise. The
+
+00:36:48.073 --> 00:36:53.778
+other thing that can be done,
+you know, it would be to try to
+
+00:36:53.778 --> 00:36:55.780
+detect those inter-VM process
+scheduling pattern. Meaning
+
+00:36:55.780 --> 00:36:57.782
+that, let's say you have two
+process running in two different
+
+00:36:57.782 --> 00:37:03.755
+VM and they are always scheduled
+at the same time somehow, they
+
+00:37:03.755 --> 00:37:09.861
+always overlap. That could be
+detected obviously. And one of
+
+00:37:09.861 --> 00:37:15.266
+the other things is #(Inaudible
+37:11) for that stuff that I
+
+00:37:15.266 --> 00:37:22.107
+have been doing there is lots of
+calls to RDTSC because this is
+
+00:37:22.107 --> 00:37:26.177
+what the compensation is doing
+and so on. So one could monitor
+
+00:37:26.177 --> 00:37:32.317
+and put some #(Inaudible 37:26)
+and try to detect that. So this
+
+00:37:32.317 --> 00:37:38.256
+is really what I am working on.
+Yeah. So basically that is
+
+00:37:38.256 --> 00:37:42.360
+pretty much all I have. The
+source code for this is going to
+
+00:37:42.360 --> 00:37:49.400
+be on my hub. I will send an
+update on this slide deck
+
+00:37:49.400 --> 00:37:55.406
+shortly. Thank you very much
+everybody. (Applause)
+

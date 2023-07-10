@@ -1,0 +1,2948 @@
+﻿1
+00:00:05,399 --> 00:00:11,410
+<font color="#CCCCCC">right well slightly delays sorry for the</font>
+
+2
+00:00:08,350 --> 00:00:15,190
+technical hitches<font color="#E5E5E5"> okay I'm gonna talk</font><font color="#CCCCCC"> to</font>
+
+3
+00:00:11,410 --> 00:00:20,490
+<font color="#CCCCCC">you today</font><font color="#E5E5E5"> about some work that</font><font color="#CCCCCC"> I'm doing</font>
+
+4
+00:00:15,190 --> 00:00:23,380
+<font color="#CCCCCC">it's on using non-volatile memory from</font>
+
+5
+00:00:20,490 --> 00:00:25,029
+<font color="#CCCCCC">OpenJDK and as part of that</font><font color="#E5E5E5"> I had to try</font>
+
+6
+00:00:23,380 --> 00:00:26,950
+<font color="#E5E5E5">and make it perform well by implementing</font>
+
+7
+00:00:25,030 --> 00:00:28,119
+<font color="#E5E5E5">and compile intrinsic so I thought it</font>
+
+8
+00:00:26,950 --> 00:00:30,189
+just might<font color="#CCCCCC"> be interesting</font><font color="#E5E5E5"> to show people</font>
+
+9
+00:00:28,119 --> 00:00:31,509
+the steps to<font color="#E5E5E5"> went on and doing that if</font>
+
+10
+00:00:30,190 --> 00:00:33,670
+you<font color="#E5E5E5"> don't understand some of the details</font>
+
+11
+00:00:31,510 --> 00:00:35,079
+<font color="#E5E5E5">of this don't worry it's really just to</font>
+
+12
+00:00:33,670 --> 00:00:36,850
+open up what's going<font color="#CCCCCC"> on under the covers</font>
+
+13
+00:00:35,079 --> 00:00:40,030
+<font color="#CCCCCC">in the compiler and how you can use it</font>
+
+14
+00:00:36,850 --> 00:00:42,489
+<font color="#E5E5E5">to optimize a specific java method by</font>
+
+15
+00:00:40,030 --> 00:00:45,370
+<font color="#E5E5E5">generating a handcrafted compiler graph</font>
+
+16
+00:00:42,489 --> 00:00:49,538
+that bottoms out some super efficient
+
+17
+00:00:45,370 --> 00:00:54,149
+assembler<font color="#E5E5E5"> so</font><font color="#CCCCCC"> I'll motive</font><font color="#E5E5E5"> this by</font><font color="#CCCCCC"> talking</font>
+
+18
+00:00:49,539 --> 00:00:54,149
+about<font color="#E5E5E5"> the</font><font color="#CCCCCC"> App of the actual use case</font>
+
+19
+00:00:54,989 --> 00:01:00,099
+which is using<font color="#CCCCCC"> NVRAM I'll talk about the</font>
+
+20
+00:00:58,449 --> 00:01:01,659
+equivalent library<font color="#CCCCCC"> the intelligible it</font>
+
+21
+00:01:00,100 --> 00:01:03,309
+for you doing<font color="#CCCCCC"> that</font><font color="#E5E5E5"> from C and show you</font>
+
+22
+00:01:01,659 --> 00:01:06,460
+how<font color="#E5E5E5"> we need to</font><font color="#CCCCCC"> provide a</font><font color="#E5E5E5"> jar equivalent</font>
+
+23
+00:01:03,309 --> 00:01:08,080
+<font color="#E5E5E5">I'll show you what changes I proposed as</font>
+
+24
+00:01:06,460 --> 00:01:09,969
+his<font color="#E5E5E5"> first attempt</font><font color="#CCCCCC"> to try</font><font color="#E5E5E5"> and do that</font>
+
+25
+00:01:08,080 --> 00:01:11,770
+from<font color="#CCCCCC"> Java with all the functionality of</font>
+
+26
+00:01:09,969 --> 00:01:14,048
+<font color="#E5E5E5">the C library</font><font color="#CCCCCC"> limited</font><font color="#E5E5E5"> efficiently in</font>
+
+27
+00:01:11,770 --> 00:01:15,369
+Java<font color="#E5E5E5"> but without having the compiler a</font>
+
+28
+00:01:14,049 --> 00:01:16,930
+backup that<font color="#E5E5E5"> really gives it all the</font>
+
+29
+00:01:15,369 --> 00:01:19,270
+extra performance<font color="#CCCCCC"> and then I'll show</font><font color="#E5E5E5"> you</font>
+
+30
+00:01:16,930 --> 00:01:20,770
+<font color="#E5E5E5">how I</font><font color="#CCCCCC"> built the Internet</font><font color="#E5E5E5"> the intrinsic</font>
+
+31
+00:01:19,270 --> 00:01:23,408
+into the compiler so that you could
+
+32
+00:01:20,770 --> 00:01:25,539
+basically get in<font color="#E5E5E5"> very</font><font color="#CCCCCC"> very simple</font>
+
+33
+00:01:23,409 --> 00:01:27,280
+instructions<font color="#E5E5E5"> in line into the GC code</font>
+
+34
+00:01:25,539 --> 00:01:30,579
+and in line through into the client code
+
+35
+00:01:27,280 --> 00:01:32,469
+<font color="#E5E5E5">that uses</font><font color="#CCCCCC"> this there's this API just to</font>
+
+36
+00:01:30,579 --> 00:01:33,880
+<font color="#E5E5E5">sort of show how you can really tweak</font>
+
+37
+00:01:32,469 --> 00:01:36,339
+<font color="#E5E5E5">the maximum performance out of things</font>
+
+38
+00:01:33,880 --> 00:01:39,130
+with<font color="#E5E5E5"> the compiler so to start off let's</font>
+
+39
+00:01:36,340 --> 00:01:40,570
+<font color="#E5E5E5">talk about</font><font color="#CCCCCC"> NVRAM</font><font color="#E5E5E5"> this is basically a</font>
+
+40
+00:01:39,130 --> 00:01:43,030
+memory<font color="#E5E5E5"> device you plug</font><font color="#CCCCCC"> into your machine</font>
+
+41
+00:01:40,570 --> 00:01:45,699
+<font color="#CCCCCC">it's just like memory except when you</font>
+
+42
+00:01:43,030 --> 00:01:47,049
+write to<font color="#CCCCCC"> it on one program run if you</font>
+
+43
+00:01:45,700 --> 00:01:48,670
+<font color="#E5E5E5">bring it back</font><font color="#CCCCCC"> up</font><font color="#E5E5E5"> and you map them are we</font>
+
+44
+00:01:47,049 --> 00:01:50,350
+back<font color="#CCCCCC"> in TV</font><font color="#E5E5E5"> into</font><font color="#CCCCCC"> your virtual</font><font color="#E5E5E5"> address</font>
+
+45
+00:01:48,670 --> 00:01:51,729
+space you'll find all the<font color="#CCCCCC"> data wrote</font>
+
+46
+00:01:50,350 --> 00:01:53,649
+<font color="#CCCCCC">that last</font><font color="#E5E5E5"> time is still there so</font><font color="#CCCCCC"> it's</font>
+
+47
+00:01:51,729 --> 00:01:55,600
+got persistence<font color="#E5E5E5"> you can think of an</font>
+
+48
+00:01:53,649 --> 00:01:58,240
+extension in the middle of the<font color="#E5E5E5"> the</font>
+
+49
+00:01:55,600 --> 00:01:59,979
+memory tear between archival storage and
+
+50
+00:01:58,240 --> 00:02:02,890
+the volatile<font color="#E5E5E5"> for running program memory</font>
+
+51
+00:01:59,979 --> 00:02:04,390
+<font color="#E5E5E5">you can have some sort of storm storage</font>
+
+52
+00:02:02,890 --> 00:02:06,130
+that's like will persist across runs
+
+53
+00:02:04,390 --> 00:02:07,840
+your choices<font color="#E5E5E5"> at the moment of spinning</font>
+
+54
+00:02:06,130 --> 00:02:09,940
+<font color="#E5E5E5">plays a disk or a</font><font color="#CCCCCC"> flash-based disk</font>
+
+55
+00:02:07,840 --> 00:02:11,440
+well<font color="#CCCCCC"> nvram is actually a memory that</font>
+
+56
+00:02:09,940 --> 00:02:13,819
+<font color="#E5E5E5">acts like memory and you can</font><font color="#CCCCCC"> draw you</font>
+
+57
+00:02:11,440 --> 00:02:15,189
+can write<font color="#E5E5E5"> to like memory but it's</font>
+
+58
+00:02:13,819 --> 00:02:18,530
+<font color="#E5E5E5">there next time you come back up again</font>
+
+59
+00:02:15,189 --> 00:02:21,319
+<font color="#E5E5E5">it's presented as a device so</font><font color="#CCCCCC"> you the</font>
+
+60
+00:02:18,530 --> 00:02:25,579
+memory is<font color="#CCCCCC"> Alec managed as files of data</font>
+
+61
+00:02:21,319 --> 00:02:27,858
+<font color="#CCCCCC">of blocks</font><font color="#E5E5E5"> of memory in a device mapped</font>
+
+62
+00:02:25,579 --> 00:02:29,359
+in device and you map those files into
+
+63
+00:02:27,859 --> 00:02:30,680
+your<font color="#CCCCCC"> drapes as rest</font><font color="#E5E5E5"> space</font><font color="#CCCCCC"> or at least</font>
+
+64
+00:02:29,359 --> 00:02:32,109
+<font color="#E5E5E5">that's the model that I'm looking at how</font>
+
+65
+00:02:30,680 --> 00:02:34,609
+you use<font color="#E5E5E5"> it</font>
+
+66
+00:02:32,109 --> 00:02:36,230
+of course when<font color="#CCCCCC"> you've then mapped into</font>
+
+67
+00:02:34,609 --> 00:02:38,030
+address space<font color="#E5E5E5"> when you</font><font color="#CCCCCC"> write through</font>
+
+68
+00:02:36,230 --> 00:02:39,828
+<font color="#CCCCCC">into the virtual address and things</font><font color="#E5E5E5"> have</font>
+
+69
+00:02:38,030 --> 00:02:41,569
+<font color="#E5E5E5">flushed back into the</font><font color="#CCCCCC"> cast it's a cache</font>
+
+70
+00:02:39,829 --> 00:02:44,180
+system<font color="#E5E5E5"> and available for other threads</font>
+
+71
+00:02:41,569 --> 00:02:46,189
+in the same program<font color="#E5E5E5"> it's also mapped</font>
+
+72
+00:02:44,180 --> 00:02:48,349
+back through into the device<font color="#E5E5E5"> memory and</font>
+
+73
+00:02:46,189 --> 00:02:49,879
+it'll stay there that's not automatic
+
+74
+00:02:48,349 --> 00:02:51,168
+<font color="#E5E5E5">and there's a difference</font><font color="#CCCCCC"> between the</font>
+
+75
+00:02:49,879 --> 00:02:53,328
+synchronization that's used to
+
+76
+00:02:51,169 --> 00:02:55,099
+synchronize<font color="#E5E5E5"> things between cache and the</font>
+
+77
+00:02:53,329 --> 00:02:57,019
+operations<font color="#E5E5E5"> needed to flush things back</font>
+
+78
+00:02:55,099 --> 00:02:58,638
+into<font color="#E5E5E5"> the actual memory and that's where</font>
+
+79
+00:02:57,019 --> 00:03:00,469
+the interesting comes in the application
+
+80
+00:02:58,639 --> 00:03:01,819
+really<font color="#E5E5E5"> needs</font><font color="#CCCCCC"> to</font><font color="#E5E5E5"> be involved</font><font color="#CCCCCC"> in</font><font color="#E5E5E5"> making</font>
+
+81
+00:03:00,469 --> 00:03:03,799
+<font color="#E5E5E5">sure not just</font><font color="#CCCCCC"> that</font><font color="#E5E5E5"> things are</font>
+
+82
+00:03:01,819 --> 00:03:06,108
+synchronized between<font color="#E5E5E5"> threads but that</font>
+
+83
+00:03:03,799 --> 00:03:07,819
+data is<font color="#CCCCCC"> also with another</font><font color="#E5E5E5"> level of</font>
+
+84
+00:03:06,109 --> 00:03:11,209
+synchronization synchronized back into
+
+85
+00:03:07,819 --> 00:03:13,010
+the<font color="#E5E5E5"> physical memory I'm going to show an</font>
+
+86
+00:03:11,209 --> 00:03:15,230
+<font color="#CCCCCC">example just a simple example</font><font color="#E5E5E5"> of how</font>
+
+87
+00:03:13,010 --> 00:03:16,459
+<font color="#E5E5E5">that comes in and why the application</font>
+
+88
+00:03:15,230 --> 00:03:18,948
+has<font color="#E5E5E5"> to be involved</font><font color="#CCCCCC"> in that so</font><font color="#E5E5E5"> imagine</font>
+
+89
+00:03:16,459 --> 00:03:21,109
+we've got<font color="#E5E5E5"> a block of</font><font color="#CCCCCC"> n Rima and vram say</font>
+
+90
+00:03:18,949 --> 00:03:22,970
+you had half a gigabyte<font color="#E5E5E5"> of memory that</font>
+
+91
+00:03:21,109 --> 00:03:25,340
+<font color="#CCCCCC">you're using for a rolling</font><font color="#E5E5E5"> transaction</font>
+
+92
+00:03:22,970 --> 00:03:26,840
+log so here we've<font color="#CCCCCC"> got</font><font color="#E5E5E5"> it divided up and</font>
+
+93
+00:03:25,340 --> 00:03:29,060
+into your<font color="#E5E5E5"> words and there</font><font color="#CCCCCC"> are interested</font>
+
+94
+00:03:26,840 --> 00:03:30,409
+counters<font color="#CCCCCC"> and point and</font><font color="#E5E5E5"> indexes cursors</font>
+
+95
+00:03:29,060 --> 00:03:32,419
+<font color="#CCCCCC">that are used to keep track of the live</font>
+
+96
+00:03:30,409 --> 00:03:34,548
+<font color="#E5E5E5">segment or the log so the first two</font>
+
+97
+00:03:32,419 --> 00:03:36,620
+<font color="#E5E5E5">words in the log identify the start of</font>
+
+98
+00:03:34,549 --> 00:03:38,389
+the live section and the first non live
+
+99
+00:03:36,620 --> 00:03:40,669
+word at the<font color="#E5E5E5"> end of the live section 4</font>
+
+100
+00:03:38,389 --> 00:03:43,220
+and 14 and there are<font color="#E5E5E5"> two records in</font>
+
+101
+00:03:40,669 --> 00:03:44,840
+there<font color="#E5E5E5"> one has size</font><font color="#CCCCCC"> 6 which is in the</font>
+
+102
+00:03:43,220 --> 00:03:46,459
+<font color="#CCCCCC">header</font><font color="#E5E5E5"> word and then the</font><font color="#CCCCCC"> 6 words in all</font>
+
+103
+00:03:44,840 --> 00:03:48,680
+and there's a head of world with<font color="#E5E5E5"> four</font>
+
+104
+00:03:46,459 --> 00:03:50,900
+<font color="#CCCCCC">four so size four and there's three data</font>
+
+105
+00:03:48,680 --> 00:03:52,400
+words for that one there are actually
+
+106
+00:03:50,900 --> 00:03:54,799
+three different tags of using this as a
+
+107
+00:03:52,400 --> 00:03:56,479
+log<font color="#E5E5E5"> when you</font><font color="#CCCCCC"> allocate a log record for a</font>
+
+108
+00:03:54,799 --> 00:03:57,799
+transaction<font color="#CCCCCC"> you haven't</font><font color="#E5E5E5"> yet got a point</font>
+
+109
+00:03:56,479 --> 00:04:00,199
+with the translation<font color="#E5E5E5"> committed so it's</font>
+
+110
+00:03:57,799 --> 00:04:01,519
+an uncommitted record<font color="#E5E5E5"> if you crash the</font>
+
+111
+00:04:00,199 --> 00:04:02,930
+<font color="#CCCCCC">data and there is rubbish you throw it</font>
+
+112
+00:04:01,519 --> 00:04:05,060
+away<font color="#E5E5E5"> because</font><font color="#CCCCCC"> there's nothing</font><font color="#E5E5E5"> waiting to</font>
+
+113
+00:04:02,930 --> 00:04:07,430
+have roll forward like<font color="#CCCCCC"> transactions</font>
+
+114
+00:04:05,060 --> 00:04:09,079
+automatically<font color="#E5E5E5"> roll back if you have a</font>
+
+115
+00:04:07,430 --> 00:04:11,209
+committed record as we have here<font color="#E5E5E5"> in the</font>
+
+116
+00:04:09,079 --> 00:04:12,829
+first<font color="#CCCCCC"> entry that means the transaction</font>
+
+117
+00:04:11,209 --> 00:04:14,509
+is committed the coordinator of the
+
+118
+00:04:12,829 --> 00:04:16,400
+transaction is written this and made
+
+119
+00:04:14,509 --> 00:04:17,870
+sure<font color="#CCCCCC"> it's out on disk</font><font color="#E5E5E5"> because at</font><font color="#CCCCCC"> that</font>
+
+120
+00:04:16,399 --> 00:04:18,918
+<font color="#E5E5E5">point if we crash</font><font color="#CCCCCC"> we have all the</font>
+
+121
+00:04:17,870 --> 00:04:21,048
+information<font color="#E5E5E5"> make sure all the other</font>
+
+122
+00:04:18,918 --> 00:04:23,060
+<font color="#E5E5E5">elements participates in the transaction</font>
+
+123
+00:04:21,048 --> 00:04:24,150
+roll forward<font color="#E5E5E5"> so we've got a guaranteed</font>
+
+124
+00:04:23,060 --> 00:04:25,380
+safety
+
+125
+00:04:24,150 --> 00:04:27,179
+got to commit<font color="#E5E5E5"> in the coordination</font>
+
+126
+00:04:25,380 --> 00:04:28,919
+<font color="#CCCCCC">process</font><font color="#E5E5E5"> we can make</font><font color="#CCCCCC"> sure everything</font>
+
+127
+00:04:27,180 --> 00:04:32,940
+actually happens consistently everything
+
+128
+00:04:28,919 --> 00:04:34,650
+is replayable<font color="#CCCCCC"> there's a free record at</font>
+
+129
+00:04:32,940 --> 00:04:36,630
+the end<font color="#CCCCCC"> there obviously</font><font color="#E5E5E5"> that transaction</font>
+
+130
+00:04:34,650 --> 00:04:37,799
+started later but at some point<font color="#E5E5E5"> you need</font>
+
+131
+00:04:36,630 --> 00:04:39,419
+<font color="#CCCCCC">to free up records on the log and</font>
+
+132
+00:04:37,800 --> 00:04:41,220
+eventually they get reclaimed and you
+
+133
+00:04:39,419 --> 00:04:43,530
+can<font color="#CCCCCC"> rote roll the log round and just</font>
+
+134
+00:04:41,220 --> 00:04:44,820
+<font color="#E5E5E5">keep it continuously running so those</font>
+
+135
+00:04:43,530 --> 00:04:47,250
+are the three<font color="#CCCCCC"> different tags you'd have</font>
+
+136
+00:04:44,820 --> 00:04:48,870
+in the in the in<font color="#CCCCCC"> the</font><font color="#E5E5E5"> header word now</font>
+
+137
+00:04:47,250 --> 00:04:50,880
+<font color="#E5E5E5">imagine</font><font color="#CCCCCC"> that somebody</font><font color="#E5E5E5"> wants</font><font color="#CCCCCC"> to allocate</font>
+
+138
+00:04:48,870 --> 00:04:52,860
+a new<font color="#CCCCCC"> record here's an example</font><font color="#E5E5E5"> of why</font>
+
+139
+00:04:50,880 --> 00:04:54,479
+for the the write-back<font color="#CCCCCC"> is</font><font color="#E5E5E5"> really</font>
+
+140
+00:04:52,860 --> 00:04:57,630
+important<font color="#E5E5E5"> so the first thing that's done</font>
+
+141
+00:04:54,479 --> 00:05:00,300
+when you want to<font color="#E5E5E5"> do a an allocate is you</font>
+
+142
+00:04:57,630 --> 00:05:01,530
+would find the end of the<font color="#E5E5E5"> record and at</font>
+
+143
+00:05:00,300 --> 00:05:03,180
+the end<font color="#E5E5E5"> of that log</font><font color="#CCCCCC"> well first thing you</font>
+
+144
+00:05:01,530 --> 00:05:04,619
+do is take<font color="#E5E5E5"> a lock because there may be</font>
+
+145
+00:05:03,180 --> 00:05:06,620
+<font color="#E5E5E5">many threads right trying to allocate</font>
+
+146
+00:05:04,620 --> 00:05:08,430
+transaction records so they have to
+
+147
+00:05:06,620 --> 00:05:10,500
+synchronize in the shared<font color="#E5E5E5"> state that's</font>
+
+148
+00:05:08,430 --> 00:05:12,840
+an interim<font color="#CCCCCC"> with volatile lock but</font><font color="#E5E5E5"> it's a</font>
+
+149
+00:05:10,500 --> 00:05:14,400
+<font color="#CCCCCC">synchronization of</font><font color="#E5E5E5"> some sort and having</font>
+
+150
+00:05:12,840 --> 00:05:16,260
+got the lock you're then able to<font color="#E5E5E5"> first</font>
+
+151
+00:05:14,400 --> 00:05:17,909
+<font color="#E5E5E5">of all write the record with a header</font>
+
+152
+00:05:16,260 --> 00:05:20,610
+and a length ahead of length and it's
+
+153
+00:05:17,910 --> 00:05:23,099
+uncommitted by default and then you
+
+154
+00:05:20,610 --> 00:05:24,479
+write<font color="#CCCCCC"> the cursor so that the cursor</font><font color="#E5E5E5"> is</font>
+
+155
+00:05:23,099 --> 00:05:27,570
+now<font color="#E5E5E5"> beyond the end of</font><font color="#CCCCCC"> that record</font><font color="#E5E5E5"> is now</font>
+
+156
+00:05:24,479 --> 00:05:30,060
+in the log and<font color="#E5E5E5"> at that point you can</font>
+
+157
+00:05:27,570 --> 00:05:31,919
+unlock the release the lock and then the
+
+158
+00:05:30,060 --> 00:05:33,210
+transaction<font color="#CCCCCC"> the thread that's managing</font>
+
+159
+00:05:31,919 --> 00:05:35,070
+<font color="#E5E5E5">that transaction go write the data</font>
+
+160
+00:05:33,210 --> 00:05:36,840
+independently<font color="#CCCCCC"> because it owns that that</font>
+
+161
+00:05:35,070 --> 00:05:37,500
+bit of space nothing<font color="#CCCCCC"> else is</font><font color="#E5E5E5"> going to</font>
+
+162
+00:05:36,840 --> 00:05:39,330
+overwrite it
+
+163
+00:05:37,500 --> 00:05:41,490
+you've got consistent<font color="#CCCCCC"> State for the log</font>
+
+164
+00:05:39,330 --> 00:05:43,500
+except<font color="#E5E5E5"> it's really important</font><font color="#CCCCCC"> that the</font>
+
+165
+00:05:41,490 --> 00:05:45,360
+right and the record information<font color="#CCCCCC"> and</font>
+
+166
+00:05:43,500 --> 00:05:47,490
+then the right of the cursor<font color="#CCCCCC"> the end</font>
+
+167
+00:05:45,360 --> 00:05:49,380
+cursor is done in the right<font color="#CCCCCC"> order and</font>
+
+168
+00:05:47,490 --> 00:05:51,229
+they're flushed back to memory to
+
+169
+00:05:49,380 --> 00:05:53,520
+physical memory between<font color="#CCCCCC"> the two</font><font color="#E5E5E5"> rights</font>
+
+170
+00:05:51,229 --> 00:05:56,760
+so what you<font color="#E5E5E5"> need to do is you need</font><font color="#CCCCCC"> to</font>
+
+171
+00:05:53,520 --> 00:05:58,530
+write<font color="#CCCCCC"> the header there make sure</font><font color="#E5E5E5"> it's</font>
+
+172
+00:05:56,760 --> 00:06:01,740
+actually<font color="#CCCCCC"> flushed back into physical</font>
+
+173
+00:05:58,530 --> 00:06:03,690
+memory<font color="#E5E5E5"> before you write the cursor and</font>
+
+174
+00:06:01,740 --> 00:06:04,979
+<font color="#E5E5E5">update the cursor now imagine if</font><font color="#CCCCCC"> you</font>
+
+175
+00:06:03,690 --> 00:06:07,349
+wrote them both and then flushed
+
+176
+00:06:04,979 --> 00:06:09,240
+afterwards it might be that<font color="#CCCCCC"> that</font><font color="#E5E5E5"> first</font>
+
+177
+00:06:07,349 --> 00:06:12,180
+line gets evicted<font color="#CCCCCC"> and you've got a count</font>
+
+178
+00:06:09,240 --> 00:06:15,479
+of 18 so the log<font color="#E5E5E5"> doesn't actually have</font>
+
+179
+00:06:12,180 --> 00:06:17,760
+any new data<font color="#CCCCCC"> flush back into memory</font><font color="#E5E5E5"> and</font>
+
+180
+00:06:15,479 --> 00:06:19,680
+<font color="#E5E5E5">you crash when you come back</font><font color="#CCCCCC"> out there</font>
+
+181
+00:06:17,760 --> 00:06:22,349
+might be<font color="#E5E5E5"> an old transaction record in</font>
+
+182
+00:06:19,680 --> 00:06:23,789
+there<font color="#E5E5E5"> which is committed</font><font color="#CCCCCC"> well with</font>
+
+183
+00:06:22,349 --> 00:06:25,949
+invalid data it's<font color="#E5E5E5"> you have inconsistent</font>
+
+184
+00:06:23,789 --> 00:06:29,370
+log worse there might be<font color="#E5E5E5"> a record with</font><font color="#CCCCCC"> a</font>
+
+185
+00:06:25,949 --> 00:06:30,539
+wrong length<font color="#E5E5E5"> and you the the end cursor</font>
+
+186
+00:06:29,370 --> 00:06:31,680
+and the end when<font color="#CCCCCC"> you</font><font color="#E5E5E5"> skip through the</font>
+
+187
+00:06:30,539 --> 00:06:33,000
+records<font color="#CCCCCC"> of where you</font><font color="#E5E5E5"> reached you</font>
+
+188
+00:06:31,680 --> 00:06:34,950
+wouldn't add up<font color="#E5E5E5"> your date</font>
+
+189
+00:06:33,000 --> 00:06:36,840
+is<font color="#E5E5E5"> actually inconsistent not</font><font color="#CCCCCC"> MnDOT just</font>
+
+190
+00:06:34,950 --> 00:06:39,479
+out of<font color="#E5E5E5"> date</font><font color="#CCCCCC"> so it's important that</font><font color="#E5E5E5"> the</font>
+
+191
+00:06:36,840 --> 00:06:41,640
+right and you commit back to physical
+
+192
+00:06:39,480 --> 00:06:43,650
+memory<font color="#E5E5E5"> the record length before you</font>
+
+193
+00:06:41,640 --> 00:06:45,150
+update<font color="#E5E5E5"> the cursor</font><font color="#CCCCCC"> and the application</font>
+
+194
+00:06:43,650 --> 00:06:46,289
+<font color="#E5E5E5">has to do that it's the applications use</font>
+
+195
+00:06:45,150 --> 00:06:48,929
+of this memory<font color="#E5E5E5"> that determines how</font>
+
+196
+00:06:46,290 --> 00:06:50,580
+that's done<font color="#E5E5E5"> it's not something that the</font>
+
+197
+00:06:48,930 --> 00:06:52,020
+memory system or the sufferer does the
+
+198
+00:06:50,580 --> 00:06:58,789
+<font color="#CCCCCC">write-back can do for you</font><font color="#E5E5E5"> because it's</font>
+
+199
+00:06:52,020 --> 00:07:02,280
+about semantics of the application<font color="#CCCCCC"> so</font>
+
+200
+00:06:58,790 --> 00:07:03,690
+<font color="#E5E5E5">oops here's</font><font color="#CCCCCC"> another example</font><font color="#E5E5E5"> the</font>
+
+201
+00:07:02,280 --> 00:07:05,280
+<font color="#E5E5E5">transactional log commit at this point</font>
+
+202
+00:07:03,690 --> 00:07:06,660
+<font color="#E5E5E5">there's no need to have a lock for this</font>
+
+203
+00:07:05,280 --> 00:07:08,820
+is it there's a thread managing a
+
+204
+00:07:06,660 --> 00:07:12,630
+transaction<font color="#E5E5E5"> it changes the record state</font>
+
+205
+00:07:08,820 --> 00:07:15,000
+from uncommitted<font color="#E5E5E5"> just to commit it just</font>
+
+206
+00:07:12,630 --> 00:07:18,480
+by writing that field<font color="#E5E5E5"> and changing the</font>
+
+207
+00:07:15,000 --> 00:07:20,130
+tag in it but before<font color="#CCCCCC"> doing that it's</font>
+
+208
+00:07:18,480 --> 00:07:22,650
+going to write some transaction date of
+
+209
+00:07:20,130 --> 00:07:25,710
+that record<font color="#CCCCCC"> now again that stuff has</font><font color="#E5E5E5"> to</font>
+
+210
+00:07:22,650 --> 00:07:28,109
+be<font color="#E5E5E5"> committed before the header of the</font>
+
+211
+00:07:25,710 --> 00:07:30,210
+<font color="#CCCCCC">record has changed to reflect the commit</font>
+
+212
+00:07:28,110 --> 00:07:32,130
+it has to be<font color="#E5E5E5"> written back to physical</font>
+
+213
+00:07:30,210 --> 00:07:35,729
+memory<font color="#E5E5E5"> if you didn't do it</font><font color="#CCCCCC"> in the</font><font color="#E5E5E5"> right</font>
+
+214
+00:07:32,130 --> 00:07:37,770
+<font color="#CCCCCC">order you might find that the the tag</font>
+
+215
+00:07:35,730 --> 00:07:39,330
+<font color="#E5E5E5">gets changed</font><font color="#CCCCCC"> and</font><font color="#E5E5E5"> written back but the</font>
+
+216
+00:07:37,770 --> 00:07:41,400
+then you crash and<font color="#E5E5E5"> the date hasn't</font>
+
+217
+00:07:39,330 --> 00:07:43,229
+<font color="#E5E5E5">actually been written so you could end</font>
+
+218
+00:07:41,400 --> 00:07:44,280
+up there and<font color="#CCCCCC"> not just if the program</font>
+
+219
+00:07:43,229 --> 00:07:45,300
+doesn't<font color="#E5E5E5"> it doesn't write it back it</font>
+
+220
+00:07:44,280 --> 00:07:47,130
+could<font color="#E5E5E5"> be</font><font color="#CCCCCC"> written back because other</font>
+
+221
+00:07:45,300 --> 00:07:48,479
+effects going<font color="#E5E5E5"> on on</font><font color="#CCCCCC"> that cache line that</font>
+
+222
+00:07:47,130 --> 00:07:50,310
+happens to have<font color="#E5E5E5"> that record header on it</font>
+
+223
+00:07:48,479 --> 00:07:51,539
+so it's<font color="#E5E5E5"> really important again</font><font color="#CCCCCC"> that it</font>
+
+224
+00:07:50,310 --> 00:07:52,740
+happens in the right order<font color="#E5E5E5"> otherwise you</font>
+
+225
+00:07:51,540 --> 00:07:54,540
+might get<font color="#E5E5E5"> a</font><font color="#CCCCCC"> situation we've got a</font>
+
+226
+00:07:52,740 --> 00:07:57,090
+committed record<font color="#E5E5E5"> and the data is</font>
+
+227
+00:07:54,540 --> 00:08:00,150
+<font color="#CCCCCC">associated with</font><font color="#E5E5E5"> some other transaction</font>
+
+228
+00:07:57,090 --> 00:08:01,619
+<font color="#CCCCCC">or might even</font><font color="#E5E5E5"> be inconsistent data so</font>
+
+229
+00:08:00,150 --> 00:08:02,820
+it's it's<font color="#E5E5E5"> it's really important that the</font>
+
+230
+00:08:01,620 --> 00:08:04,919
+application has<font color="#CCCCCC"> the abilities to manage</font>
+
+231
+00:08:02,820 --> 00:08:07,169
+<font color="#CCCCCC">not just</font><font color="#E5E5E5"> making things visible in the</font>
+
+232
+00:08:04,919 --> 00:08:08,520
+<font color="#E5E5E5">cache system but making sure</font><font color="#CCCCCC"> that casts</font>
+
+233
+00:08:07,169 --> 00:08:10,140
+<font color="#CCCCCC">assist cache system has actually been</font>
+
+234
+00:08:08,520 --> 00:08:12,450
+the changes that cache<font color="#E5E5E5"> system have</font>
+
+235
+00:08:10,140 --> 00:08:16,770
+actually been persisted and persisted in
+
+236
+00:08:12,450 --> 00:08:19,200
+a specific<font color="#E5E5E5"> order so let's talk about</font>
+
+237
+00:08:16,770 --> 00:08:20,849
+<font color="#CCCCCC">live pmm</font><font color="#E5E5E5"> now this is intel's c library</font>
+
+238
+00:08:19,200 --> 00:08:23,219
+<font color="#E5E5E5">that gives you an api for doing</font><font color="#CCCCCC"> exactly</font>
+
+239
+00:08:20,850 --> 00:08:25,650
+this it allows you<font color="#E5E5E5"> to access data and</font>
+
+240
+00:08:23,220 --> 00:08:27,210
+then<font color="#CCCCCC"> matter update yet and maithili to</font>
+
+241
+00:08:25,650 --> 00:08:29,280
+memory update it and<font color="#E5E5E5"> have it mapped back</font>
+
+242
+00:08:27,210 --> 00:08:30,750
+to physical<font color="#CCCCCC"> memory and it's been</font>
+
+243
+00:08:29,280 --> 00:08:34,228
+<font color="#CCCCCC">implemented for</font><font color="#E5E5E5"> linux and</font><font color="#CCCCCC"> windows and</font>
+
+244
+00:08:30,750 --> 00:08:36,390
+<font color="#E5E5E5">our own x86 64 it actually exists exists</font>
+
+245
+00:08:34,229 --> 00:08:38,310
+for<font color="#E5E5E5"> linux arm 64 except there</font><font color="#CCCCCC"> isn't</font>
+
+246
+00:08:36,390 --> 00:08:40,319
+actually<font color="#E5E5E5"> physical</font><font color="#CCCCCC"> hardware</font><font color="#E5E5E5"> from 64 yet</font>
+
+247
+00:08:38,309 --> 00:08:42,030
+but that should<font color="#E5E5E5"> be</font><font color="#CCCCCC"> available soon so</font>
+
+248
+00:08:40,320 --> 00:08:43,370
+we've actually the work had been<font color="#CCCCCC"> done</font>
+
+249
+00:08:42,030 --> 00:08:47,660
+has been<font color="#CCCCCC"> done on both and with</font>
+
+250
+00:08:43,370 --> 00:08:49,730
+related<font color="#E5E5E5"> to test it on</font><font color="#CCCCCC"> 164 so what you do</font>
+
+251
+00:08:47,660 --> 00:08:52,370
+is you do is an F open<font color="#E5E5E5"> to open a file</font>
+
+252
+00:08:49,730 --> 00:08:54,140
+<font color="#E5E5E5">from the memory device and allocate a</font>
+
+253
+00:08:52,370 --> 00:08:58,100
+block of memory for<font color="#E5E5E5"> that file for</font>
+
+254
+00:08:54,140 --> 00:09:00,140
+storage<font color="#CCCCCC"> for that file you'd use the</font><font color="#E5E5E5"> M</font>
+
+255
+00:08:58,100 --> 00:09:01,910
+map call to map into<font color="#CCCCCC"> a</font><font color="#E5E5E5"> memory which</font>
+
+256
+00:09:00,140 --> 00:09:03,199
+<font color="#CCCCCC">isn't all we're doing it</font><font color="#E5E5E5"> there's</font>
+
+257
+00:09:01,910 --> 00:09:05,029
+actually<font color="#CCCCCC"> an extension to a map that</font>
+
+258
+00:09:03,200 --> 00:09:07,190
+<font color="#CCCCCC">allows you</font><font color="#E5E5E5"> to say this memory is backed</font>
+
+259
+00:09:05,029 --> 00:09:08,540
+by a synchronous device and the<font color="#E5E5E5"> payoff</font>
+
+260
+00:09:07,190 --> 00:09:10,490
+there is<font color="#E5E5E5"> that you can actually write it</font>
+
+261
+00:09:08,540 --> 00:09:11,750
+back more efficiently<font color="#E5E5E5"> so the problem is</font>
+
+262
+00:09:10,490 --> 00:09:14,240
+<font color="#E5E5E5">we use M map which</font><font color="#CCCCCC"> is what I've called</font>
+
+263
+00:09:11,750 --> 00:09:15,860
+plan a is<font color="#CCCCCC"> that when you come to a</font>
+
+264
+00:09:14,240 --> 00:09:17,630
+<font color="#CCCCCC">write-back physical memory you've got to</font>
+
+265
+00:09:15,860 --> 00:09:19,640
+do it via<font color="#E5E5E5"> a file descriptor flush now</font>
+
+266
+00:09:17,630 --> 00:09:21,950
+<font color="#CCCCCC">normally</font><font color="#E5E5E5"> when you do a flush and</font><font color="#CCCCCC"> on a</font>
+
+267
+00:09:19,640 --> 00:09:23,630
+<font color="#E5E5E5">file you know which blocks are dirty and</font>
+
+268
+00:09:21,950 --> 00:09:25,279
+the dirty blocks get written<font color="#E5E5E5"> back and</font>
+
+269
+00:09:23,630 --> 00:09:26,990
+the other the<font color="#CCCCCC"> other blocks</font><font color="#E5E5E5"> don't need to</font>
+
+270
+00:09:25,279 --> 00:09:29,240
+be touched<font color="#CCCCCC"> so that's fine</font><font color="#E5E5E5"> but when</font>
+
+271
+00:09:26,990 --> 00:09:32,540
+you're writing<font color="#E5E5E5"> actual writing map memory</font>
+
+272
+00:09:29,240 --> 00:09:35,300
+as memory<font color="#E5E5E5"> with with a with this model</font>
+
+273
+00:09:32,540 --> 00:09:38,870
+there's no way of<font color="#E5E5E5"> knowing which</font><font color="#CCCCCC"> dirty</font>
+
+274
+00:09:35,300 --> 00:09:40,099
+dirty<font color="#E5E5E5"> cache lines from software so if</font>
+
+275
+00:09:38,870 --> 00:09:41,930
+you were to do<font color="#CCCCCC"> it via</font><font color="#E5E5E5"> a file descriptor</font>
+
+276
+00:09:40,100 --> 00:09:43,700
+<font color="#E5E5E5">that the drivers associated with this</font>
+
+277
+00:09:41,930 --> 00:09:45,260
+non-volatile Ram<font color="#CCCCCC"> would</font><font color="#E5E5E5"> have to write</font>
+
+278
+00:09:43,700 --> 00:09:47,270
+<font color="#CCCCCC">back all of the cache lines it's very</font>
+
+279
+00:09:45,260 --> 00:09:48,589
+inefficient<font color="#CCCCCC"> every</font><font color="#E5E5E5"> single little bit of</font>
+
+280
+00:09:47,270 --> 00:09:51,020
+memory want to flush<font color="#CCCCCC"> it's gonna have to</font>
+
+281
+00:09:48,589 --> 00:09:52,880
+<font color="#CCCCCC">actually flush right</font><font color="#E5E5E5"> back every single</font>
+
+282
+00:09:51,020 --> 00:09:54,560
+cache line in the map range<font color="#E5E5E5"> so it's</font>
+
+283
+00:09:52,880 --> 00:09:56,390
+really not an<font color="#CCCCCC"> option so what the</font>
+
+284
+00:09:54,560 --> 00:09:58,069
+alternative is<font color="#CCCCCC"> that you can use the if</font>
+
+285
+00:09:56,390 --> 00:10:00,080
+you map it<font color="#E5E5E5"> with</font><font color="#CCCCCC"> a sink mapping the</font>
+
+286
+00:09:58,070 --> 00:10:03,140
+operating system knows about it you can
+
+287
+00:10:00,080 --> 00:10:04,970
+<font color="#E5E5E5">then actually use a cache line</font><font color="#CCCCCC"> write</font>
+
+288
+00:10:03,140 --> 00:10:06,740
+back operation to actually make<font color="#CCCCCC"> sure the</font>
+
+289
+00:10:04,970 --> 00:10:08,930
+<font color="#E5E5E5">memory is apt on disk there's a harder</font>
+
+290
+00:10:06,740 --> 00:10:10,310
+operation on<font color="#E5E5E5"> Intel hardware operational</font>
+
+291
+00:10:08,930 --> 00:10:11,959
+arm<font color="#E5E5E5"> well there's three on Intel that</font>
+
+292
+00:10:10,310 --> 00:10:13,279
+<font color="#E5E5E5">allows you to do that</font><font color="#CCCCCC"> so that's</font><font color="#E5E5E5"> the</font>
+
+293
+00:10:11,959 --> 00:10:15,020
+option<font color="#CCCCCC"> that the library</font><font color="#E5E5E5"> provides it</font>
+
+294
+00:10:13,279 --> 00:10:17,240
+gives you<font color="#E5E5E5"> cozy functions you can call to</font>
+
+295
+00:10:15,020 --> 00:10:19,370
+do that as<font color="#E5E5E5"> long</font><font color="#CCCCCC"> as you view</font><font color="#E5E5E5"> the map</font><font color="#CCCCCC"> sink</font>
+
+296
+00:10:17,240 --> 00:10:20,720
+mode so<font color="#CCCCCC"> that sounds great why don't we</font>
+
+297
+00:10:19,370 --> 00:10:21,860
+do something<font color="#E5E5E5"> like</font><font color="#CCCCCC"> that in</font><font color="#E5E5E5"> Java and</font>
+
+298
+00:10:20,720 --> 00:10:23,240
+<font color="#CCCCCC">that's sort of what it's a prototype</font>
+
+299
+00:10:21,860 --> 00:10:24,680
+and I work<font color="#E5E5E5"> with our transactions team to</font>
+
+300
+00:10:23,240 --> 00:10:27,140
+do it<font color="#CCCCCC"> the problem is it doesn't really</font>
+
+301
+00:10:24,680 --> 00:10:29,810
+<font color="#E5E5E5">work well in Java you can open a device</font>
+
+302
+00:10:27,140 --> 00:10:31,670
+file using file open<font color="#E5E5E5"> that's fine you can</font>
+
+303
+00:10:29,810 --> 00:10:34,010
+<font color="#CCCCCC">map things into memory</font><font color="#E5E5E5"> memory</font><font color="#CCCCCC"> except</font>
+
+304
+00:10:31,670 --> 00:10:36,110
+that old<font color="#E5E5E5"> if you do use the file channel</font>
+
+305
+00:10:34,010 --> 00:10:37,790
+map<font color="#E5E5E5"> method to do</font><font color="#CCCCCC"> that it doesn't know</font>
+
+306
+00:10:36,110 --> 00:10:39,320
+<font color="#CCCCCC">about the map sink flag that's not</font>
+
+307
+00:10:37,790 --> 00:10:40,939
+<font color="#E5E5E5">built-in in the infant the underlying</font>
+
+308
+00:10:39,320 --> 00:10:42,920
+<font color="#E5E5E5">implementation in the JVM at the moment</font>
+
+309
+00:10:40,940 --> 00:10:45,080
+so there's no plan<font color="#CCCCCC"> B option</font><font color="#E5E5E5"> you're</font><font color="#CCCCCC"> gonna</font>
+
+310
+00:10:42,920 --> 00:10:46,400
+<font color="#CCCCCC">have to use the file descriptor force</font><font color="#E5E5E5"> so</font>
+
+311
+00:10:45,080 --> 00:10:48,740
+you<font color="#E5E5E5"> can actually write directly</font><font color="#CCCCCC"> to the</font>
+
+312
+00:10:46,400 --> 00:10:50,839
+memory use<font color="#E5E5E5"> them</font><font color="#CCCCCC"> at before API but the</font>
+
+313
+00:10:48,740 --> 00:10:51,650
+problem is when you come to a force<font color="#E5E5E5"> it's</font>
+
+314
+00:10:50,839 --> 00:10:53,120
+<font color="#E5E5E5">going to have to be that really</font>
+
+315
+00:10:51,650 --> 00:10:56,930
+<font color="#E5E5E5">inefficient</font><font color="#CCCCCC"> write back and we</font><font color="#E5E5E5"> found</font>
+
+316
+00:10:53,120 --> 00:10:58,700
+<font color="#E5E5E5">is very very slow so there's a there's a</font>
+
+317
+00:10:56,930 --> 00:11:01,069
+bit<font color="#CCCCCC"> of code to show how you do that</font><font color="#E5E5E5"> you</font>
+
+318
+00:10:58,700 --> 00:11:02,600
+get a path to a file on<font color="#CCCCCC"> the device you</font>
+
+319
+00:11:01,070 --> 00:11:04,880
+create a file at<font color="#E5E5E5"> with under that name</font>
+
+320
+00:11:02,600 --> 00:11:06,380
+you'd map it in you do your buffer put
+
+321
+00:11:04,880 --> 00:11:08,270
+and you want to make sure that thing<font color="#CCCCCC"> is</font>
+
+322
+00:11:06,380 --> 00:11:10,550
+out<font color="#E5E5E5"> in memory it's going to be really</font>
+
+323
+00:11:08,270 --> 00:11:13,100
+<font color="#E5E5E5">slow every time so it's not really an</font>
+
+324
+00:11:10,550 --> 00:11:15,109
+<font color="#CCCCCC">option</font><font color="#E5E5E5"> to do that what about going in</font><font color="#CCCCCC"> to</font>
+
+325
+00:11:13,100 --> 00:11:16,190
+do<font color="#E5E5E5"> it via the problem is you've got</font>
+
+326
+00:11:15,110 --> 00:11:17,450
+everything<font color="#E5E5E5"> all the functionalities you</font>
+
+327
+00:11:16,190 --> 00:11:18,950
+haven't actually got performance that's
+
+328
+00:11:17,450 --> 00:11:20,480
+the one thing<font color="#E5E5E5"> that's missing it this way</font>
+
+329
+00:11:18,950 --> 00:11:22,850
+<font color="#E5E5E5">of</font><font color="#CCCCCC"> doing it this is the</font><font color="#E5E5E5"> standard way</font><font color="#CCCCCC"> of</font>
+
+330
+00:11:20,480 --> 00:11:25,279
+<font color="#CCCCCC">doing it</font><font color="#E5E5E5"> okay so what about using</font><font color="#CCCCCC"> j'ni</font>
+
+331
+00:11:22,850 --> 00:11:26,810
+well<font color="#CCCCCC"> unfortunately that's</font><font color="#E5E5E5"> not going to</font>
+
+332
+00:11:25,279 --> 00:11:28,520
+<font color="#E5E5E5">work via byte buffer so if you think</font>
+
+333
+00:11:26,810 --> 00:11:30,739
+<font color="#CCCCCC">what you'd</font><font color="#E5E5E5"> actually have to do you'd</font>
+
+334
+00:11:28,520 --> 00:11:33,560
+have to call out to<font color="#CCCCCC"> J&I to create some</font>
+
+335
+00:11:30,740 --> 00:11:34,820
+<font color="#E5E5E5">map and then pass the</font><font color="#CCCCCC"> information where</font>
+
+336
+00:11:33,560 --> 00:11:36,920
+the map<font color="#CCCCCC"> is through in some sort of</font>
+
+337
+00:11:34,820 --> 00:11:38,540
+<font color="#E5E5E5">handle and then all your rights would</font>
+
+338
+00:11:36,920 --> 00:11:40,939
+<font color="#E5E5E5">have to go out via</font><font color="#CCCCCC"> jenn-air calls to do</font>
+
+339
+00:11:38,540 --> 00:11:43,310
+every<font color="#E5E5E5"> write of a block of</font><font color="#CCCCCC"> memory</font><font color="#E5E5E5"> and</font>
+
+340
+00:11:40,940 --> 00:11:44,420
+then all of<font color="#E5E5E5"> your flush operations will</font>
+
+341
+00:11:43,310 --> 00:11:46,400
+be<font color="#CCCCCC"> J&I</font><font color="#E5E5E5"> calls this is going to be</font>
+
+342
+00:11:44,420 --> 00:11:48,199
+incredibly<font color="#E5E5E5"> expensive</font><font color="#CCCCCC"> so you</font><font color="#E5E5E5"> really can't</font>
+
+343
+00:11:46,400 --> 00:11:49,699
+it<font color="#E5E5E5"> can't do it by</font><font color="#CCCCCC"> gen-i not long as you</font>
+
+344
+00:11:48,200 --> 00:11:51,200
+<font color="#E5E5E5">not have the performance it's actually</font>
+
+345
+00:11:49,700 --> 00:11:52,940
+worse you also<font color="#CCCCCC"> don't even get easy views</font>
+
+346
+00:11:51,200 --> 00:11:54,410
+either so it's really not an option to
+
+347
+00:11:52,940 --> 00:11:57,170
+<font color="#E5E5E5">do it that way so what you really want</font>
+
+348
+00:11:54,410 --> 00:11:58,850
+is to<font color="#E5E5E5"> build this into</font><font color="#CCCCCC"> Java okay so the</font>
+
+349
+00:11:57,170 --> 00:12:00,410
+<font color="#E5E5E5">way to build into Java is to take one</font>
+
+350
+00:11:58,850 --> 00:12:02,180
+way to do is take those existing api's
+
+351
+00:12:00,410 --> 00:12:03,410
+and to<font color="#E5E5E5"> extend them in some way</font><font color="#CCCCCC"> so they</font>
+
+352
+00:12:02,180 --> 00:12:05,209
+know about<font color="#E5E5E5"> this stuff and they can</font><font color="#CCCCCC"> do</font>
+
+353
+00:12:03,410 --> 00:12:07,189
+things<font color="#E5E5E5"> using a more efficient model in</font>
+
+354
+00:12:05,209 --> 00:12:09,920
+the way that the<font color="#CCCCCC"> lib see the the Lippi</font>
+
+355
+00:12:07,190 --> 00:12:12,050
+<font color="#E5E5E5">m/m/c library does so we take that</font>
+
+356
+00:12:09,920 --> 00:12:13,610
+<font color="#CCCCCC">program at the start there</font><font color="#E5E5E5"> we need</font><font color="#CCCCCC"> we</font>
+
+357
+00:12:12,050 --> 00:12:15,770
+<font color="#CCCCCC">need to</font><font color="#E5E5E5"> tell</font><font color="#CCCCCC"> it when we do the</font><font color="#E5E5E5"> map we</font>
+
+358
+00:12:13,610 --> 00:12:16,790
+<font color="#E5E5E5">need a</font><font color="#CCCCCC"> read/write sync map</font><font color="#E5E5E5"> not just to</font>
+
+359
+00:12:15,770 --> 00:12:19,130
+read right now<font color="#CCCCCC"> we want to</font><font color="#E5E5E5"> use</font>
+
+360
+00:12:16,790 --> 00:12:20,540
+synchronous flushes for this and when it
+
+361
+00:12:19,130 --> 00:12:22,070
+<font color="#E5E5E5">comes to the force we really know what</font>
+
+362
+00:12:20,540 --> 00:12:24,620
+the force<font color="#E5E5E5"> API to say well actually it's</font>
+
+363
+00:12:22,070 --> 00:12:26,690
+this range<font color="#E5E5E5"> of the data I want force</font>
+
+364
+00:12:24,620 --> 00:12:28,459
+because I've got dirty marks<font color="#E5E5E5"> from the</font>
+
+365
+00:12:26,690 --> 00:12:30,020
+dirty<font color="#CCCCCC"> pages anymore</font><font color="#E5E5E5"> we need to say which</font>
+
+366
+00:12:28,459 --> 00:12:32,180
+particular<font color="#E5E5E5"> bytes weren't written</font><font color="#CCCCCC"> back</font>
+
+367
+00:12:30,020 --> 00:12:32,980
+and we want the JVM to do that in an
+
+368
+00:12:32,180 --> 00:12:35,839
+efficient way
+
+369
+00:12:32,980 --> 00:12:37,730
+so we'd implement<font color="#E5E5E5"> that by changing</font><font color="#CCCCCC"> the</font>
+
+370
+00:12:35,839 --> 00:12:39,650
+<font color="#E5E5E5">client API is there and</font><font color="#CCCCCC"> also</font><font color="#E5E5E5"> we</font>
+
+371
+00:12:37,730 --> 00:12:42,770
+implementing the the but that<font color="#CCCCCC"> might the</font>
+
+372
+00:12:39,650 --> 00:12:44,870
+the<font color="#CCCCCC"> mapping and</font><font color="#E5E5E5"> the byte buffer</font><font color="#CCCCCC"> to</font>
+
+373
+00:12:42,770 --> 00:12:46,400
+actually do the relevant operations and
+
+374
+00:12:44,870 --> 00:12:48,500
+<font color="#E5E5E5">that's relatively straightforward we had</font>
+
+375
+00:12:46,400 --> 00:12:50,089
+a couple<font color="#CCCCCC"> of extra modes for the map mode</font>
+
+376
+00:12:48,500 --> 00:12:52,760
+that the file<font color="#E5E5E5"> channel uses when it</font><font color="#CCCCCC"> Maps</font>
+
+377
+00:12:50,089 --> 00:12:54,260
+stuff in and when<font color="#CCCCCC"> we come to actually</font>
+
+378
+00:12:52,760 --> 00:12:55,760
+see the<font color="#CCCCCC"> invitation</font><font color="#E5E5E5"> the map method</font><font color="#CCCCCC"> in</font>
+
+379
+00:12:54,260 --> 00:12:57,740
+them in the internal implementation<font color="#CCCCCC"> of</font>
+
+380
+00:12:55,760 --> 00:12:59,240
+<font color="#CCCCCC">that</font><font color="#E5E5E5"> it actually keeps track</font><font color="#CCCCCC"> of whether</font>
+
+381
+00:12:57,740 --> 00:13:01,670
+we got<font color="#CCCCCC"> a synchronous mapping or a normal</font>
+
+382
+00:12:59,240 --> 00:13:03,040
+<font color="#CCCCCC">mapping and when it comes to do the</font><font color="#E5E5E5"> air</font>
+
+383
+00:13:01,670 --> 00:13:05,439
+map further down inside<font color="#CCCCCC"> that</font>
+
+384
+00:13:03,040 --> 00:13:07,180
+call<font color="#E5E5E5"> we change it so it passes that</font>
+
+385
+00:13:05,440 --> 00:13:08,740
+through in the native call<font color="#E5E5E5"> that actually</font>
+
+386
+00:13:07,180 --> 00:13:10,750
+does the file<font color="#CCCCCC"> to the</font><font color="#E5E5E5"> underlying</font>
+
+387
+00:13:08,740 --> 00:13:12,639
+operating<font color="#E5E5E5"> system call and</font><font color="#CCCCCC"> we also tell</font>
+
+388
+00:13:10,750 --> 00:13:13,720
+the buffer<font color="#E5E5E5"> whether it's synchronous or</font>
+
+389
+00:13:12,639 --> 00:13:16,509
+not<font color="#E5E5E5"> so we've got a couple of changes of</font>
+
+390
+00:13:13,720 --> 00:13:18,519
+propagate through so in the<font color="#E5E5E5"> actual</font>
+
+391
+00:13:16,509 --> 00:13:21,370
+native<font color="#E5E5E5"> call that does the mapping well</font>
+
+392
+00:13:18,519 --> 00:13:22,480
+if the is<font color="#CCCCCC"> sync</font><font color="#E5E5E5"> pet flag was passed in we</font>
+
+393
+00:13:21,370 --> 00:13:24,639
+add in<font color="#CCCCCC"> the rel of an operating system</font>
+
+394
+00:13:22,480 --> 00:13:26,110
+<font color="#E5E5E5">parameters and there's a bit more error</font>
+
+395
+00:13:24,639 --> 00:13:29,560
+checking<font color="#E5E5E5"> because the kernel might not</font>
+
+396
+00:13:26,110 --> 00:13:31,630
+support<font color="#E5E5E5"> those those those flags or we</font>
+
+397
+00:13:29,560 --> 00:13:33,339
+might find that you've<font color="#E5E5E5"> used the wrong</font>
+
+398
+00:13:31,630 --> 00:13:34,870
+<font color="#E5E5E5">device and it's not sync mapable so you</font>
+
+399
+00:13:33,339 --> 00:13:36,550
+might as a bit more error checking<font color="#CCCCCC"> but</font>
+
+400
+00:13:34,870 --> 00:13:39,490
+<font color="#E5E5E5">basically we can get ourselves a</font><font color="#CCCCCC"> matt</font>
+
+401
+00:13:36,550 --> 00:13:41,349
+<font color="#CCCCCC">sync map a bit of a bit of persistent</font>
+
+402
+00:13:39,490 --> 00:13:43,630
+memory<font color="#E5E5E5"> if we want but</font><font color="#CCCCCC"> they're</font><font color="#E5E5E5"> very</font><font color="#CCCCCC"> rare</font>
+
+403
+00:13:41,350 --> 00:13:46,540
+<font color="#E5E5E5">in</font><font color="#CCCCCC"> v realm</font><font color="#E5E5E5"> now we also need to change</font>
+
+404
+00:13:43,630 --> 00:13:47,980
+<font color="#E5E5E5">the</font><font color="#CCCCCC"> map byte buffer class we need</font><font color="#E5E5E5"> it</font>
+
+405
+00:13:46,540 --> 00:13:49,870
+needs to know whether it's working<font color="#E5E5E5"> in</font>
+
+406
+00:13:47,980 --> 00:13:51,339
+sync mode or<font color="#CCCCCC"> not and we need to change</font>
+
+407
+00:13:49,870 --> 00:13:54,250
+<font color="#E5E5E5">the</font><font color="#CCCCCC"> constructors</font><font color="#E5E5E5"> of it so we can by</font>
+
+408
+00:13:51,339 --> 00:13:56,230
+default<font color="#E5E5E5"> work not sync but if we pass</font>
+
+409
+00:13:54,250 --> 00:13:58,959
+<font color="#CCCCCC">true in as the sync flag we can use a</font>
+
+410
+00:13:56,230 --> 00:14:01,480
+<font color="#CCCCCC">synchronize buffer and then</font><font color="#E5E5E5"> that means</font>
+
+411
+00:13:58,959 --> 00:14:03,099
+the force<font color="#CCCCCC"> api has to change</font><font color="#E5E5E5"> the old for</font>
+
+412
+00:14:01,480 --> 00:14:05,110
+sake<font color="#CCCCCC"> i used to take the start of the</font>
+
+413
+00:14:03,100 --> 00:14:07,180
+<font color="#CCCCCC">mapped</font><font color="#E5E5E5"> range and the length of the map</font>
+
+414
+00:14:05,110 --> 00:14:09,190
+range and just<font color="#CCCCCC"> say do an FD flush and</font>
+
+415
+00:14:07,180 --> 00:14:11,709
+all of this please<font color="#E5E5E5"> using a native call</font>
+
+416
+00:14:09,190 --> 00:14:14,199
+to force<font color="#CCCCCC"> 0 which does there's a</font><font color="#E5E5E5"> the</font>
+
+417
+00:14:11,709 --> 00:14:16,569
+relevant files<font color="#E5E5E5"> great for operation so if</font>
+
+418
+00:14:14,199 --> 00:14:19,300
+we<font color="#E5E5E5"> change</font><font color="#CCCCCC"> that we</font><font color="#E5E5E5"> can add a new method</font>
+
+419
+00:14:16,569 --> 00:14:21,579
+<font color="#E5E5E5">which takes a start address and a length</font>
+
+420
+00:14:19,300 --> 00:14:23,319
+start off<font color="#CCCCCC"> center length and we can</font><font color="#E5E5E5"> call</font>
+
+421
+00:14:21,579 --> 00:14:25,779
+<font color="#E5E5E5">it</font><font color="#CCCCCC"> from the</font><font color="#E5E5E5"> old force</font><font color="#CCCCCC"> methods they do</font>
+
+422
+00:14:23,319 --> 00:14:26,949
+everything but<font color="#E5E5E5"> in the new method we can</font>
+
+423
+00:14:25,779 --> 00:14:28,569
+<font color="#E5E5E5">call something which is going to do</font>
+
+424
+00:14:26,949 --> 00:14:30,579
+<font color="#E5E5E5">something a</font><font color="#CCCCCC"> bit smarter and</font><font color="#E5E5E5"> i've added a</font>
+
+425
+00:14:28,569 --> 00:14:33,010
+method<font color="#CCCCCC"> on unsafe that is going to evict</font>
+
+426
+00:14:30,579 --> 00:14:34,540
+cache lines one by<font color="#E5E5E5"> one so this</font><font color="#CCCCCC"> is</font><font color="#E5E5E5"> going</font>
+
+427
+00:14:33,010 --> 00:14:36,220
+<font color="#E5E5E5">to use</font><font color="#CCCCCC"> native code to</font><font color="#E5E5E5"> do it so it's</font><font color="#CCCCCC"> not</font>
+
+428
+00:14:34,540 --> 00:14:37,540
+the<font color="#E5E5E5"> most efficient method but it'll be a</font>
+
+429
+00:14:36,220 --> 00:14:39,010
+lot better<font color="#CCCCCC"> than</font><font color="#E5E5E5"> doing a force it's only</font>
+
+430
+00:14:37,540 --> 00:14:41,889
+going<font color="#E5E5E5"> to</font><font color="#CCCCCC"> evict the cache lines that are</font>
+
+431
+00:14:39,010 --> 00:14:44,709
+affected<font color="#CCCCCC"> so what does the unsafe method</font>
+
+432
+00:14:41,889 --> 00:14:46,209
+look like well it's a nice simple method
+
+433
+00:14:44,709 --> 00:14:48,939
+it's checks to make sure<font color="#E5E5E5"> the addresses</font>
+
+434
+00:14:46,209 --> 00:14:50,589
+length makes sense<font color="#E5E5E5"> and then there's two</font>
+
+435
+00:14:48,939 --> 00:14:52,569
+things we need<font color="#CCCCCC"> to worry about as far as</font>
+
+436
+00:14:50,589 --> 00:14:54,339
+cache level synchronization is concerned
+
+437
+00:14:52,569 --> 00:14:56,589
+<font color="#E5E5E5">before we flush the cache lines</font>
+
+438
+00:14:54,339 --> 00:14:58,510
+depending<font color="#CCCCCC"> on the</font><font color="#E5E5E5"> hardware we may need to</font>
+
+439
+00:14:56,589 --> 00:15:00,279
+<font color="#CCCCCC">show that and be sure that all those all</font>
+
+440
+00:14:58,510 --> 00:15:02,649
+previous writes those cache lines are
+
+441
+00:15:00,279 --> 00:15:04,720
+visible<font color="#CCCCCC"> in</font><font color="#E5E5E5"> the cache now that turns out</font>
+
+442
+00:15:02,649 --> 00:15:07,149
+<font color="#E5E5E5">to be enough on both x86</font><font color="#CCCCCC"> and x64 but</font>
+
+443
+00:15:04,720 --> 00:15:10,269
+I've left I left it in just as part<font color="#E5E5E5"> of</font>
+
+444
+00:15:07,149 --> 00:15:11,829
+the model<font color="#E5E5E5"> inside</font><font color="#CCCCCC"> a loop we take we round</font>
+
+445
+00:15:10,269 --> 00:15:13,810
+down the<font color="#E5E5E5"> address to a start of a cache</font>
+
+446
+00:15:11,829 --> 00:15:16,180
+line and just iterate over each line a
+
+447
+00:15:13,810 --> 00:15:18,040
+line at a time<font color="#CCCCCC"> calling a</font><font color="#E5E5E5"> right back</font><font color="#CCCCCC"> man</font>
+
+448
+00:15:16,180 --> 00:15:20,079
+<font color="#E5E5E5">food which is going to Victor that can</font>
+
+449
+00:15:18,040 --> 00:15:21,670
+flush that<font color="#E5E5E5"> cash line back</font><font color="#CCCCCC"> to memory</font><font color="#E5E5E5"> it</font>
+
+450
+00:15:20,080 --> 00:15:23,649
+possibly evicted and<font color="#E5E5E5"> Intel some of the</font>
+
+451
+00:15:21,670 --> 00:15:25,569
+instructions<font color="#E5E5E5"> evict some don't in arm it</font>
+
+452
+00:15:23,649 --> 00:15:27,580
+just flushes it back to memory and then
+
+453
+00:15:25,570 --> 00:15:29,290
+afterwards<font color="#E5E5E5"> we</font><font color="#CCCCCC"> may</font><font color="#E5E5E5"> need</font><font color="#CCCCCC"> to make sure</font><font color="#E5E5E5"> all</font>
+
+454
+00:15:27,580 --> 00:15:31,149
+those flushes all those cash lined
+
+455
+00:15:29,290 --> 00:15:33,339
+evictions or flushes have happened
+
+456
+00:15:31,149 --> 00:15:34,839
+<font color="#E5E5E5">before we</font><font color="#CCCCCC"> allow other memory operations</font>
+
+457
+00:15:33,339 --> 00:15:36,550
+to happen so<font color="#E5E5E5"> we may need</font><font color="#CCCCCC"> another memory</font>
+
+458
+00:15:34,839 --> 00:15:38,200
+of operate<font color="#E5E5E5"> barrier operation to make</font>
+
+459
+00:15:36,550 --> 00:15:43,810
+<font color="#E5E5E5">sure the</font><font color="#CCCCCC"> cash is consistent before we</font>
+
+460
+00:15:38,200 --> 00:15:45,399
+carry<font color="#E5E5E5"> on so those that the</font>
+
+461
+00:15:43,810 --> 00:15:46,719
+<font color="#E5E5E5">implementation of there is three native</font>
+
+462
+00:15:45,399 --> 00:15:48,490
+methods we also need to<font color="#E5E5E5"> know what the</font>
+
+463
+00:15:46,720 --> 00:15:50,820
+size of a cache line<font color="#E5E5E5"> is that's</font><font color="#CCCCCC"> hardware</font>
+
+464
+00:15:48,490 --> 00:15:53,080
+<font color="#E5E5E5">specific as well so we have another</font>
+
+465
+00:15:50,820 --> 00:15:54,910
+native method which you use to<font color="#CCCCCC"> retrieve</font>
+
+466
+00:15:53,080 --> 00:15:56,410
+the size of a cache line<font color="#CCCCCC"> we use that to</font>
+
+467
+00:15:54,910 --> 00:15:57,899
+sell at<font color="#E5E5E5"> this size and</font><font color="#CCCCCC"> also the mask</font>
+
+468
+00:15:56,410 --> 00:16:00,550
+which use for rounding down the address
+
+469
+00:15:57,899 --> 00:16:03,730
+so there's there's the actual<font color="#CCCCCC"> Java from</font>
+
+470
+00:16:00,550 --> 00:16:05,229
+<font color="#CCCCCC">tation underneath</font><font color="#E5E5E5"> that the problem is we</font>
+
+471
+00:16:03,730 --> 00:16:06,910
+want<font color="#CCCCCC"> to do something that's Hardware</font>
+
+472
+00:16:05,230 --> 00:16:08,940
+specific we want to write back a cache
+
+473
+00:16:06,910 --> 00:16:11,110
+line<font color="#CCCCCC"> or we want to do a memory</font>
+
+474
+00:16:08,940 --> 00:16:12,339
+synchronization so we can't<font color="#E5E5E5"> just write</font>
+
+475
+00:16:11,110 --> 00:16:14,410
+some C code to do it
+
+476
+00:16:12,339 --> 00:16:16,959
+so actually what we have to do is<font color="#CCCCCC"> JIT</font>
+
+477
+00:16:14,410 --> 00:16:19,149
+some code using the<font color="#E5E5E5"> stub a stub</font>
+
+478
+00:16:16,959 --> 00:16:21,219
+generator which generates lots of little
+
+479
+00:16:19,149 --> 00:16:23,290
+stub routines<font color="#E5E5E5"> and we'll have a stub</font>
+
+480
+00:16:21,220 --> 00:16:24,459
+which will do<font color="#E5E5E5"> a cache right back so we</font>
+
+481
+00:16:23,290 --> 00:16:29,050
+can pull that<font color="#CCCCCC"> out of</font><font color="#E5E5E5"> the stub routine</font>
+
+482
+00:16:24,459 --> 00:16:31,000
+code and it takes a void<font color="#CCCCCC"> style argument</font>
+
+483
+00:16:29,050 --> 00:16:32,949
+address which comes in as a long we
+
+484
+00:16:31,000 --> 00:16:34,660
+actually gets cast to a void star and we
+
+485
+00:16:32,950 --> 00:16:36,459
+use<font color="#CCCCCC"> that</font><font color="#E5E5E5"> village</font><font color="#CCCCCC"> itta code to do a write</font>
+
+486
+00:16:34,660 --> 00:16:38,140
+back instruction and we'll have an
+
+487
+00:16:36,459 --> 00:16:41,199
+<font color="#CCCCCC">implementation of this</font><font color="#E5E5E5"> for x86 and one</font>
+
+488
+00:16:38,140 --> 00:16:43,449
+from<font color="#E5E5E5"> 64 there's another helper routine</font>
+
+489
+00:16:41,200 --> 00:16:45,850
+which does a synchronization operation
+
+490
+00:16:43,450 --> 00:16:48,310
+<font color="#E5E5E5">it takes a boolean argument true or</font>
+
+491
+00:16:45,850 --> 00:16:50,140
+false<font color="#CCCCCC"> to say whether</font><font color="#E5E5E5"> it's a precinct or</font>
+
+492
+00:16:48,310 --> 00:16:52,270
+a post<font color="#E5E5E5"> sink so there's</font><font color="#CCCCCC"> not adjective</font>
+
+493
+00:16:50,140 --> 00:16:55,089
+routine that does that<font color="#CCCCCC"> and the jitter</font>
+
+494
+00:16:52,270 --> 00:16:56,829
+code that gets<font color="#E5E5E5"> called from the the leafy</font>
+
+495
+00:16:55,089 --> 00:16:58,690
+limitations of the unsafe methods we
+
+496
+00:16:56,830 --> 00:16:59,890
+actually call out to the<font color="#CCCCCC"> nets or</font><font color="#E5E5E5"> those</font>
+
+497
+00:16:58,690 --> 00:17:02,910
+that<font color="#E5E5E5"> have helped</font><font color="#CCCCCC"> us to</font><font color="#E5E5E5"> do the two</font>
+
+498
+00:16:59,890 --> 00:17:05,139
+different<font color="#CCCCCC"> write</font><font color="#E5E5E5"> banks here's the jitter</font>
+
+499
+00:17:02,910 --> 00:17:08,079
+process this is something<font color="#CCCCCC"> in the</font><font color="#E5E5E5"> stub</font>
+
+500
+00:17:05,140 --> 00:17:09,730
+<font color="#CCCCCC">route it's Tove</font><font color="#E5E5E5"> generating class it said</font>
+
+501
+00:17:08,079 --> 00:17:11,109
+it's got a buffer which<font color="#CCCCCC"> is writing to it</font>
+
+502
+00:17:09,730 --> 00:17:13,059
+<font color="#CCCCCC">just gets to</font><font color="#E5E5E5"> start PC that's the</font>
+
+503
+00:17:11,109 --> 00:17:14,770
+function we<font color="#E5E5E5"> also going to return build a</font>
+
+504
+00:17:13,059 --> 00:17:17,079
+stack frame that's the arm instruction
+
+505
+00:17:14,770 --> 00:17:19,660
+<font color="#CCCCCC">that clears a single cache line out to</font>
+
+506
+00:17:17,079 --> 00:17:22,089
+<font color="#CCCCCC">memory</font><font color="#E5E5E5"> and it takes as input our</font><font color="#CCCCCC"> 0</font>
+
+507
+00:17:19,660 --> 00:17:24,160
+that's what we passed<font color="#E5E5E5"> in the</font><font color="#CCCCCC"> the start</font>
+
+508
+00:17:22,089 --> 00:17:25,629
+of the line the line address so<font color="#E5E5E5"> it'll</font>
+
+509
+00:17:24,160 --> 00:17:26,199
+take that address or make<font color="#CCCCCC"> sure that line</font>
+
+510
+00:17:25,630 --> 00:17:28,209
+is now out
+
+511
+00:17:26,199 --> 00:17:29,409
+memory<font color="#E5E5E5"> tear</font><font color="#CCCCCC"> down the stack frame with</font>
+
+512
+00:17:28,209 --> 00:17:31,899
+the leave and<font color="#E5E5E5"> return so it's a nice</font>
+
+513
+00:17:29,409 --> 00:17:33,429
+<font color="#E5E5E5">simple little</font><font color="#CCCCCC"> agility function and</font>
+
+514
+00:17:31,899 --> 00:17:35,049
+there's an equivalent<font color="#CCCCCC"> digit function for</font>
+
+515
+00:17:33,429 --> 00:17:37,870
+these that this dub the the
+
+516
+00:17:35,049 --> 00:17:39,580
+synchronization<font color="#E5E5E5"> now on</font><font color="#CCCCCC"> both unarmed we</font>
+
+517
+00:17:37,870 --> 00:17:41,830
+don't need a synchronization before
+
+518
+00:17:39,580 --> 00:17:43,418
+doing<font color="#CCCCCC"> that the the flushes because they</font>
+
+519
+00:17:41,830 --> 00:17:44,830
+automatically ensure<font color="#E5E5E5"> that we've drained</font>
+
+520
+00:17:43,419 --> 00:17:47,380
+all memory<font color="#CCCCCC"> rights and the cache is</font>
+
+521
+00:17:44,830 --> 00:17:50,408
+consistent before they start<font color="#E5E5E5"> so we can</font>
+
+522
+00:17:47,380 --> 00:17:53,019
+just if we come in if you've got true in
+
+523
+00:17:50,409 --> 00:17:55,299
+<font color="#CCCCCC">r0 we have a compare and branch if</font>
+
+524
+00:17:53,019 --> 00:17:56,799
+<font color="#CCCCCC">nonzero</font><font color="#E5E5E5"> so we'll jump to where that</font><font color="#CCCCCC"> that</font>
+
+525
+00:17:55,299 --> 00:17:59,350
+<font color="#CCCCCC">label skip is bound below and</font><font color="#E5E5E5"> we'll</font>
+
+526
+00:17:56,799 --> 00:18:00,549
+bypass<font color="#E5E5E5"> the memory barrier otherwise if</font>
+
+527
+00:17:59,350 --> 00:18:02,590
+it's false we've got a post
+
+528
+00:18:00,549 --> 00:18:04,539
+synchronization<font color="#E5E5E5"> we need to a full memory</font>
+
+529
+00:18:02,590 --> 00:18:06,340
+barrier and that makes sure<font color="#E5E5E5"> that the</font>
+
+530
+00:18:04,539 --> 00:18:09,610
+cache lines are actually evicted memory
+
+531
+00:18:06,340 --> 00:18:18,250
+before<font color="#CCCCCC"> anymore writes gonna happen</font><font color="#E5E5E5"> okay</font>
+
+532
+00:18:09,610 --> 00:18:20,408
+so<font color="#CCCCCC"> my god right</font><font color="#E5E5E5"> so</font><font color="#CCCCCC"> that's so</font><font color="#E5E5E5"> that's</font><font color="#CCCCCC"> that</font>
+
+533
+00:18:18,250 --> 00:18:22,750
+<font color="#CCCCCC">was the</font><font color="#E5E5E5"> how do we how do we now make</font>
+
+534
+00:18:20,409 --> 00:18:25,690
+this really efficient<font color="#E5E5E5"> how do we now make</font>
+
+535
+00:18:22,750 --> 00:18:28,870
+this really efficient<font color="#CCCCCC"> well what we need</font>
+
+536
+00:18:25,690 --> 00:18:30,700
+is<font color="#E5E5E5"> Plan C so basically we need to get</font>
+
+537
+00:18:28,870 --> 00:18:32,799
+the compiler<font color="#CCCCCC"> to recognize these methods</font>
+
+538
+00:18:30,700 --> 00:18:34,990
+instead<font color="#E5E5E5"> of calling out to native</font><font color="#CCCCCC"> code</font>
+
+539
+00:18:32,799 --> 00:18:37,450
+which is really<font color="#CCCCCC"> expensive we</font><font color="#E5E5E5"> actually</font>
+
+540
+00:18:34,990 --> 00:18:39,669
+want<font color="#CCCCCC"> to get the compiler</font><font color="#E5E5E5"> to recognize</font>
+
+541
+00:18:37,450 --> 00:18:41,590
+<font color="#E5E5E5">this and just generate machine code in</font>
+
+542
+00:18:39,669 --> 00:18:44,110
+line in the<font color="#E5E5E5"> compiled method and in line</font>
+
+543
+00:18:41,590 --> 00:18:45,789
+<font color="#E5E5E5">that</font><font color="#CCCCCC"> into caller methods so there's a</font>
+
+544
+00:18:44,110 --> 00:18:47,229
+<font color="#E5E5E5">basic simple plan for it we need</font><font color="#CCCCCC"> to</font><font color="#E5E5E5"> say</font>
+
+545
+00:18:45,789 --> 00:18:49,330
+which methods we want<font color="#CCCCCC"> inlining that's</font>
+
+546
+00:18:47,230 --> 00:18:50,889
+those native methods we need to tell the
+
+547
+00:18:49,330 --> 00:18:52,389
+compiler how to recognize them and<font color="#E5E5E5"> tell</font>
+
+548
+00:18:50,889 --> 00:18:54,760
+them<font color="#E5E5E5"> they really are an intrinsic method</font>
+
+549
+00:18:52,389 --> 00:18:56,529
+we need to<font color="#CCCCCC"> actually say yes</font><font color="#E5E5E5"> they want</font>
+
+550
+00:18:54,760 --> 00:18:58,658
+<font color="#E5E5E5">this intrinsic translated and these are</font>
+
+551
+00:18:56,529 --> 00:19:00,909
+the functions to use it<font color="#E5E5E5"> and then we need</font>
+
+552
+00:18:58,659 --> 00:19:03,100
+<font color="#CCCCCC">to for each of those methods</font><font color="#E5E5E5"> build</font>
+
+553
+00:19:00,909 --> 00:19:04,840
+little function graph that represents<font color="#CCCCCC"> a</font>
+
+554
+00:19:03,100 --> 00:19:07,240
+function<font color="#E5E5E5"> which does a cache</font><font color="#CCCCCC"> write back</font>
+
+555
+00:19:04,840 --> 00:19:08,918
+<font color="#E5E5E5">or synchronization</font><font color="#CCCCCC"> so we</font><font color="#E5E5E5"> basically build</font>
+
+556
+00:19:07,240 --> 00:19:10,510
+a<font color="#E5E5E5"> compiler graph a high-level graph and</font>
+
+557
+00:19:08,919 --> 00:19:13,029
+then we<font color="#E5E5E5"> add</font><font color="#CCCCCC"> some rules to translate that</font>
+
+558
+00:19:10,510 --> 00:19:14,590
+<font color="#CCCCCC">to machine code</font><font color="#E5E5E5"> so this is the</font><font color="#CCCCCC"> bit that</font>
+
+559
+00:19:13,029 --> 00:19:15,549
+<font color="#E5E5E5">hope you'll find interesting don't worry</font>
+
+560
+00:19:14,590 --> 00:19:16,990
+if you don't understand<font color="#E5E5E5"> it</font>
+
+561
+00:19:15,549 --> 00:19:18,279
+it just says where you look in the code
+
+562
+00:19:16,990 --> 00:19:21,669
+<font color="#E5E5E5">and you'll need to go and study it if</font>
+
+563
+00:19:18,279 --> 00:19:22,809
+not<font color="#E5E5E5"> and so it's very</font><font color="#CCCCCC"> easy</font><font color="#E5E5E5"> to say this is</font>
+
+564
+00:19:21,669 --> 00:19:24,250
+a<font color="#CCCCCC"> method that</font><font color="#E5E5E5"> we want the compiler to</font>
+
+565
+00:19:22,809 --> 00:19:28,210
+recognize you just put an annotation<font color="#E5E5E5"> on</font>
+
+566
+00:19:24,250 --> 00:19:31,149
+it it's an intrinsic candidate you need
+
+567
+00:19:28,210 --> 00:19:32,470
+to in class in<font color="#CCCCCC"> sylveon civilization feel</font>
+
+568
+00:19:31,149 --> 00:19:35,409
+there's a lot of<font color="#E5E5E5"> templates to describe</font>
+
+569
+00:19:32,470 --> 00:19:38,590
+bits and the<font color="#CCCCCC"> s segments of a</font><font color="#E5E5E5"> clever</font>
+
+570
+00:19:35,410 --> 00:19:39,910
+<font color="#CCCCCC">name</font><font color="#E5E5E5"> so you can identify a methods in</font>
+
+571
+00:19:38,590 --> 00:19:41,470
+intrinsic so for example<font color="#E5E5E5"> that seems like</font>
+
+572
+00:19:39,910 --> 00:19:43,480
+there says<font color="#E5E5E5"> that string is the string</font>
+
+573
+00:19:41,470 --> 00:19:46,690
+that<font color="#E5E5E5"> identifies a long avoid the method</font>
+
+574
+00:19:43,480 --> 00:19:48,370
+takes a longer<font color="#E5E5E5"> turns void do name says</font>
+
+575
+00:19:46,690 --> 00:19:49,930
+that<font color="#E5E5E5"> right back</font><font color="#CCCCCC"> zero name is a name of</font><font color="#E5E5E5"> a</font>
+
+576
+00:19:48,370 --> 00:19:51,879
+method<font color="#E5E5E5"> called right back</font><font color="#CCCCCC"> zero that</font><font color="#E5E5E5"> was</font>
+
+577
+00:19:49,930 --> 00:19:53,890
+the name<font color="#CCCCCC"> of the unsafe method and doing</font>
+
+578
+00:19:51,880 --> 00:19:56,200
+<font color="#CCCCCC">trinsic says well we've got an intrinsic</font>
+
+579
+00:19:53,890 --> 00:19:58,390
+called underscore right back<font color="#E5E5E5"> zero it's</font>
+
+580
+00:19:56,200 --> 00:20:00,520
+on class defined by this<font color="#E5E5E5"> symbol which</font><font color="#CCCCCC"> is</font>
+
+581
+00:19:58,390 --> 00:20:02,080
+another name the unsafe class<font color="#CCCCCC"> it's name</font>
+
+582
+00:20:00,520 --> 00:20:04,120
+<font color="#E5E5E5">is right back name it has</font><font color="#CCCCCC"> a long void</font>
+
+583
+00:20:02,080 --> 00:20:05,949
+signature and it's just a<font color="#E5E5E5"> normal instant</font>
+
+584
+00:20:04,120 --> 00:20:07,750
+method called by the normal protocol<font color="#CCCCCC"> and</font>
+
+585
+00:20:05,950 --> 00:20:09,370
+the same with the precinct of<font color="#E5E5E5"> the</font>
+
+586
+00:20:07,750 --> 00:20:11,410
+posting method we define<font color="#CCCCCC"> them</font><font color="#E5E5E5"> so that's</font>
+
+587
+00:20:09,370 --> 00:20:12,790
+made them known<font color="#E5E5E5"> to</font><font color="#CCCCCC"> the</font><font color="#E5E5E5"> compiler we can</font>
+
+588
+00:20:11,410 --> 00:20:17,350
+see a corner<font color="#E5E5E5"> say yeah I know this is</font><font color="#CCCCCC"> an</font>
+
+589
+00:20:12,790 --> 00:20:19,899
+intrinsic<font color="#CCCCCC"> now inside clean side there</font>
+
+590
+00:20:17,350 --> 00:20:22,030
+<font color="#E5E5E5">see</font><font color="#CCCCCC"> two compiler there's a method calls</font>
+
+591
+00:20:19,900 --> 00:20:23,650
+<font color="#CCCCCC">isness intrinsic supported it looks at a</font>
+
+592
+00:20:22,030 --> 00:20:25,420
+<font color="#CCCCCC">particularly</font><font color="#E5E5E5"> including ID it's found it</font>
+
+593
+00:20:23,650 --> 00:20:27,550
+says do we really do<font color="#E5E5E5"> this</font><font color="#CCCCCC"> there's a big</font>
+
+594
+00:20:25,420 --> 00:20:29,560
+switch<font color="#E5E5E5"> on the ID I've put in a</font><font color="#CCCCCC"> little</font>
+
+595
+00:20:27,550 --> 00:20:31,840
+hack so that we can say<font color="#E5E5E5"> actually don't</font>
+
+596
+00:20:29,560 --> 00:20:33,399
+recognize<font color="#CCCCCC"> that</font><font color="#E5E5E5"> if so we can switch it</font>
+
+597
+00:20:31,840 --> 00:20:35,320
+off<font color="#CCCCCC"> and switch it on</font><font color="#E5E5E5"> you'd normally just</font>
+
+598
+00:20:33,400 --> 00:20:36,880
+drop out<font color="#CCCCCC"> of that and</font><font color="#E5E5E5"> say true and that</font>
+
+599
+00:20:35,320 --> 00:20:38,590
+<font color="#E5E5E5">means yeah translate this but we can</font>
+
+600
+00:20:36,880 --> 00:20:41,770
+also switch<font color="#CCCCCC"> it off to do</font><font color="#E5E5E5"> it comparison I</font>
+
+601
+00:20:38,590 --> 00:20:43,780
+<font color="#CCCCCC">did that comparison inside the actual</font>
+
+602
+00:20:41,770 --> 00:20:45,730
+compiler library<font color="#E5E5E5"> called kit which is the</font>
+
+603
+00:20:43,780 --> 00:20:47,680
+thing that does all<font color="#CCCCCC"> the translation</font><font color="#E5E5E5"> of</font>
+
+604
+00:20:45,730 --> 00:20:49,600
+methods there's another switch on those
+
+605
+00:20:47,680 --> 00:20:51,490
+intrinsic<font color="#CCCCCC"> side E's and there are</font><font color="#E5E5E5"> three</font>
+
+606
+00:20:49,600 --> 00:20:53,889
+<font color="#CCCCCC">dude</font><font color="#E5E5E5"> functions used to translate</font><font color="#CCCCCC"> the</font>
+
+607
+00:20:51,490 --> 00:20:56,050
+<font color="#CCCCCC">three calls there's one that generates</font><font color="#E5E5E5"> a</font>
+
+608
+00:20:53,890 --> 00:20:57,640
+compiler graph for a<font color="#E5E5E5"> write back and one</font>
+
+609
+00:20:56,050 --> 00:20:59,260
+that<font color="#E5E5E5"> generates a</font><font color="#CCCCCC"> cappella graph for the</font>
+
+610
+00:20:57,640 --> 00:21:01,360
+synchronization operation<font color="#E5E5E5"> either pre or</font>
+
+611
+00:20:59,260 --> 00:21:03,310
+<font color="#E5E5E5">post it obviously takes an argument true</font>
+
+612
+00:21:01,360 --> 00:21:05,169
+<font color="#CCCCCC">or false so</font><font color="#E5E5E5"> we just call in to those</font>
+
+613
+00:21:03,310 --> 00:21:06,520
+methods<font color="#CCCCCC"> so these are the</font><font color="#E5E5E5"> ones that</font>
+
+614
+00:21:05,170 --> 00:21:08,110
+<font color="#CCCCCC">actually build this build the stuff</font>
+
+615
+00:21:06,520 --> 00:21:10,629
+that's basically<font color="#E5E5E5"> a compiler graph that</font>
+
+616
+00:21:08,110 --> 00:21:12,370
+can be<font color="#CCCCCC"> translated to machine code</font><font color="#E5E5E5"> now</font>
+
+617
+00:21:10,630 --> 00:21:14,650
+when we come<font color="#CCCCCC"> into</font><font color="#E5E5E5"> in line unsafe right</font>
+
+618
+00:21:12,370 --> 00:21:16,479
+back we've got<font color="#CCCCCC"> the stub of a graph</font><font color="#E5E5E5"> for a</font>
+
+619
+00:21:14,650 --> 00:21:19,120
+function and it's a<font color="#E5E5E5"> function that takes</font>
+
+620
+00:21:16,480 --> 00:21:20,560
+<font color="#E5E5E5">a long so the first thing we do is we</font>
+
+621
+00:21:19,120 --> 00:21:22,570
+plant a null check to make sure<font color="#E5E5E5"> we</font>
+
+622
+00:21:20,560 --> 00:21:25,240
+haven't<font color="#E5E5E5"> been passed a null unsafe object</font>
+
+623
+00:21:22,570 --> 00:21:26,800
+so null check receiver says<font color="#E5E5E5"> put in a</font>
+
+624
+00:21:25,240 --> 00:21:28,450
+test there to make<font color="#E5E5E5"> sure there's</font><font color="#CCCCCC"> note</font>
+
+625
+00:21:26,800 --> 00:21:31,659
+that<font color="#E5E5E5"> there's an</font><font color="#CCCCCC"> answer</font><font color="#E5E5E5"> and unsafe object</font>
+
+626
+00:21:28,450 --> 00:21:33,730
+or throw an exception<font color="#CCCCCC"> the next thing we</font>
+
+627
+00:21:31,660 --> 00:21:35,140
+do<font color="#CCCCCC"> is we take the argument wand from</font>
+
+628
+00:21:33,730 --> 00:21:37,300
+<font color="#E5E5E5">that function</font><font color="#CCCCCC"> call which is the address</font>
+
+629
+00:21:35,140 --> 00:21:39,670
+<font color="#E5E5E5">and we get the node that</font><font color="#CCCCCC"> represents that</font>
+
+630
+00:21:37,300 --> 00:21:41,169
+input argument and we create a cast node
+
+631
+00:21:39,670 --> 00:21:43,330
+because we want to process<font color="#CCCCCC"> it as a</font>
+
+632
+00:21:41,170 --> 00:21:45,860
+pointer<font color="#E5E5E5"> and it comes in as a long so we</font>
+
+633
+00:21:43,330 --> 00:21:48,379
+<font color="#E5E5E5">haven't we pass it into</font><font color="#CCCCCC"> a new cast node</font>
+
+634
+00:21:45,860 --> 00:21:50,149
+she now has type void<font color="#E5E5E5"> star it's a point</font>
+
+635
+00:21:48,380 --> 00:21:53,240
+<font color="#CCCCCC">or type pointer</font><font color="#E5E5E5"> it's a</font><font color="#CCCCCC"> pointer node and</font>
+
+636
+00:21:50,149 --> 00:21:55,010
+that we then use<font color="#CCCCCC"> the gvn transform call</font>
+
+637
+00:21:53,240 --> 00:21:57,200
+to add it into<font color="#E5E5E5"> the graph so that's now</font>
+
+638
+00:21:55,010 --> 00:21:58,760
+linked into<font color="#CCCCCC"> the graph</font><font color="#E5E5E5"> then we create a</font>
+
+639
+00:21:57,200 --> 00:22:00,860
+<font color="#E5E5E5">new node</font><font color="#CCCCCC"> that i've added called cash</font>
+
+640
+00:21:58,760 --> 00:22:02,629
+right back node and it takes three
+
+641
+00:22:00,860 --> 00:22:03,830
+arguments<font color="#CCCCCC"> and</font><font color="#E5E5E5"> we create that and add it</font>
+
+642
+00:22:02,630 --> 00:22:05,620
+into<font color="#E5E5E5"> the graph now the three arguments</font>
+
+643
+00:22:03,830 --> 00:22:08,389
+are the<font color="#E5E5E5"> address which is argument</font><font color="#CCCCCC"> to</font>
+
+644
+00:22:05,620 --> 00:22:10,908
+argument one is a link<font color="#E5E5E5"> into the current</font>
+
+645
+00:22:08,390 --> 00:22:12,440
+chain of memory nodes<font color="#E5E5E5"> four pointer types</font>
+
+646
+00:22:10,909 --> 00:22:14,269
+because<font color="#E5E5E5"> we want to linked in the memory</font>
+
+647
+00:22:12,440 --> 00:22:16,549
+graph so it's ordered with<font color="#CCCCCC"> respect to</font>
+
+648
+00:22:14,269 --> 00:22:18,409
+previous<font color="#E5E5E5"> memory operations</font><font color="#CCCCCC"> input 0 is</font>
+
+649
+00:22:16,549 --> 00:22:20,360
+the current<font color="#CCCCCC"> controller link we want</font><font color="#E5E5E5"> it</font>
+
+650
+00:22:18,409 --> 00:22:21,889
+to be linked<font color="#E5E5E5"> into the control flow so</font>
+
+651
+00:22:20,360 --> 00:22:23,719
+it's got<font color="#E5E5E5"> three inputs and that that's</font>
+
+652
+00:22:21,889 --> 00:22:25,729
+<font color="#CCCCCC">just that</font><font color="#E5E5E5"> that's all it is it's just a</font>
+
+653
+00:22:23,720 --> 00:22:27,620
+node that's an<font color="#E5E5E5"> answer that represents an</font>
+
+654
+00:22:25,730 --> 00:22:28,970
+abstract write back operation in the
+
+655
+00:22:27,620 --> 00:22:31,158
+<font color="#E5E5E5">back end we'll translate that to the</font>
+
+656
+00:22:28,970 --> 00:22:32,750
+<font color="#CCCCCC">appropriate instruction we</font><font color="#E5E5E5"> link</font><font color="#CCCCCC"> that</font>
+
+657
+00:22:31,159 --> 00:22:35,059
+into<font color="#E5E5E5"> the graph for the transform call</font>
+
+658
+00:22:32,750 --> 00:22:37,100
+and then we update the<font color="#E5E5E5"> memory chain the</font>
+
+659
+00:22:35,059 --> 00:22:38,629
+pointer memory chain is now this node
+
+660
+00:22:37,100 --> 00:22:40,730
+we've added a node in so we've updated
+
+661
+00:22:38,630 --> 00:22:42,830
+the<font color="#E5E5E5"> end of the memory chain</font><font color="#CCCCCC"> so other</font>
+
+662
+00:22:40,730 --> 00:22:44,330
+operations haven't<font color="#CCCCCC"> in order of this</font><font color="#E5E5E5"> that</font>
+
+663
+00:22:42,830 --> 00:22:46,070
+<font color="#E5E5E5">will mean these will be scheduled in the</font>
+
+664
+00:22:44,330 --> 00:22:48,199
+<font color="#E5E5E5">right memory order and that means we'll</font>
+
+665
+00:22:46,070 --> 00:22:49,760
+get<font color="#E5E5E5"> the right cache synchronization but</font>
+
+666
+00:22:48,200 --> 00:22:53,149
+the right<font color="#E5E5E5"> bat will also ensure the right</font>
+
+667
+00:22:49,760 --> 00:22:54,860
+memory synchronization<font color="#CCCCCC"> okay and there's</font>
+
+668
+00:22:53,149 --> 00:22:56,239
+a similar thing if we call the answer
+
+669
+00:22:54,860 --> 00:22:58,279
+the<font color="#E5E5E5"> right back sync method will create a</font>
+
+670
+00:22:56,240 --> 00:22:59,330
+precinct<font color="#E5E5E5"> node or a post sync node they</font>
+
+671
+00:22:58,279 --> 00:23:01,039
+need to be linked in<font color="#E5E5E5"> the</font><font color="#CCCCCC"> controller</font>
+
+672
+00:22:59,330 --> 00:23:02,990
+<font color="#E5E5E5">memory structure they're both memory</font>
+
+673
+00:23:01,039 --> 00:23:05,809
+nodes so they become<font color="#E5E5E5"> the new tail of the</font>
+
+674
+00:23:02,990 --> 00:23:07,340
+memory chain and the actual nodes are
+
+675
+00:23:05,809 --> 00:23:09,320
+just classes<font color="#CCCCCC"> they're</font><font color="#E5E5E5"> instances class</font>
+
+676
+00:23:07,340 --> 00:23:11,360
+node they have<font color="#E5E5E5"> three</font><font color="#CCCCCC"> inputs which they</font>
+
+677
+00:23:09,320 --> 00:23:13,158
+pass up as a<font color="#E5E5E5"> three ins they have a</font>
+
+678
+00:23:11,360 --> 00:23:15,080
+bottom type which says I'm of type
+
+679
+00:23:13,159 --> 00:23:16,490
+memory<font color="#E5E5E5"> that means the the back end knows</font>
+
+680
+00:23:15,080 --> 00:23:20,629
+<font color="#E5E5E5">that they</font><font color="#CCCCCC"> need to</font><font color="#E5E5E5"> be processors memory</font>
+
+681
+00:23:16,490 --> 00:23:24,019
+nodes<font color="#CCCCCC"> that get a memory input</font><font color="#E5E5E5"> okay no</font>
+
+682
+00:23:20,630 --> 00:23:28,130
+<font color="#E5E5E5">problem and there's a similar</font><font color="#CCCCCC"> one for</font>
+
+683
+00:23:24,019 --> 00:23:29,870
+<font color="#E5E5E5">the precinct node</font><font color="#CCCCCC"> and then the final bit</font>
+
+684
+00:23:28,130 --> 00:23:31,519
+of the equation<font color="#E5E5E5"> we need to</font><font color="#CCCCCC"> actually</font><font color="#E5E5E5"> in</font>
+
+685
+00:23:29,870 --> 00:23:32,510
+the<font color="#E5E5E5"> back end say translate where do you</font>
+
+686
+00:23:31,519 --> 00:23:35,179
+see one of<font color="#CCCCCC"> these</font><font color="#E5E5E5"> nodes in the graph</font>
+
+687
+00:23:32,510 --> 00:23:36,379
+translated to machine code<font color="#E5E5E5"> now this this</font>
+
+688
+00:23:35,179 --> 00:23:38,330
+thing might have been added<font color="#E5E5E5"> in the</font>
+
+689
+00:23:36,380 --> 00:23:40,370
+<font color="#E5E5E5">actual unsafe method that might</font><font color="#CCCCCC"> be</font><font color="#E5E5E5"> that</font>
+
+690
+00:23:38,330 --> 00:23:41,928
+graph might have been in lined<font color="#E5E5E5"> into two</font>
+
+691
+00:23:40,370 --> 00:23:43,518
+or<font color="#E5E5E5"> three callers so we can actually get</font>
+
+692
+00:23:41,929 --> 00:23:45,679
+this machine<font color="#E5E5E5"> code in line to the</font>
+
+693
+00:23:43,519 --> 00:23:48,529
+<font color="#E5E5E5">generated</font><font color="#CCCCCC"> code just</font><font color="#E5E5E5"> as it would</font><font color="#CCCCCC"> for any</font>
+
+694
+00:23:45,679 --> 00:23:50,330
+other<font color="#CCCCCC"> inline Java code and what we do is</font>
+
+695
+00:23:48,529 --> 00:23:52,519
+we've got<font color="#E5E5E5"> an</font><font color="#CCCCCC"> input which is a memory</font>
+
+696
+00:23:50,330 --> 00:23:54,408
+address for this one<font color="#E5E5E5"> it should be just a</font>
+
+697
+00:23:52,519 --> 00:23:55,520
+raw<font color="#E5E5E5"> memory address it's of type indirect</font>
+
+698
+00:23:54,409 --> 00:23:55,990
+which means you don't<font color="#E5E5E5"> want think with an</font>
+
+699
+00:23:55,520 --> 00:23:57,879
+offset
+
+700
+00:23:55,990 --> 00:23:59,170
+displacement<font color="#CCCCCC"> we want just an actual</font>
+
+701
+00:23:57,880 --> 00:24:01,270
+address for a<font color="#E5E5E5"> cache line</font>
+
+702
+00:23:59,170 --> 00:24:02,740
+so those asserts check that<font color="#E5E5E5"> and there's</font>
+
+703
+00:24:01,270 --> 00:24:04,030
+the DC instruction that<font color="#E5E5E5"> basically</font>
+
+704
+00:24:02,740 --> 00:24:05,830
+flushes that back to memory there's a
+
+705
+00:24:04,030 --> 00:24:09,100
+different back-end<font color="#E5E5E5"> for Intel which will</font>
+
+706
+00:24:05,830 --> 00:24:11,260
+generate the<font color="#CCCCCC"> relevant Intel code and for</font>
+
+707
+00:24:09,100 --> 00:24:13,629
+<font color="#E5E5E5">the post sync node we</font><font color="#CCCCCC"> have an encoding</font>
+
+708
+00:24:11,260 --> 00:24:14,080
+<font color="#CCCCCC">that plants the</font><font color="#E5E5E5"> member for the precinct</font>
+
+709
+00:24:13,630 --> 00:24:15,070
+node
+
+710
+00:24:14,080 --> 00:24:16,510
+you don't need an encoding because
+
+711
+00:24:15,070 --> 00:24:18,909
+<font color="#E5E5E5">there's nothing needed so it's just that</font>
+
+712
+00:24:16,510 --> 00:24:20,379
+<font color="#E5E5E5">it's an empty</font><font color="#CCCCCC"> step so basically</font><font color="#E5E5E5"> that</font>
+
+713
+00:24:18,910 --> 00:24:23,710
+<font color="#CCCCCC">means you've now got a really efficient</font>
+
+714
+00:24:20,380 --> 00:24:24,850
+<font color="#E5E5E5">way of getting</font><font color="#CCCCCC"> the actual</font><font color="#E5E5E5"> instructions a</font>
+
+715
+00:24:23,710 --> 00:24:26,860
+single instructions you really<font color="#CCCCCC"> wanna</font>
+
+716
+00:24:24,850 --> 00:24:29,980
+<font color="#CCCCCC">execute it in in line right there wipe</font>
+
+717
+00:24:26,860 --> 00:24:32,590
+<font color="#E5E5E5">into the whole</font><font color="#CCCCCC"> call</font><font color="#E5E5E5"> chain right I'd</font>
+
+718
+00:24:29,980 --> 00:24:34,450
+better<font color="#E5E5E5"> stop there so there's good news</font>
+
+719
+00:24:32,590 --> 00:24:36,040
+is we<font color="#CCCCCC"> have a plan</font><font color="#E5E5E5"> C it's not actually</font>
+
+720
+00:24:34,450 --> 00:24:37,480
+the plan we may stick<font color="#CCCCCC"> with we may end up</font>
+
+721
+00:24:36,040 --> 00:24:39,250
+I'm<font color="#E5E5E5"> gonna have a chat with</font><font color="#CCCCCC"> on a baby</font>
+
+722
+00:24:37,480 --> 00:24:40,720
+like this<font color="#E5E5E5"> we may end up implementing</font>
+
+723
+00:24:39,250 --> 00:24:42,190
+this some<font color="#CCCCCC"> other way but that's</font><font color="#E5E5E5"> just a</font>
+
+724
+00:24:40,720 --> 00:24:43,990
+really<font color="#E5E5E5"> good</font><font color="#CCCCCC"> example of all the different</font>
+
+725
+00:24:42,190 --> 00:24:46,059
+<font color="#CCCCCC">steps</font><font color="#E5E5E5"> involved and the sort of benefit</font>
+
+726
+00:24:43,990 --> 00:24:48,520
+you've got we did actually do some
+
+727
+00:24:46,059 --> 00:24:49,928
+benchmark tests on this<font color="#E5E5E5"> it's a very very</font>
+
+728
+00:24:48,520 --> 00:24:52,389
+big improvement<font color="#E5E5E5"> I can't give you the</font>
+
+729
+00:24:49,929 --> 00:24:54,220
+actual<font color="#E5E5E5"> figures for that but this is way</font>
+
+730
+00:24:52,390 --> 00:24:56,530
+way better<font color="#E5E5E5"> than the native method</font>
+
+731
+00:24:54,220 --> 00:24:58,420
+version and the native version<font color="#E5E5E5"> method</font>
+
+732
+00:24:56,530 --> 00:25:00,879
+version is way way better<font color="#E5E5E5"> than using the</font>
+
+733
+00:24:58,420 --> 00:25:02,350
+driver mode for the PMM or calling out
+
+734
+00:25:00,880 --> 00:25:04,510
+to<font color="#CCCCCC"> j and i so this</font><font color="#E5E5E5"> is actually really</font>
+
+735
+00:25:02,350 --> 00:25:06,990
+<font color="#CCCCCC">can make it for normal improvement</font><font color="#E5E5E5"> to</font>
+
+736
+00:25:04,510 --> 00:25:06,990
+performance
+
+737
+00:25:07,640 --> 00:25:15,519
+[Applause]
+

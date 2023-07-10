@@ -1,0 +1,5672 @@
+﻿1
+00:00:02,879 --> 00:00:05,839
+arcsan is now digital.ai
+
+2
+00:00:05,839 --> 00:00:07,759
+join us at our booth in the virtual expo
+
+3
+00:00:07,759 --> 00:00:10,080
+hall to learn how our app protection
+
+4
+00:00:10,080 --> 00:00:12,080
+white box cryptography and threat
+
+5
+00:00:12,080 --> 00:00:14,080
+analytics solutions can help you stay
+
+6
+00:00:14,080 --> 00:00:18,320
+ahead of the evolving threat landscape
+
+7
+00:00:20,960 --> 00:00:22,080
+welcome everyone and thank you for
+
+8
+00:00:22,080 --> 00:00:23,920
+joining us today to talk about static
+
+9
+00:00:23,920 --> 00:00:25,359
+analysis
+
+10
+00:00:25,359 --> 00:00:27,119
+my name is adrian bravo
+
+11
+00:00:27,119 --> 00:00:28,480
+and i'm a security engineer at workday
+
+12
+00:00:28,480 --> 00:00:29,920
+and i'm going to be joined today by lee
+
+13
+00:00:29,920 --> 00:00:31,679
+connell who's also a security engineer
+
+14
+00:00:31,679 --> 00:00:33,520
+at workday
+
+15
+00:00:33,520 --> 00:00:35,600
+before we get into the topic today i
+
+16
+00:00:35,600 --> 00:00:37,680
+wanted to share first some of the
+
+17
+00:00:37,680 --> 00:00:39,840
+assumptions we've made about the target
+
+18
+00:00:39,840 --> 00:00:42,079
+audience of this stock so we're assuming
+
+19
+00:00:42,079 --> 00:00:43,840
+that this is going to be most useful for
+
+20
+00:00:43,840 --> 00:00:46,480
+mid-size companies so you're not
+
+21
+00:00:46,480 --> 00:00:48,960
+so small that you cannot afford to to
+
+22
+00:00:48,960 --> 00:00:50,800
+purchase some of these tools or to
+
+23
+00:00:50,800 --> 00:00:52,399
+dedicate a couple of engineers for an
+
+24
+00:00:52,399 --> 00:00:54,239
+extended period of time onto this
+
+25
+00:00:54,239 --> 00:00:56,800
+project but you're also not so large
+
+26
+00:00:56,800 --> 00:00:58,399
+that you'd rather just go and hire a
+
+27
+00:00:58,399 --> 00:01:01,359
+full team of phds to build a custom
+
+28
+00:01:01,359 --> 00:01:03,440
+static analysis tool from scratch right
+
+29
+00:01:03,440 --> 00:01:04,799
+we all agree that that's probably the
+
+30
+00:01:04,799 --> 00:01:07,040
+ideal solution for everyone but we're
+
+31
+00:01:07,040 --> 00:01:09,040
+not um not everyone is able to afford
+
+32
+00:01:09,040 --> 00:01:11,520
+that so we hope that for if you're in
+
+33
+00:01:11,520 --> 00:01:13,119
+the middle sweet spot this will be
+
+34
+00:01:13,119 --> 00:01:15,040
+useful to you
+
+35
+00:01:15,040 --> 00:01:16,320
+you will notice
+
+36
+00:01:16,320 --> 00:01:17,840
+too that we've constructed all this
+
+37
+00:01:17,840 --> 00:01:19,600
+architecture around not disturbing
+
+38
+00:01:19,600 --> 00:01:21,360
+developer workflows so we don't want the
+
+39
+00:01:21,360 --> 00:01:23,520
+developers to have to change
+
+40
+00:01:23,520 --> 00:01:25,320
+their ide or
+
+41
+00:01:25,320 --> 00:01:27,759
+repositories or the pipelines we want
+
+42
+00:01:27,759 --> 00:01:28,960
+them to be able to do what they do
+
+43
+00:01:28,960 --> 00:01:30,880
+normally but still get the benefits of
+
+44
+00:01:30,880 --> 00:01:33,759
+static analysis
+
+45
+00:01:33,759 --> 00:01:36,000
+before we begin with the architecture i
+
+46
+00:01:36,000 --> 00:01:37,600
+want to highlight to the fact that
+
+47
+00:01:37,600 --> 00:01:39,680
+you're gonna see the steps we took to
+
+48
+00:01:39,680 --> 00:01:41,680
+get to our current design we're going to
+
+49
+00:01:41,680 --> 00:01:42,720
+show you
+
+50
+00:01:42,720 --> 00:01:44,880
+maybe some failed avenues some dead ends
+
+51
+00:01:44,880 --> 00:01:46,960
+or roadblocks that we hope that you
+
+52
+00:01:46,960 --> 00:01:48,560
+don't have to take if you see this
+
+53
+00:01:48,560 --> 00:01:51,280
+presentation and that will also inform
+
+54
+00:01:51,280 --> 00:01:52,159
+you
+
+55
+00:01:52,159 --> 00:01:54,159
+about how we thought about this and how
+
+56
+00:01:54,159 --> 00:01:57,840
+we went about building what we've built
+
+57
+00:01:58,240 --> 00:01:59,840
+okay so let's start the first thing that
+
+58
+00:01:59,840 --> 00:02:01,680
+you need to do is obviously selecting a
+
+59
+00:02:01,680 --> 00:02:03,600
+core for your static analysis platform
+
+60
+00:02:03,600 --> 00:02:05,040
+right so
+
+61
+00:02:05,040 --> 00:02:06,719
+unfortunately for most of us this is
+
+62
+00:02:06,719 --> 00:02:09,360
+going to be an exercise
+
+63
+00:02:09,360 --> 00:02:10,878
+bad option
+
+64
+00:02:10,878 --> 00:02:12,560
+the reason for that is that there is
+
+65
+00:02:12,560 --> 00:02:14,800
+nothing out there that will just work
+
+66
+00:02:14,800 --> 00:02:16,319
+right there's nothing that you can go
+
+67
+00:02:16,319 --> 00:02:17,440
+out and
+
+68
+00:02:17,440 --> 00:02:20,239
+download install and expect to get
+
+69
+00:02:20,239 --> 00:02:22,640
+accurate good results out of it
+
+70
+00:02:22,640 --> 00:02:24,560
+in addition to that a lot of these tools
+
+71
+00:02:24,560 --> 00:02:26,800
+are quite expensive you can obviously go
+
+72
+00:02:26,800 --> 00:02:29,360
+down the open source route but you have
+
+73
+00:02:29,360 --> 00:02:31,599
+to make sure that the open source tools
+
+74
+00:02:31,599 --> 00:02:32,720
+you choose
+
+75
+00:02:32,720 --> 00:02:34,640
+can cope with whatever languages and
+
+76
+00:02:34,640 --> 00:02:37,599
+platforms your company uses and also
+
+77
+00:02:37,599 --> 00:02:39,280
+that you're okay with the quality of the
+
+78
+00:02:39,280 --> 00:02:41,200
+results that those open source tools are
+
+79
+00:02:41,200 --> 00:02:43,280
+gonna are gonna give you right
+
+80
+00:02:43,280 --> 00:02:45,519
+for us that's not the case so we ended
+
+81
+00:02:45,519 --> 00:02:47,840
+up considering six vendors for this
+
+82
+00:02:47,840 --> 00:02:49,599
+evaluation
+
+83
+00:02:49,599 --> 00:02:50,640
+and
+
+84
+00:02:50,640 --> 00:02:53,120
+our biggest constraint getting into this
+
+85
+00:02:53,120 --> 00:02:54,959
+was the fact that we needed the vendor
+
+86
+00:02:54,959 --> 00:02:57,120
+to support scala because scala is the
+
+87
+00:02:57,120 --> 00:02:59,280
+second most used language at workday so
+
+88
+00:02:59,280 --> 00:03:01,120
+that ruled out a lot of the potential
+
+89
+00:03:01,120 --> 00:03:03,200
+candidates for evaluation right i
+
+90
+00:03:03,200 --> 00:03:04,879
+understand that that's probably not the
+
+91
+00:03:04,879 --> 00:03:06,959
+case for most of you in the audience so
+
+92
+00:03:06,959 --> 00:03:08,640
+that you will have more options to
+
+93
+00:03:08,640 --> 00:03:10,640
+choose at this stage right we
+
+94
+00:03:10,640 --> 00:03:12,319
+unfortunately didn't
+
+95
+00:03:12,319 --> 00:03:14,000
+the last point i want to make here is
+
+96
+00:03:14,000 --> 00:03:14,959
+that
+
+97
+00:03:14,959 --> 00:03:17,360
+when you're doing this piece be really
+
+98
+00:03:17,360 --> 00:03:19,200
+thorough it is quite expensive
+
+99
+00:03:19,200 --> 00:03:21,120
+especially in time
+
+100
+00:03:21,120 --> 00:03:23,760
+to swap a vendor out to put another one
+
+101
+00:03:23,760 --> 00:03:25,360
+even though with
+
+102
+00:03:25,360 --> 00:03:27,280
+we've tried to design this architecture
+
+103
+00:03:27,280 --> 00:03:29,200
+in a way that we decouple as much as
+
+104
+00:03:29,200 --> 00:03:31,040
+possible from the actual piece of
+
+105
+00:03:31,040 --> 00:03:32,400
+software we are using
+
+106
+00:03:32,400 --> 00:03:33,599
+and that we
+
+107
+00:03:33,599 --> 00:03:35,040
+we are continuing to evolve this
+
+108
+00:03:35,040 --> 00:03:37,120
+architecture in the future to do so it
+
+109
+00:03:37,120 --> 00:03:39,200
+is still have a lot of interactions with
+
+110
+00:03:39,200 --> 00:03:40,560
+the vendor products so there's going to
+
+111
+00:03:40,560 --> 00:03:42,319
+be a lot of time and effort needed to
+
+112
+00:03:42,319 --> 00:03:44,480
+just replace that so at this stage when
+
+113
+00:03:44,480 --> 00:03:46,239
+you're evaluating make sure that you
+
+114
+00:03:46,239 --> 00:03:48,400
+write some automation against the apis
+
+115
+00:03:48,400 --> 00:03:50,239
+that you're interested in make sure that
+
+116
+00:03:50,239 --> 00:03:52,480
+if you
+
+117
+00:03:52,480 --> 00:03:53,760
+uh
+
+118
+00:03:53,760 --> 00:03:55,680
+expand the product that you write some
+
+119
+00:03:55,680 --> 00:03:58,000
+custom rules for that product most of
+
+120
+00:03:58,000 --> 00:03:59,519
+these products will allow you to write
+
+121
+00:03:59,519 --> 00:04:01,519
+custom rules to extend
+
+122
+00:04:01,519 --> 00:04:03,680
+the type of findings they can they can
+
+123
+00:04:03,680 --> 00:04:06,319
+detect do that write a couple ones and
+
+124
+00:04:06,319 --> 00:04:08,879
+make sure that you triage at least a few
+
+125
+00:04:08,879 --> 00:04:10,799
+issues to see how that flow looks like
+
+126
+00:04:10,799 --> 00:04:12,560
+how complicated it is to go through the
+
+127
+00:04:12,560 --> 00:04:14,000
+findings and figure out whether it's a
+
+128
+00:04:14,000 --> 00:04:16,320
+false positive or a real finding right
+
+129
+00:04:16,320 --> 00:04:18,560
+just just be quite thorough here do not
+
+130
+00:04:18,560 --> 00:04:20,880
+make any assumptions just don't trust
+
+131
+00:04:20,880 --> 00:04:23,280
+and also verify
+
+132
+00:04:23,280 --> 00:04:25,040
+now when comparing products there are
+
+133
+00:04:25,040 --> 00:04:26,960
+two key things i want to to share with
+
+134
+00:04:26,960 --> 00:04:29,040
+you i think for us it was very useful
+
+135
+00:04:29,040 --> 00:04:30,639
+and we strongly encourage you to
+
+136
+00:04:30,639 --> 00:04:32,479
+establish a predefined criteria before
+
+137
+00:04:32,479 --> 00:04:34,320
+you go out and start looking at vendors
+
+138
+00:04:34,320 --> 00:04:36,479
+and what can you buy or not buy or use
+
+139
+00:04:36,479 --> 00:04:38,960
+and not use just sit down and write down
+
+140
+00:04:38,960 --> 00:04:41,440
+all these criteria that you consider
+
+141
+00:04:41,440 --> 00:04:43,360
+important and relevant for for your tool
+
+142
+00:04:43,360 --> 00:04:45,919
+right for us most of it revolves around
+
+143
+00:04:45,919 --> 00:04:48,160
+automation and about you know the
+
+144
+00:04:48,160 --> 00:04:50,000
+quality of the results false positive
+
+145
+00:04:50,000 --> 00:04:52,160
+ratio false integration things like that
+
+146
+00:04:52,160 --> 00:04:53,840
+and this is the sample not all of them
+
+147
+00:04:53,840 --> 00:04:55,360
+just the screenshot of part of the page
+
+148
+00:04:55,360 --> 00:04:57,280
+with some of the
+
+149
+00:04:57,280 --> 00:04:59,120
+criteria that we had and we had some
+
+150
+00:04:59,120 --> 00:05:00,560
+weights assigned to those and some
+
+151
+00:05:00,560 --> 00:05:01,919
+disqualifying
+
+152
+00:05:01,919 --> 00:05:04,080
+uh criteria so if one of those for
+
+153
+00:05:04,080 --> 00:05:06,000
+example is not met that tool cannot
+
+154
+00:05:06,000 --> 00:05:07,280
+we're not going to continue to evaluate
+
+155
+00:05:07,280 --> 00:05:09,199
+that tool and you can see the mention of
+
+156
+00:05:09,199 --> 00:05:11,440
+scala and java that i that i made before
+
+157
+00:05:11,440 --> 00:05:13,039
+is here right
+
+158
+00:05:13,039 --> 00:05:14,479
+then you can go through your tools and
+
+159
+00:05:14,479 --> 00:05:16,000
+like you can score them against all of
+
+160
+00:05:16,000 --> 00:05:17,039
+these
+
+161
+00:05:17,039 --> 00:05:19,120
+criteria and you can use that on the way
+
+162
+00:05:19,120 --> 00:05:21,039
+to obtain a numerical value that you can
+
+163
+00:05:21,039 --> 00:05:23,120
+use to compare these tools in a more
+
+164
+00:05:23,120 --> 00:05:26,080
+objective front
+
+165
+00:05:26,080 --> 00:05:27,440
+the last thing when comparing these
+
+166
+00:05:27,440 --> 00:05:29,680
+products that i want to recommend is to
+
+167
+00:05:29,680 --> 00:05:31,039
+select an internal cardboard of
+
+168
+00:05:31,039 --> 00:05:33,440
+application samples i know a lot of the
+
+169
+00:05:33,440 --> 00:05:34,800
+vendors will come
+
+170
+00:05:34,800 --> 00:05:36,479
+with you know pre-packaged results
+
+171
+00:05:36,479 --> 00:05:38,479
+saying hey we it grade against this or
+
+172
+00:05:38,479 --> 00:05:40,880
+that well-known sample application
+
+173
+00:05:40,880 --> 00:05:42,240
+problem with that with those sample
+
+174
+00:05:42,240 --> 00:05:45,680
+applications like oaspweco and the use
+
+175
+00:05:45,680 --> 00:05:47,280
+shop and the non-vulnerable web
+
+176
+00:05:47,280 --> 00:05:49,600
+application is that the vendors tailor
+
+177
+00:05:49,600 --> 00:05:51,039
+their applications their scanners
+
+178
+00:05:51,039 --> 00:05:52,320
+against those so they're always going to
+
+179
+00:05:52,320 --> 00:05:54,400
+perform really good but that's not
+
+180
+00:05:54,400 --> 00:05:55,600
+really how they're going to perform
+
+181
+00:05:55,600 --> 00:05:57,919
+against real world applications right so
+
+182
+00:05:57,919 --> 00:06:01,600
+use your own code base we did prepare 46
+
+183
+00:06:01,600 --> 00:06:03,440
+vulnerable samples from
+
+184
+00:06:03,440 --> 00:06:05,039
+different applications at workday things
+
+185
+00:06:05,039 --> 00:06:06,800
+that we've hatched and knew were there
+
+186
+00:06:06,800 --> 00:06:08,960
+and we ran these vendors through those
+
+187
+00:06:08,960 --> 00:06:10,479
+and you can see on the screen two of
+
+188
+00:06:10,479 --> 00:06:12,560
+those vendors comparisons right we knew
+
+189
+00:06:12,560 --> 00:06:14,960
+we had 46 vulnerabilities and we knew
+
+190
+00:06:14,960 --> 00:06:18,160
+that 45 pounds uh 47 of those where
+
+191
+00:06:18,160 --> 00:06:20,880
+ticker marks found 17 of those we also
+
+192
+00:06:20,880 --> 00:06:22,479
+measure the
+
+193
+00:06:22,479 --> 00:06:24,880
+uh max scan time an average scan time
+
+194
+00:06:24,880 --> 00:06:27,039
+performance and other indicators
+
+195
+00:06:27,039 --> 00:06:29,199
+we had a false positive ratio on a
+
+196
+00:06:29,199 --> 00:06:31,680
+vulnerability on this canvas cam basis
+
+197
+00:06:31,680 --> 00:06:34,319
+we also took six applications from
+
+198
+00:06:34,319 --> 00:06:36,479
+workday that we didn't know whether they
+
+199
+00:06:36,479 --> 00:06:38,400
+were vulnerable or not and we run the
+
+200
+00:06:38,400 --> 00:06:40,639
+whole tool the whole scan on them
+
+201
+00:06:40,639 --> 00:06:42,720
+and we use that to measure noise in a
+
+202
+00:06:42,720 --> 00:06:45,759
+way to see how much noise is in in this
+
+203
+00:06:45,759 --> 00:06:48,960
+finding our report and how hard it is to
+
+204
+00:06:48,960 --> 00:06:51,039
+identify an issue within you know that
+
+205
+00:06:51,039 --> 00:06:52,720
+noise and then we could get some of
+
+206
+00:06:52,720 --> 00:06:54,160
+those false positive ratios and all
+
+207
+00:06:54,160 --> 00:06:56,319
+those numbers plus the criteria below
+
+208
+00:06:56,319 --> 00:06:59,360
+that before allows us to basically just
+
+209
+00:06:59,360 --> 00:07:01,520
+compare these vendors right
+
+210
+00:07:01,520 --> 00:07:04,800
+so now you have your tool and ideally
+
+211
+00:07:04,800 --> 00:07:08,240
+for us you want or we want it to have
+
+212
+00:07:08,240 --> 00:07:09,919
+a fully automated pipeline we want the
+
+213
+00:07:09,919 --> 00:07:11,360
+developer to just go write the code
+
+214
+00:07:11,360 --> 00:07:12,720
+pushes the code the code goes through
+
+215
+00:07:12,720 --> 00:07:14,479
+the pipeline we pick it up at some
+
+216
+00:07:14,479 --> 00:07:16,319
+points it's kind of back to the
+
+217
+00:07:16,319 --> 00:07:19,120
+developer no application security
+
+218
+00:07:19,120 --> 00:07:21,759
+engineer involved all fully automated
+
+219
+00:07:21,759 --> 00:07:24,560
+now that's kind of like the holy grail
+
+220
+00:07:24,560 --> 00:07:26,880
+and it's probably unattainable but we
+
+221
+00:07:26,880 --> 00:07:29,120
+can strive for something
+
+222
+00:07:29,120 --> 00:07:31,680
+around the 80 20 mark where we have
+
+223
+00:07:31,680 --> 00:07:34,160
+about 20 false positive rate and if we
+
+224
+00:07:34,160 --> 00:07:36,479
+get there developers are usually okay
+
+225
+00:07:36,479 --> 00:07:38,800
+getting those results whether like when
+
+226
+00:07:38,800 --> 00:07:40,720
+one of them 25 is going to be a false
+
+227
+00:07:40,720 --> 00:07:42,479
+positive and the rest are going to be
+
+228
+00:07:42,479 --> 00:07:44,400
+good value right
+
+229
+00:07:44,400 --> 00:07:45,919
+otherwise you're going to end up like
+
+230
+00:07:45,919 --> 00:07:48,280
+the developer i get a picture there with
+
+231
+00:07:48,280 --> 00:07:51,599
+7495 results which is a vanilla scan of
+
+232
+00:07:51,599 --> 00:07:53,759
+one of our applications with no settings
+
+233
+00:07:53,759 --> 00:07:56,560
+or configurations whatsoever and that's
+
+234
+00:07:56,560 --> 00:07:58,720
+obviously going to annoy your developers
+
+235
+00:07:58,720 --> 00:08:00,240
+and erode any trust they have in your
+
+236
+00:08:00,240 --> 00:08:01,680
+program
+
+237
+00:08:01,680 --> 00:08:03,759
+the challenge though to get to that 80
+
+238
+00:08:03,759 --> 00:08:06,400
+20 is as you can see in the picture the
+
+239
+00:08:06,400 --> 00:08:07,919
+high number of false
+
+240
+00:08:07,919 --> 00:08:09,039
+positives
+
+241
+00:08:09,039 --> 00:08:10,879
+we went about that
+
+242
+00:08:10,879 --> 00:08:12,800
+in a few different ways we attacked this
+
+243
+00:08:12,800 --> 00:08:14,800
+problem from different problems so first
+
+244
+00:08:14,800 --> 00:08:17,759
+we did we used filters and views filters
+
+245
+00:08:17,759 --> 00:08:20,080
+um in the case of our particular product
+
+246
+00:08:20,080 --> 00:08:21,840
+uh they're a little bit different but
+
+247
+00:08:21,840 --> 00:08:24,479
+most products allow you to do some form
+
+248
+00:08:24,479 --> 00:08:25,440
+of this
+
+249
+00:08:25,440 --> 00:08:27,919
+filters allow you to remove
+
+250
+00:08:27,919 --> 00:08:30,479
+some category of vulnerabilities or
+
+251
+00:08:30,479 --> 00:08:32,559
+findings before the translation and the
+
+252
+00:08:32,559 --> 00:08:34,159
+scan happens so you speed up the
+
+253
+00:08:34,159 --> 00:08:36,240
+translation scan a little bit and they
+
+254
+00:08:36,240 --> 00:08:38,000
+are never in the report
+
+255
+00:08:38,000 --> 00:08:40,159
+and then views are a way to just kind of
+
+256
+00:08:40,159 --> 00:08:43,279
+hide or filter some of the findings from
+
+257
+00:08:43,279 --> 00:08:45,360
+your report but you can always go there
+
+258
+00:08:45,360 --> 00:08:47,519
+and expand your your filter review and
+
+259
+00:08:47,519 --> 00:08:50,000
+see all those other things right
+
+260
+00:08:50,000 --> 00:08:51,360
+so for reviews
+
+261
+00:08:51,360 --> 00:08:53,760
+we we filter we filter those views based
+
+262
+00:08:53,760 --> 00:08:56,320
+on category right that's obviously a
+
+263
+00:08:56,320 --> 00:08:57,920
+good thing you can do
+
+264
+00:08:57,920 --> 00:08:59,200
+say well i only care about crosstalk
+
+265
+00:08:59,200 --> 00:09:00,240
+script physical injection these things
+
+266
+00:09:00,240 --> 00:09:02,320
+and that and everything else goes away
+
+267
+00:09:02,320 --> 00:09:04,160
+so you can focus and narrow focus on
+
+268
+00:09:04,160 --> 00:09:06,160
+that you can always expand the amount of
+
+269
+00:09:06,160 --> 00:09:08,320
+type of already you care as your program
+
+270
+00:09:08,320 --> 00:09:09,760
+matures
+
+271
+00:09:09,760 --> 00:09:12,000
+and then fordify for example has a lot
+
+272
+00:09:12,000 --> 00:09:14,800
+of the numerical indicators about the
+
+273
+00:09:14,800 --> 00:09:15,920
+accuracy
+
+274
+00:09:15,920 --> 00:09:17,680
+of a particular finding so you will find
+
+275
+00:09:17,680 --> 00:09:19,920
+the confidence the impact the accuracy
+
+276
+00:09:19,920 --> 00:09:22,560
+likelihood etc we use all of those we
+
+277
+00:09:22,560 --> 00:09:25,200
+set some thresholds for them and if the
+
+278
+00:09:25,200 --> 00:09:26,880
+finding is below the thresholds for
+
+279
+00:09:26,880 --> 00:09:27,839
+these
+
+280
+00:09:27,839 --> 00:09:29,600
+uh these values we will ignore that
+
+281
+00:09:29,600 --> 00:09:31,360
+finding right so we have a finding that
+
+282
+00:09:31,360 --> 00:09:33,680
+has a likelihood of one out of
+
+283
+00:09:33,680 --> 00:09:35,600
+five and an accuracy of like two out of
+
+284
+00:09:35,600 --> 00:09:37,680
+five we may say well this finding is not
+
+285
+00:09:37,680 --> 00:09:39,120
+probably worth looking into in an
+
+286
+00:09:39,120 --> 00:09:40,480
+automated fashion so we're just gonna
+
+287
+00:09:40,480 --> 00:09:42,240
+push it away and not report it
+
+288
+00:09:42,240 --> 00:09:45,360
+and the last one to to use for filtering
+
+289
+00:09:45,360 --> 00:09:47,279
+and views by probably the most important
+
+290
+00:09:47,279 --> 00:09:49,600
+one is the analyzer now this is not a
+
+291
+00:09:49,600 --> 00:09:52,000
+talk about how static analysis works
+
+292
+00:09:52,000 --> 00:09:55,040
+but most of these tools will come with a
+
+293
+00:09:55,040 --> 00:09:57,200
+different set of
+
+294
+00:09:57,200 --> 00:09:58,720
+analyzers
+
+295
+00:09:58,720 --> 00:10:00,080
+they will come with something like a
+
+296
+00:10:00,080 --> 00:10:03,279
+static sorry a semantic or a structural
+
+297
+00:10:03,279 --> 00:10:05,120
+analyzer right which is basically like
+
+298
+00:10:05,120 --> 00:10:06,560
+crap you can think about a diagram or
+
+299
+00:10:06,560 --> 00:10:08,079
+like a structural match in the structure
+
+300
+00:10:08,079 --> 00:10:09,600
+of the code and they will use that to
+
+301
+00:10:09,600 --> 00:10:11,600
+report certain vulnerabilities that is
+
+302
+00:10:11,600 --> 00:10:14,079
+usually less accurate than the analyzer
+
+303
+00:10:14,079 --> 00:10:15,440
+that we care about which is the data
+
+304
+00:10:15,440 --> 00:10:18,000
+flow analyzer the data flow analyzer is
+
+305
+00:10:18,000 --> 00:10:20,160
+the one in charge of tracking and
+
+306
+00:10:20,160 --> 00:10:21,279
+tracing
+
+307
+00:10:21,279 --> 00:10:23,760
+the user input from
+
+308
+00:10:23,760 --> 00:10:25,360
+the entry points in your program all the
+
+309
+00:10:25,360 --> 00:10:27,200
+way through your code execution until it
+
+310
+00:10:27,200 --> 00:10:29,519
+gets to a function that is either
+
+311
+00:10:29,519 --> 00:10:32,000
+vulnerable or dangerous and those are
+
+312
+00:10:32,000 --> 00:10:34,000
+usually more accurate results so we
+
+313
+00:10:34,000 --> 00:10:36,160
+filter out anything else that is not the
+
+314
+00:10:36,160 --> 00:10:40,319
+data flow analyzer for our purpose
+
+315
+00:10:40,800 --> 00:10:44,000
+second we've been disabling bad rules or
+
+316
+00:10:44,000 --> 00:10:45,680
+rules that come with the product that we
+
+317
+00:10:45,680 --> 00:10:48,320
+consider to be too noisy or that we just
+
+318
+00:10:48,320 --> 00:10:50,320
+consider them to be playing wrong that
+
+319
+00:10:50,320 --> 00:10:52,079
+is reporting something that is not
+
+320
+00:10:52,079 --> 00:10:54,800
+accurate so we can disable those and you
+
+321
+00:10:54,800 --> 00:10:56,720
+know save us some trouble but you can
+
+322
+00:10:56,720 --> 00:11:00,160
+also create new rules that either reduce
+
+323
+00:11:00,160 --> 00:11:01,600
+the number of false positives by
+
+324
+00:11:01,600 --> 00:11:04,160
+informing the tool about maybe
+
+325
+00:11:04,160 --> 00:11:06,240
+workday custom functions the sanitized
+
+326
+00:11:06,240 --> 00:11:09,120
+input or by adding context to the to the
+
+327
+00:11:09,120 --> 00:11:12,880
+scanning or you can add custom rules to
+
+328
+00:11:12,880 --> 00:11:14,880
+enhance the amount of findings the tool
+
+329
+00:11:14,880 --> 00:11:16,959
+can find right you can talk about
+
+330
+00:11:16,959 --> 00:11:19,680
+specific libraries or functions in your
+
+331
+00:11:19,680 --> 00:11:22,240
+own company that you may want to you
+
+332
+00:11:22,240 --> 00:11:23,519
+know raise a
+
+333
+00:11:23,519 --> 00:11:25,839
+an issue about if user data gets into
+
+334
+00:11:25,839 --> 00:11:27,279
+those right
+
+335
+00:11:27,279 --> 00:11:29,920
+the last bit here is profiling each
+
+336
+00:11:29,920 --> 00:11:31,360
+rule's effectiveness
+
+337
+00:11:31,360 --> 00:11:34,320
+we have started collecting the data here
+
+338
+00:11:34,320 --> 00:11:37,040
+and we will start profiling soon we
+
+339
+00:11:37,040 --> 00:11:39,200
+haven't gotten enough data so that the
+
+340
+00:11:39,200 --> 00:11:40,399
+results will be statistically
+
+341
+00:11:40,399 --> 00:11:42,560
+significant nonetheless
+
+342
+00:11:42,560 --> 00:11:45,680
+the idea here is to get enough data and
+
+343
+00:11:45,680 --> 00:11:47,920
+not finding some triage results for a
+
+344
+00:11:47,920 --> 00:11:50,240
+particular rule against
+
+345
+00:11:50,240 --> 00:11:51,839
+all our different applications we're
+
+346
+00:11:51,839 --> 00:11:53,360
+running it against and say well this
+
+347
+00:11:53,360 --> 00:11:55,519
+rule works very well in java against
+
+348
+00:11:55,519 --> 00:11:57,519
+this type of frameworks but not so well
+
+349
+00:11:57,519 --> 00:11:58,959
+against these other type of frameworks
+
+350
+00:11:58,959 --> 00:12:00,480
+or these other type of applications that
+
+351
+00:12:00,480 --> 00:12:01,600
+work there that may have you know
+
+352
+00:12:01,600 --> 00:12:04,079
+coupled with code or weird structures
+
+353
+00:12:04,079 --> 00:12:05,839
+and based on that we can also decide
+
+354
+00:12:05,839 --> 00:12:07,519
+whether we report that to developers or
+
+355
+00:12:07,519 --> 00:12:08,399
+we keep
+
+356
+00:12:08,399 --> 00:12:10,800
+it to ourselves so that is something
+
+357
+00:12:10,800 --> 00:12:12,240
+definitely we're still trying to work on
+
+358
+00:12:12,240 --> 00:12:14,480
+getting more data so that when we make a
+
+359
+00:12:14,480 --> 00:12:16,880
+decision about this accuracy we have a
+
+360
+00:12:16,880 --> 00:12:20,480
+statistically significant example
+
+361
+00:12:20,480 --> 00:12:22,079
+okay
+
+362
+00:12:22,079 --> 00:12:25,519
+we can now talk about the phase one mvp
+
+363
+00:12:25,519 --> 00:12:27,920
+architecture for this project
+
+364
+00:12:27,920 --> 00:12:30,399
+before i get you into how that looks
+
+365
+00:12:30,399 --> 00:12:31,120
+like
+
+366
+00:12:31,120 --> 00:12:34,000
+um i want to spend like a second here on
+
+367
+00:12:34,000 --> 00:12:37,120
+what happened before there so
+
+368
+00:12:37,120 --> 00:12:40,000
+the vendor in our case um a few of the
+
+369
+00:12:40,000 --> 00:12:41,680
+ones that we evaluated they just provide
+
+370
+00:12:41,680 --> 00:12:43,440
+you with some packaging
+
+371
+00:12:43,440 --> 00:12:45,120
+and most of the time this is some
+
+372
+00:12:45,120 --> 00:12:47,120
+simple compressed package that contains
+
+373
+00:12:47,120 --> 00:12:50,399
+either multiple or a single service for
+
+374
+00:12:50,399 --> 00:12:52,320
+the product but obviously that's not
+
+375
+00:12:52,320 --> 00:12:54,000
+something we can go and deploy in
+
+376
+00:12:54,000 --> 00:12:56,399
+another in an automated fashion in a
+
+377
+00:12:56,399 --> 00:12:58,160
+dynamic way uh
+
+378
+00:12:58,160 --> 00:13:00,320
+devops style right so we built some
+
+379
+00:13:00,320 --> 00:13:02,480
+automation that just you put the latest
+
+380
+00:13:02,480 --> 00:13:04,959
+package from this vendor and on an s3
+
+381
+00:13:04,959 --> 00:13:06,720
+bucket and then we pull it down split it
+
+382
+00:13:06,720 --> 00:13:08,240
+into rpms for all the different
+
+383
+00:13:08,240 --> 00:13:10,480
+components of of their product
+
+384
+00:13:10,480 --> 00:13:12,480
+create amis for all of those and then
+
+385
+00:13:12,480 --> 00:13:14,800
+use terraform to create an environment
+
+386
+00:13:14,800 --> 00:13:16,800
+that we can recreate destroy enter and
+
+387
+00:13:16,800 --> 00:13:20,639
+modify dynamically as we need it
+
+388
+00:13:20,639 --> 00:13:22,399
+with that out of the way
+
+389
+00:13:22,399 --> 00:13:25,200
+this is what a scanning pipeline at a
+
+390
+00:13:25,200 --> 00:13:27,600
+very high level usually looks like again
+
+391
+00:13:27,600 --> 00:13:30,320
+this is not a talk about static analysis
+
+392
+00:13:30,320 --> 00:13:32,639
+in depth but most of the time this is
+
+393
+00:13:32,639 --> 00:13:34,240
+what you're going to conceptually think
+
+394
+00:13:34,240 --> 00:13:36,240
+about you have your source code you're
+
+395
+00:13:36,240 --> 00:13:38,399
+going to go through a translation phase
+
+396
+00:13:38,399 --> 00:13:39,760
+where
+
+397
+00:13:39,760 --> 00:13:40,480
+the
+
+398
+00:13:40,480 --> 00:13:41,600
+original
+
+399
+00:13:41,600 --> 00:13:43,120
+language in this case java is going to
+
+400
+00:13:43,120 --> 00:13:44,959
+be translated or python or whatever it's
+
+401
+00:13:44,959 --> 00:13:46,240
+going to be translated into an
+
+402
+00:13:46,240 --> 00:13:48,720
+intermediate representation that the
+
+403
+00:13:48,720 --> 00:13:50,639
+scanner is going to use to analyze and
+
+404
+00:13:50,639 --> 00:13:53,120
+find vulnerabilities in
+
+405
+00:13:53,120 --> 00:13:55,519
+for us with the vendor we selected we
+
+406
+00:13:55,519 --> 00:13:57,600
+had a binary called source analyzer that
+
+407
+00:13:57,600 --> 00:14:00,079
+performs both stages you have to run it
+
+408
+00:14:00,079 --> 00:14:01,600
+twice with different flags but it's the
+
+409
+00:14:01,600 --> 00:14:03,360
+same binary just run it once for
+
+410
+00:14:03,360 --> 00:14:04,399
+translation and then you pass the
+
+411
+00:14:04,399 --> 00:14:06,560
+translation into the scanner one and you
+
+412
+00:14:06,560 --> 00:14:07,920
+get your results
+
+413
+00:14:07,920 --> 00:14:10,720
+we had to build though another service
+
+414
+00:14:10,720 --> 00:14:13,920
+on top of the vendor one to help with
+
+415
+00:14:13,920 --> 00:14:16,800
+the translation phase
+
+416
+00:14:16,800 --> 00:14:18,639
+now you're wondering well if you said
+
+417
+00:14:18,639 --> 00:14:20,399
+that the vendor already does a
+
+418
+00:14:20,399 --> 00:14:22,320
+translation why do you need to create
+
+419
+00:14:22,320 --> 00:14:24,399
+your own service around this and the
+
+420
+00:14:24,399 --> 00:14:27,120
+answer is well the server the vendor
+
+421
+00:14:27,120 --> 00:14:28,959
+does the translation yes but it doesn't
+
+422
+00:14:28,959 --> 00:14:31,199
+actually know how to build all your
+
+423
+00:14:31,199 --> 00:14:33,120
+applications and work days code
+
+424
+00:14:33,120 --> 00:14:35,199
+unfortunately it's quite complex and
+
+425
+00:14:35,199 --> 00:14:37,920
+very diverse we let the developers do
+
+426
+00:14:37,920 --> 00:14:40,000
+whatever they want with their products
+
+427
+00:14:40,000 --> 00:14:41,760
+so we end up having
+
+428
+00:14:41,760 --> 00:14:43,519
+i don't know multiple artifactory
+
+429
+00:14:43,519 --> 00:14:44,880
+instances where the defended
+
+430
+00:14:44,880 --> 00:14:47,360
+dependencies exist we have github
+
+431
+00:14:47,360 --> 00:14:49,120
+bigbucket gitlab
+
+432
+00:14:49,120 --> 00:14:51,040
+garrett we have multiple instances of
+
+433
+00:14:51,040 --> 00:14:54,320
+some of these we have gradle and maven
+
+434
+00:14:54,320 --> 00:14:56,959
+we have svt there's obviously node and
+
+435
+00:14:56,959 --> 00:14:59,760
+python all these things you know are
+
+436
+00:14:59,760 --> 00:15:01,199
+built and
+
+437
+00:15:01,199 --> 00:15:02,800
+compiled differently
+
+438
+00:15:02,800 --> 00:15:05,519
+so we needed this service fortnite to
+
+439
+00:15:05,519 --> 00:15:07,440
+abstract the complexities around all of
+
+440
+00:15:07,440 --> 00:15:09,440
+that so
+
+441
+00:15:09,440 --> 00:15:11,199
+the way this works is obviously we have
+
+442
+00:15:11,199 --> 00:15:12,880
+a lot of code in fortnite that tries to
+
+443
+00:15:12,880 --> 00:15:14,720
+identify patterns and knows about our
+
+444
+00:15:14,720 --> 00:15:16,079
+applications on our environments and
+
+445
+00:15:16,079 --> 00:15:18,639
+selects the right places but we also
+
+446
+00:15:18,639 --> 00:15:22,160
+have created this file where we create
+
+447
+00:15:22,160 --> 00:15:23,839
+an entry for each of the projects that
+
+448
+00:15:23,839 --> 00:15:24,880
+we are
+
+449
+00:15:24,880 --> 00:15:26,399
+tracking and scanning
+
+450
+00:15:26,399 --> 00:15:28,320
+and we provide some metadata for
+
+451
+00:15:28,320 --> 00:15:30,399
+fortnite to be able to know what to do
+
+452
+00:15:30,399 --> 00:15:32,160
+with some of these and as you can see
+
+453
+00:15:32,160 --> 00:15:34,000
+here well we support things like
+
+454
+00:15:34,000 --> 00:15:36,480
+excludes so if you have some files that
+
+455
+00:15:36,480 --> 00:15:38,880
+or folders that are either test files or
+
+456
+00:15:38,880 --> 00:15:40,639
+if third-party dependencies that your
+
+457
+00:15:40,639 --> 00:15:42,160
+developers decide to pull into the repo
+
+458
+00:15:42,160 --> 00:15:44,160
+instead of reference externally you can
+
+459
+00:15:44,160 --> 00:15:46,399
+exclude those from your translate
+
+460
+00:15:46,399 --> 00:15:48,399
+scan we have support for different
+
+461
+00:15:48,399 --> 00:15:50,320
+branches some most of the the team
+
+462
+00:15:50,320 --> 00:15:52,160
+support you may use master but some
+
+463
+00:15:52,160 --> 00:15:54,000
+teams will have feature branches so we
+
+464
+00:15:54,000 --> 00:15:55,360
+need to know what branches we're trying
+
+465
+00:15:55,360 --> 00:15:58,079
+to track so we put that there we have
+
+466
+00:15:58,079 --> 00:15:59,839
+support for the multiple artifactory
+
+467
+00:15:59,839 --> 00:16:02,480
+instances through the
+
+468
+00:16:02,480 --> 00:16:06,079
+property prefix entry there in the file
+
+469
+00:16:06,079 --> 00:16:07,199
+and
+
+470
+00:16:07,199 --> 00:16:09,360
+multiple languages obviously we can have
+
+471
+00:16:09,360 --> 00:16:11,440
+one language per repo or a repo can have
+
+472
+00:16:11,440 --> 00:16:13,199
+multiple languages we just put it into a
+
+473
+00:16:13,199 --> 00:16:15,120
+field here so that we know that we need
+
+474
+00:16:15,120 --> 00:16:16,480
+to translate the code for all these
+
+475
+00:16:16,480 --> 00:16:18,000
+particular languages
+
+476
+00:16:18,000 --> 00:16:19,920
+and
+
+477
+00:16:19,920 --> 00:16:21,920
+that takes us to the midi part of this
+
+478
+00:16:21,920 --> 00:16:24,399
+file which is the build tool and the
+
+479
+00:16:24,399 --> 00:16:26,639
+build command the build tool is uh
+
+480
+00:16:26,639 --> 00:16:27,839
+basically what i was talking about
+
+481
+00:16:27,839 --> 00:16:29,680
+before you can use cradle you can use
+
+482
+00:16:29,680 --> 00:16:32,240
+and you can use paypamp or
+
+483
+00:16:32,240 --> 00:16:34,079
+whatever else right that we that we have
+
+484
+00:16:34,079 --> 00:16:36,399
+at workday and then the build command
+
+485
+00:16:36,399 --> 00:16:37,680
+will tell you
+
+486
+00:16:37,680 --> 00:16:39,360
+we'll tell fortnite
+
+487
+00:16:39,360 --> 00:16:41,120
+what is the actual command that it needs
+
+488
+00:16:41,120 --> 00:16:42,800
+to execute in order to translate that
+
+489
+00:16:42,800 --> 00:16:43,839
+code
+
+490
+00:16:43,839 --> 00:16:45,759
+if you look at the last example on this
+
+491
+00:16:45,759 --> 00:16:47,759
+slide you can see that this build
+
+492
+00:16:47,759 --> 00:16:49,920
+command is quite messy it goes into a
+
+493
+00:16:49,920 --> 00:16:52,560
+folder it sources a shell script with
+
+494
+00:16:52,560 --> 00:16:54,000
+environment variables and then it
+
+495
+00:16:54,000 --> 00:16:56,480
+invokes a bunch of end targets to
+
+496
+00:16:56,480 --> 00:16:59,360
+translate this code and that is as
+
+497
+00:16:59,360 --> 00:17:01,600
+much as we allow it to to get into one
+
+498
+00:17:01,600 --> 00:17:03,440
+of these build command instructions
+
+499
+00:17:03,440 --> 00:17:04,720
+the other ones you can see maybe the
+
+500
+00:17:04,720 --> 00:17:06,559
+gradle one is just clean assemble which
+
+501
+00:17:06,559 --> 00:17:08,720
+is pretty simple um
+
+502
+00:17:08,720 --> 00:17:10,240
+if it gets any more complicated than
+
+503
+00:17:10,240 --> 00:17:12,480
+that last one then we use what we call
+
+504
+00:17:12,480 --> 00:17:14,400
+the build tools script and what we do
+
+505
+00:17:14,400 --> 00:17:16,079
+there is we basically tell fortnite hey
+
+506
+00:17:16,079 --> 00:17:18,640
+this is beyond your abilities so just
+
+507
+00:17:18,640 --> 00:17:20,319
+run this script we're giving you it's
+
+508
+00:17:20,319 --> 00:17:22,319
+going to do the translation for you and
+
+509
+00:17:22,319 --> 00:17:23,839
+this escape hatch we have for when
+
+510
+00:17:23,839 --> 00:17:26,240
+things get really really complicated the
+
+511
+00:17:26,240 --> 00:17:27,760
+foreign will invoke the script with a
+
+512
+00:17:27,760 --> 00:17:29,280
+series of environment variables that
+
+513
+00:17:29,280 --> 00:17:30,880
+contain maybe credentials for our
+
+514
+00:17:30,880 --> 00:17:32,720
+factory environments or
+
+515
+00:17:32,720 --> 00:17:34,400
+certain other configuration flags that
+
+516
+00:17:34,400 --> 00:17:35,919
+that we need when we're trying to write
+
+517
+00:17:35,919 --> 00:17:37,200
+these scripts
+
+518
+00:17:37,200 --> 00:17:38,880
+and we'll write the script and do
+
+519
+00:17:38,880 --> 00:17:40,720
+whatever needs to be done
+
+520
+00:17:40,720 --> 00:17:42,080
+and if you're wondering what that looks
+
+521
+00:17:42,080 --> 00:17:44,160
+like well we have some developers that
+
+522
+00:17:44,160 --> 00:17:46,480
+maybe i don't know go to an s3 bucket to
+
+523
+00:17:46,480 --> 00:17:48,320
+download certain artifacts before you
+
+524
+00:17:48,320 --> 00:17:50,640
+can build the code or
+
+525
+00:17:50,640 --> 00:17:52,720
+they require to build this particular
+
+526
+00:17:52,720 --> 00:17:55,280
+repository they require you to clone a
+
+527
+00:17:55,280 --> 00:17:56,799
+different repository and put it in a
+
+528
+00:17:56,799 --> 00:17:59,039
+particular location in your file system
+
+529
+00:17:59,039 --> 00:18:01,200
+or you know maybe a file that has to
+
+530
+00:18:01,200 --> 00:18:03,039
+have a specific content the file doesn't
+
+531
+00:18:03,039 --> 00:18:04,400
+come with a repository they have but it
+
+532
+00:18:04,400 --> 00:18:06,799
+needs to exist with a particular name
+
+533
+00:18:06,799 --> 00:18:08,480
+and it has to have whatever content they
+
+534
+00:18:08,480 --> 00:18:10,720
+decided so all those things and more we
+
+535
+00:18:10,720 --> 00:18:12,720
+can do in the script when things get
+
+536
+00:18:12,720 --> 00:18:14,480
+absolutely complicated
+
+537
+00:18:14,480 --> 00:18:16,320
+more complicated than this this model
+
+538
+00:18:16,320 --> 00:18:18,799
+can handle
+
+539
+00:18:19,520 --> 00:18:20,400
+okay
+
+540
+00:18:20,400 --> 00:18:22,400
+and with with that said this is what the
+
+541
+00:18:22,400 --> 00:18:23,919
+phase one architecture looked like for
+
+542
+00:18:23,919 --> 00:18:26,880
+us we had the translation phase done by
+
+543
+00:18:26,880 --> 00:18:28,559
+four fortnite on the left on its own ec2
+
+544
+00:18:28,559 --> 00:18:31,200
+instance we had an ec2 instance in the
+
+545
+00:18:31,200 --> 00:18:33,840
+middle running the ssc which is part of
+
+546
+00:18:33,840 --> 00:18:35,360
+the vendor's solution it's basically
+
+547
+00:18:35,360 --> 00:18:37,919
+their web ui it has the apis and their
+
+548
+00:18:37,919 --> 00:18:39,440
+portal so you can go in and like look at
+
+549
+00:18:39,440 --> 00:18:41,360
+the findings and stats and do some
+
+550
+00:18:41,360 --> 00:18:43,520
+triage there if you wanted to we don't
+
+551
+00:18:43,520 --> 00:18:44,960
+use that it's
+
+552
+00:18:44,960 --> 00:18:47,039
+for us you'll see as we evolve but for
+
+553
+00:18:47,039 --> 00:18:49,520
+us it's basically become some sort of
+
+554
+00:18:49,520 --> 00:18:51,679
+database wrapper like a storage or
+
+555
+00:18:51,679 --> 00:18:54,960
+something um and then we have two
+
+556
+00:18:54,960 --> 00:18:56,799
+scanners in this case two workers on the
+
+557
+00:18:56,799 --> 00:18:59,679
+right those are running the vendors um
+
+558
+00:18:59,679 --> 00:19:02,000
+cloud worker software which takes jobs
+
+559
+00:19:02,000 --> 00:19:04,720
+from from ssc and scans and produces the
+
+560
+00:19:04,720 --> 00:19:06,640
+results
+
+561
+00:19:06,640 --> 00:19:10,160
+on top of that we needed to create
+
+562
+00:19:10,160 --> 00:19:12,160
+another service called fort squire that
+
+563
+00:19:12,160 --> 00:19:13,200
+you can see there and i'll talk about
+
+564
+00:19:13,200 --> 00:19:14,880
+momentarily but before that i want to
+
+565
+00:19:14,880 --> 00:19:16,880
+highlight the fact that at this point
+
+566
+00:19:16,880 --> 00:19:20,400
+there is no scaling capabilities we have
+
+567
+00:19:20,400 --> 00:19:22,320
+two nodes and those are static and they
+
+568
+00:19:22,320 --> 00:19:24,240
+cannot go anywhere else they cannot
+
+569
+00:19:24,240 --> 00:19:26,480
+scale in or scale out scales down based
+
+570
+00:19:26,480 --> 00:19:28,160
+on load so they're always going to be
+
+571
+00:19:28,160 --> 00:19:29,840
+running the vendor doesn't provide any
+
+572
+00:19:29,840 --> 00:19:30,799
+way
+
+573
+00:19:30,799 --> 00:19:32,960
+for scaling yes you can decide how many
+
+574
+00:19:32,960 --> 00:19:34,480
+nodes you want but it's going to be a
+
+575
+00:19:34,480 --> 00:19:37,840
+static number all the time
+
+576
+00:19:37,840 --> 00:19:40,960
+ford squire is a service that we wrote
+
+577
+00:19:40,960 --> 00:19:43,360
+in in the spirit of trying to decouple
+
+578
+00:19:43,360 --> 00:19:45,360
+from the vendor software and also to try
+
+579
+00:19:45,360 --> 00:19:47,600
+and unify the workflow for us and the
+
+580
+00:19:47,600 --> 00:19:50,240
+developers so developers at workday and
+
+581
+00:19:50,240 --> 00:19:52,240
+security teams will track all bugs and
+
+582
+00:19:52,240 --> 00:19:54,080
+issues identified in
+
+583
+00:19:54,080 --> 00:19:56,160
+jira so what we do with port square is
+
+584
+00:19:56,160 --> 00:19:58,240
+we go to the api of the vendor's
+
+585
+00:19:58,240 --> 00:20:00,160
+software the ssc and then we just list
+
+586
+00:20:00,160 --> 00:20:01,679
+the issues that were reported in the
+
+587
+00:20:01,679 --> 00:20:04,720
+latest scan and we try to create jiras
+
+588
+00:20:04,720 --> 00:20:06,000
+for all of those if they haven't been
+
+589
+00:20:06,000 --> 00:20:07,840
+reported before report square has its
+
+590
+00:20:07,840 --> 00:20:09,440
+own internal database that you can check
+
+591
+00:20:09,440 --> 00:20:10,320
+again
+
+592
+00:20:10,320 --> 00:20:11,919
+for state and will create only new
+
+593
+00:20:11,919 --> 00:20:13,760
+things it also can track things when
+
+594
+00:20:13,760 --> 00:20:16,159
+they change so if an issue disappears
+
+595
+00:20:16,159 --> 00:20:17,840
+from a scan result because it has been
+
+596
+00:20:17,840 --> 00:20:19,679
+fixed maybe or because the file has been
+
+597
+00:20:19,679 --> 00:20:23,120
+removed then ford square will go to jira
+
+598
+00:20:23,120 --> 00:20:25,360
+and close that jira for us and
+
+599
+00:20:25,360 --> 00:20:28,000
+it also has all like the jiras that it
+
+600
+00:20:28,000 --> 00:20:30,400
+creates right they're grouped by sync
+
+601
+00:20:30,400 --> 00:20:32,080
+which is the
+
+602
+00:20:32,080 --> 00:20:35,760
+vulnerable location in the code so
+
+603
+00:20:35,760 --> 00:20:38,720
+when two vulnerabilities are reported
+
+604
+00:20:38,720 --> 00:20:40,559
+that happen on the same maybe line
+
+605
+00:20:40,559 --> 00:20:42,640
+function then fourth square will create
+
+606
+00:20:42,640 --> 00:20:44,000
+those jiras
+
+607
+00:20:44,000 --> 00:20:46,080
+uh grouped under like one parent euro
+
+608
+00:20:46,080 --> 00:20:47,919
+and some subtasks so that allows us to
+
+609
+00:20:47,919 --> 00:20:49,760
+triage more efficiently and also to pass
+
+610
+00:20:49,760 --> 00:20:51,440
+it to developers and they can work on a
+
+611
+00:20:51,440 --> 00:20:52,799
+fix for all of those issues that are
+
+612
+00:20:52,799 --> 00:20:54,480
+related
+
+613
+00:20:54,480 --> 00:20:57,360
+lastly the jiras contain all the
+
+614
+00:20:57,360 --> 00:20:59,280
+information the developer will need to
+
+615
+00:20:59,280 --> 00:21:00,880
+work on it and make sense of the issue
+
+616
+00:21:00,880 --> 00:21:03,360
+and and produce a fight effects it will
+
+617
+00:21:03,360 --> 00:21:05,600
+have all the call stack traces it will
+
+618
+00:21:05,600 --> 00:21:07,360
+have a snippet of code where the issue
+
+619
+00:21:07,360 --> 00:21:09,039
+resides you will have some metadata
+
+620
+00:21:09,039 --> 00:21:10,640
+about what type of issue it is how to
+
+621
+00:21:10,640 --> 00:21:12,960
+fix it and some of the numerical values
+
+622
+00:21:12,960 --> 00:21:14,880
+that we talk about for confidence will
+
+623
+00:21:14,880 --> 00:21:17,440
+also be there
+
+624
+00:21:17,440 --> 00:21:19,520
+now if you remember we said well there's
+
+625
+00:21:19,520 --> 00:21:22,880
+no scaling capabilities in this right so
+
+626
+00:21:22,880 --> 00:21:24,799
+that is a problem but it becomes a
+
+627
+00:21:24,799 --> 00:21:27,440
+bigger problem but by the fact that both
+
+628
+00:21:27,440 --> 00:21:30,720
+the translating box and the scanners
+
+629
+00:21:30,720 --> 00:21:34,400
+they require huge um boxes in aws they
+
+630
+00:21:34,400 --> 00:21:37,039
+they are especially very memory
+
+631
+00:21:37,039 --> 00:21:39,120
+intensive so we're using these 12x
+
+632
+00:21:39,120 --> 00:21:40,320
+largest
+
+633
+00:21:40,320 --> 00:21:41,120
+which
+
+634
+00:21:41,120 --> 00:21:43,760
+i believe ship with 128 gigabytes of ram
+
+635
+00:21:43,760 --> 00:21:45,600
+and they are quite expensive to keep
+
+636
+00:21:45,600 --> 00:21:47,120
+around so
+
+637
+00:21:47,120 --> 00:21:49,120
+when we have not enough things to scan
+
+638
+00:21:49,120 --> 00:21:51,120
+we have a bunch of boxes that are idling
+
+639
+00:21:51,120 --> 00:21:53,120
+and spending a lot of money and when we
+
+640
+00:21:53,120 --> 00:21:54,640
+have more than two or three or whatever
+
+641
+00:21:54,640 --> 00:21:56,720
+the number is at the same time we create
+
+642
+00:21:56,720 --> 00:21:58,400
+some congestion and then
+
+643
+00:21:58,400 --> 00:22:01,039
+um that's not ideal on either side so we
+
+644
+00:22:01,039 --> 00:22:03,440
+needed to figure out a better way to
+
+645
+00:22:03,440 --> 00:22:04,799
+dynamic like make this environment more
+
+646
+00:22:04,799 --> 00:22:05,919
+dynamic now
+
+647
+00:22:05,919 --> 00:22:08,240
+you can say well can you not just go and
+
+648
+00:22:08,240 --> 00:22:11,200
+scale this with aws auto scaling groups
+
+649
+00:22:11,200 --> 00:22:13,840
+since you're already aws and and that is
+
+650
+00:22:13,840 --> 00:22:15,840
+right and that's like probably you know
+
+651
+00:22:15,840 --> 00:22:18,480
+the the reasonable path to follow
+
+652
+00:22:18,480 --> 00:22:21,760
+we tried that um we tried it based on
+
+653
+00:22:21,760 --> 00:22:23,679
+like cloud watch metrics for cpu for
+
+654
+00:22:23,679 --> 00:22:25,600
+example that was not very accurate and
+
+655
+00:22:25,600 --> 00:22:27,679
+then we tried with custom metrics we
+
+656
+00:22:27,679 --> 00:22:30,240
+wrote a service for um that my partner
+
+657
+00:22:30,240 --> 00:22:32,640
+will talk about in a second
+
+658
+00:22:32,640 --> 00:22:33,360
+but
+
+659
+00:22:33,360 --> 00:22:35,520
+it didn't matter however we went about
+
+660
+00:22:35,520 --> 00:22:39,280
+this problem the issue remained that we
+
+661
+00:22:39,280 --> 00:22:40,880
+cannot control
+
+662
+00:22:40,880 --> 00:22:43,520
+the worker third-party service right it
+
+663
+00:22:43,520 --> 00:22:45,600
+is part of the vendor's product and it
+
+664
+00:22:45,600 --> 00:22:47,120
+will just pick
+
+665
+00:22:47,120 --> 00:22:49,280
+pick jobs from the eq and work on those
+
+666
+00:22:49,280 --> 00:22:50,559
+jobs and report the results and we
+
+667
+00:22:50,559 --> 00:22:52,240
+cannot touch how it does that and it's
+
+668
+00:22:52,240 --> 00:22:54,640
+completely unaware of any type of auto
+
+669
+00:22:54,640 --> 00:22:56,640
+scaling that is going around so
+
+670
+00:22:56,640 --> 00:22:59,280
+we run immediately into a lot of race
+
+671
+00:22:59,280 --> 00:23:02,000
+conditions for example
+
+672
+00:23:02,000 --> 00:23:03,760
+the outer scaler may have decided that
+
+673
+00:23:03,760 --> 00:23:05,440
+this instance needs to die it's it's
+
+674
+00:23:05,440 --> 00:23:07,039
+like we're gonna scale this in you're
+
+675
+00:23:07,039 --> 00:23:09,200
+going to go away but the software in it
+
+676
+00:23:09,200 --> 00:23:11,360
+doesn't know about that so it's going to
+
+677
+00:23:11,360 --> 00:23:12,799
+go to the api and see there's still some
+
+678
+00:23:12,799 --> 00:23:14,640
+work there may pick it up start working
+
+679
+00:23:14,640 --> 00:23:16,159
+on it and then 20 seconds later the
+
+680
+00:23:16,159 --> 00:23:18,240
+instance is terminated by auto scaler
+
+681
+00:23:18,240 --> 00:23:20,559
+that job disappears and it's never ever
+
+682
+00:23:20,559 --> 00:23:23,360
+just never scanned and we lost a lot of
+
+683
+00:23:23,360 --> 00:23:25,600
+scans that way right so we needed to
+
+684
+00:23:25,600 --> 00:23:28,159
+make changes to how we architected this
+
+685
+00:23:28,159 --> 00:23:29,600
+and we need to think about how we're
+
+686
+00:23:29,600 --> 00:23:31,679
+going to interact with the product in a
+
+687
+00:23:31,679 --> 00:23:34,080
+way that solves this problem
+
+688
+00:23:34,080 --> 00:23:36,320
+and that's what my my partner nick is
+
+689
+00:23:36,320 --> 00:23:38,240
+gonna be telling you about in the phase
+
+690
+00:23:38,240 --> 00:23:39,600
+two and the second part of this
+
+691
+00:23:39,600 --> 00:23:41,520
+presentation
+
+692
+00:23:41,520 --> 00:23:42,960
+thanks adrian
+
+693
+00:23:42,960 --> 00:23:45,679
+so we're left with this kind of awful
+
+694
+00:23:45,679 --> 00:23:48,240
+worst of both worlds where the cloud
+
+695
+00:23:48,240 --> 00:23:50,320
+worker has this race condition that's
+
+696
+00:23:50,320 --> 00:23:52,000
+dropping scans
+
+697
+00:23:52,000 --> 00:23:53,919
+but we still do want to be able to auto
+
+698
+00:23:53,919 --> 00:23:55,760
+scale it because we don't want to just
+
+699
+00:23:55,760 --> 00:23:58,320
+have to have either boxes sitting around
+
+700
+00:23:58,320 --> 00:24:01,520
+spending lots of money or just have this
+
+701
+00:24:01,520 --> 00:24:03,360
+very slow pipeline and lose our
+
+702
+00:24:03,360 --> 00:24:05,200
+performance
+
+703
+00:24:05,200 --> 00:24:06,720
+and we looked at a lot of different ways
+
+704
+00:24:06,720 --> 00:24:08,480
+of how we could actually go about this
+
+705
+00:24:08,480 --> 00:24:11,200
+and ultimately what we came up with was
+
+706
+00:24:11,200 --> 00:24:13,919
+the idea of adding this service called
+
+707
+00:24:13,919 --> 00:24:15,600
+cloudfort
+
+708
+00:24:15,600 --> 00:24:18,559
+now cloud4 you'll see here is pretty
+
+709
+00:24:18,559 --> 00:24:20,320
+much replacing
+
+710
+00:24:20,320 --> 00:24:22,159
+what that cloud worker was doing you'll
+
+711
+00:24:22,159 --> 00:24:24,000
+see the big change between this and our
+
+712
+00:24:24,000 --> 00:24:25,440
+last diagram
+
+713
+00:24:25,440 --> 00:24:27,520
+was instead of having those two worker
+
+714
+00:24:27,520 --> 00:24:29,760
+boxes we now have cloud fort in an auto
+
+715
+00:24:29,760 --> 00:24:32,080
+scaling group and we've also added the
+
+716
+00:24:32,080 --> 00:24:33,679
+service for watch which i'll come back
+
+717
+00:24:33,679 --> 00:24:35,360
+to in a moment
+
+718
+00:24:35,360 --> 00:24:37,919
+so we already know that we have the
+
+719
+00:24:37,919 --> 00:24:40,480
+actual fortify binary which allows us to
+
+720
+00:24:40,480 --> 00:24:42,000
+do the scanning
+
+721
+00:24:42,000 --> 00:24:43,600
+so what we're really left with is we
+
+722
+00:24:43,600 --> 00:24:46,480
+need to get something that can interact
+
+723
+00:24:46,480 --> 00:24:48,080
+with ssc
+
+724
+00:24:48,080 --> 00:24:50,480
+and be able to pretend that it's a cloud
+
+725
+00:24:50,480 --> 00:24:53,279
+worker and speak that same protocol
+
+726
+00:24:53,279 --> 00:24:56,400
+now when we set about this we looked for
+
+727
+00:24:56,400 --> 00:24:58,240
+the documentation and unfortunately the
+
+728
+00:24:58,240 --> 00:25:00,960
+documentation between ssc and the cloud
+
+729
+00:25:00,960 --> 00:25:02,960
+worker was
+
+730
+00:25:02,960 --> 00:25:04,000
+not there
+
+731
+00:25:04,000 --> 00:25:06,400
+so we had to look into this undocumented
+
+732
+00:25:06,400 --> 00:25:07,440
+api
+
+733
+00:25:07,440 --> 00:25:10,640
+uh using uh minim proxy
+
+734
+00:25:10,640 --> 00:25:11,919
+doing that we were able to determine it
+
+735
+00:25:11,919 --> 00:25:15,039
+was a relatively simple protocol
+
+736
+00:25:15,039 --> 00:25:16,720
+it was xml
+
+737
+00:25:16,720 --> 00:25:19,600
+database so no rpc and a relatively
+
+738
+00:25:19,600 --> 00:25:21,520
+simple state machine
+
+739
+00:25:21,520 --> 00:25:24,400
+it was just saying that the ssc says
+
+740
+00:25:24,400 --> 00:25:25,440
+hello
+
+741
+00:25:25,440 --> 00:25:27,279
+the cloud worker sends back an
+
+742
+00:25:27,279 --> 00:25:29,440
+authentication packet which was done
+
+743
+00:25:29,440 --> 00:25:31,840
+with a pre-shared secret and then they
+
+744
+00:25:31,840 --> 00:25:34,000
+start waiting they start waiting for
+
+745
+00:25:34,000 --> 00:25:36,400
+jobs to show up and what's super nice
+
+746
+00:25:36,400 --> 00:25:38,799
+about this is we don't actually have
+
+747
+00:25:38,799 --> 00:25:41,840
+just a single dispatch request but
+
+748
+00:25:41,840 --> 00:25:44,720
+rather we have a three-way handshake
+
+749
+00:25:44,720 --> 00:25:46,000
+between the two
+
+750
+00:25:46,000 --> 00:25:48,640
+where the ssc will say a job is
+
+751
+00:25:48,640 --> 00:25:51,200
+available and the cloud worker can then
+
+752
+00:25:51,200 --> 00:25:54,640
+say yes i'd like to claim this job
+
+753
+00:25:54,640 --> 00:25:57,039
+if the cloud worker sends that job claim
+
+754
+00:25:57,039 --> 00:25:59,520
+a claim acknowledgment is sent back and
+
+755
+00:25:59,520 --> 00:26:03,039
+only then does ssc register yes this job
+
+756
+00:26:03,039 --> 00:26:06,000
+has successfully been dispatched we are
+
+757
+00:26:06,000 --> 00:26:08,240
+successfully sending this to scan
+
+758
+00:26:08,240 --> 00:26:10,799
+once ssc does that it then proceeds to
+
+759
+00:26:10,799 --> 00:26:13,679
+send a massive binary blob which we were
+
+760
+00:26:13,679 --> 00:26:17,200
+able to take right to a file and that
+
+761
+00:26:17,200 --> 00:26:19,120
+file was able to be imported into the
+
+762
+00:26:19,120 --> 00:26:21,840
+fortify binary for scanning
+
+763
+00:26:21,840 --> 00:26:23,919
+we would run the fortify binary to scan
+
+764
+00:26:23,919 --> 00:26:26,880
+that and effectively come out with a
+
+765
+00:26:26,880 --> 00:26:28,960
+result file which we could then send
+
+766
+00:26:28,960 --> 00:26:30,640
+back to ssc
+
+767
+00:26:30,640 --> 00:26:32,880
+using the same protocol
+
+768
+00:26:32,880 --> 00:26:36,000
+so we've done it we now have a way to
+
+769
+00:26:36,000 --> 00:26:38,559
+deal with this auto scaling problem
+
+770
+00:26:38,559 --> 00:26:39,840
+because
+
+771
+00:26:39,840 --> 00:26:42,640
+what we can do is we can utilize that
+
+772
+00:26:42,640 --> 00:26:45,840
+job claim job uh job claim acknowledge
+
+773
+00:26:45,840 --> 00:26:47,520
+claim framework
+
+774
+00:26:47,520 --> 00:26:49,840
+to only claim a job
+
+775
+00:26:49,840 --> 00:26:52,159
+once we have guaranteed that our
+
+776
+00:26:52,159 --> 00:26:54,320
+instance can't die
+
+777
+00:26:54,320 --> 00:26:56,799
+so the next question becomes
+
+778
+00:26:56,799 --> 00:26:58,240
+how do you guarantee that the instance
+
+779
+00:26:58,240 --> 00:27:00,080
+won't die well we looked at a couple
+
+780
+00:27:00,080 --> 00:27:02,320
+different things a couple of the
+
+781
+00:27:02,320 --> 00:27:04,080
+controls and what we really determined
+
+782
+00:27:04,080 --> 00:27:06,000
+is as much as you try to fight it
+
+783
+00:27:06,000 --> 00:27:08,240
+there's always a little bit of a race
+
+784
+00:27:08,240 --> 00:27:09,279
+condition
+
+785
+00:27:09,279 --> 00:27:11,360
+when you check and the only way to
+
+786
+00:27:11,360 --> 00:27:14,320
+really insure it is to actually try to
+
+787
+00:27:14,320 --> 00:27:16,880
+enable instance protection
+
+788
+00:27:16,880 --> 00:27:19,039
+what we would do is we would receive
+
+789
+00:27:19,039 --> 00:27:21,120
+this job available request and then
+
+790
+00:27:21,120 --> 00:27:22,720
+immediately would say
+
+791
+00:27:22,720 --> 00:27:25,840
+oh all right i have a job available
+
+792
+00:27:25,840 --> 00:27:28,720
+then i will try to enable instance
+
+793
+00:27:28,720 --> 00:27:31,120
+protection i will immediately try to say
+
+794
+00:27:31,120 --> 00:27:34,080
+all right i do not want this instance to
+
+795
+00:27:34,080 --> 00:27:35,679
+be killed
+
+796
+00:27:35,679 --> 00:27:37,840
+assuming that that's succeeded and that
+
+797
+00:27:37,840 --> 00:27:39,840
+we were able to actually get that
+
+798
+00:27:39,840 --> 00:27:42,559
+instance protection only then would we
+
+799
+00:27:42,559 --> 00:27:44,880
+send the job claim because sometimes
+
+800
+00:27:44,880 --> 00:27:46,640
+instance protection would actually fail
+
+801
+00:27:46,640 --> 00:27:48,640
+which meant internally the instance was
+
+802
+00:27:48,640 --> 00:27:51,120
+scheduled to die but we didn't know it
+
+803
+00:27:51,120 --> 00:27:52,399
+yet and couldn't actually see it through
+
+804
+00:27:52,399 --> 00:27:53,760
+the api
+
+805
+00:27:53,760 --> 00:27:56,399
+so we send this job claim and we kind of
+
+806
+00:27:56,399 --> 00:27:58,399
+understand that you know we're now
+
+807
+00:27:58,399 --> 00:28:00,640
+slowing this thing down greatly and
+
+808
+00:28:00,640 --> 00:28:02,559
+someone else could claim that job before
+
+809
+00:28:02,559 --> 00:28:03,440
+us
+
+810
+00:28:03,440 --> 00:28:05,039
+which is perfectly fine
+
+811
+00:28:05,039 --> 00:28:06,559
+we send the job claim and if we don't
+
+812
+00:28:06,559 --> 00:28:08,000
+receive an acknowledgement if we're told
+
+813
+00:28:08,000 --> 00:28:10,080
+someone else claimed it we can go back
+
+814
+00:28:10,080 --> 00:28:12,480
+to just being a regular instance
+
+815
+00:28:12,480 --> 00:28:14,640
+otherwise now we've received the
+
+816
+00:28:14,640 --> 00:28:18,000
+acknowledged claim and were protected
+
+817
+00:28:18,000 --> 00:28:21,440
+so now we can safely say this scan will
+
+818
+00:28:21,440 --> 00:28:22,799
+complete
+
+819
+00:28:22,799 --> 00:28:24,480
+and we lose the problem of that race
+
+820
+00:28:24,480 --> 00:28:26,799
+condition which again deals with the
+
+821
+00:28:26,799 --> 00:28:28,559
+cloud worker problem
+
+822
+00:28:28,559 --> 00:28:31,679
+so awesome we got it we now have a
+
+823
+00:28:31,679 --> 00:28:33,760
+working worker that can now
+
+824
+00:28:33,760 --> 00:28:37,360
+scan things and scale up
+
+825
+00:28:37,360 --> 00:28:39,600
+the sort of question that comes next is
+
+826
+00:28:39,600 --> 00:28:42,399
+all right we're doing the scaling
+
+827
+00:28:42,399 --> 00:28:44,720
+how are we going to do that
+
+828
+00:28:44,720 --> 00:28:47,600
+and again for that we had to make a few
+
+829
+00:28:47,600 --> 00:28:49,120
+decisions talk about a few different
+
+830
+00:28:49,120 --> 00:28:51,520
+points we tossed around the idea of cpu
+
+831
+00:28:51,520 --> 00:28:54,159
+utilization potentially
+
+832
+00:28:54,159 --> 00:28:56,720
+box metrics things like that
+
+833
+00:28:56,720 --> 00:28:58,960
+and what it ultimately came back to is
+
+834
+00:28:58,960 --> 00:29:00,720
+when we're doing this auto scaling group
+
+835
+00:29:00,720 --> 00:29:02,880
+we need to make two decisions we need to
+
+836
+00:29:02,880 --> 00:29:05,600
+decide when do we need more boxes and
+
+837
+00:29:05,600 --> 00:29:09,199
+when do we need less boxes
+
+838
+00:29:09,440 --> 00:29:11,440
+and at the end of the day
+
+839
+00:29:11,440 --> 00:29:14,159
+when we need more boxes is when we have
+
+840
+00:29:14,159 --> 00:29:17,200
+more scans that can't get serviced so
+
+841
+00:29:17,200 --> 00:29:19,760
+ssc has this queue of all of the
+
+842
+00:29:19,760 --> 00:29:21,440
+translations that it's been given that
+
+843
+00:29:21,440 --> 00:29:23,360
+it wants to send out for scanning and if
+
+844
+00:29:23,360 --> 00:29:25,039
+there are more translations in the queue
+
+845
+00:29:25,039 --> 00:29:27,840
+than boxes we need more boxes
+
+846
+00:29:27,840 --> 00:29:29,200
+if there are less translations in the
+
+847
+00:29:29,200 --> 00:29:31,600
+queue than boxes we can start
+
+848
+00:29:31,600 --> 00:29:34,000
+ratcheting that back
+
+849
+00:29:34,000 --> 00:29:36,159
+and we wanted to use that metric as the
+
+850
+00:29:36,159 --> 00:29:38,320
+way to determine what should we be
+
+851
+00:29:38,320 --> 00:29:41,520
+scaling with unfortunately it isn't that
+
+852
+00:29:41,520 --> 00:29:42,559
+easy
+
+853
+00:29:42,559 --> 00:29:46,159
+aws scaling metrics are traditionally
+
+854
+00:29:46,159 --> 00:29:49,200
+for to be used with things that aws
+
+855
+00:29:49,200 --> 00:29:51,039
+already knows about so again these are
+
+856
+00:29:51,039 --> 00:29:54,159
+things like cpu utilization or box
+
+857
+00:29:54,159 --> 00:29:55,200
+counts
+
+858
+00:29:55,200 --> 00:29:56,559
+but
+
+859
+00:29:56,559 --> 00:29:59,279
+aws doesn't really have a way to dig
+
+860
+00:29:59,279 --> 00:30:01,120
+into ssc it doesn't know how to talk to
+
+861
+00:30:01,120 --> 00:30:02,880
+it it shouldn't have to
+
+862
+00:30:02,880 --> 00:30:05,120
+so what we ended up doing is creating
+
+863
+00:30:05,120 --> 00:30:06,480
+fort watch
+
+864
+00:30:06,480 --> 00:30:08,080
+this was that service that i mentioned
+
+865
+00:30:08,080 --> 00:30:10,720
+earlier and its whole job is just to
+
+866
+00:30:10,720 --> 00:30:12,559
+keep track of a ratio
+
+867
+00:30:12,559 --> 00:30:14,799
+fort watch knows how to keep how to talk
+
+868
+00:30:14,799 --> 00:30:18,000
+to ssc as well as aws and it can get
+
+869
+00:30:18,000 --> 00:30:20,480
+that ratio we're looking for of jobs in
+
+870
+00:30:20,480 --> 00:30:23,840
+the queue to number of boxes
+
+871
+00:30:23,840 --> 00:30:26,159
+it will compute that ratio for us and it
+
+872
+00:30:26,159 --> 00:30:29,039
+will perpetually send that up to aws as
+
+873
+00:30:29,039 --> 00:30:30,799
+a custom metric
+
+874
+00:30:30,799 --> 00:30:32,480
+custom metrics are a bit of a back door
+
+875
+00:30:32,480 --> 00:30:35,360
+that's enabled in aws that allows you to
+
+876
+00:30:35,360 --> 00:30:37,360
+if you really really really can't do it
+
+877
+00:30:37,360 --> 00:30:38,799
+with their system
+
+878
+00:30:38,799 --> 00:30:40,960
+you can just report to this particular
+
+879
+00:30:40,960 --> 00:30:41,840
+thing
+
+880
+00:30:41,840 --> 00:30:44,159
+and what we can do there then is have
+
+881
+00:30:44,159 --> 00:30:46,240
+this metric and now all we need to do
+
+882
+00:30:46,240 --> 00:30:49,919
+with the asg is say okay if we get above
+
+883
+00:30:49,919 --> 00:30:53,360
+some threshold 120 then we know the
+
+884
+00:30:53,360 --> 00:30:57,519
+ratio of q jobs we have to actual boxes
+
+885
+00:30:57,519 --> 00:30:58,960
+is too high
+
+886
+00:30:58,960 --> 00:31:01,919
+give me more boxes or the ratio of q
+
+887
+00:31:01,919 --> 00:31:04,799
+boxes to jobs we have is too low
+
+888
+00:31:04,799 --> 00:31:07,279
+start scaling those back
+
+889
+00:31:07,279 --> 00:31:08,080
+and
+
+890
+00:31:08,080 --> 00:31:10,080
+with that in tow with that ability to
+
+891
+00:31:10,080 --> 00:31:12,000
+scale solved
+
+892
+00:31:12,000 --> 00:31:15,200
+we have a working sas platform uh this
+
+893
+00:31:15,200 --> 00:31:18,000
+is now scanning in a massively parallel
+
+894
+00:31:18,000 --> 00:31:20,720
+way we're able to get almost one box per
+
+895
+00:31:20,720 --> 00:31:23,679
+scan sometimes a couple in serial but
+
+896
+00:31:23,679 --> 00:31:25,519
+for the most part we're scanning very
+
+897
+00:31:25,519 --> 00:31:27,360
+well and we don't have this problem of
+
+898
+00:31:27,360 --> 00:31:28,960
+having to keep those boxes up all the
+
+899
+00:31:28,960 --> 00:31:29,840
+time
+
+900
+00:31:29,840 --> 00:31:31,360
+and this was actually how we kept our
+
+901
+00:31:31,360 --> 00:31:35,600
+system for a relatively long period uh
+
+902
+00:31:35,600 --> 00:31:38,240
+to the lifetime of this entire system
+
+903
+00:31:38,240 --> 00:31:39,600
+but
+
+904
+00:31:39,600 --> 00:31:41,519
+eventually we sort of came across a
+
+905
+00:31:41,519 --> 00:31:43,600
+problem that comes from the design of
+
+906
+00:31:43,600 --> 00:31:45,360
+our repos
+
+907
+00:31:45,360 --> 00:31:48,320
+so our repos are in addition to being
+
+908
+00:31:48,320 --> 00:31:51,760
+polyglot they're poly size we have both
+
+909
+00:31:51,760 --> 00:31:54,960
+multiple monolithic repos as well as
+
+910
+00:31:54,960 --> 00:31:57,200
+many micro service repos
+
+911
+00:31:57,200 --> 00:31:59,679
+and so what will happen is
+
+912
+00:31:59,679 --> 00:32:02,720
+eventually at some point
+
+913
+00:32:02,720 --> 00:32:05,519
+the monolithic repos will start to build
+
+914
+00:32:05,519 --> 00:32:08,399
+up and slow down this translation cue
+
+915
+00:32:08,399 --> 00:32:10,559
+and the reason for that is while fortify
+
+916
+00:32:10,559 --> 00:32:13,039
+does offer some rudimentary ability to
+
+917
+00:32:13,039 --> 00:32:15,840
+do
+
+918
+00:32:19,600 --> 00:32:21,600
+and the reason for that is while fortify
+
+919
+00:32:21,600 --> 00:32:24,000
+does offer some rudimentary ability to
+
+920
+00:32:24,000 --> 00:32:26,080
+do incremental scanning
+
+921
+00:32:26,080 --> 00:32:27,919
+it wasn't actually usable for our
+
+922
+00:32:27,919 --> 00:32:30,240
+situation and so if we want to scan a
+
+923
+00:32:30,240 --> 00:32:32,640
+repo it's all or nothing we have to scan
+
+924
+00:32:32,640 --> 00:32:34,799
+everything or nothing
+
+925
+00:32:34,799 --> 00:32:38,000
+now because of these monolithic repos
+
+926
+00:32:38,000 --> 00:32:39,919
+they have more code which means they
+
+927
+00:32:39,919 --> 00:32:41,440
+change more frequently and again
+
+928
+00:32:41,440 --> 00:32:43,760
+remember we are scanning on a per commit
+
+929
+00:32:43,760 --> 00:32:46,559
+basis in the ideal world so what will
+
+930
+00:32:46,559 --> 00:32:48,799
+happen is these monolithic repos will
+
+931
+00:32:48,799 --> 00:32:51,360
+just build up scans over and over and
+
+932
+00:32:51,360 --> 00:32:54,159
+they take even longer to scan starving
+
+933
+00:32:54,159 --> 00:32:56,080
+our microservices and so we have the
+
+934
+00:32:56,080 --> 00:32:58,000
+problem of just we can't actually get
+
+935
+00:32:58,000 --> 00:32:59,679
+our microservices through because we're
+
+936
+00:32:59,679 --> 00:33:01,840
+scanning multiple copies of the same
+
+937
+00:33:01,840 --> 00:33:03,840
+couple monolithic repos
+
+938
+00:33:03,840 --> 00:33:06,159
+and this wasn't really a viable solution
+
+939
+00:33:06,159 --> 00:33:08,159
+for us we needed some way to be able to
+
+940
+00:33:08,159 --> 00:33:09,039
+say
+
+941
+00:33:09,039 --> 00:33:12,720
+all right i i can't do this
+
+942
+00:33:12,720 --> 00:33:15,360
+so instead what we're going to do now is
+
+943
+00:33:15,360 --> 00:33:17,440
+we are going to take fortnite and we are
+
+944
+00:33:17,440 --> 00:33:19,360
+going to make it parallelizable just
+
+945
+00:33:19,360 --> 00:33:21,519
+like we did with cloud 4.
+
+946
+00:33:21,519 --> 00:33:22,880
+now
+
+947
+00:33:22,880 --> 00:33:25,519
+we we're going to venture into a
+
+948
+00:33:25,519 --> 00:33:28,080
+very well trodden area and that is the
+
+949
+00:33:28,080 --> 00:33:30,080
+area of i wrote a program that was
+
+950
+00:33:30,080 --> 00:33:32,000
+designed to be single-threaded single
+
+951
+00:33:32,000 --> 00:33:34,720
+processed single machine and now i want
+
+952
+00:33:34,720 --> 00:33:36,480
+to distribute it
+
+953
+00:33:36,480 --> 00:33:38,880
+this is a problem that many different
+
+954
+00:33:38,880 --> 00:33:40,399
+pieces of software have faced over the
+
+955
+00:33:40,399 --> 00:33:41,679
+years and
+
+956
+00:33:41,679 --> 00:33:43,200
+we ran into some of the same problems
+
+957
+00:33:43,200 --> 00:33:44,399
+that they did
+
+958
+00:33:44,399 --> 00:33:46,559
+and that problem is one that is very
+
+959
+00:33:46,559 --> 00:33:48,559
+well trodden and that is i wrote
+
+960
+00:33:48,559 --> 00:33:50,320
+something for a single threaded
+
+961
+00:33:50,320 --> 00:33:52,240
+application and now i want to make it
+
+962
+00:33:52,240 --> 00:33:53,519
+distributed
+
+963
+00:33:53,519 --> 00:33:54,960
+so we're going to face a lot of the
+
+964
+00:33:54,960 --> 00:33:56,880
+issues that others have things like
+
+965
+00:33:56,880 --> 00:34:00,320
+state we wrote fortnight to have state
+
+966
+00:34:00,320 --> 00:34:03,039
+on the box and rely on that state to be
+
+967
+00:34:03,039 --> 00:34:05,279
+able to rely on it between and across
+
+968
+00:34:05,279 --> 00:34:06,480
+runs
+
+969
+00:34:06,480 --> 00:34:08,639
+this also means that if we're going to
+
+970
+00:34:08,639 --> 00:34:11,359
+be bringing these services up and down
+
+971
+00:34:11,359 --> 00:34:14,000
+we can't amateurize over caching and
+
+972
+00:34:14,000 --> 00:34:16,399
+what i mean by that is to say is often
+
+973
+00:34:16,399 --> 00:34:18,800
+when we have these auto scaling boxes
+
+974
+00:34:18,800 --> 00:34:21,520
+fortnite will come up run one or two
+
+975
+00:34:21,520 --> 00:34:24,800
+scans and then die so any caches that we
+
+976
+00:34:24,800 --> 00:34:26,879
+populate with the first scan
+
+977
+00:34:26,879 --> 00:34:28,960
+are going to be useful maybe one more
+
+978
+00:34:28,960 --> 00:34:31,520
+time but not much further than that so
+
+979
+00:34:31,520 --> 00:34:34,320
+it needs to be fast the first time and
+
+980
+00:34:34,320 --> 00:34:36,159
+of course there are going to be race
+
+981
+00:34:36,159 --> 00:34:37,679
+conditions when you write something
+
+982
+00:34:37,679 --> 00:34:40,239
+single threaded it is very hard to
+
+983
+00:34:40,239 --> 00:34:41,918
+unless you are really thinking i'm going
+
+984
+00:34:41,918 --> 00:34:43,839
+to distribute this later not write it
+
+985
+00:34:43,839 --> 00:34:46,079
+without any race conditions
+
+986
+00:34:46,079 --> 00:34:48,399
+now the flip side of the coin of dealing
+
+987
+00:34:48,399 --> 00:34:49,918
+with a problem that everyone has already
+
+988
+00:34:49,918 --> 00:34:52,239
+dealt with is there are people who have
+
+989
+00:34:52,239 --> 00:34:53,760
+dealt with it before we can go out and
+
+990
+00:34:53,760 --> 00:34:55,119
+search out those solutions and we
+
+991
+00:34:55,119 --> 00:34:56,560
+actually ended up coming up with a
+
+992
+00:34:56,560 --> 00:34:59,280
+pattern that was very very similar to
+
+993
+00:34:59,280 --> 00:35:02,400
+the fan in fan out pattern which is this
+
+994
+00:35:02,400 --> 00:35:04,560
+idea that i show on the graph here
+
+995
+00:35:04,560 --> 00:35:06,160
+what's basically happened is we're going
+
+996
+00:35:06,160 --> 00:35:09,040
+to take fortnite and we're going to push
+
+997
+00:35:09,040 --> 00:35:11,200
+all of the stateful and critical
+
+998
+00:35:11,200 --> 00:35:14,240
+sections to the edges and try to offload
+
+999
+00:35:14,240 --> 00:35:17,119
+them into either an orchestration part
+
+1000
+00:35:17,119 --> 00:35:19,280
+or collection part
+
+1001
+00:35:19,280 --> 00:35:21,440
+that way our workers can be
+
+1002
+00:35:21,440 --> 00:35:24,000
+as stateless as possible
+
+1003
+00:35:24,000 --> 00:35:25,839
+while still doing the job and we can
+
+1004
+00:35:25,839 --> 00:35:27,680
+only have one orchestrator or one
+
+1005
+00:35:27,680 --> 00:35:29,760
+collection that doesn't have to do any
+
+1006
+00:35:29,760 --> 00:35:31,760
+of the heavy lifting work that we're
+
+1007
+00:35:31,760 --> 00:35:34,960
+going to distribute across our workers
+
+1008
+00:35:34,960 --> 00:35:36,640
+to accomplish this
+
+1009
+00:35:36,640 --> 00:35:40,640
+we employed ssc as our collection so ssc
+
+1010
+00:35:40,640 --> 00:35:42,720
+was the thing that actually ended up
+
+1011
+00:35:42,720 --> 00:35:45,839
+holding all of these artifacts and it's
+
+1012
+00:35:45,839 --> 00:35:47,599
+very well equipped to do that it is
+
+1013
+00:35:47,599 --> 00:35:49,359
+completely ready to have multiple
+
+1014
+00:35:49,359 --> 00:35:51,119
+translations submitted to it at the same
+
+1015
+00:35:51,119 --> 00:35:53,440
+time
+
+1016
+00:35:53,599 --> 00:35:54,640
+however
+
+1017
+00:35:54,640 --> 00:35:56,960
+on the other side we actually were able
+
+1018
+00:35:56,960 --> 00:36:02,079
+to use aws's sqs now sqs is the simple q
+
+1019
+00:36:02,079 --> 00:36:04,640
+service and honestly this is something i
+
+1020
+00:36:04,640 --> 00:36:06,240
+really just have to take my hat off to
+
+1021
+00:36:06,240 --> 00:36:07,680
+aws for
+
+1022
+00:36:07,680 --> 00:36:09,760
+it's a simple tool it's a simple
+
+1023
+00:36:09,760 --> 00:36:13,359
+prospect it's the idea of i want a queue
+
+1024
+00:36:13,359 --> 00:36:14,880
+i don't want to manage it i want to be
+
+1025
+00:36:14,880 --> 00:36:16,560
+able to put stuff in and take stuff out
+
+1026
+00:36:16,560 --> 00:36:19,440
+i want it to be consistent reliable and
+
+1027
+00:36:19,440 --> 00:36:21,119
+be able to handle massive requests and
+
+1028
+00:36:21,119 --> 00:36:24,079
+aws just gives that to you and so i i
+
+1029
+00:36:24,079 --> 00:36:26,960
+really am quite a fan of these style of
+
+1030
+00:36:26,960 --> 00:36:29,280
+services in aws where they just are a
+
+1031
+00:36:29,280 --> 00:36:31,440
+small thing that works quite well
+
+1032
+00:36:31,440 --> 00:36:34,480
+so wait a way to stay unix ciws thank
+
+1033
+00:36:34,480 --> 00:36:35,599
+you
+
+1034
+00:36:35,599 --> 00:36:36,960
+um
+
+1035
+00:36:36,960 --> 00:36:38,880
+but a q is not really going to be enough
+
+1036
+00:36:38,880 --> 00:36:40,800
+because a queue can't actually do
+
+1037
+00:36:40,800 --> 00:36:42,960
+operations and logic so if we want to
+
+1038
+00:36:42,960 --> 00:36:45,040
+get rid of those critical sections we're
+
+1039
+00:36:45,040 --> 00:36:47,520
+going to need to go one step further
+
+1040
+00:36:47,520 --> 00:36:50,400
+and we accomplish that with fortified so
+
+1041
+00:36:50,400 --> 00:36:51,839
+fortified is our
+
+1042
+00:36:51,839 --> 00:36:53,440
+final service that we're going to add to
+
+1043
+00:36:53,440 --> 00:36:54,480
+this mix
+
+1044
+00:36:54,480 --> 00:36:57,200
+and its job is just to do the
+
+1045
+00:36:57,200 --> 00:37:01,280
+initial setup stateful critical sections
+
+1046
+00:37:01,280 --> 00:37:03,440
+that fortnight was originally doing and
+
+1047
+00:37:03,440 --> 00:37:05,760
+what i mean by that is it's going to
+
+1048
+00:37:05,760 --> 00:37:08,800
+mostly decide what to scan
+
+1049
+00:37:08,800 --> 00:37:11,520
+fortnite originally dealt with that by
+
+1050
+00:37:11,520 --> 00:37:14,560
+looking at git commits so what fortified
+
+1051
+00:37:14,560 --> 00:37:15,680
+will now do
+
+1052
+00:37:15,680 --> 00:37:18,079
+is look at that build file that adrian
+
+1053
+00:37:18,079 --> 00:37:19,839
+showed you earlier
+
+1054
+00:37:19,839 --> 00:37:22,400
+it will go and find all of the latest
+
+1055
+00:37:22,400 --> 00:37:23,680
+commits
+
+1056
+00:37:23,680 --> 00:37:25,839
+and compare those to okay well what were
+
+1057
+00:37:25,839 --> 00:37:29,200
+the commits last time i ran
+
+1058
+00:37:29,200 --> 00:37:30,400
+and by keeping track of those
+
+1059
+00:37:30,400 --> 00:37:32,079
+differences it knows if i see a
+
+1060
+00:37:32,079 --> 00:37:34,400
+difference i can send one of those on
+
+1061
+00:37:34,400 --> 00:37:35,920
+and that's how it knows what to put in
+
+1062
+00:37:35,920 --> 00:37:37,920
+the sqs
+
+1063
+00:37:37,920 --> 00:37:41,520
+this then in turn can be read from sqs
+
+1064
+00:37:41,520 --> 00:37:43,440
+what we actually end up doing is sending
+
+1065
+00:37:43,440 --> 00:37:45,920
+each of those individual objects that
+
+1066
+00:37:45,920 --> 00:37:48,880
+you saw in adrian's slide
+
+1067
+00:37:48,880 --> 00:37:51,520
+it sends each of those into the queue
+
+1068
+00:37:51,520 --> 00:37:54,960
+to be retaken out by fortnite fortnite
+
+1069
+00:37:54,960 --> 00:37:56,640
+already knows how to read those object
+
+1070
+00:37:56,640 --> 00:37:58,079
+files because of the code we wrote for
+
+1071
+00:37:58,079 --> 00:38:00,240
+it originally and it can just take that
+
+1072
+00:38:00,240 --> 00:38:02,560
+one project translate it and send it off
+
+1073
+00:38:02,560 --> 00:38:05,839
+to ssc it's none the wiser and we don't
+
+1074
+00:38:05,839 --> 00:38:08,480
+now we have an application that is
+
+1075
+00:38:08,480 --> 00:38:10,880
+relatively distributed and pretty
+
+1076
+00:38:10,880 --> 00:38:13,440
+stateless between runs
+
+1077
+00:38:13,440 --> 00:38:15,760
+this was an awesome breakthrough to have
+
+1078
+00:38:15,760 --> 00:38:18,880
+uh but it actually also led to a problem
+
+1079
+00:38:18,880 --> 00:38:20,640
+that we didn't really realize we would
+
+1080
+00:38:20,640 --> 00:38:22,160
+have until we started getting into
+
+1081
+00:38:22,160 --> 00:38:24,880
+debugging and that was the problem of
+
+1082
+00:38:24,880 --> 00:38:26,400
+logs
+
+1083
+00:38:26,400 --> 00:38:28,320
+so when you're running a single
+
+1084
+00:38:28,320 --> 00:38:30,800
+application on a single thread
+
+1085
+00:38:30,800 --> 00:38:32,400
+if something breaks at the end of the
+
+1086
+00:38:32,400 --> 00:38:34,640
+day if you really need to you can ssh
+
+1087
+00:38:34,640 --> 00:38:37,119
+into the box and grab the physical logs
+
+1088
+00:38:37,119 --> 00:38:38,800
+and go look at them it's not the
+
+1089
+00:38:38,800 --> 00:38:40,960
+prettiest way but it works
+
+1090
+00:38:40,960 --> 00:38:42,560
+that's not true when you're dealing with
+
+1091
+00:38:42,560 --> 00:38:45,280
+an auto scaling service many times we
+
+1092
+00:38:45,280 --> 00:38:47,520
+would have runs going at 2 3 in the
+
+1093
+00:38:47,520 --> 00:38:50,560
+morning and these boxes would spin up
+
+1094
+00:38:50,560 --> 00:38:54,400
+try to run hit some kind of error
+
+1095
+00:38:54,400 --> 00:38:55,680
+and then
+
+1096
+00:38:55,680 --> 00:38:57,680
+clean themselves up they're done they're
+
+1097
+00:38:57,680 --> 00:39:00,480
+no longer scanning anything so
+
+1098
+00:39:00,480 --> 00:39:03,119
+aws would say yup this box is good to go
+
+1099
+00:39:03,119 --> 00:39:04,640
+it's not protected so it would get rid
+
+1100
+00:39:04,640 --> 00:39:07,760
+of it and our logs would disappear
+
+1101
+00:39:07,760 --> 00:39:09,920
+so we needed to get the logs off the
+
+1102
+00:39:09,920 --> 00:39:11,520
+actual file system and into something
+
+1103
+00:39:11,520 --> 00:39:12,880
+else and the solution we ended up going
+
+1104
+00:39:12,880 --> 00:39:16,240
+with was another aws product called
+
+1105
+00:39:16,240 --> 00:39:19,680
+cloudwatch now cloudwatch is a login
+
+1106
+00:39:19,680 --> 00:39:22,000
+gesture very similar to splunk in fact
+
+1107
+00:39:22,000 --> 00:39:24,800
+it actually has a dashboard and some
+
+1108
+00:39:24,800 --> 00:39:27,599
+basic spl style queries that you can run
+
+1109
+00:39:27,599 --> 00:39:29,520
+on it which was really nice to have for
+
+1110
+00:39:29,520 --> 00:39:31,920
+the logs we could now look at things by
+
+1111
+00:39:31,920 --> 00:39:34,800
+service or by
+
+1112
+00:39:34,800 --> 00:39:37,119
+error type but what was really useful
+
+1113
+00:39:37,119 --> 00:39:40,720
+was this log segmentation via streams so
+
+1114
+00:39:40,720 --> 00:39:42,640
+you can configure these streams in any
+
+1115
+00:39:42,640 --> 00:39:45,040
+arbitrary configuration you want uh we
+
+1116
+00:39:45,040 --> 00:39:46,320
+were able to configure them using
+
+1117
+00:39:46,320 --> 00:39:48,160
+watchtower which is a python library
+
+1118
+00:39:48,160 --> 00:39:51,839
+that worked pretty seamlessly
+
+1119
+00:39:53,119 --> 00:39:55,040
+and we ended up actually configuring
+
+1120
+00:39:55,040 --> 00:39:58,560
+them on a buy box based so every single
+
+1121
+00:39:58,560 --> 00:40:01,040
+box had its own stream
+
+1122
+00:40:01,040 --> 00:40:03,520
+and what that meant was okay now we can
+
+1123
+00:40:03,520 --> 00:40:04,800
+look at things
+
+1124
+00:40:04,800 --> 00:40:06,720
+across a box we can look at multiple
+
+1125
+00:40:06,720 --> 00:40:08,480
+different scans that might not seem
+
+1126
+00:40:08,480 --> 00:40:11,440
+correlated in our big reporting but if
+
+1127
+00:40:11,440 --> 00:40:13,680
+you look at problems on a per box basis
+
+1128
+00:40:13,680 --> 00:40:15,280
+you can start to diagnose them a little
+
+1129
+00:40:15,280 --> 00:40:17,119
+bit easier
+
+1130
+00:40:17,119 --> 00:40:18,000
+so
+
+1131
+00:40:18,000 --> 00:40:19,920
+we've added our logging we've got our
+
+1132
+00:40:19,920 --> 00:40:21,359
+fortnight scanning we've got our
+
+1133
+00:40:21,359 --> 00:40:24,720
+fortnight translating
+
+1134
+00:40:24,720 --> 00:40:28,319
+we now have our new architecture
+
+1135
+00:40:28,319 --> 00:40:30,640
+and this architecture looks a lot more
+
+1136
+00:40:30,640 --> 00:40:32,800
+complicated but it's exactly what we've
+
+1137
+00:40:32,800 --> 00:40:35,440
+just talked through we see fortified
+
+1138
+00:40:35,440 --> 00:40:37,680
+putting stuff into the build info cue
+
+1139
+00:40:37,680 --> 00:40:40,560
+fortnite is fanning things out taking
+
+1140
+00:40:40,560 --> 00:40:43,200
+all those various jobs putting them into
+
+1141
+00:40:43,200 --> 00:40:44,400
+ssc
+
+1142
+00:40:44,400 --> 00:40:46,160
+who then
+
+1143
+00:40:46,160 --> 00:40:48,319
+pushes them out to
+
+1144
+00:40:48,319 --> 00:40:51,599
+cloud ford again which then fans back in
+
+1145
+00:40:51,599 --> 00:40:54,560
+so we have a fanout fan in fan out fan
+
+1146
+00:40:54,560 --> 00:40:56,720
+in
+
+1147
+00:40:57,359 --> 00:40:59,839
+something seems wrong about that and
+
+1148
+00:40:59,839 --> 00:41:00,960
+that was sort of something that was
+
+1149
+00:41:00,960 --> 00:41:03,280
+digging on our minds for a while of why
+
+1150
+00:41:03,280 --> 00:41:05,760
+we have twice as many boxes
+
+1151
+00:41:05,760 --> 00:41:07,920
+as we might need
+
+1152
+00:41:07,920 --> 00:41:10,000
+there's already a one-to-one correlation
+
+1153
+00:41:10,000 --> 00:41:12,240
+between translations and scans
+
+1154
+00:41:12,240 --> 00:41:13,760
+everything we translate has to be
+
+1155
+00:41:13,760 --> 00:41:16,560
+scanned and everything we scan must have
+
+1156
+00:41:16,560 --> 00:41:19,599
+at some point been translated first so
+
+1157
+00:41:19,599 --> 00:41:21,920
+if they have to if they're one-to-one
+
+1158
+00:41:21,920 --> 00:41:24,560
+and they have to be serial
+
+1159
+00:41:24,560 --> 00:41:27,200
+we can actually make this more efficient
+
+1160
+00:41:27,200 --> 00:41:29,280
+and the way we're doing this is we are
+
+1161
+00:41:29,280 --> 00:41:30,640
+going to
+
+1162
+00:41:30,640 --> 00:41:33,200
+take cloud fort and fuse part of it into
+
+1163
+00:41:33,200 --> 00:41:34,800
+fortnite
+
+1164
+00:41:34,800 --> 00:41:36,960
+this was actually a super blessing in
+
+1165
+00:41:36,960 --> 00:41:39,440
+disguise thing of putting in the work to
+
+1166
+00:41:39,440 --> 00:41:41,520
+re-implement the cloud worker because
+
+1167
+00:41:41,520 --> 00:41:44,480
+now we already had the code that could
+
+1168
+00:41:44,480 --> 00:41:46,480
+scan something that had just been
+
+1169
+00:41:46,480 --> 00:41:48,319
+translated all it was a matter of doing
+
+1170
+00:41:48,319 --> 00:41:50,480
+was instead of fortnite contributing
+
+1171
+00:41:50,480 --> 00:41:53,599
+this as a translation to ssc instead
+
+1172
+00:41:53,599 --> 00:41:55,760
+contributing that translation to our for
+
+1173
+00:41:55,760 --> 00:41:58,079
+our cloud fort library and then just
+
+1174
+00:41:58,079 --> 00:42:00,720
+uploading that result into ssc
+
+1175
+00:42:00,720 --> 00:42:03,119
+this had the additional benefit of
+
+1176
+00:42:03,119 --> 00:42:05,200
+removing our dependence on this
+
+1177
+00:42:05,200 --> 00:42:08,000
+undocumented cloud worker api which
+
+1178
+00:42:08,000 --> 00:42:10,000
+while seeming very stable
+
+1179
+00:42:10,000 --> 00:42:12,079
+is undocumented you never know when it
+
+1180
+00:42:12,079 --> 00:42:14,480
+might all of a sudden change and add
+
+1181
+00:42:14,480 --> 00:42:16,400
+brittleness to your configuration so
+
+1182
+00:42:16,400 --> 00:42:17,760
+we're going to actually combine these
+
+1183
+00:42:17,760 --> 00:42:19,680
+two into one and what we're going to end
+
+1184
+00:42:19,680 --> 00:42:23,440
+up with is a simpler architecture
+
+1185
+00:42:23,440 --> 00:42:25,520
+again we have our fortified feeding into
+
+1186
+00:42:25,520 --> 00:42:26,720
+our build queue
+
+1187
+00:42:26,720 --> 00:42:29,280
+but this time our fortnight is going to
+
+1188
+00:42:29,280 --> 00:42:32,079
+fan out and not just translate but also
+
+1189
+00:42:32,079 --> 00:42:33,119
+scan
+
+1190
+00:42:33,119 --> 00:42:36,400
+and then add those scans into ssc
+
+1191
+00:42:36,400 --> 00:42:38,000
+now you may notice that we've added
+
+1192
+00:42:38,000 --> 00:42:39,520
+another queue here and this is just
+
+1193
+00:42:39,520 --> 00:42:41,839
+because of a quirk of ssc
+
+1194
+00:42:41,839 --> 00:42:45,359
+uh the quirk being that when you upload
+
+1195
+00:42:45,359 --> 00:42:47,920
+results it's a different api from if you
+
+1196
+00:42:47,920 --> 00:42:50,240
+would upload translations and ssc isn't
+
+1197
+00:42:50,240 --> 00:42:52,720
+really able to keep track of what
+
+1198
+00:42:52,720 --> 00:42:55,280
+results did i get at what time the way
+
+1199
+00:42:55,280 --> 00:42:58,160
+it can with translations
+
+1200
+00:42:58,160 --> 00:43:00,319
+what this ultimately means is fort
+
+1201
+00:43:00,319 --> 00:43:03,280
+squire which was priorly relying on ssc
+
+1202
+00:43:03,280 --> 00:43:05,680
+to know hey what's changed
+
+1203
+00:43:05,680 --> 00:43:07,520
+can't really rely on ssc to do that
+
+1204
+00:43:07,520 --> 00:43:10,319
+anymore and so we introduced a new queue
+
+1205
+00:43:10,319 --> 00:43:13,119
+all this queue does is hold on to all of
+
+1206
+00:43:13,119 --> 00:43:16,160
+this all of the objects that uh came out
+
+1207
+00:43:16,160 --> 00:43:17,440
+of fortnite
+
+1208
+00:43:17,440 --> 00:43:19,520
+and fort squire can basically just
+
+1209
+00:43:19,520 --> 00:43:21,839
+periodically go to the queue pull
+
+1210
+00:43:21,839 --> 00:43:24,079
+everything down and it knows okay
+
+1211
+00:43:24,079 --> 00:43:25,680
+everything in this queue is things that
+
+1212
+00:43:25,680 --> 00:43:27,760
+have been scanned since i last run
+
+1213
+00:43:27,760 --> 00:43:29,280
+because there's only one of it and it's
+
+1214
+00:43:29,280 --> 00:43:31,440
+the only one pulling it down
+
+1215
+00:43:31,440 --> 00:43:33,040
+we've actually played a little bit with
+
+1216
+00:43:33,040 --> 00:43:35,599
+the idea of even removing ssc from this
+
+1217
+00:43:35,599 --> 00:43:37,200
+entirely and just replacing it with a
+
+1218
+00:43:37,200 --> 00:43:39,359
+database as that's pretty much all it's
+
+1219
+00:43:39,359 --> 00:43:40,640
+doing right now
+
+1220
+00:43:40,640 --> 00:43:41,599
+but we haven't gotten around to
+
+1221
+00:43:41,599 --> 00:43:43,440
+implementing that so maybe a little bit
+
+1222
+00:43:43,440 --> 00:43:45,599
+of future work
+
+1223
+00:43:45,599 --> 00:43:48,000
+so that's it that's our architecture to
+
+1224
+00:43:48,000 --> 00:43:50,400
+this day like that is currently running
+
+1225
+00:43:50,400 --> 00:43:51,359
+in
+
+1226
+00:43:51,359 --> 00:43:54,560
+uh pleasanton right now
+
+1227
+00:43:54,560 --> 00:43:55,760
+what i'm going to show you next is
+
+1228
+00:43:55,760 --> 00:43:57,839
+basically this same architecture but
+
+1229
+00:43:57,839 --> 00:43:59,280
+with all the bells and whistles on it
+
+1230
+00:43:59,280 --> 00:44:00,880
+i've kept this slide intentionally
+
+1231
+00:44:00,880 --> 00:44:03,520
+simple so that it's easy to follow but
+
+1232
+00:44:03,520 --> 00:44:05,920
+the full architecture is this and i know
+
+1233
+00:44:05,920 --> 00:44:09,520
+this is much larger but
+
+1234
+00:44:09,520 --> 00:44:12,480
+all it's really adding is our aws
+
+1235
+00:44:12,480 --> 00:44:13,760
+infrastructure
+
+1236
+00:44:13,760 --> 00:44:15,280
+our logs
+
+1237
+00:44:15,280 --> 00:44:17,760
+and some of the niceties that we have
+
+1238
+00:44:17,760 --> 00:44:19,760
+things like our chat ops with slack
+
+1239
+00:44:19,760 --> 00:44:21,760
+where both fort squire and fortnite can
+
+1240
+00:44:21,760 --> 00:44:24,800
+report important metrics as well as any
+
+1241
+00:44:24,800 --> 00:44:26,720
+arrows we might see
+
+1242
+00:44:26,720 --> 00:44:28,640
+into our slack so we can immediately
+
+1243
+00:44:28,640 --> 00:44:30,160
+know what's going on
+
+1244
+00:44:30,160 --> 00:44:32,240
+but this is it this is
+
+1245
+00:44:32,240 --> 00:44:34,400
+the master arc or this is the
+
+1246
+00:44:34,400 --> 00:44:36,319
+architecture
+
+1247
+00:44:36,319 --> 00:44:39,119
+so before we go into the future work i
+
+1248
+00:44:39,119 --> 00:44:40,400
+want to talk a little bit about our
+
+1249
+00:44:40,400 --> 00:44:42,319
+deployment pipeline because in the
+
+1250
+00:44:42,319 --> 00:44:44,000
+process of doing this we actually
+
+1251
+00:44:44,000 --> 00:44:45,680
+engineered
+
+1252
+00:44:45,680 --> 00:44:47,200
+i don't know if it's
+
+1253
+00:44:47,200 --> 00:44:48,800
+the best or the worst deployment
+
+1254
+00:44:48,800 --> 00:44:50,400
+pipeline that i've ever gotten to work
+
+1255
+00:44:50,400 --> 00:44:52,400
+on uh maybe a little bit of both but
+
+1256
+00:44:52,400 --> 00:44:54,079
+what we've made is something that i
+
+1257
+00:44:54,079 --> 00:44:56,319
+actually find super helpful and i think
+
+1258
+00:44:56,319 --> 00:44:59,839
+is worth sharing
+
+1259
+00:44:59,920 --> 00:45:02,880
+so as adrian mentioned we don't really
+
+1260
+00:45:02,880 --> 00:45:05,520
+start out with much other than a zip
+
+1261
+00:45:05,520 --> 00:45:07,920
+file and a set of instructions there are
+
+1262
+00:45:07,920 --> 00:45:08,960
+not
+
+1263
+00:45:08,960 --> 00:45:12,319
+builds for fortnify the way that some
+
+1264
+00:45:12,319 --> 00:45:14,400
+other software might have and so what we
+
+1265
+00:45:14,400 --> 00:45:16,400
+need to basically do is make those
+
+1266
+00:45:16,400 --> 00:45:19,440
+builds ourself this ends up being done
+
+1267
+00:45:19,440 --> 00:45:21,119
+this ends up being accomplished in the
+
+1268
+00:45:21,119 --> 00:45:24,720
+form of rpms so what we end up doing is
+
+1269
+00:45:24,720 --> 00:45:26,800
+taking that fortify zip and their
+
+1270
+00:45:26,800 --> 00:45:29,680
+instructions and encoding it into an rpm
+
+1271
+00:45:29,680 --> 00:45:31,119
+that we can actually push up to our
+
+1272
+00:45:31,119 --> 00:45:34,000
+artifactory and utilize later
+
+1273
+00:45:34,000 --> 00:45:36,560
+in addition to that we also take rpms
+
+1274
+00:45:36,560 --> 00:45:39,119
+for our various different services so
+
+1275
+00:45:39,119 --> 00:45:41,760
+fortified fortnite fort squire and our
+
+1276
+00:45:41,760 --> 00:45:43,920
+license itself so that we can have easy
+
+1277
+00:45:43,920 --> 00:45:45,680
+updating of that
+
+1278
+00:45:45,680 --> 00:45:49,839
+and we turn all of those into rpms
+
+1279
+00:45:49,839 --> 00:45:51,760
+this all lives in artifactory and
+
+1280
+00:45:51,760 --> 00:45:53,520
+ultimately goes to serve something
+
+1281
+00:45:53,520 --> 00:45:55,040
+called imas
+
+1282
+00:45:55,040 --> 00:45:58,000
+so imas is our image as a service which
+
+1283
+00:45:58,000 --> 00:45:59,520
+is a piece of code that workday
+
+1284
+00:45:59,520 --> 00:46:02,560
+maintains and allows you to take any
+
+1285
+00:46:02,560 --> 00:46:04,880
+number of artifacts
+
+1286
+00:46:04,880 --> 00:46:07,200
+from our artifactory
+
+1287
+00:46:07,200 --> 00:46:10,079
+and turn them into amis
+
+1288
+00:46:10,079 --> 00:46:11,440
+so what we can do is we can take all
+
+1289
+00:46:11,440 --> 00:46:13,760
+those rpms that we work to build and now
+
+1290
+00:46:13,760 --> 00:46:18,400
+we have two amis one for uh one for our
+
+1291
+00:46:18,400 --> 00:46:19,599
+controller
+
+1292
+00:46:19,599 --> 00:46:22,000
+which is going to be our fortified fort
+
+1293
+00:46:22,000 --> 00:46:24,079
+squire
+
+1294
+00:46:24,079 --> 00:46:27,599
+fortify binary itself and ssc
+
+1295
+00:46:27,599 --> 00:46:29,839
+and one for our client which is going to
+
+1296
+00:46:29,839 --> 00:46:32,960
+have fortnite and the fortify binary
+
+1297
+00:46:32,960 --> 00:46:35,599
+this is going to massively speed up our
+
+1298
+00:46:35,599 --> 00:46:38,319
+uptime because the less that terraform
+
+1299
+00:46:38,319 --> 00:46:41,200
+has to do to spin up a box the faster
+
+1300
+00:46:41,200 --> 00:46:44,000
+that we can bring up a service and we
+
+1301
+00:46:44,000 --> 00:46:45,839
+can rapidly
+
+1302
+00:46:45,839 --> 00:46:48,560
+uh rapidly expand our actual scanning
+
+1303
+00:46:48,560 --> 00:46:50,960
+and translating capacity
+
+1304
+00:46:50,960 --> 00:46:52,960
+the one place we do end up needing to
+
+1305
+00:46:52,960 --> 00:46:56,560
+have terraform is for secrets because we
+
+1306
+00:46:56,560 --> 00:46:58,079
+don't want to put our secrets in a
+
+1307
+00:46:58,079 --> 00:47:00,480
+company-wide artifactory we actually
+
+1308
+00:47:00,480 --> 00:47:03,680
+have our own apsec jenkins that we use
+
+1309
+00:47:03,680 --> 00:47:04,560
+to
+
+1310
+00:47:04,560 --> 00:47:06,560
+deploy we used to hold on to these
+
+1311
+00:47:06,560 --> 00:47:10,480
+secrets and to deploy the terraform from
+
+1312
+00:47:10,480 --> 00:47:13,040
+that way we can use terraform drop our
+
+1313
+00:47:13,040 --> 00:47:15,040
+secrets onto the mostly already
+
+1314
+00:47:15,040 --> 00:47:17,599
+constructed boxes and just start
+
+1315
+00:47:17,599 --> 00:47:19,839
+everything spinning and using terraform
+
+1316
+00:47:19,839 --> 00:47:23,760
+we're actually able to create an entire
+
+1317
+00:47:23,760 --> 00:47:26,800
+pipeline in one go
+
+1318
+00:47:26,800 --> 00:47:29,200
+this means that if we have a situation
+
+1319
+00:47:29,200 --> 00:47:31,839
+where either we'd like to test out a new
+
+1320
+00:47:31,839 --> 00:47:34,160
+patch or a new version or if we'd like
+
+1321
+00:47:34,160 --> 00:47:35,200
+to
+
+1322
+00:47:35,200 --> 00:47:37,760
+do some configuration tuning we're able
+
+1323
+00:47:37,760 --> 00:47:38,480
+to
+
+1324
+00:47:38,480 --> 00:47:40,800
+immediately spin up an instance mess
+
+1325
+00:47:40,800 --> 00:47:43,200
+with it all we want destroy it and it
+
+1326
+00:47:43,200 --> 00:47:44,720
+won't have done anything to our
+
+1327
+00:47:44,720 --> 00:47:46,400
+production instance so it's been a
+
+1328
+00:47:46,400 --> 00:47:48,960
+massive boon for testing and performance
+
+1329
+00:47:48,960 --> 00:47:51,280
+optimization i highly recommend if
+
+1330
+00:47:51,280 --> 00:47:52,640
+you're able to
+
+1331
+00:47:52,640 --> 00:47:54,960
+try to get as much of this pipeline into
+
+1332
+00:47:54,960 --> 00:47:57,680
+terraform
+
+1333
+00:47:57,839 --> 00:47:59,359
+so what next
+
+1334
+00:47:59,359 --> 00:48:01,839
+we currently have each ticket being
+
+1335
+00:48:01,839 --> 00:48:04,800
+triaged manually by one of our engineers
+
+1336
+00:48:04,800 --> 00:48:07,040
+uh which is unfortunate situation but
+
+1337
+00:48:07,040 --> 00:48:09,359
+it's what we have to do to get this to a
+
+1338
+00:48:09,359 --> 00:48:11,040
+point where it can be automatic we
+
+1339
+00:48:11,040 --> 00:48:13,040
+remember we don't have to be perfect
+
+1340
+00:48:13,040 --> 00:48:14,160
+here
+
+1341
+00:48:14,160 --> 00:48:16,720
+our estimate is 80
+
+1342
+00:48:16,720 --> 00:48:19,760
+as adrian mentioned and that's about
+
+1343
+00:48:19,760 --> 00:48:22,079
+saying okay if we send five issues to a
+
+1344
+00:48:22,079 --> 00:48:24,400
+developer maybe one of them is a false
+
+1345
+00:48:24,400 --> 00:48:26,720
+positive
+
+1346
+00:48:26,720 --> 00:48:28,720
+what this actually means is we're going
+
+1347
+00:48:28,720 --> 00:48:30,880
+to need to do a lot of small tuning and
+
+1348
+00:48:30,880 --> 00:48:33,040
+this especially becomes important not
+
+1349
+00:48:33,040 --> 00:48:35,520
+just with our false positive rate but
+
+1350
+00:48:35,520 --> 00:48:37,200
+with our performance because we're
+
+1351
+00:48:37,200 --> 00:48:39,760
+aiming for commit rate scanning
+
+1352
+00:48:39,760 --> 00:48:41,520
+every time a developer commits to a
+
+1353
+00:48:41,520 --> 00:48:44,000
+repository we want to be able to say
+
+1354
+00:48:44,000 --> 00:48:46,000
+were any new issues introduced and can
+
+1355
+00:48:46,000 --> 00:48:48,079
+we get that ticket back to them
+
+1356
+00:48:48,079 --> 00:48:50,400
+relatively quickly
+
+1357
+00:48:50,400 --> 00:48:52,960
+so in order to do that we've employed a
+
+1358
+00:48:52,960 --> 00:48:55,040
+few different techniques this includes
+
+1359
+00:48:55,040 --> 00:48:56,800
+things like the filters and the views
+
+1360
+00:48:56,800 --> 00:48:59,040
+that adrian talked about but one of our
+
+1361
+00:48:59,040 --> 00:49:00,559
+biggest tools
+
+1362
+00:49:00,559 --> 00:49:03,200
+has actually been the custom rules
+
+1363
+00:49:03,200 --> 00:49:04,720
+inside of fortify
+
+1364
+00:49:04,720 --> 00:49:07,520
+so without getting into a massive
+
+1365
+00:49:07,520 --> 00:49:10,559
+discussion of how static analysis works
+
+1366
+00:49:10,559 --> 00:49:13,200
+in general static analysis is mostly
+
+1367
+00:49:13,200 --> 00:49:15,440
+defined by things called
+
+1368
+00:49:15,440 --> 00:49:16,480
+sources
+
+1369
+00:49:16,480 --> 00:49:18,720
+pass-throughs and sinks
+
+1370
+00:49:18,720 --> 00:49:20,640
+sources are places that user input can
+
+1371
+00:49:20,640 --> 00:49:23,520
+come in things like a scanner in java or
+
+1372
+00:49:23,520 --> 00:49:26,319
+a spring web request syncs are places
+
+1373
+00:49:26,319 --> 00:49:28,559
+where bad things can happen the runtime
+
+1374
+00:49:28,559 --> 00:49:31,520
+exec function in java maybe a sql query
+
+1375
+00:49:31,520 --> 00:49:33,920
+that isn't parameterized
+
+1376
+00:49:33,920 --> 00:49:35,680
+so what we basically want to determine
+
+1377
+00:49:35,680 --> 00:49:38,240
+in static analysis is can anything get
+
+1378
+00:49:38,240 --> 00:49:41,040
+from a source to a sync if they can then
+
+1379
+00:49:41,040 --> 00:49:43,520
+there's a path for a vulnerability to be
+
+1380
+00:49:43,520 --> 00:49:44,559
+introduced
+
+1381
+00:49:44,559 --> 00:49:46,640
+now the way we determine those paths is
+
+1382
+00:49:46,640 --> 00:49:48,480
+through pass-throughs some of them are
+
+1383
+00:49:48,480 --> 00:49:51,760
+super simple like a equals b
+
+1384
+00:49:51,760 --> 00:49:54,319
+if there is evil in b there is now evil
+
+1385
+00:49:54,319 --> 00:49:57,839
+in a so if a can get to a sink then b
+
+1386
+00:49:57,839 --> 00:49:59,760
+can get to a sink
+
+1387
+00:49:59,760 --> 00:50:01,280
+some are more complicated though and
+
+1388
+00:50:01,280 --> 00:50:03,440
+actually require needing to be encoded
+
+1389
+00:50:03,440 --> 00:50:05,599
+in this format that we've shown
+
+1390
+00:50:05,599 --> 00:50:08,240
+this rule in particular is a rather
+
+1391
+00:50:08,240 --> 00:50:11,920
+complex case of where there could be
+
+1392
+00:50:11,920 --> 00:50:13,680
+where it seems like there could be a
+
+1393
+00:50:13,680 --> 00:50:15,440
+vulnerability but there actually isn't
+
+1394
+00:50:15,440 --> 00:50:18,240
+because of a weird quirk in the xml
+
+1395
+00:50:18,240 --> 00:50:19,520
+parsing logic
+
+1396
+00:50:19,520 --> 00:50:21,760
+and it's kind of hideous but this is the
+
+1397
+00:50:21,760 --> 00:50:23,440
+level of verbosity you need for these
+
+1398
+00:50:23,440 --> 00:50:25,040
+kinds of rules because we're really
+
+1399
+00:50:25,040 --> 00:50:27,440
+trying to specifically pinpoint things
+
+1400
+00:50:27,440 --> 00:50:30,079
+about workday or things about whatever
+
+1401
+00:50:30,079 --> 00:50:31,839
+company you're working at that are
+
+1402
+00:50:31,839 --> 00:50:33,920
+specific that are unique to the code
+
+1403
+00:50:33,920 --> 00:50:36,400
+base and so we're really hoping that as
+
+1404
+00:50:36,400 --> 00:50:38,800
+we work with fortify and each other to
+
+1405
+00:50:38,800 --> 00:50:41,280
+expand these rules we're going to one
+
+1406
+00:50:41,280 --> 00:50:45,040
+day be able to get to that 80 20 ratio
+
+1407
+00:50:45,040 --> 00:50:45,920
+so
+
+1408
+00:50:45,920 --> 00:50:48,400
+that's all i have for you um thank you
+
+1409
+00:50:48,400 --> 00:50:49,520
+for
+
+1410
+00:50:49,520 --> 00:50:52,319
+thank you for coming uh if you have any
+
+1411
+00:50:52,319 --> 00:50:54,880
+questions um unfortunately we can't do q
+
+1412
+00:50:54,880 --> 00:50:55,599
+a
+
+1413
+00:50:55,599 --> 00:50:57,839
+but if you will look at our handles uh
+
+1414
+00:50:57,839 --> 00:50:59,440
+they're both here and you're more than
+
+1415
+00:50:59,440 --> 00:51:02,400
+free to reach out i am handled sigint
+
+1416
+00:51:02,400 --> 00:51:04,880
+and my co-presenter adrian is adrian
+
+1417
+00:51:04,880 --> 00:51:08,160
+bravo n so please feel free to reach out
+
+1418
+00:51:08,160 --> 00:51:11,640
+thank you for listening
+

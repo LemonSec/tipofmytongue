@@ -1,0 +1,4064 @@
+﻿1
+00:00:00,299 --> 00:00:02,659
+foreign
+
+2
+00:00:09,120 --> 00:00:11,840
+thank you for joining me for our talk
+
+3
+00:00:11,840 --> 00:00:14,280
+ebpf elfs jumping through the windows
+
+4
+00:00:14,280 --> 00:00:16,379
+and before we get started I'd just like
+
+5
+00:00:16,379 --> 00:00:19,080
+to thank the Eco party organization this
+
+6
+00:00:19,080 --> 00:00:20,760
+is my first trip to Argentina and I've
+
+7
+00:00:20,760 --> 00:00:23,580
+been having a wonderful time this week I
+
+8
+00:00:23,580 --> 00:00:25,760
+gave a training on some fuzzing stuff
+
+9
+00:00:25,760 --> 00:00:29,160
+earlier in the week and this talk we're
+
+10
+00:00:29,160 --> 00:00:31,740
+going to talk about a new technology in
+
+11
+00:00:31,740 --> 00:00:34,980
+Windows it's ebpf who's coming to the
+
+12
+00:00:34,980 --> 00:00:36,960
+Microsoft Windows operating system
+
+13
+00:00:36,960 --> 00:00:39,600
+and we're going to talk about uh how I
+
+14
+00:00:39,600 --> 00:00:41,940
+did a security deep dive on that to
+
+15
+00:00:41,940 --> 00:00:43,739
+understand the architecture and design
+
+16
+00:00:43,739 --> 00:00:46,020
+and also ended up fuzzing it with
+
+17
+00:00:46,020 --> 00:00:48,719
+different tools both in the user land
+
+18
+00:00:48,719 --> 00:00:51,360
+and kernel stack
+
+19
+00:00:51,360 --> 00:00:53,399
+so I'm Richard Johnson I'm a senior
+
+20
+00:00:53,399 --> 00:00:55,680
+principal security researcher at trellix
+
+21
+00:00:55,680 --> 00:00:59,460
+and formerly of Oracle Microsoft and
+
+22
+00:00:59,460 --> 00:01:00,920
+Cisco Talos
+
+23
+00:01:00,920 --> 00:01:03,780
+generally I spend my time finding bugs
+
+24
+00:01:03,780 --> 00:01:06,420
+and doing fuzzing and this year I was
+
+25
+00:01:06,420 --> 00:01:07,740
+privileged enough to have a couple of
+
+26
+00:01:07,740 --> 00:01:09,299
+interns with me that I just like to
+
+27
+00:01:09,299 --> 00:01:11,400
+credit because I did help out with this
+
+28
+00:01:11,400 --> 00:01:14,220
+work so Casimir Schultz and Andrea
+
+29
+00:01:14,220 --> 00:01:17,400
+fioraldi Andrea is one of the authors of
+
+30
+00:01:17,400 --> 00:01:21,680
+lib AFL AFL plus plus and so on
+
+31
+00:01:21,720 --> 00:01:23,640
+so we're going to discuss the origins
+
+32
+00:01:23,640 --> 00:01:26,100
+and applications of ebpf the
+
+33
+00:01:26,100 --> 00:01:28,200
+architecture and design for bringing it
+
+34
+00:01:28,200 --> 00:01:31,200
+to Windows the attack surface and apis
+
+35
+00:01:31,200 --> 00:01:33,360
+and interfaces that are available in
+
+36
+00:01:33,360 --> 00:01:36,060
+that system and generally the
+
+37
+00:01:36,060 --> 00:01:39,659
+methodology for fuzzing large systems
+
+38
+00:01:39,659 --> 00:01:41,700
+that cross both user and kernel
+
+39
+00:01:41,700 --> 00:01:44,060
+boundaries
+
+40
+00:01:44,220 --> 00:01:46,860
+so before we get started does can
+
+41
+00:01:46,860 --> 00:01:50,420
+anybody give me a
+
+42
+00:01:51,240 --> 00:01:53,520
+raise your hands if you've used ebpf
+
+43
+00:01:53,520 --> 00:01:56,340
+before if you're familiar with evpf yeah
+
+44
+00:01:56,340 --> 00:01:58,619
+okay so maybe a third of the audience
+
+45
+00:01:58,619 --> 00:02:00,659
+now in the abstract I actually did
+
+46
+00:02:00,659 --> 00:02:02,040
+advertise that we would do some
+
+47
+00:02:02,040 --> 00:02:04,860
+real-time uh bug Discovery so before we
+
+48
+00:02:04,860 --> 00:02:07,320
+get the talk really started let me flip
+
+49
+00:02:07,320 --> 00:02:10,258
+over here and get into my terminal
+
+50
+00:02:10,258 --> 00:02:12,480
+and run a couple of commands where I'm
+
+51
+00:02:12,480 --> 00:02:14,760
+going to run uh three different fuzzing
+
+52
+00:02:14,760 --> 00:02:16,800
+scenarios while I'm talking and by the
+
+53
+00:02:16,800 --> 00:02:18,720
+time I'm done talking we will have some
+
+54
+00:02:18,720 --> 00:02:19,860
+new crashes that we'll be able to
+
+55
+00:02:19,860 --> 00:02:21,060
+analyze
+
+56
+00:02:21,060 --> 00:02:24,000
+the first one is going to be in the
+
+57
+00:02:24,000 --> 00:02:26,640
+verifier which I'll explain here in a
+
+58
+00:02:26,640 --> 00:02:29,160
+little bit but it's basically a static
+
+59
+00:02:29,160 --> 00:02:32,459
+analysis system that is trying to ensure
+
+60
+00:02:32,459 --> 00:02:34,620
+that the ebpf programs that get loaded
+
+61
+00:02:34,620 --> 00:02:37,500
+are secure and not going to break out of
+
+62
+00:02:37,500 --> 00:02:38,580
+the sandbox
+
+63
+00:02:38,580 --> 00:02:41,640
+and then the VM itself that runs the
+
+64
+00:02:41,640 --> 00:02:45,620
+ebpf programs uh runs both in a
+
+65
+00:02:45,620 --> 00:02:49,459
+interpreted and
+
+66
+00:02:49,819 --> 00:02:52,140
+interpreted and jit mode so we're going
+
+67
+00:02:52,140 --> 00:02:53,760
+to be fuzzing those all in the
+
+68
+00:02:53,760 --> 00:02:56,299
+backgrounds
+
+69
+00:03:04,260 --> 00:03:07,280
+one more
+
+70
+00:03:11,400 --> 00:03:15,260
+okay back to the slides
+
+71
+00:03:16,580 --> 00:03:19,800
+so what is ebpf well it's basically a
+
+72
+00:03:19,800 --> 00:03:22,140
+virtual CPU it's a very uh simplified
+
+73
+00:03:22,140 --> 00:03:27,180
+wrist style CPU that incorporates the
+
+74
+00:03:27,180 --> 00:03:30,300
+ability to sandbox code much like V8 or
+
+75
+00:03:30,300 --> 00:03:33,060
+Lua or something along those lines it's
+
+76
+00:03:33,060 --> 00:03:34,860
+an extension of the original Berkeley
+
+77
+00:03:34,860 --> 00:03:38,459
+packet filter which if you use TCP dump
+
+78
+00:03:38,459 --> 00:03:40,379
+and you put in a filter like I want to
+
+79
+00:03:40,379 --> 00:03:42,900
+see only packets going to Port 80 on TCP
+
+80
+00:03:42,900 --> 00:03:45,360
+there's actually a compiler inside there
+
+81
+00:03:45,360 --> 00:03:48,239
+that compiles that down into a byte code
+
+82
+00:03:48,239 --> 00:03:51,060
+and that byte code is actually ebpf
+
+83
+00:03:51,060 --> 00:03:53,400
+instruction set
+
+84
+00:03:53,400 --> 00:03:56,220
+um so it's designed to be a safe system
+
+85
+00:03:56,220 --> 00:03:59,760
+to run code in the kernel that's uh an
+
+86
+00:03:59,760 --> 00:04:01,379
+alternative to writing custom kernel
+
+87
+00:04:01,379 --> 00:04:03,000
+drivers
+
+88
+00:04:03,000 --> 00:04:06,599
+it was developed in 1992 as a way to do
+
+89
+00:04:06,599 --> 00:04:08,280
+a high-speed packet filtering at the net
+
+90
+00:04:08,280 --> 00:04:11,340
+filter layer and it was implemented for
+
+91
+00:04:11,340 --> 00:04:13,140
+most Unix style operating systems
+
+92
+00:04:13,140 --> 00:04:15,959
+including Stellaris and BSD and Linux
+
+93
+00:04:15,959 --> 00:04:19,079
+and so on and we now call this
+
+94
+00:04:19,079 --> 00:04:22,019
+traditional interface the classic BPF it
+
+95
+00:04:22,019 --> 00:04:24,600
+was a 32-bit instruction set and was
+
+96
+00:04:24,600 --> 00:04:27,180
+limited to only Network filtering
+
+97
+00:04:27,180 --> 00:04:31,500
+in 2014 Linux kernel 318 released with a
+
+98
+00:04:31,500 --> 00:04:33,419
+new system call called the BPF system
+
+99
+00:04:33,419 --> 00:04:36,060
+call which extended this functionality
+
+100
+00:04:36,060 --> 00:04:39,840
+into a higher level API that allows you
+
+101
+00:04:39,840 --> 00:04:42,419
+to hook both network uh
+
+102
+00:04:42,419 --> 00:04:44,759
+interfaces at various layers in the
+
+103
+00:04:44,759 --> 00:04:47,580
+network stack as well as hook code
+
+104
+00:04:47,580 --> 00:04:50,100
+locations using the uprobe and k-probe
+
+105
+00:04:50,100 --> 00:04:52,500
+infrastructure inside of Linux and so
+
+106
+00:04:52,500 --> 00:04:54,540
+you can do function Hooks and arbitrary
+
+107
+00:04:54,540 --> 00:04:57,000
+code Hooks and user land and you can
+
+108
+00:04:57,000 --> 00:05:00,900
+hook exported symbols in kernel land
+
+109
+00:05:00,900 --> 00:05:03,660
+um it also includes a persistent data
+
+110
+00:05:03,660 --> 00:05:06,120
+store that is accessible from both the
+
+111
+00:05:06,120 --> 00:05:07,620
+Linux and user side through system
+
+112
+00:05:07,620 --> 00:05:10,919
+called and these are called BPF maps and
+
+113
+00:05:10,919 --> 00:05:12,540
+so when I say data structures I mean
+
+114
+00:05:12,540 --> 00:05:15,240
+like arrays or hash tables or things
+
+115
+00:05:15,240 --> 00:05:17,699
+like that you can use a system call to
+
+116
+00:05:17,699 --> 00:05:20,340
+allocate these internal space and then
+
+117
+00:05:20,340 --> 00:05:23,360
+from your kernel ebpf driver
+
+118
+00:05:23,360 --> 00:05:26,940
+store data into that into these maps and
+
+119
+00:05:26,940 --> 00:05:28,259
+then from user land you can have a
+
+120
+00:05:28,259 --> 00:05:30,120
+Daemon that reads those maps and then
+
+121
+00:05:30,120 --> 00:05:32,340
+responds and does more sophisticated
+
+122
+00:05:32,340 --> 00:05:34,800
+work like maybe access databases or
+
+123
+00:05:34,800 --> 00:05:36,539
+persistent file stores or things like
+
+124
+00:05:36,539 --> 00:05:39,479
+that in the sandbox they don't have the
+
+125
+00:05:39,479 --> 00:05:42,600
+ability to access arbitrary memory in
+
+126
+00:05:42,600 --> 00:05:44,460
+kernel lines so this is the interface in
+
+127
+00:05:44,460 --> 00:05:47,280
+which the ebpf program can write outside
+
+128
+00:05:47,280 --> 00:05:51,320
+the bounds of its small little VM area
+
+129
+00:05:52,560 --> 00:05:55,259
+um and so each uh ebpf program is
+
+130
+00:05:55,259 --> 00:05:58,080
+technically a single function and uh you
+
+131
+00:05:58,080 --> 00:06:01,740
+write it in C language and llvm compiler
+
+132
+00:06:01,740 --> 00:06:04,199
+has special support for compiling to
+
+133
+00:06:04,199 --> 00:06:06,900
+this bytecode language and then it can
+
+134
+00:06:06,900 --> 00:06:10,199
+be interpreted in the VM you're not
+
+135
+00:06:10,199 --> 00:06:12,539
+meant to read the code that's on the
+
+136
+00:06:12,539 --> 00:06:14,280
+screen currently but it just gives you a
+
+137
+00:06:14,280 --> 00:06:16,440
+sense of the various functionalities
+
+138
+00:06:16,440 --> 00:06:19,800
+that are below the BPF system call so
+
+139
+00:06:19,800 --> 00:06:21,900
+there's a variety of BPF program types
+
+140
+00:06:21,900 --> 00:06:24,680
+and depending on the type of program
+
+141
+00:06:24,680 --> 00:06:28,080
+that will be the hooks that it has
+
+142
+00:06:28,080 --> 00:06:30,840
+available so again a k-probe is a type
+
+143
+00:06:30,840 --> 00:06:34,500
+of eppl program or an XDP socket layer
+
+144
+00:06:34,500 --> 00:06:37,680
+Hook is a low level Network hook or you
+
+145
+00:06:37,680 --> 00:06:40,680
+can also hook and you know when network
+
+146
+00:06:40,680 --> 00:06:43,740
+sockets bind or various other stateful
+
+147
+00:06:43,740 --> 00:06:47,220
+transitions within a network connection
+
+148
+00:06:47,220 --> 00:06:49,560
+so the applications at ebpf currently
+
+149
+00:06:49,560 --> 00:06:51,780
+are being widely used in Cloud
+
+150
+00:06:51,780 --> 00:06:54,539
+environments and in kubernetes a lot of
+
+151
+00:06:54,539 --> 00:06:56,039
+the developments is coming out of
+
+152
+00:06:56,039 --> 00:06:58,680
+companies that have major influence into
+
+153
+00:06:58,680 --> 00:07:02,160
+Cloud developments such as psyllium and
+
+154
+00:07:02,160 --> 00:07:04,800
+Falco
+
+155
+00:07:04,800 --> 00:07:07,560
+and basically there's applications that
+
+156
+00:07:07,560 --> 00:07:09,600
+are written in ebpf to do network
+
+157
+00:07:09,600 --> 00:07:12,360
+monitoring or function hooking for the
+
+158
+00:07:12,360 --> 00:07:15,900
+purpose of telemetry for EDR or also for
+
+159
+00:07:15,900 --> 00:07:17,880
+load balancing in a cloud environment to
+
+160
+00:07:17,880 --> 00:07:20,039
+quickly offload packets to another
+
+161
+00:07:20,039 --> 00:07:23,039
+server in a distributed cluster
+
+162
+00:07:23,039 --> 00:07:25,680
+so those are the products and then in
+
+163
+00:07:25,680 --> 00:07:27,960
+user space those products rely upon
+
+164
+00:07:27,960 --> 00:07:30,900
+several one of several sdks depending on
+
+165
+00:07:30,900 --> 00:07:32,340
+the language that you're writing in
+
+166
+00:07:32,340 --> 00:07:35,160
+there's support for these apis and rust
+
+167
+00:07:35,160 --> 00:07:38,699
+and C plus and c and Python and go and
+
+168
+00:07:38,699 --> 00:07:41,819
+so on and ultimately these programs gets
+
+169
+00:07:41,819 --> 00:07:44,300
+compiled and then loaded into the kernel
+
+170
+00:07:44,300 --> 00:07:48,060
+via a verifier and then jit process that
+
+171
+00:07:48,060 --> 00:07:51,120
+ultimately executes native code based
+
+172
+00:07:51,120 --> 00:07:54,199
+upon this bytecode language
+
+173
+00:07:54,360 --> 00:07:56,699
+so right now if you've interacted with
+
+174
+00:07:56,699 --> 00:07:58,319
+any of these products you have already
+
+175
+00:07:58,319 --> 00:08:02,099
+been using the modern ebpf system and in
+
+176
+00:08:02,099 --> 00:08:05,280
+fact uh system D these days if on any
+
+177
+00:08:05,280 --> 00:08:06,720
+standard Linux distribution such as
+
+178
+00:08:06,720 --> 00:08:09,120
+Ubuntu we'll have a number of ebpf
+
+179
+00:08:09,120 --> 00:08:11,880
+programs running uh just as part of the
+
+180
+00:08:11,880 --> 00:08:13,860
+standard functioning of
+
+181
+00:08:13,860 --> 00:08:16,319
+system D so ebpf is really becoming
+
+182
+00:08:16,319 --> 00:08:18,720
+integral to the operating system and
+
+183
+00:08:18,720 --> 00:08:21,539
+it's becoming the preferred platform for
+
+184
+00:08:21,539 --> 00:08:23,699
+performing Telemetry and recording
+
+185
+00:08:23,699 --> 00:08:26,039
+information about a system so all the
+
+186
+00:08:26,039 --> 00:08:29,819
+future EDR and xdr solutions and things
+
+187
+00:08:29,819 --> 00:08:31,259
+like that are kind of moving this
+
+188
+00:08:31,259 --> 00:08:32,640
+direction and we're already seeing
+
+189
+00:08:32,640 --> 00:08:35,820
+things like vmware's carbon black and
+
+190
+00:08:35,820 --> 00:08:38,580
+red Canary or Microsoft Defender using
+
+191
+00:08:38,580 --> 00:08:40,919
+this infrastructure
+
+192
+00:08:40,919 --> 00:08:43,260
+so there has been some talks on ebpf in
+
+193
+00:08:43,260 --> 00:08:44,339
+the past but they've all been on the
+
+194
+00:08:44,339 --> 00:08:46,680
+Linux side there was some talks at
+
+195
+00:08:46,680 --> 00:08:49,500
+Defcon and myself last year last fall I
+
+196
+00:08:49,500 --> 00:08:52,740
+gave a talk on using the Linux program
+
+197
+00:08:52,740 --> 00:08:55,320
+hooking interfaces to do some rootkit
+
+198
+00:08:55,320 --> 00:08:56,940
+style things where you could subvert the
+
+199
+00:08:56,940 --> 00:08:59,339
+loading of lib C or you could inject
+
+200
+00:08:59,339 --> 00:09:02,339
+arbitrary route payloads or I have a
+
+201
+00:09:02,339 --> 00:09:04,260
+gadget that will migrate you into
+
+202
+00:09:04,260 --> 00:09:07,260
+systemd so your rootkit is on killable
+
+203
+00:09:07,260 --> 00:09:09,899
+but today we're going to talk about ebpf
+
+204
+00:09:09,899 --> 00:09:12,120
+for Windows because while I was doing
+
+205
+00:09:12,120 --> 00:09:14,820
+that research I was looking at related
+
+206
+00:09:14,820 --> 00:09:16,920
+components such as an open source
+
+207
+00:09:16,920 --> 00:09:20,100
+implementation of BPF
+
+208
+00:09:20,100 --> 00:09:21,600
+the standard implementation is open
+
+209
+00:09:21,600 --> 00:09:23,880
+source but it's GPO license and somebody
+
+210
+00:09:23,880 --> 00:09:26,519
+re-implemented it as a BSD license
+
+211
+00:09:26,519 --> 00:09:29,279
+library and I had started fuzzing that
+
+212
+00:09:29,279 --> 00:09:31,800
+naturally that's what I do and had found
+
+213
+00:09:31,800 --> 00:09:33,420
+bugs and then I discovered that
+
+214
+00:09:33,420 --> 00:09:35,640
+Microsoft was going to use this library
+
+215
+00:09:35,640 --> 00:09:38,880
+in their stack so I got very excited and
+
+216
+00:09:38,880 --> 00:09:40,380
+was very curious how they were going to
+
+217
+00:09:40,380 --> 00:09:42,360
+build the system and whether or not my
+
+218
+00:09:42,360 --> 00:09:44,399
+bugs would still be alive on the Windows
+
+219
+00:09:44,399 --> 00:09:45,420
+side
+
+220
+00:09:45,420 --> 00:09:49,339
+so may of 21 last year
+
+221
+00:09:49,339 --> 00:09:52,080
+Microsoft announced via some blog posts
+
+222
+00:09:52,080 --> 00:09:54,300
+that they were intending on implementing
+
+223
+00:09:54,300 --> 00:09:55,320
+the system
+
+224
+00:09:55,320 --> 00:09:59,640
+and this may or April well I guess
+
+225
+00:09:59,640 --> 00:10:01,440
+February they released their first
+
+226
+00:10:01,440 --> 00:10:04,200
+minimum viable implementation that
+
+227
+00:10:04,200 --> 00:10:07,680
+implements the network side of ebpf and
+
+228
+00:10:07,680 --> 00:10:09,600
+they did this to implement the psyllium
+
+229
+00:10:09,600 --> 00:10:12,300
+layer 4 load balancer which they are
+
+230
+00:10:12,300 --> 00:10:15,360
+using in well presumably using an Azure
+
+231
+00:10:15,360 --> 00:10:17,519
+Cloud space
+
+232
+00:10:17,519 --> 00:10:19,680
+but right now there's Microsoft Netflix
+
+233
+00:10:19,680 --> 00:10:22,500
+Google Facebook ISO valence and a
+
+234
+00:10:22,500 --> 00:10:24,779
+handful of others that are creating this
+
+235
+00:10:24,779 --> 00:10:28,560
+foundation for development of ebpf and
+
+236
+00:10:28,560 --> 00:10:30,540
+this really shows there's some inertia
+
+237
+00:10:30,540 --> 00:10:32,940
+in the software ecosystem behind this
+
+238
+00:10:32,940 --> 00:10:35,100
+technology and it's going to become more
+
+239
+00:10:35,100 --> 00:10:38,040
+and more used and integrated into the
+
+240
+00:10:38,040 --> 00:10:40,560
+windows side as well as Linux
+
+241
+00:10:40,560 --> 00:10:43,500
+so at this point in time uh the windows
+
+242
+00:10:43,500 --> 00:10:45,839
+implementation implements pretty much
+
+243
+00:10:45,839 --> 00:10:47,540
+the entire network
+
+244
+00:10:47,540 --> 00:10:51,779
+portion of ebpf and also BPF map support
+
+245
+00:10:51,779 --> 00:10:55,260
+it does not have a equivalent to you
+
+246
+00:10:55,260 --> 00:10:59,100
+probe or k-probe function hooking yet
+
+247
+00:10:59,100 --> 00:11:01,920
+the architecture is very different from
+
+248
+00:11:01,920 --> 00:11:04,680
+Linux where Linux everything is in the
+
+249
+00:11:04,680 --> 00:11:08,700
+kernel and again GPL licensed none of
+
+250
+00:11:08,700 --> 00:11:10,440
+that code could be reused because of the
+
+251
+00:11:10,440 --> 00:11:14,940
+GPL and this is all net new code that's
+
+252
+00:11:14,940 --> 00:11:16,860
+Microsoft had to create from scratch
+
+253
+00:11:16,860 --> 00:11:18,779
+this diagram might look a little
+
+254
+00:11:18,779 --> 00:11:20,820
+confusing at first we're going to go
+
+255
+00:11:20,820 --> 00:11:22,680
+through kind of each component there if
+
+256
+00:11:22,680 --> 00:11:24,720
+you were to look at that kind of like a
+
+257
+00:11:24,720 --> 00:11:26,519
+grid where there's a top left a top
+
+258
+00:11:26,519 --> 00:11:29,399
+right bottom right and bottom left those
+
+259
+00:11:29,399 --> 00:11:31,980
+are the user land components and then a
+
+260
+00:11:31,980 --> 00:11:34,200
+user mode system service like a trusted
+
+261
+00:11:34,200 --> 00:11:37,500
+service a PPL trusted service that is
+
+262
+00:11:37,500 --> 00:11:39,480
+effectively considered part of the
+
+263
+00:11:39,480 --> 00:11:41,399
+trusted Computing base because in that
+
+264
+00:11:41,399 --> 00:11:44,399
+service is the jit engine so the code
+
+265
+00:11:44,399 --> 00:11:46,980
+will be verified and then jitted to
+
+266
+00:11:46,980 --> 00:11:49,560
+native code within the service and then
+
+267
+00:11:49,560 --> 00:11:51,899
+copied over into the kernel side where
+
+268
+00:11:51,899 --> 00:11:54,360
+it can then execute as though it was a
+
+269
+00:11:54,360 --> 00:11:56,579
+driver and of course this doesn't
+
+270
+00:11:56,579 --> 00:11:59,579
+require driver signing so really the the
+
+271
+00:11:59,579 --> 00:12:00,959
+interesting thing about this is you
+
+272
+00:12:00,959 --> 00:12:02,519
+don't have to have Microsoft signing
+
+273
+00:12:02,519 --> 00:12:04,260
+your driver code in order to implement
+
+274
+00:12:04,260 --> 00:12:06,480
+Network Hooks and hopefully in the
+
+275
+00:12:06,480 --> 00:12:09,060
+future also code hooks
+
+276
+00:12:09,060 --> 00:12:11,940
+and then also the kernel mode can
+
+277
+00:12:11,940 --> 00:12:14,700
+operate in an interpreter mode and so
+
+278
+00:12:14,700 --> 00:12:19,500
+there is also the byte code evaluator or
+
+279
+00:12:19,500 --> 00:12:21,240
+interpreter that also exists in the
+
+280
+00:12:21,240 --> 00:12:22,560
+kernel so we actually have the same
+
+281
+00:12:22,560 --> 00:12:25,019
+library on both userland and kernel and
+
+282
+00:12:25,019 --> 00:12:26,640
+depending on if you're operating in jit
+
+283
+00:12:26,640 --> 00:12:30,360
+or emulated mode or interpreted mode you
+
+284
+00:12:30,360 --> 00:12:33,680
+activate different attack surface
+
+285
+00:12:33,920 --> 00:12:36,779
+So currently they're shipping the
+
+286
+00:12:36,779 --> 00:12:38,700
+Standalone and they're not going to they
+
+287
+00:12:38,700 --> 00:12:40,800
+have no intents to ship it as part of
+
+288
+00:12:40,800 --> 00:12:42,839
+the operating system and the reason for
+
+289
+00:12:42,839 --> 00:12:44,579
+that that they've discussed via blog
+
+290
+00:12:44,579 --> 00:12:46,560
+posts and presentations is that they
+
+291
+00:12:46,560 --> 00:12:48,779
+want a servicing model that is quick
+
+292
+00:12:48,779 --> 00:12:50,820
+turnaround in case there are bugs so you
+
+293
+00:12:50,820 --> 00:12:52,260
+can imagine if this is part of the core
+
+294
+00:12:52,260 --> 00:12:54,180
+infrastructure of the cloud they don't
+
+295
+00:12:54,180 --> 00:12:55,440
+want to have to wait till next Patch
+
+296
+00:12:55,440 --> 00:12:57,420
+Tuesday to fix the problems in their
+
+297
+00:12:57,420 --> 00:12:59,240
+ebpf layer
+
+298
+00:12:59,240 --> 00:13:02,279
+it's MIT licensed and so you can go read
+
+299
+00:13:02,279 --> 00:13:04,440
+the code there's it's a substantial
+
+300
+00:13:04,440 --> 00:13:07,139
+amount of code but it is available to
+
+301
+00:13:07,139 --> 00:13:09,120
+read which of course makes reverse
+
+302
+00:13:09,120 --> 00:13:12,360
+engineering the design and you know the
+
+303
+00:13:12,360 --> 00:13:15,720
+security testing a bit easier
+
+304
+00:13:15,720 --> 00:13:17,700
+if you wanted to create an ebbf program
+
+305
+00:13:17,700 --> 00:13:19,440
+on Windows will you just go grab the
+
+306
+00:13:19,440 --> 00:13:22,079
+latest version of llvm for Windows and
+
+307
+00:13:22,079 --> 00:13:24,839
+there's a Target output architecture
+
+308
+00:13:24,839 --> 00:13:28,320
+called BPF and so this is what a simple
+
+309
+00:13:28,320 --> 00:13:30,779
+hello world might look like using the
+
+310
+00:13:30,779 --> 00:13:33,660
+BPF print K API and you'll notice
+
+311
+00:13:33,660 --> 00:13:35,700
+there's a little annotation above the
+
+312
+00:13:35,700 --> 00:13:37,500
+function name here where it says section
+
+313
+00:13:37,500 --> 00:13:40,760
+bind that's how you define what type of
+
+314
+00:13:40,760 --> 00:13:43,800
+BPF program this is
+
+315
+00:13:43,800 --> 00:13:49,380
+and the system call will take the
+
+316
+00:13:49,380 --> 00:13:51,600
+um the elf file so these get compiled
+
+317
+00:13:51,600 --> 00:13:54,600
+into elf objects and each function gets
+
+318
+00:13:54,600 --> 00:13:57,839
+put into its own section in the elf and
+
+319
+00:13:57,839 --> 00:14:01,139
+we can see here that when this object is
+
+320
+00:14:01,139 --> 00:14:02,700
+compiled the text section is actually
+
+321
+00:14:02,700 --> 00:14:04,920
+empty and the code is actually located
+
+322
+00:14:04,920 --> 00:14:09,540
+in the bind segment which is also a text
+
+323
+00:14:09,540 --> 00:14:11,339
+segment according to the elf but it's
+
+324
+00:14:11,339 --> 00:14:13,200
+not the traditional standard text
+
+325
+00:14:13,200 --> 00:14:16,040
+segment entry point
+
+326
+00:14:16,380 --> 00:14:20,160
+and if we were to use lovm's object dump
+
+327
+00:14:20,160 --> 00:14:22,800
+to dump the assembly for this program we
+
+328
+00:14:22,800 --> 00:14:25,139
+would see that it's using a interesting
+
+329
+00:14:25,139 --> 00:14:27,300
+Assembly Language there we have both the
+
+330
+00:14:27,300 --> 00:14:30,240
+hex and the assembly output and of
+
+331
+00:14:30,240 --> 00:14:33,660
+course this is an unusual language for
+
+332
+00:14:33,660 --> 00:14:38,660
+most because it is the BPF virtual CPU
+
+333
+00:14:39,000 --> 00:14:40,800
+so a more practical program you don't
+
+334
+00:14:40,800 --> 00:14:42,360
+need to read the lines of code here this
+
+335
+00:14:42,360 --> 00:14:43,740
+is just to show you a sense of scope
+
+336
+00:14:43,740 --> 00:14:48,720
+this program has two maps for storing a
+
+337
+00:14:48,720 --> 00:14:50,760
+list of packets that are going to be
+
+338
+00:14:50,760 --> 00:14:53,160
+dropped and the interfaces the network
+
+339
+00:14:53,160 --> 00:14:55,260
+interfaces that are on the machine and
+
+340
+00:14:55,260 --> 00:14:57,180
+then you have the top half of a function
+
+341
+00:14:57,180 --> 00:15:00,600
+here for evaluating the TCP packet using
+
+342
+00:15:00,600 --> 00:15:04,980
+a network hook and it accesses the
+
+343
+00:15:04,980 --> 00:15:06,779
+packet just like you would in C using
+
+344
+00:15:06,779 --> 00:15:09,300
+the standard Linux headers and can
+
+345
+00:15:09,300 --> 00:15:11,220
+rewrite the contents or I can drop the
+
+346
+00:15:11,220 --> 00:15:13,440
+packets or allow it to go up to the
+
+347
+00:15:13,440 --> 00:15:16,040
+operating system
+
+348
+00:15:16,079 --> 00:15:17,940
+so these various types as I mentioned
+
+349
+00:15:17,940 --> 00:15:20,160
+there's XDP which is the lowest level on
+
+350
+00:15:20,160 --> 00:15:22,680
+the network and I have further research
+
+351
+00:15:22,680 --> 00:15:25,260
+on that and upcoming talks but also
+
+352
+00:15:25,260 --> 00:15:27,600
+there's Network attach points that bind
+
+353
+00:15:27,600 --> 00:15:30,720
+and C group State changes and sock
+
+354
+00:15:30,720 --> 00:15:33,180
+operations and so on
+
+355
+00:15:33,180 --> 00:15:35,820
+and there's a small API there's about a
+
+356
+00:15:35,820 --> 00:15:38,459
+100 functions or so in the API that have
+
+357
+00:15:38,459 --> 00:15:41,339
+to do with giving you access to these
+
+358
+00:15:41,339 --> 00:15:44,339
+Maps or allocating ring buffers or
+
+359
+00:15:44,339 --> 00:15:47,519
+getting CPU ID what process what threat
+
+360
+00:15:47,519 --> 00:15:49,320
+are you in things that allow you to then
+
+361
+00:15:49,320 --> 00:15:51,240
+dereference like your current task
+
+362
+00:15:51,240 --> 00:15:55,519
+structure or you know other Linux
+
+363
+00:15:55,519 --> 00:15:59,639
+exported symbols data structures
+
+364
+00:15:59,639 --> 00:16:02,100
+and this is just illustrative for what's
+
+365
+00:16:02,100 --> 00:16:03,660
+in there
+
+366
+00:16:03,660 --> 00:16:06,300
+so the security model for this on
+
+367
+00:16:06,300 --> 00:16:08,279
+Windows is going to be that again we can
+
+368
+00:16:08,279 --> 00:16:10,620
+run unsigned code in the kernel without
+
+369
+00:16:10,620 --> 00:16:13,920
+having driver signing uh in the loop so
+
+370
+00:16:13,920 --> 00:16:16,380
+we don't send our new driver off to
+
+371
+00:16:16,380 --> 00:16:18,779
+Microsoft to get verified the verifier
+
+372
+00:16:18,779 --> 00:16:20,760
+itself is a static analysis component
+
+373
+00:16:20,760 --> 00:16:22,620
+built into the system
+
+374
+00:16:22,620 --> 00:16:25,620
+now the what this really means though is
+
+375
+00:16:25,620 --> 00:16:28,680
+that the currents ACLS do require
+
+376
+00:16:28,680 --> 00:16:31,800
+administrative access to load kernel you
+
+377
+00:16:31,800 --> 00:16:34,800
+know driver level code so in effect if
+
+378
+00:16:34,800 --> 00:16:38,220
+we do find vulnerabilities in the local
+
+379
+00:16:38,220 --> 00:16:41,339
+system for of the ebpf infrastructure
+
+380
+00:16:41,339 --> 00:16:43,759
+that those are administrator to Kernel
+
+381
+00:16:43,759 --> 00:16:46,139
+vulnerabilities so again this is a
+
+382
+00:16:46,139 --> 00:16:48,660
+driver signing enforcement bypass it's
+
+383
+00:16:48,660 --> 00:16:51,060
+still a very valid attack surface these
+
+384
+00:16:51,060 --> 00:16:54,480
+days to get persistence on a machine you
+
+385
+00:16:54,480 --> 00:16:55,980
+know oftentimes attackers are loading
+
+386
+00:16:55,980 --> 00:16:58,680
+older drivers to exploit them to bypass
+
+387
+00:16:58,680 --> 00:17:00,839
+driver signing enforcement and this is
+
+388
+00:17:00,839 --> 00:17:04,100
+built in a way to do that
+
+389
+00:17:04,740 --> 00:17:06,059
+um
+
+390
+00:17:06,059 --> 00:17:07,799
+so yeah
+
+391
+00:17:07,799 --> 00:17:09,720
+and I mentioned there's jet mode in
+
+392
+00:17:09,720 --> 00:17:12,299
+interpreted mode so on Linux it has its
+
+393
+00:17:12,299 --> 00:17:14,699
+own static verifier on Windows there's a
+
+394
+00:17:14,699 --> 00:17:16,980
+new static verifier that goes by the
+
+395
+00:17:16,980 --> 00:17:19,079
+name Prevail and there was an academic
+
+396
+00:17:19,079 --> 00:17:21,000
+paper on it and it's quite sophisticated
+
+397
+00:17:21,000 --> 00:17:22,919
+and what it's supposed to be doing is
+
+398
+00:17:22,919 --> 00:17:24,959
+balance checking and making sure that
+
+399
+00:17:24,959 --> 00:17:26,880
+you're not de-referencing arbitrary
+
+400
+00:17:26,880 --> 00:17:29,640
+pointers or that when you call functions
+
+401
+00:17:29,640 --> 00:17:31,080
+you're checking the return value before
+
+402
+00:17:31,080 --> 00:17:35,059
+dereferencing them these sorts of things
+
+403
+00:17:35,100 --> 00:17:36,840
+um the original versions of ebpf didn't
+
+404
+00:17:36,840 --> 00:17:39,419
+even allow Loops or the the programs are
+
+405
+00:17:39,419 --> 00:17:41,160
+quite constrained originally they could
+
+406
+00:17:41,160 --> 00:17:44,340
+only have 4 000 instructions but it
+
+407
+00:17:44,340 --> 00:17:45,720
+keeps evolving and at this point you can
+
+408
+00:17:45,720 --> 00:17:48,000
+have up to a million instructions the
+
+409
+00:17:48,000 --> 00:17:49,860
+functions can tail call into each other
+
+410
+00:17:49,860 --> 00:17:51,600
+so now they're becoming more and more
+
+411
+00:17:51,600 --> 00:17:53,820
+sophisticated more and more capable and
+
+412
+00:17:53,820 --> 00:17:56,160
+much more like traditional programs just
+
+413
+00:17:56,160 --> 00:17:59,760
+built for a different architecture
+
+414
+00:17:59,760 --> 00:18:01,620
+it has this complexity increases of
+
+415
+00:18:01,620 --> 00:18:03,240
+course the static verifier has to keep
+
+416
+00:18:03,240 --> 00:18:05,460
+up with these changes and enforce the
+
+417
+00:18:05,460 --> 00:18:06,799
+same policies
+
+418
+00:18:06,799 --> 00:18:09,059
+across a much more complicated type of
+
+419
+00:18:09,059 --> 00:18:10,440
+program than it was originally written
+
+420
+00:18:10,440 --> 00:18:12,240
+for
+
+421
+00:18:12,240 --> 00:18:14,760
+and on Linux that is GPI license as I
+
+422
+00:18:14,760 --> 00:18:15,720
+said
+
+423
+00:18:15,720 --> 00:18:17,220
+um on windows they're using this
+
+424
+00:18:17,220 --> 00:18:19,799
+third-party Library called ubpf from
+
+425
+00:18:19,799 --> 00:18:22,799
+Google's i o visor project and it's one
+
+426
+00:18:22,799 --> 00:18:24,299
+of the components I'm currently fuzzing
+
+427
+00:18:24,299 --> 00:18:25,919
+right now while we're talking
+
+428
+00:18:25,919 --> 00:18:29,460
+and you can use the Standalone to verify
+
+429
+00:18:29,460 --> 00:18:32,039
+it works more like a chained pipeline
+
+430
+00:18:32,039 --> 00:18:34,799
+where you first run a checker on the
+
+431
+00:18:34,799 --> 00:18:36,840
+program and then you load it into the VM
+
+432
+00:18:36,840 --> 00:18:39,660
+whereas on Linux they aren't really two
+
+433
+00:18:39,660 --> 00:18:41,400
+separate components it's just all kind
+
+434
+00:18:41,400 --> 00:18:42,780
+of integrated
+
+435
+00:18:42,780 --> 00:18:46,080
+what's interesting about ubpf as a
+
+436
+00:18:46,080 --> 00:18:48,360
+virtual CPU is it can be used
+
+437
+00:18:48,360 --> 00:18:50,940
+independently of everything I'm talking
+
+438
+00:18:50,940 --> 00:18:53,100
+about here you can use it as an
+
+439
+00:18:53,100 --> 00:18:55,200
+alternative to a JavaScript engine if
+
+440
+00:18:55,200 --> 00:18:58,620
+you wanted to load C code uh you know
+
+441
+00:18:58,620 --> 00:19:01,559
+Blobs of byte code that were written for
+
+442
+00:19:01,559 --> 00:19:03,780
+this engine instead or Lua for example
+
+443
+00:19:03,780 --> 00:19:06,000
+is probably the closest analog the
+
+444
+00:19:06,000 --> 00:19:08,340
+performance is at least as good as Lua
+
+445
+00:19:08,340 --> 00:19:10,140
+jit so it's definitely a viable
+
+446
+00:19:10,140 --> 00:19:13,020
+alternative and it does make interacting
+
+447
+00:19:13,020 --> 00:19:14,580
+with Native data structures much much
+
+448
+00:19:14,580 --> 00:19:18,780
+easier than lua's strange you know kind
+
+449
+00:19:18,780 --> 00:19:22,080
+of copy serialization across the buffer
+
+450
+00:19:22,080 --> 00:19:25,140
+so what are the guarantees that Windows
+
+451
+00:19:25,140 --> 00:19:26,940
+is trying to put in place well the
+
+452
+00:19:26,940 --> 00:19:28,380
+programs need to terminate within a
+
+453
+00:19:28,380 --> 00:19:30,059
+reasonable amount of time because these
+
+454
+00:19:30,059 --> 00:19:32,280
+are effectively these hooks are kind of
+
+455
+00:19:32,280 --> 00:19:34,620
+where a firewall would be right so you
+
+456
+00:19:34,620 --> 00:19:36,059
+want to very quickly be able to process
+
+457
+00:19:36,059 --> 00:19:37,260
+the packets
+
+458
+00:19:37,260 --> 00:19:39,480
+they will not read memory outside the
+
+459
+00:19:39,480 --> 00:19:43,080
+bounds of the compiled endpointers so
+
+460
+00:19:43,080 --> 00:19:45,120
+indirect pointer references are all
+
+461
+00:19:45,120 --> 00:19:47,220
+checked at compile time
+
+462
+00:19:47,220 --> 00:19:49,620
+registers are checked for Value ranges
+
+463
+00:19:49,620 --> 00:19:51,660
+to make sure you're pointing within the
+
+464
+00:19:51,660 --> 00:19:54,200
+memory map that's specific to this VM
+
+465
+00:19:54,200 --> 00:19:57,240
+same with stack arguments are type
+
+466
+00:19:57,240 --> 00:20:00,120
+checked pointers or check for null and
+
+467
+00:20:00,120 --> 00:20:02,400
+there is a new mode that they're working
+
+468
+00:20:02,400 --> 00:20:04,500
+on where this whole system on Windows
+
+469
+00:20:04,500 --> 00:20:06,980
+can run in an hvci
+
+470
+00:20:06,980 --> 00:20:08,700
+well first they were playing with
+
+471
+00:20:08,700 --> 00:20:11,940
+enclaves but an isolated virtualized
+
+472
+00:20:11,940 --> 00:20:14,520
+environment doing the verification and
+
+473
+00:20:14,520 --> 00:20:16,919
+the jit
+
+474
+00:20:16,919 --> 00:20:18,780
+um that version isn't fully baked yet so
+
+475
+00:20:18,780 --> 00:20:20,760
+I haven't had a chance to to really give
+
+476
+00:20:20,760 --> 00:20:23,580
+it a thorough review
+
+477
+00:20:23,580 --> 00:20:25,500
+so the attack scenarios here are going
+
+478
+00:20:25,500 --> 00:20:28,799
+to be if an administrator loads a BPF
+
+479
+00:20:28,799 --> 00:20:31,080
+program off of GitHub or off of a
+
+480
+00:20:31,080 --> 00:20:32,880
+commercial product a supply chain style
+
+481
+00:20:32,880 --> 00:20:34,799
+attack or
+
+482
+00:20:34,799 --> 00:20:37,940
+um or just happens across my GitHub and
+
+483
+00:20:37,940 --> 00:20:41,039
+during a compile time event I can modify
+
+484
+00:20:41,039 --> 00:20:44,340
+or patch the elf file to trigger one of
+
+485
+00:20:44,340 --> 00:20:46,559
+the bugs I'm going to show you
+
+486
+00:20:46,559 --> 00:20:48,480
+um or there's the trusted service which
+
+487
+00:20:48,480 --> 00:20:51,000
+exposes an RPC API and I thought that
+
+488
+00:20:51,000 --> 00:20:53,460
+was going to be where all the juicy
+
+489
+00:20:53,460 --> 00:20:55,380
+um you know Target was going to be but
+
+490
+00:20:55,380 --> 00:20:57,240
+in fact there's really only one API
+
+491
+00:20:57,240 --> 00:20:59,220
+available there it's just called load
+
+492
+00:20:59,220 --> 00:21:02,360
+and verify elf program
+
+493
+00:21:02,400 --> 00:21:04,200
+um but what the service actually does is
+
+494
+00:21:04,200 --> 00:21:05,580
+it talks to the kernel driver through
+
+495
+00:21:05,580 --> 00:21:08,760
+ioctals so of course there is a whole
+
+496
+00:21:08,760 --> 00:21:11,640
+iocto layer that allows you to interface
+
+497
+00:21:11,640 --> 00:21:13,740
+with the maps as well as load and verify
+
+498
+00:21:13,740 --> 00:21:16,559
+programs and unload programs and do
+
+499
+00:21:16,559 --> 00:21:18,960
+various things like that pin them into
+
+500
+00:21:18,960 --> 00:21:21,419
+the file system
+
+501
+00:21:21,419 --> 00:21:23,039
+um there's also of course the static
+
+502
+00:21:23,039 --> 00:21:25,500
+verifier itself and the VM itself just
+
+503
+00:21:25,500 --> 00:21:27,600
+simply have to be well written so that
+
+504
+00:21:27,600 --> 00:21:30,659
+programs can't bypass the verified right
+
+505
+00:21:30,659 --> 00:21:32,159
+out of bounds
+
+506
+00:21:32,159 --> 00:21:34,500
+and then finally this infrastructure
+
+507
+00:21:34,500 --> 00:21:36,900
+ultimately is going to tie you to some
+
+508
+00:21:36,900 --> 00:21:39,659
+native apis that allow you to do the the
+
+509
+00:21:39,659 --> 00:21:42,240
+implementations of the network hooks or
+
+510
+00:21:42,240 --> 00:21:44,299
+later if they add in
+
+511
+00:21:44,299 --> 00:21:46,679
+a detour style code hooking
+
+512
+00:21:46,679 --> 00:21:48,240
+infrastructure then you know there will
+
+513
+00:21:48,240 --> 00:21:51,059
+be additional attack surface there
+
+514
+00:21:51,059 --> 00:21:53,159
+so the first area that we're going to
+
+515
+00:21:53,159 --> 00:21:55,620
+look at is the user land components so
+
+516
+00:21:55,620 --> 00:21:58,320
+in the there's a dll and this would be
+
+517
+00:21:58,320 --> 00:22:00,120
+the where the administrator would be
+
+518
+00:22:00,120 --> 00:22:02,220
+loading an object file off the internet
+
+519
+00:22:02,220 --> 00:22:05,960
+or built a project of a ebpf program
+
+520
+00:22:05,960 --> 00:22:11,220
+and the open source lib BPF
+
+521
+00:22:11,220 --> 00:22:15,840
+project is embedded in this ebpf API dll
+
+522
+00:22:15,840 --> 00:22:18,720
+and in that is the a parser and elf
+
+523
+00:22:18,720 --> 00:22:21,299
+loader it's doing all the work that
+
+524
+00:22:21,299 --> 00:22:23,520
+ultimately is going to call that one RPC
+
+525
+00:22:23,520 --> 00:22:25,980
+interface that says load and verify this
+
+526
+00:22:25,980 --> 00:22:30,179
+blob of this car array of data
+
+527
+00:22:30,179 --> 00:22:32,700
+so to fuzz that component because it's a
+
+528
+00:22:32,700 --> 00:22:34,320
+user land component and because it is
+
+529
+00:22:34,320 --> 00:22:36,179
+BSD licensed and cross-platform and
+
+530
+00:22:36,179 --> 00:22:38,840
+builds on Linux this is
+
+531
+00:22:38,840 --> 00:22:41,400
+my first approach was just to fuzz those
+
+532
+00:22:41,400 --> 00:22:43,799
+libraries independently
+
+533
+00:22:43,799 --> 00:22:45,600
+see if I could find crashes and then
+
+534
+00:22:45,600 --> 00:22:48,480
+take the output which is a bunch of Elf
+
+535
+00:22:48,480 --> 00:22:50,159
+files ultimately that are supposed to
+
+536
+00:22:50,159 --> 00:22:52,980
+contain fuzzed ebpf programs and then
+
+537
+00:22:52,980 --> 00:22:54,480
+just run them through the Windows system
+
+538
+00:22:54,480 --> 00:22:56,220
+because fuzzing on Windows is very
+
+539
+00:22:56,220 --> 00:22:58,620
+complicated and much slower and so
+
+540
+00:22:58,620 --> 00:23:02,039
+that's what I did and the first
+
+541
+00:23:02,039 --> 00:23:04,559
+vulnerability I found was a heat
+
+542
+00:23:04,559 --> 00:23:05,720
+corruption
+
+543
+00:23:05,720 --> 00:23:10,039
+where it was in the destructor of this
+
+544
+00:23:10,039 --> 00:23:12,840
+relocation object so because these are
+
+545
+00:23:12,840 --> 00:23:15,059
+Elf files they do have all the things
+
+546
+00:23:15,059 --> 00:23:17,100
+that elves normally do which includes
+
+547
+00:23:17,100 --> 00:23:18,960
+the ability to do relocations and have
+
+548
+00:23:18,960 --> 00:23:21,539
+position independent code and so almost
+
+549
+00:23:21,539 --> 00:23:23,400
+every elf parser I've ever looked at has
+
+550
+00:23:23,400 --> 00:23:25,679
+a problem with doing relocations in some
+
+551
+00:23:25,679 --> 00:23:28,320
+form and sure enough this is yet another
+
+552
+00:23:28,320 --> 00:23:31,919
+instance where processing the L file as
+
+553
+00:23:31,919 --> 00:23:34,140
+it's taking the byte code out of the elf
+
+554
+00:23:34,140 --> 00:23:36,539
+section it performs relocations before
+
+555
+00:23:36,539 --> 00:23:39,659
+passing it to the RPC interface and
+
+556
+00:23:39,659 --> 00:23:42,059
+there was a code execution bug there you
+
+557
+00:23:42,059 --> 00:23:43,980
+can see I've placed our hacker friendly
+
+558
+00:23:43,980 --> 00:23:47,760
+AAA uh right at where the dereferences
+
+559
+00:23:47,760 --> 00:23:50,340
+so we're controlling a pointer path to
+
+560
+00:23:50,340 --> 00:23:52,799
+free in this case
+
+561
+00:23:52,799 --> 00:23:55,020
+call stack looks like this it just shows
+
+562
+00:23:55,020 --> 00:23:57,720
+that it's flowing through the ebpf
+
+563
+00:23:57,720 --> 00:24:00,299
+object open call through the read elf
+
+564
+00:24:00,299 --> 00:24:03,780
+API and into the destructor for the raw
+
+565
+00:24:03,780 --> 00:24:06,020
+program that it's trying to release
+
+566
+00:24:06,020 --> 00:24:08,940
+after copying the code that's it's ready
+
+567
+00:24:08,940 --> 00:24:12,380
+to send to the RPC interface
+
+568
+00:24:12,380 --> 00:24:15,600
+and if you look at this just shows how
+
+569
+00:24:15,600 --> 00:24:17,760
+the buffer was allocated in the
+
+570
+00:24:17,760 --> 00:24:20,820
+relocation parsing part of the code
+
+571
+00:24:20,820 --> 00:24:23,400
+so I consider that to be an exploitable
+
+572
+00:24:23,400 --> 00:24:26,400
+you know give given the efforts you
+
+573
+00:24:26,400 --> 00:24:29,340
+could take a controlled free pointer and
+
+574
+00:24:29,340 --> 00:24:32,100
+turn that into remote codex execution
+
+575
+00:24:32,100 --> 00:24:33,840
+also remember that you have the ability
+
+576
+00:24:33,840 --> 00:24:36,120
+to do arbitrary kernel memory
+
+577
+00:24:36,120 --> 00:24:38,940
+allocations because of these map apis
+
+578
+00:24:38,940 --> 00:24:40,320
+and this has been discussed in a
+
+579
+00:24:40,320 --> 00:24:42,419
+previous Defcon talk so I won't spend
+
+580
+00:24:42,419 --> 00:24:44,820
+too much time on it but these ebpf Maps
+
+581
+00:24:44,820 --> 00:24:47,220
+ultimately give you the ability to
+
+582
+00:24:47,220 --> 00:24:49,559
+control arbitrary amounts of non-paged
+
+583
+00:24:49,559 --> 00:24:52,260
+pool on windows so I'm the first person
+
+584
+00:24:52,260 --> 00:24:54,000
+to look at the windows side and really
+
+585
+00:24:54,000 --> 00:24:56,880
+you can allocate as large of and as many
+
+586
+00:24:56,880 --> 00:25:00,120
+of these data structures and fill them
+
+587
+00:25:00,120 --> 00:25:02,100
+with arbitrary content so you
+
+588
+00:25:02,100 --> 00:25:03,840
+effectively if nothing else have a
+
+589
+00:25:03,840 --> 00:25:07,260
+wonderful non-page pool spray capability
+
+590
+00:25:07,260 --> 00:25:11,299
+to assist with exploitation
+
+591
+00:25:11,700 --> 00:25:13,559
+so that's the user land components
+
+592
+00:25:13,559 --> 00:25:15,539
+that's the dll that you would write an
+
+593
+00:25:15,539 --> 00:25:17,400
+application that links to it to load
+
+594
+00:25:17,400 --> 00:25:19,440
+ebpf programs or you would use the
+
+595
+00:25:19,440 --> 00:25:21,659
+built-in tools BPF tool
+
+596
+00:25:21,659 --> 00:25:25,020
+um or sorry let me skip back right real
+
+597
+00:25:25,020 --> 00:25:27,480
+quick on this here it also shows there's
+
+598
+00:25:27,480 --> 00:25:31,980
+an ebpf netsh.dll on Windows there's a
+
+599
+00:25:31,980 --> 00:25:34,020
+command line tool called netsh and it
+
+600
+00:25:34,020 --> 00:25:36,840
+lets you interface with wmis and some
+
+601
+00:25:36,840 --> 00:25:39,059
+other parts of the Windows system and so
+
+602
+00:25:39,059 --> 00:25:40,140
+there's a
+
+603
+00:25:40,140 --> 00:25:42,840
+a generic built-in Windows way to
+
+604
+00:25:42,840 --> 00:25:45,480
+interface with these programs as well or
+
+605
+00:25:45,480 --> 00:25:47,100
+there's the BPF tool or you can write
+
+606
+00:25:47,100 --> 00:25:48,539
+your own and link to this Library so
+
+607
+00:25:48,539 --> 00:25:50,700
+this attack surface I just described is
+
+608
+00:25:50,700 --> 00:25:53,460
+reachable through that vector
+
+609
+00:25:53,460 --> 00:25:57,179
+so going back forward to the ebpf
+
+610
+00:25:57,179 --> 00:25:59,940
+service so this is going to be the
+
+611
+00:25:59,940 --> 00:26:03,440
+system service that exports that RPC API
+
+612
+00:26:03,440 --> 00:26:06,659
+and as you can see in the diagram this
+
+613
+00:26:06,659 --> 00:26:08,640
+service again contains both the static
+
+614
+00:26:08,640 --> 00:26:11,460
+verifier and the Jet compiler
+
+615
+00:26:11,460 --> 00:26:13,919
+unfortunately the bug that I found
+
+616
+00:26:13,919 --> 00:26:16,440
+previously is actually in the path to
+
+617
+00:26:16,440 --> 00:26:18,720
+getting to this code so it's almost not
+
+618
+00:26:18,720 --> 00:26:21,659
+really fuzzable directly until they fix
+
+619
+00:26:21,659 --> 00:26:25,279
+some of the other parsing bugs
+
+620
+00:26:25,380 --> 00:26:29,159
+there is a flow from the RPC service
+
+621
+00:26:29,159 --> 00:26:31,559
+though to the same functions at the end
+
+622
+00:26:31,559 --> 00:26:33,419
+of the day as well as through the eye
+
+623
+00:26:33,419 --> 00:26:34,980
+octals so you don't need to go through
+
+624
+00:26:34,980 --> 00:26:37,679
+the RPC service to hit more exploitable
+
+625
+00:26:37,679 --> 00:26:41,100
+attack surface and you know I'll revisit
+
+626
+00:26:41,100 --> 00:26:43,140
+the ebpf service it turns out that
+
+627
+00:26:43,140 --> 00:26:45,360
+buzzing a PPL trusted service is already
+
+628
+00:26:45,360 --> 00:26:46,880
+a real pain
+
+629
+00:26:46,880 --> 00:26:49,080
+in the end we ended up doing snapshot
+
+630
+00:26:49,080 --> 00:26:50,940
+fuzzing anyways but that was what would
+
+631
+00:26:50,940 --> 00:26:53,279
+be required to really fuzz this portion
+
+632
+00:26:53,279 --> 00:26:55,380
+of the attack surface
+
+633
+00:26:55,380 --> 00:26:57,020
+foreign
+
+634
+00:26:57,020 --> 00:27:01,020
+so the Prevail static verifier was the
+
+635
+00:27:01,020 --> 00:27:03,059
+next components I looked at because it
+
+636
+00:27:03,059 --> 00:27:05,720
+is exposed in this system
+
+637
+00:27:05,720 --> 00:27:09,120
+and it comes with a standalone tool that
+
+638
+00:27:09,120 --> 00:27:13,260
+does the verification of your program
+
+639
+00:27:13,260 --> 00:27:15,539
+and so naturally I harnessed that and
+
+640
+00:27:15,539 --> 00:27:16,919
+that's one of the targets we're fuzzing
+
+641
+00:27:16,919 --> 00:27:19,080
+in the background so let me go ahead and
+
+642
+00:27:19,080 --> 00:27:20,700
+instead of looking at slides let's look
+
+643
+00:27:20,700 --> 00:27:23,460
+at what kind of results we have here
+
+644
+00:27:23,460 --> 00:27:26,220
+so we're looking for the check yes so
+
+645
+00:27:26,220 --> 00:27:27,900
+this is the Checker you can see on the
+
+646
+00:27:27,900 --> 00:27:30,059
+top line there we're running the ebpf
+
+647
+00:27:30,059 --> 00:27:32,159
+check and in the time I've been talking
+
+648
+00:27:32,159 --> 00:27:34,919
+we've already discovered 119 brand new
+
+649
+00:27:34,919 --> 00:27:38,039
+crashes and I will say this version is
+
+650
+00:27:38,039 --> 00:27:39,840
+from May when I originally did this
+
+651
+00:27:39,840 --> 00:27:41,880
+research most of these crashes have now
+
+652
+00:27:41,880 --> 00:27:43,679
+been addressed but I wanted to
+
+653
+00:27:43,679 --> 00:27:46,140
+demonstrate the the results of what was
+
+654
+00:27:46,140 --> 00:27:47,640
+happening when I was actually doing the
+
+655
+00:27:47,640 --> 00:27:48,600
+research
+
+656
+00:27:48,600 --> 00:27:52,799
+and if we want to see if those bugs are
+
+657
+00:27:52,799 --> 00:27:58,520
+any good we can run a tool that will
+
+658
+00:27:58,520 --> 00:28:01,020
+minimize and
+
+659
+00:28:01,020 --> 00:28:03,539
+evaluate using a bank exploitable type
+
+660
+00:28:03,539 --> 00:28:06,659
+script for GDB and let's see what kind
+
+661
+00:28:06,659 --> 00:28:08,159
+of results we have
+
+662
+00:28:08,159 --> 00:28:10,679
+so it's indexing those 119 crashes it's
+
+663
+00:28:10,679 --> 00:28:12,779
+collecting code coverage it's minimizing
+
+664
+00:28:12,779 --> 00:28:16,919
+them and in just a moment it will have a
+
+665
+00:28:16,919 --> 00:28:20,700
+display for us showing us that
+
+666
+00:28:20,700 --> 00:28:21,360
+um
+
+667
+00:28:21,360 --> 00:28:24,659
+and the verifiers portion most of these
+
+668
+00:28:24,659 --> 00:28:26,299
+are looking like aborts or
+
+669
+00:28:26,299 --> 00:28:29,820
+multi-references but nevertheless this
+
+670
+00:28:29,820 --> 00:28:31,620
+is a verifier so if you can get if you
+
+671
+00:28:31,620 --> 00:28:33,299
+can verify get the verifier to crash
+
+672
+00:28:33,299 --> 00:28:35,100
+depending on the architecture of the
+
+673
+00:28:35,100 --> 00:28:36,539
+system it may get through the verifier
+
+674
+00:28:36,539 --> 00:28:38,940
+and then execute the code so we have
+
+675
+00:28:38,940 --> 00:28:41,640
+some you know not the most uh code
+
+676
+00:28:41,640 --> 00:28:44,159
+execution class bugs but we do have
+
+677
+00:28:44,159 --> 00:28:47,640
+crashes and things that will cause the
+
+678
+00:28:47,640 --> 00:28:51,179
+verifier to stop functioning basically
+
+679
+00:28:51,179 --> 00:28:53,900
+so
+
+680
+00:28:54,840 --> 00:28:55,760
+um
+
+681
+00:28:55,760 --> 00:28:58,260
+so there's bugs in the verifier
+
+682
+00:28:58,260 --> 00:29:00,480
+component which exists both again in the
+
+683
+00:29:00,480 --> 00:29:05,360
+kernel and user mode side of the system
+
+684
+00:29:06,919 --> 00:29:09,240
+and if you look at some of those bugs
+
+685
+00:29:09,240 --> 00:29:10,500
+like here for example is one of those
+
+686
+00:29:10,500 --> 00:29:12,779
+null D references it's not or this is
+
+687
+00:29:12,779 --> 00:29:14,400
+actually sorry this is a
+
+688
+00:29:14,400 --> 00:29:18,419
+a read AV off to kind of a wild portion
+
+689
+00:29:18,419 --> 00:29:20,940
+of memory but again
+
+690
+00:29:20,940 --> 00:29:23,039
+it's uh just shows well we're testing
+
+691
+00:29:23,039 --> 00:29:25,080
+which is it's a smoke test for overall
+
+692
+00:29:25,080 --> 00:29:27,059
+system quality right so that's the
+
+693
+00:29:27,059 --> 00:29:29,399
+verifier then comes the virtual CPU
+
+694
+00:29:29,399 --> 00:29:32,340
+components and again this was a user
+
+695
+00:29:32,340 --> 00:29:34,740
+mode Library that's I was able to
+
+696
+00:29:34,740 --> 00:29:36,899
+compile on Linux so I did my fuzzing on
+
+697
+00:29:36,899 --> 00:29:38,279
+Linux for this
+
+698
+00:29:38,279 --> 00:29:41,159
+and much uh to the same results and due
+
+699
+00:29:41,159 --> 00:29:42,539
+to the time instead of flipping back and
+
+700
+00:29:42,539 --> 00:29:43,799
+forth maybe at the end I'll show you the
+
+701
+00:29:43,799 --> 00:29:45,779
+live uh output but I've got screenshots
+
+702
+00:29:45,779 --> 00:29:47,700
+here so this is what it looks like you
+
+703
+00:29:47,700 --> 00:29:49,919
+do find crashes you can run it both in
+
+704
+00:29:49,919 --> 00:29:51,720
+interpreted mode and in git mode which
+
+705
+00:29:51,720 --> 00:29:52,740
+is what I'm doing in the background
+
+706
+00:29:52,740 --> 00:29:54,200
+right now
+
+707
+00:29:54,200 --> 00:29:57,179
+and uh in this case there actually are
+
+708
+00:29:57,179 --> 00:29:59,760
+writable destination
+
+709
+00:29:59,760 --> 00:30:03,240
+um memory corruption class bugs and so
+
+710
+00:30:03,240 --> 00:30:05,700
+uh yeah the results of this was
+
+711
+00:30:05,700 --> 00:30:08,039
+one of these bugs is actually the bug
+
+712
+00:30:08,039 --> 00:30:10,080
+that I was able to reproduce on the
+
+713
+00:30:10,080 --> 00:30:11,220
+Windows side
+
+714
+00:30:11,220 --> 00:30:12,840
+so again I'm fuzzing the library
+
+715
+00:30:12,840 --> 00:30:14,700
+independently here but this library is
+
+716
+00:30:14,700 --> 00:30:18,120
+compiled into the dll and the system
+
+717
+00:30:18,120 --> 00:30:20,399
+service and so
+
+718
+00:30:20,399 --> 00:30:22,020
+um yeah one of one of these many many
+
+719
+00:30:22,020 --> 00:30:23,760
+crashes
+
+720
+00:30:23,760 --> 00:30:25,799
+um was replicated on the Windows side
+
+721
+00:30:25,799 --> 00:30:27,659
+even though I originally found the crash
+
+722
+00:30:27,659 --> 00:30:30,179
+on the Linux it's the same code just
+
+723
+00:30:30,179 --> 00:30:31,980
+recompiled
+
+724
+00:30:31,980 --> 00:30:35,039
+and in legit mode you can see that we
+
+725
+00:30:35,039 --> 00:30:37,500
+have stack corruption bugs and quite a
+
+726
+00:30:37,500 --> 00:30:40,440
+severe impact this is the output of Bank
+
+727
+00:30:40,440 --> 00:30:44,279
+exploitable on all these crashes
+
+728
+00:30:44,279 --> 00:30:46,020
+so the majority of those are all
+
+729
+00:30:46,020 --> 00:30:47,640
+exploitable
+
+730
+00:30:47,640 --> 00:30:50,340
+and uh here's when it's a double free I
+
+731
+00:30:50,340 --> 00:30:51,899
+believe sorry
+
+732
+00:30:51,899 --> 00:30:53,820
+uh
+
+733
+00:30:53,820 --> 00:30:56,700
+yeah this is a free on a controlled VM
+
+734
+00:30:56,700 --> 00:30:59,120
+pointer
+
+735
+00:30:59,460 --> 00:31:00,899
+so then
+
+736
+00:31:00,899 --> 00:31:02,700
+um
+
+737
+00:31:02,700 --> 00:31:05,159
+yes as I mentioned so we did uh fuzz the
+
+738
+00:31:05,159 --> 00:31:08,460
+service a little bit with WTF but uh as
+
+739
+00:31:08,460 --> 00:31:10,740
+I mentioned it's the attack surface was
+
+740
+00:31:10,740 --> 00:31:12,000
+already hitting the other bugs so it
+
+741
+00:31:12,000 --> 00:31:13,380
+wasn't getting as deep
+
+742
+00:31:13,380 --> 00:31:16,980
+so we moved on to the kernel layer and
+
+743
+00:31:16,980 --> 00:31:19,679
+um to hit all the attack surface the RPC
+
+744
+00:31:19,679 --> 00:31:22,980
+interface what it exposes to anyways
+
+745
+00:31:22,980 --> 00:31:24,779
+and as a reminder you have to be
+
+746
+00:31:24,779 --> 00:31:26,700
+administrator to interface with the eye
+
+747
+00:31:26,700 --> 00:31:29,100
+octals these are the various ioctal
+
+748
+00:31:29,100 --> 00:31:31,200
+functions that are available so there's
+
+749
+00:31:31,200 --> 00:31:32,640
+quite a bit of attack surface here it
+
+750
+00:31:32,640 --> 00:31:34,679
+has to do with again creating and
+
+751
+00:31:34,679 --> 00:31:36,960
+deleting maps and it's the equivalence
+
+752
+00:31:36,960 --> 00:31:39,360
+of the Linux system call and what it can
+
+753
+00:31:39,360 --> 00:31:40,020
+do
+
+754
+00:31:40,020 --> 00:31:41,580
+and in the bottom right there you can
+
+755
+00:31:41,580 --> 00:31:43,500
+see load native programs the native
+
+756
+00:31:43,500 --> 00:31:47,880
+module there's even a way to pre uh well
+
+757
+00:31:47,880 --> 00:31:49,260
+technically you can load just
+
+758
+00:31:49,260 --> 00:31:51,240
+traditional x64 code through these
+
+759
+00:31:51,240 --> 00:31:52,980
+interfaces as well which is not
+
+760
+00:31:52,980 --> 00:31:54,179
+documented
+
+761
+00:31:54,179 --> 00:31:55,020
+um
+
+762
+00:31:55,020 --> 00:31:56,820
+you just have to read it in the code and
+
+763
+00:31:56,820 --> 00:31:58,320
+notice that there's eye octals there
+
+764
+00:31:58,320 --> 00:32:00,179
+that's instead of you bypass the entire
+
+765
+00:32:00,179 --> 00:32:04,020
+BPF loader system and literally can load
+
+766
+00:32:04,020 --> 00:32:06,779
+native code without signing if you look
+
+767
+00:32:06,779 --> 00:32:08,700
+closely
+
+768
+00:32:08,700 --> 00:32:11,279
+but back to fuzzing so in order to fuzz
+
+769
+00:32:11,279 --> 00:32:13,860
+the kernel driver I leveraged a new tool
+
+770
+00:32:13,860 --> 00:32:15,899
+it's about a year old now from Axel
+
+771
+00:32:15,899 --> 00:32:18,419
+sucher also known as overclock called
+
+772
+00:32:18,419 --> 00:32:21,600
+WTF fuzzer and this is a snapshot fuzzer
+
+773
+00:32:21,600 --> 00:32:23,580
+where you effectively take a kernel
+
+774
+00:32:23,580 --> 00:32:25,200
+debugger attached to the operating
+
+775
+00:32:25,200 --> 00:32:28,440
+system dump all of your virtual memory
+
+776
+00:32:28,440 --> 00:32:31,620
+the kernel and user space and then you
+
+777
+00:32:31,620 --> 00:32:34,260
+have a static snapshot on disk that you
+
+778
+00:32:34,260 --> 00:32:36,720
+can use an emulator which they use box
+
+779
+00:32:36,720 --> 00:32:39,480
+CPU the box emulator it's kind of like
+
+780
+00:32:39,480 --> 00:32:42,120
+Kimu if you're not familiar but they use
+
+781
+00:32:42,120 --> 00:32:45,059
+that to replay and restore the snapshot
+
+782
+00:32:45,059 --> 00:32:49,020
+and perform fuzzing so you take a system
+
+783
+00:32:49,020 --> 00:32:51,840
+snapshot you set the CPU registers at
+
+784
+00:32:51,840 --> 00:32:53,520
+where your break point was when you took
+
+785
+00:32:53,520 --> 00:32:55,740
+the snapshot you hook a few functions
+
+786
+00:32:55,740 --> 00:32:58,200
+like swap context and Bug check and
+
+787
+00:32:58,200 --> 00:33:00,539
+things along those lines and you have a
+
+788
+00:33:00,539 --> 00:33:03,539
+callback where you tell it's where to
+
+789
+00:33:03,539 --> 00:33:05,399
+begin in the code and when to stop
+
+790
+00:33:05,399 --> 00:33:08,840
+fuzzing and start a new iteration
+
+791
+00:33:09,299 --> 00:33:11,760
+um and so it really is a a tool if
+
+792
+00:33:11,760 --> 00:33:12,840
+you're into fuzzing if you're trying to
+
+793
+00:33:12,840 --> 00:33:14,460
+find especially if you're looking for a
+
+794
+00:33:14,460 --> 00:33:17,100
+way to Target kernel attack surface I
+
+795
+00:33:17,100 --> 00:33:19,740
+highly recommend you check this out
+
+796
+00:33:19,740 --> 00:33:22,500
+um it's distributed multi-core can uh
+
+797
+00:33:22,500 --> 00:33:25,200
+speak over a TCP socket so you can
+
+798
+00:33:25,200 --> 00:33:26,940
+actually have a distributed cluster of
+
+799
+00:33:26,940 --> 00:33:29,399
+fuzzers and so on and you can expect up
+
+800
+00:33:29,399 --> 00:33:32,460
+to you know several up to maybe 800 or a
+
+801
+00:33:32,460 --> 00:33:34,799
+thousand executions a second for shallow
+
+802
+00:33:34,799 --> 00:33:37,140
+attack Surface by the time we got
+
+803
+00:33:37,140 --> 00:33:39,120
+through our closing run though we were
+
+804
+00:33:39,120 --> 00:33:41,100
+getting so deep in the code and sending
+
+805
+00:33:41,100 --> 00:33:43,559
+multiple eye octals so we were doing
+
+806
+00:33:43,559 --> 00:33:45,360
+stateful fuzzing where we were able to
+
+807
+00:33:45,360 --> 00:33:48,740
+use fuzzy ioctal
+
+808
+00:33:48,740 --> 00:33:53,039
+requests like a series of them and and
+
+809
+00:33:53,039 --> 00:33:54,600
+this is pretty much the most accessible
+
+810
+00:33:54,600 --> 00:33:58,019
+tool out there in order to do that
+
+811
+00:33:58,019 --> 00:34:00,120
+so the
+
+812
+00:34:00,120 --> 00:34:03,299
+oh going backwards sorry
+
+813
+00:34:03,299 --> 00:34:05,940
+so this is kind of what it can look as
+
+814
+00:34:05,940 --> 00:34:07,679
+simple as this this is a fuzzer
+
+815
+00:34:07,679 --> 00:34:09,599
+technically it's a dummy fuzzer it's the
+
+816
+00:34:09,599 --> 00:34:11,280
+it's the template for writing a new
+
+817
+00:34:11,280 --> 00:34:13,320
+fuzzer but with very little work you can
+
+818
+00:34:13,320 --> 00:34:14,580
+get in there
+
+819
+00:34:14,580 --> 00:34:16,560
+and
+
+820
+00:34:16,560 --> 00:34:17,820
+um
+
+821
+00:34:17,820 --> 00:34:20,639
+there's a free example that shows you
+
+822
+00:34:20,639 --> 00:34:23,580
+how to fuzz like a a socket and we
+
+823
+00:34:23,580 --> 00:34:26,940
+converted that over to eye octal fuzzing
+
+824
+00:34:26,940 --> 00:34:29,699
+and so we have a Json request format
+
+825
+00:34:29,699 --> 00:34:33,560
+that contains a series of eye octals so
+
+826
+00:34:33,560 --> 00:34:37,440
+each of the body labels there is
+
+827
+00:34:37,440 --> 00:34:40,260
+describing an ioctal so we just captured
+
+828
+00:34:40,260 --> 00:34:43,560
+a live system we were just sending each
+
+829
+00:34:43,560 --> 00:34:45,839
+individual request manually capturing
+
+830
+00:34:45,839 --> 00:34:48,239
+that byte array and encoding it into
+
+831
+00:34:48,239 --> 00:34:51,418
+Json packets and then the fuzzer is able
+
+832
+00:34:51,418 --> 00:34:54,480
+to generate uh you know arbitrary number
+
+833
+00:34:54,480 --> 00:34:56,879
+of ioctals in sequence and serialize and
+
+834
+00:34:56,879 --> 00:35:00,080
+deserialize this format
+
+835
+00:35:00,080 --> 00:35:02,640
+and when you run it it looks something
+
+836
+00:35:02,640 --> 00:35:04,260
+like this
+
+837
+00:35:04,260 --> 00:35:05,940
+um where in the middle of the screen
+
+838
+00:35:05,940 --> 00:35:08,460
+there you can see the crash counts
+
+839
+00:35:08,460 --> 00:35:10,980
+increasing so we did find crashes
+
+840
+00:35:10,980 --> 00:35:13,140
+and this is what the server looks like
+
+841
+00:35:13,140 --> 00:35:15,540
+sorry I'm due to time trying to push
+
+842
+00:35:15,540 --> 00:35:17,640
+through a little quick uh but it found
+
+843
+00:35:17,640 --> 00:35:19,200
+crashes
+
+844
+00:35:19,200 --> 00:35:21,119
+and so let's take a look at a few of
+
+845
+00:35:21,119 --> 00:35:23,520
+them so there was several read access
+
+846
+00:35:23,520 --> 00:35:26,940
+violations memory exhaustions and so on
+
+847
+00:35:26,940 --> 00:35:30,420
+one of them was in the murmur 3 hash
+
+848
+00:35:30,420 --> 00:35:31,200
+um
+
+849
+00:35:31,200 --> 00:35:33,900
+that's ultimately it was you know
+
+850
+00:35:33,900 --> 00:35:37,200
+reading past the end of a buffer
+
+851
+00:35:37,200 --> 00:35:39,800
+call stack looks something like this
+
+852
+00:35:39,800 --> 00:35:43,800
+ubpf Destroy This is actually just a few
+
+853
+00:35:43,800 --> 00:35:45,599
+screenshots ago I showed in user land
+
+854
+00:35:45,599 --> 00:35:48,859
+and GDB where it was the double free
+
+855
+00:35:48,859 --> 00:35:51,780
+this is also the same bug again I'm
+
+856
+00:35:51,780 --> 00:35:53,520
+showing you that these bugs are
+
+857
+00:35:53,520 --> 00:35:55,440
+accessible both in kernel land as well
+
+858
+00:35:55,440 --> 00:35:57,960
+as in user land basically all over the
+
+859
+00:35:57,960 --> 00:36:00,780
+architecture of the system
+
+860
+00:36:00,780 --> 00:36:03,240
+and for your future reference these call
+
+861
+00:36:03,240 --> 00:36:04,619
+Stacks are in here
+
+862
+00:36:04,619 --> 00:36:06,900
+and yet another crash this is a no
+
+863
+00:36:06,900 --> 00:36:08,220
+pointer to your reference you know not
+
+864
+00:36:08,220 --> 00:36:10,800
+that exciting but again uh just shows
+
+865
+00:36:10,800 --> 00:36:14,579
+that this new code is you know as many
+
+866
+00:36:14,579 --> 00:36:16,200
+many bugs really
+
+867
+00:36:16,200 --> 00:36:17,820
+um and so
+
+868
+00:36:17,820 --> 00:36:19,680
+when we're talking about systems like
+
+869
+00:36:19,680 --> 00:36:21,839
+EDR systems and Telemetry systems and
+
+870
+00:36:21,839 --> 00:36:23,460
+core Network infrastructure systems
+
+871
+00:36:23,460 --> 00:36:25,800
+being built on this type of code I mean
+
+872
+00:36:25,800 --> 00:36:28,740
+it's important to you know assess the
+
+873
+00:36:28,740 --> 00:36:30,720
+quality of the code before you deploy
+
+874
+00:36:30,720 --> 00:36:32,760
+those sorts of things so
+
+875
+00:36:32,760 --> 00:36:34,440
+that's why these are in here so as you
+
+876
+00:36:34,440 --> 00:36:36,720
+oh and here's an example of a real of a
+
+877
+00:36:36,720 --> 00:36:39,480
+final fuzzed output so the earlier Jason
+
+878
+00:36:39,480 --> 00:36:41,880
+blob was one that we had was an initial
+
+879
+00:36:41,880 --> 00:36:43,920
+template and then after the fuzzer runs
+
+880
+00:36:43,920 --> 00:36:45,300
+for a while it's generating all these
+
+881
+00:36:45,300 --> 00:36:47,700
+Json blobs that describe the sequences
+
+882
+00:36:47,700 --> 00:36:50,880
+of eye octals and this is you know not
+
+883
+00:36:50,880 --> 00:36:52,740
+formatted nicely because you know it's a
+
+884
+00:36:52,740 --> 00:36:55,079
+fuzzer output but as you can see there's
+
+885
+00:36:55,079 --> 00:36:57,660
+a whole bunch of ioctal requests uh
+
+886
+00:36:57,660 --> 00:37:00,060
+encoded in this packet with you know
+
+887
+00:37:00,060 --> 00:37:04,320
+large arrays of data and so on
+
+888
+00:37:04,320 --> 00:37:07,200
+and then lastly there is a new fuzzing
+
+889
+00:37:07,200 --> 00:37:10,440
+technology called NYX it's a hypervisor
+
+890
+00:37:10,440 --> 00:37:12,240
+based fuzzer instead of taking a static
+
+891
+00:37:12,240 --> 00:37:14,339
+snapshot you actually do it from a live
+
+892
+00:37:14,339 --> 00:37:17,400
+working system so uh in the end we ended
+
+893
+00:37:17,400 --> 00:37:19,560
+up also trying to use NYX to see if we
+
+894
+00:37:19,560 --> 00:37:22,619
+could get any any more bugs I mean at
+
+895
+00:37:22,619 --> 00:37:24,300
+the end in the end I think we reported
+
+896
+00:37:24,300 --> 00:37:28,980
+like five six bugs one rce or Ace and
+
+897
+00:37:28,980 --> 00:37:30,660
+the rest were more stability quality
+
+898
+00:37:30,660 --> 00:37:32,520
+bugs
+
+899
+00:37:32,520 --> 00:37:34,800
+um and Nyx was capable of finding bugs
+
+900
+00:37:34,800 --> 00:37:36,900
+you see the familiar AFL interface here
+
+901
+00:37:36,900 --> 00:37:39,320
+but it's actually using the hypervisor's
+
+902
+00:37:39,320 --> 00:37:43,020
+snapshot engine on the back end and so
+
+903
+00:37:43,020 --> 00:37:45,359
+it was Finding bugs however it pretty
+
+904
+00:37:45,359 --> 00:37:48,119
+much overlapped with the bugs that we
+
+905
+00:37:48,119 --> 00:37:50,220
+had found previously
+
+906
+00:37:50,220 --> 00:37:54,359
+so that was a quick uh drive through the
+
+907
+00:37:54,359 --> 00:37:58,140
+userland dll the user system service and
+
+908
+00:37:58,140 --> 00:38:00,119
+then the kernel driver that implements
+
+909
+00:38:00,119 --> 00:38:03,000
+the API and then last there's the kernel
+
+910
+00:38:03,000 --> 00:38:05,280
+extension modules that implements the
+
+911
+00:38:05,280 --> 00:38:07,800
+network hooks themselves and for that
+
+912
+00:38:07,800 --> 00:38:10,339
+part I didn't fuzz I just read the code
+
+913
+00:38:10,339 --> 00:38:13,800
+personally to do a code audit on it it's
+
+914
+00:38:13,800 --> 00:38:15,480
+a small amount of code and it's kind of
+
+915
+00:38:15,480 --> 00:38:17,940
+tricky attack surface so it was just
+
+916
+00:38:17,940 --> 00:38:21,540
+easier to read manually and I am happy
+
+917
+00:38:21,540 --> 00:38:23,339
+to say that fortunately there weren't
+
+918
+00:38:23,339 --> 00:38:25,320
+any bugs that I saw that were like going
+
+919
+00:38:25,320 --> 00:38:27,180
+to be triggered via a packet coming off
+
+920
+00:38:27,180 --> 00:38:30,000
+the wire at this point so at least you
+
+921
+00:38:30,000 --> 00:38:32,579
+know the most critical attack surface
+
+922
+00:38:32,579 --> 00:38:34,140
+where they're putting hooks in the
+
+923
+00:38:34,140 --> 00:38:35,240
+network path
+
+924
+00:38:35,240 --> 00:38:38,760
+so far have been resilient to my code
+
+925
+00:38:38,760 --> 00:38:42,359
+review and our fuzzing overall
+
+926
+00:38:42,359 --> 00:38:44,880
+and as I said the Linux side they offer
+
+927
+00:38:44,880 --> 00:38:46,980
+you probe and K probes on the Linux on
+
+928
+00:38:46,980 --> 00:38:48,200
+the Windows side
+
+929
+00:38:48,200 --> 00:38:50,220
+that infrastructure just simply doesn't
+
+930
+00:38:50,220 --> 00:38:52,980
+exist Microsoft does have a hooking
+
+931
+00:38:52,980 --> 00:38:55,140
+Library called detours which is
+
+932
+00:38:55,140 --> 00:38:58,260
+basically trampolines for userland and
+
+933
+00:38:58,260 --> 00:39:01,920
+I'm imagining that if they have the
+
+934
+00:39:01,920 --> 00:39:03,780
+desire to put code hooking
+
+935
+00:39:03,780 --> 00:39:05,160
+infrastructure into their BPF
+
+936
+00:39:05,160 --> 00:39:07,079
+implementation then it will look
+
+937
+00:39:07,079 --> 00:39:08,640
+something like that where they'll tie in
+
+938
+00:39:08,640 --> 00:39:10,619
+detours
+
+939
+00:39:10,619 --> 00:39:12,180
+um but at this point really Microsoft
+
+940
+00:39:12,180 --> 00:39:14,640
+has many other hooks into the apis
+
+941
+00:39:14,640 --> 00:39:16,859
+already via event tracing for Windows
+
+942
+00:39:16,859 --> 00:39:19,800
+and the infinite amount of subsystems in
+
+943
+00:39:19,800 --> 00:39:21,720
+Windows so I'm not so sure if that is
+
+944
+00:39:21,720 --> 00:39:25,200
+really going to come anytime soon
+
+945
+00:39:25,200 --> 00:39:27,420
+so overall what are what are the
+
+946
+00:39:27,420 --> 00:39:29,460
+thoughts here well number one if you're
+
+947
+00:39:29,460 --> 00:39:32,579
+not already aware of ebpf making major
+
+948
+00:39:32,579 --> 00:39:35,400
+changes in our Network stacks and
+
+949
+00:39:35,400 --> 00:39:37,500
+becoming a pervasive component of our
+
+950
+00:39:37,500 --> 00:39:39,560
+operating system you should be aware
+
+951
+00:39:39,560 --> 00:39:42,780
+there's a lot more in there that is
+
+952
+00:39:42,780 --> 00:39:44,220
+interesting especially from a red
+
+953
+00:39:44,220 --> 00:39:46,680
+teaming perspective I'll be giving a
+
+954
+00:39:46,680 --> 00:39:48,780
+keynote at hushcon in December where I'm
+
+955
+00:39:48,780 --> 00:39:50,160
+going to be talking about some new
+
+956
+00:39:50,160 --> 00:39:52,440
+stealth Network backdoor techniques
+
+957
+00:39:52,440 --> 00:39:56,579
+based upon ebpf and also because it's a
+
+958
+00:39:56,579 --> 00:39:58,560
+virtual CPU that same code is
+
+959
+00:39:58,560 --> 00:40:00,900
+cross-platform from Windows to Linux and
+
+960
+00:40:00,900 --> 00:40:02,820
+there's all kinds of fun and interesting
+
+961
+00:40:02,820 --> 00:40:05,700
+things when you start playing with evpf
+
+962
+00:40:05,700 --> 00:40:07,560
+um the other thing to take away here is
+
+963
+00:40:07,560 --> 00:40:09,660
+that Microsoft just went out and grabbed
+
+964
+00:40:09,660 --> 00:40:12,000
+these third-party libraries and put them
+
+965
+00:40:12,000 --> 00:40:13,380
+into their trusted Computing base
+
+966
+00:40:13,380 --> 00:40:16,859
+without really taking responsibility for
+
+967
+00:40:16,859 --> 00:40:19,440
+doing the security assessments before I
+
+968
+00:40:19,440 --> 00:40:21,240
+did so they had a whole year before I
+
+969
+00:40:21,240 --> 00:40:23,579
+started looking at it and you know they
+
+970
+00:40:23,579 --> 00:40:26,880
+had just screens full of crashes and the
+
+971
+00:40:26,880 --> 00:40:30,839
+jits and in the in the VM and so you
+
+972
+00:40:30,839 --> 00:40:32,940
+know people if you adopt third party
+
+973
+00:40:32,940 --> 00:40:34,740
+code you really at this point fuzzers
+
+974
+00:40:34,740 --> 00:40:37,920
+are available it's low efforts to go out
+
+975
+00:40:37,920 --> 00:40:39,480
+and do at least the bare minimum
+
+976
+00:40:39,480 --> 00:40:41,339
+security testing I mean we just saw open
+
+977
+00:40:41,339 --> 00:40:43,320
+SSL new code checked in and wasn't
+
+978
+00:40:43,320 --> 00:40:45,599
+fuzzed we need to be fuzzing so please
+
+979
+00:40:45,599 --> 00:40:47,520
+if you're interested in that talk to me
+
+980
+00:40:47,520 --> 00:40:51,000
+I'd give trainings and in the end we did
+
+981
+00:40:51,000 --> 00:40:54,240
+find one I would call it a high class
+
+982
+00:40:54,240 --> 00:40:56,820
+not critical but High because it's a you
+
+983
+00:40:56,820 --> 00:41:00,180
+know an ace it's code execution bug but
+
+984
+00:41:00,180 --> 00:41:03,240
+it requires some sort of luring or user
+
+985
+00:41:03,240 --> 00:41:04,440
+interaction or something along those
+
+986
+00:41:04,440 --> 00:41:05,579
+lines
+
+987
+00:41:05,579 --> 00:41:07,079
+um since that all this happened I will
+
+988
+00:41:07,079 --> 00:41:09,060
+say that Microsoft took notice right
+
+989
+00:41:09,060 --> 00:41:11,579
+away when I submitted my talk for black
+
+990
+00:41:11,579 --> 00:41:15,180
+hat and since May they have been doing
+
+991
+00:41:15,180 --> 00:41:17,040
+fuzzing they've checked in a lib fuzzer
+
+992
+00:41:17,040 --> 00:41:20,940
+harness for these tools and at this
+
+993
+00:41:20,940 --> 00:41:22,200
+point we're
+
+994
+00:41:22,200 --> 00:41:24,359
+kind of uh the same the bugs that I'm
+
+995
+00:41:24,359 --> 00:41:25,940
+finding are they're finding almost
+
+996
+00:41:25,940 --> 00:41:28,380
+simultaneously and so um
+
+997
+00:41:28,380 --> 00:41:29,880
+it's moving
+
+998
+00:41:29,880 --> 00:41:32,579
+and uh finally from those first screens
+
+999
+00:41:32,579 --> 00:41:34,859
+the there's there's industry push behind
+
+1000
+00:41:34,859 --> 00:41:36,599
+this technology so again
+
+1001
+00:41:36,599 --> 00:41:38,760
+um just be aware ebpf is here to stay
+
+1002
+00:41:38,760 --> 00:41:40,200
+and
+
+1003
+00:41:40,200 --> 00:41:42,900
+um you know look for it in various uh
+
+1004
+00:41:42,900 --> 00:41:45,599
+components and lastly uh why am I here
+
+1005
+00:41:45,599 --> 00:41:46,980
+even talking about this why do I do this
+
+1006
+00:41:46,980 --> 00:41:48,420
+research well I work for trellix we're
+
+1007
+00:41:48,420 --> 00:41:49,920
+an EDR company we're just trying to stay
+
+1008
+00:41:49,920 --> 00:41:52,440
+ahead of the curve and understand how
+
+1009
+00:41:52,440 --> 00:41:54,240
+these things work in the infrastructure
+
+1010
+00:41:54,240 --> 00:41:55,920
+and whether or not we'll adopt it in the
+
+1011
+00:41:55,920 --> 00:41:57,060
+future
+
+1012
+00:41:57,060 --> 00:41:59,220
+so I've been Rich Johnson uh thanks for
+
+1013
+00:41:59,220 --> 00:42:01,320
+your attention and I hope you have a
+
+1014
+00:42:01,320 --> 00:42:02,940
+nice day and the rest of ecobari thank
+
+1015
+00:42:02,940 --> 00:42:05,060
+you
+
+1016
+00:42:10,260 --> 00:42:14,119
+and happy to answer any questions
+
