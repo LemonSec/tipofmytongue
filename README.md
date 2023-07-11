@@ -24,7 +24,7 @@ Search for files that contain multiple keywords together and then highlight the 
 
 replace the words rclone and mega with your keywords. This will search for all instances of the keywords together and then highlight the filename of the presentation in blue.
 
-grep -lir 'rclone' . | while IFS= read -r file; do grep -iq 'plc' "$file" && grep --color=always -i 'rclone\|megasync' "$file" | sed 's/<[^>]*>//g' && echo -e "\e[96m$file\e[0m"; done
+grep -lir 'rclone' . | while IFS= read -r file; do grep -iq 'mega' "$file" && grep --color=always -i 'rclone\|mega' "$file" | sed 's/<[^>]*>//g' && echo -e "\e[96m$file\e[0m"; done
 
 
 ![ransom](https://github.com/LemonSec/tipofmytongue/assets/33465511/364da3f4-be5c-4edc-9e7b-404fa374af99)
